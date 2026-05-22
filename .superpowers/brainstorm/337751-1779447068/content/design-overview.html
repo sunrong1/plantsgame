@@ -1,0 +1,187 @@
+<h2>PVZ 像素版 — 游戏设计总览</h2>
+<p class="subtitle">请确认以下设计方案，如有疑问可随时提出修改</p>
+
+<h3>1. 游戏界面布局</h3>
+<div class="mockup">
+  <div class="mockup-header">界面 5x9 草坪 + 顶部资源栏</div>
+  <div class="mockup-body">
+    <div style="border:2px solid #333;background:#f5f5f5;padding:8px;margin-bottom:8px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <span style="font-size:20px;">☀️ 150</span>
+        <div style="display:flex;gap:8px;">
+          <div style="width:50px;height:50px;background:#90EE90;border:2px solid #228B22;display:flex;align-items:center;justify-content:center;font-size:12px;">🌱 100</div>
+          <div style="width:50px;height:50px;background:#FFD700;border:2px solid #DAA520;display:flex;align-items:center;justify-content:center;font-size:12px;">🌻 50</div>
+          <div style="width:50px;height:50px;background:#DEB887;border:2px solid:#8B4513;display:flex;align-items:center;justify-content:center;font-size:12px;">🥜 50</div>
+        </div>
+        <span style="font-size:20px;">⏸️</span>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(9,50px);grid-template-rows:repeat(5,50px);gap:2px;background:#228B22;padding:4px;">
+      <div style="background:#32CD32;aspect-ratio:1;"></div>
+      <div style="background:#32CD32;aspect-ratio:1;"></div>
+      <div style="background:#32CD32;aspect-ratio:1;"></div>
+      <div style="background:#32CD32;aspect-ratio:1;"></div>
+      <div style="background:#32CD32;aspect-ratio:1;"></div>
+      <div style="background:#32CD32;aspect-ratio:1;"></div>
+      <div style="background:#32CD32;aspect-ratio:1;"></div>
+      <div style="background:#32CD32;aspect-ratio:1;"></div>
+      <div style="background:#32CD32;aspect-ratio:1;"></div>
+      <div style="background:#32CD32;aspect-ratio:1;"></div>
+      <div style="background:#32CD32;aspect-ratio:1;"></div>
+      <div style="background:#32CD32;aspect-ratio:1;"></div>
+      <div style="background:#32CD32;aspect-ratio:1;"></div>
+      <div style="background:#32CD32;aspect-ratio:1;"></div>
+      <div style="background:#32CD32;aspect-ratio:1;"></div>
+      <div style="background:#32CD32;aspect-ratio:1;"></div>
+      <div style="background:#32CD32;aspect-ratio:1;"></div>
+      <div style="background:#32CD32;aspect-ratio:1;"></div>
+      <div style="background:#32CD32;aspect-ratio:1;"></div>
+      <div style="background:#32CD32;aspect-ratio:1;"></div>
+      <div style="background:#32CD32;aspect-ratio:1;"></div>
+      <div style="background:#32CD32;aspect-ratio:1;"></div>
+      <div style="background:#32CD32;aspect-ratio:1;"></div>
+      <div style="background:#32CD32;aspect-ratio:1;"></div>
+      <div style="background:#32CD32;aspect-ratio:1;"></div>
+      <div style="background:#32CD32;aspect-ratio:1;"></div>
+      <div style="background:#32CD32;aspect-ratio:1;"></div>
+      <div style="background:#32CD32;aspect-ratio:1;"></div>
+      <div style="background:#32CD32;aspect-ratio:1;"></div>
+      <div style="background:#32CD32;aspect-ratio:1;"></div>
+      <div style="background:#32CD32;aspect-ratio:1;"></div>
+      <div style="background:#32CD32;aspect-ratio:1;"></div>
+      <div style="background:#32CD32;aspect-ratio:1;"></div>
+      <div style="background:#32CD32;aspect-ratio:1;"></div>
+      <div style="background:#32CD32;aspect-ratio:1;"></div>
+      <div style="background:#32CD32;aspect-ratio:1;"></div>
+      <div style="background:#32CD32;aspect-ratio:1;"></div>
+      <div style="background:#32CD32;aspect-ratio:1;"></div>
+      <div style="background:#32CD32;aspect-ratio:1;"></div>
+      <div style="background:#32CD32;aspect-ratio:1;"></div>
+      <div style="background:#32CD32;aspect-ratio:1;"></div>
+      <div style="background:#32CD32;aspect-ratio:1;"></div>
+      <div style="background:#32CD32;aspect-ratio:1;"></div>
+      <div style="background:#32CD32;aspect-ratio:1;"></div>
+      <div style="background:#32CD32;aspect-ratio:1;"></div>
+    </div>
+    <p style="text-align:center;margin-top:8px;font-size:12px;">← 僵尸入侵方向 ←</p>
+  </div>
+</div>
+
+<h3>2. 植物实体规格</h3>
+<table style="width:100%;border-collapse:collapse;margin:16px 0;">
+  <tr style="background:#e0e0e0;">
+    <th style="padding:8px;border:1px solid #999;">植物</th>
+    <th style="padding:8px;border:1px solid #999;">成本</th>
+    <th style="padding:8px;border:1px solid #999;">HP</th>
+    <th style="padding:8px;border:1px solid #999;">特殊能力</th>
+    <th style="padding:8px;border:1px solid #999;">帧动画</th>
+  </tr>
+  <tr>
+    <td style="padding:8px;border:1px solid #999;">🌱 豌豆射手</td>
+    <td style="padding:8px;border:1px solid #999;">100</td>
+    <td style="padding:8px;border:1px solid #999;">100</td>
+    <td style="padding:8px;border:1px solid #999;">每1.5秒发射1颗豌豆，伤害20</td>
+    <td style="padding:8px;border:1px solid #999;">射击动画 (3帧)</td>
+  </tr>
+  <tr>
+    <td style="padding:8px;border:1px solid #999;">🌻 向日葵</td>
+    <td style="padding:8px;border:1px solid #999;">50</td>
+    <td style="padding:8px;border:1px solid #999;">100</td>
+    <td style="padding:8px;border:1px solid #999;">每5秒产出 25±10 阳光</td>
+    <td style="padding:8px;border:1px solid #999;">摇摆动画 (4帧)</td>
+  </tr>
+  <tr>
+    <td style="padding:8px;border:1px solid #999;">🥜 坚果墙</td>
+    <td style="padding:8px;border:1px solid #999;">50</td>
+    <td style="padding:8px;border:1px solid #999;">400</td>
+    <td style="padding:8px;border:1px solid #999;">阻挡僵尸前进</td>
+    <td style="padding:8px;border:1px solid #999;">受伤动画 (2帧)</td>
+  </tr>
+</table>
+
+<h3>3. 僵尸实体规格</h3>
+<table style="width:100%;border-collapse:collapse;margin:16px 0;">
+  <tr style="background:#e0e0e0;">
+    <th style="padding:8px;border:1px solid #999;">僵尸</th>
+    <th style="padding:8px;border:1px solid #999;">HP</th>
+    <th style="padding:8px;border:1px solid #999;">移动速度</th>
+    <th style="padding:8px;border:1px solid #999;">攻击力</th>
+    <th style="padding:8px;border:1px solid #999;">备注</th>
+  </tr>
+  <tr>
+    <td style="padding:8px;border:1px solid #999;">普通僵尸</td>
+    <td style="padding:8px;border:1px solid #999;">100</td>
+    <td style="padding:8px;border:1px solid #999;">1格/1.5秒</td>
+    <td style="padding:8px;border:1px solid #999;">20/次，每秒1次</td>
+    <td style="padding:8px;border:1px solid #999;">—</td>
+  </tr>
+  <tr>
+    <td style="padding:8px;border:1px solid #999;">🚩 旗帜僵尸</td>
+    <td style="padding:8px;border:1px solid #999;">200</td>
+    <td style="padding:8px;border:1px solid #999;">1格/1.5秒</td>
+    <td style="padding:8px;border:1px solid #999;">20/次，每秒1次</td>
+    <td style="padding:8px;border:1px solid #999;">第3波出现，视觉标识</td>
+  </tr>
+</table>
+
+<h3>4. 波次时间线</h3>
+<div class="mockup">
+  <div class="mockup-body" style="font-family:monospace;">
+    <div style="margin:8px 0;">⏱️ <strong>时间轴 (游戏开始 = 0秒)</strong></div>
+    <div style="display:flex;align-items:center;margin:12px 0;">
+      <div style="width:60px;">0秒</div>
+      <div style="flex:1;height:20px;background:#87CEEB;position:relative;">
+        <span style="position:absolute;top:-18px;left:0;">游戏开始 | 初始阳光 150</span>
+        <span style="position:absolute;top:25px;left:0;font-size:10px;">天空掉落: 每10秒+25阳光</span>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;margin:12px 0;">
+      <div style="width:60px;">20秒</div>
+      <div style="flex:1;height:30px;background:#FF6B6B;position:relative;">
+        <span style="position:absolute;top:5px;left:8px;">第1波: 3只 🧟 间隔4秒</span>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;margin:12px 0;">
+      <div style="width:60px;">38秒</div>
+      <div style="flex:1;height:30px;background:#FF4757;position:relative;">
+        <span style="position:absolute;top:5px;left:8px;">第2波: 5只 🧟 间隔3秒</span>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;margin:12px 0;">
+      <div style="width:60px;">53秒</div>
+      <div style="flex:1;height:30px;background:#C0392B;position:relative;">
+        <span style="position:absolute;top:5px;left:8px;">第3波: 7只 (含🚩旗帜) 🧟 间隔2秒</span>
+      </div>
+    </div>
+    <div style="margin-top:16px;padding:8px;background:#E8F5E9;border-radius:4px;">
+      <strong>胜利条件:</strong> 第3波所有僵尸消灭后游戏胜利<br>
+      <strong>失败条件:</strong> 任意僵尸抵达草坪最左侧 (第1列)
+    </div>
+  </div>
+</div>
+
+<h3>5. 代码架构预览</h3>
+<div style="background:#2d2d2d;color:#f8f8f2;padding:16px;border-radius:4px;font-family:monospace;font-size:13px;">
+<pre>src/
+├── main.ts              # 游戏入口
+├── config/
+│   ├── plants.ts        # 植物配置数据
+│   ├── zombies.ts       # 僵尸配置数据
+│   └── game.ts          # 全局游戏配置
+├── entities/
+│   ├── Plant.ts         # 植物基类
+│   ├── Zombie.ts        # 僵尸基类
+│   └── Projectile.ts    # 豌豆子弹
+├── scenes/
+│   ├── BootScene.ts     # 加载素材
+│   ├── PlayScene.ts     # 主游戏场景
+│   └── UIScene.ts       # UI层 (叠加)
+├── systems/
+│   ├── GridManager.ts   # 草坪网格管理
+│   ├── WaveManager.ts   # 波次管理
+│   └── EconomyManager.ts # 阳光经济
+└── types/
+    └── index.ts          # TypeScript 接口定义</pre>
+</div>
+
+<p style="margin-top:16px;text-align:center;color:#666;">请确认以上设计，或提出需要调整的部分 →</p>

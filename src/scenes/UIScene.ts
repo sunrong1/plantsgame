@@ -136,9 +136,12 @@ export class UIScene extends Phaser.Scene {
   }
 
   private updateUI(): void {
-    const scene = this.scene.get('PlayScene') as PlayScene;
-    if (scene && this.sunlightText) {
-      this.sunlightText.setText(scene.getSunlight().toString());
+    const sceneManager = this.scene.manager;
+    const scenes = sceneManager.getScenes();
+    const playScene = scenes.find(s => s.scene.key === 'PlayScene') as PlayScene | undefined;
+
+    if (playScene && this.sunlightText) {
+      this.sunlightText.setText(playScene.getSunlight().toString());
     }
   }
 }

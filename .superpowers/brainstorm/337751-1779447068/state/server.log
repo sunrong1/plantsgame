@@ -1,0 +1,3 @@
+{"type":"server-started","port":61469,"host":"127.0.0.1","url_host":"localhost","url":"http://localhost:61469","screen_dir":"/root/repos/plants-game/.superpowers/brainstorm/337751-1779447068/content","state_dir":"/root/repos/plants-game/.superpowers/brainstorm/337751-1779447068/state"}
+{"type":"screen-added","file":"/root/repos/plants-game/.superpowers/brainstorm/337751-1779447068/content/design-overview.html"}
+{"type":"server-stopped","reason":"idle timeout"}

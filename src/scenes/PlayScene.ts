@@ -149,7 +149,7 @@ export class PlayScene extends Phaser.Scene {
       return;
     }
 
-    const plant = Plant.create(this.scene, this.selectedPlant, cell);
+    const plant = Plant.create(this as unknown as Phaser.Scene, this.selectedPlant, cell);
     this.plants.set(plant.id, plant);
     this.gridManager.occupyCell(cell.row, cell.col, plant.id);
     this.gridManager.addPlant(plant.sprite, plant.id);
@@ -190,7 +190,7 @@ export class PlayScene extends Phaser.Scene {
 
           if (hasTarget) {
             const pos = this.gridManager.getGridPosition(plant.position.row, plant.position.col);
-            const projectile = Projectile.create(this.scene, pos.x + 25, pos.y, damage);
+            const projectile = Projectile.create(this as unknown as Phaser.Scene, pos.x + 25, pos.y, damage);
             this.projectiles.push(projectile);
             plant.lastActionTime = time;
           }
