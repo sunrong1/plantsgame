@@ -37,6 +37,9 @@ export class PlayScene extends Phaser.Scene {
       (wave) => this.onWaveComplete(wave)
     );
 
+    // 监听场景关闭事件，用于清理
+    this.events.on('shutdown', this.shutdown, this);
+
     this.time.addEvent({
       delay: GAME_CONFIG.skyDropInterval,
       callback: () => {
@@ -307,7 +310,7 @@ export class PlayScene extends Phaser.Scene {
 
   private removeZombie(zombie: ZombieEntity): void {
     this.zombies.delete(zombie.id);
-    (zombie.sprite as unknown as Phaser.GameObjects.Container).destroy();
+    zombie.sprite.destroy();
     this.waveManager.removeZombie(zombie);
   }
 
@@ -315,6 +318,21 @@ export class PlayScene extends Phaser.Scene {
     this.plants.delete(plant.id);
     this.gridManager.releaseCell(plant.position.row, plant.position.col);
     plant.sprite.destroy();
+  }
+
+  shutdown(): void {
+    // 清理所有实体
+    for (const zombie of this.zombies.values()) {
+      zombie.sprite.destroy();
+    }
+    for (const plant of this.plants.values()) {
+      plant.sprite.destroy();
+    }
+    Projectile.clear();
+
+    this.plants.clear();
+    this.zombies.clear();
+    this.projectiles = [];
   }
 
   private onWaveComplete(wave: number): void {

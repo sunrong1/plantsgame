@@ -6,6 +6,14 @@ const PROJECTILE_SPEED = 300;
 export class Projectile {
   private static projectiles: ProjectileEntity[] = [];
 
+  static clear(): void {
+    // 销毁所有子弹
+    for (const p of this.projectiles) {
+      p.sprite.destroy();
+    }
+    this.projectiles = [];
+  }
+
   static create(
     scene: Phaser.Scene,
     x: number,
