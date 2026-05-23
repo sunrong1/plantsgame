@@ -78,7 +78,7 @@ export interface PlantEntity {
   maxHp: number;
   state: PlantState;
   lastActionTime: number;
-  sprite: Phaser.GameObjects.Sprite;
+  sprite: Phaser.GameObjects.Image;
   config: PlantConfig;
 }
 
@@ -91,7 +91,7 @@ export interface ZombieEntity {
   state: ZombieState;
   targetPlant: PlantEntity | null;
   lastAttackTime: number;
-  sprite: Phaser.GameObjects.Sprite;
+  sprite: Phaser.GameObjects.Image;
   config: ZombieConfig;
 }
 

@@ -16,24 +16,11 @@ export class Zombie {
     const x = 25 + GAME_CONFIG.grid.cols * 50 + 30;
     const y = 60 + row * 50 + 25;
 
-    const graphics = scene.add.graphics();
-    const color = config.isFlag ? 0x8B0000 : 0x556B2F;
-    graphics.fillStyle(color, 1);
-    graphics.fillRect(-20, -25, 40, 50);
-    graphics.lineStyle(2, 0x000000, 1);
-    graphics.strokeRect(-20, -25, 40, 50);
-
-    if (config.isFlag) {
-      const flag = scene.add.graphics();
-      flag.fillStyle(0xFF0000, 1);
-      flag.fillTriangle(10, -20, 10, -5, 25, -12);
-      graphics.lineStyle(2, 0x000000, 1);
-      graphics.strokeCircle(0, -15, 5);
-    }
-
-    const container = scene.add.container(x, y, [graphics]);
-    container.setData('zombieId', id);
-    container.setData('row', row);
+    // 使用纹理
+    const textureKey = config.isFlag ? 'zombie_flag' : 'zombie_normal';
+    const sprite = scene.add.image(x, y, textureKey);
+    sprite.setData('zombieId', id);
+    sprite.setData('row', row);
 
     return {
       id,
@@ -43,8 +30,8 @@ export class Zombie {
       maxHp: config.hp,
       state: 'walking',
       targetPlant: null,
-      lastAttackTime: 0,
-      sprite: container as unknown as Phaser.GameObjects.Sprite,
+      lastAttackTime: 0, // 使用游戏内时间，初始化为0
+      sprite,
       config,
     };
   }
@@ -66,21 +53,19 @@ export class Zombie {
     const speed = zombie.config.speed;
     const dx = -speed * (delta / 1000);
 
-    (zombie.sprite as unknown as Phaser.GameObjects.Container).x += dx;
-
-    const gridX = (zombie.sprite as unknown as Phaser.GameObjects.Container).x;
-    zombie.position.col = Math.max(0, Math.floor((gridX - 25) / 50));
+    zombie.sprite.x += dx;
+    zombie.position.col = Math.max(0, Math.floor((zombie.sprite.x - 25) / 50));
   }
 
   static getCurrentX(zombie: ZombieEntity): number {
-    return (zombie.sprite as unknown as Phaser.GameObjects.Container).x;
+    return zombie.sprite.x;
   }
 
   static getCurrentY(zombie: ZombieEntity): number {
-    return (zombie.sprite as unknown as Phaser.GameObjects.Container).y;
+    return zombie.sprite.y;
   }
 
   static getRow(zombie: ZombieEntity): number {
-    return (zombie.sprite as unknown as Phaser.GameObjects.Container).getData('row');
+    return zombie.sprite.getData('row');
   }
 }

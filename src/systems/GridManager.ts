@@ -88,7 +88,7 @@ export class GridManager {
     return { row, col };
   }
 
-  addPlant(sprite: Phaser.GameObjects.Sprite, plantId: string): void {
+  addPlant(sprite: Phaser.GameObjects.Image, plantId: string): void {
     sprite.setData('plantId', plantId);
     this.plantLayer.add(sprite);
   }

@@ -1,30 +1,22 @@
 import Phaser from 'phaser';
-import type { PlantEntity, PlantConfig, GridPosition } from '../types';
+import type { PlantEntity, GridPosition } from '../types';
 import { PLANT_CONFIG_MAP } from '../config';
 
 export class Plant {
   static create(
     scene: Phaser.Scene,
     plantType: string,
-    position: GridPosition,
-    existingId?: string
+    position: GridPosition
   ): PlantEntity {
     const config = PLANT_CONFIG_MAP.get(plantType)!;
-    const id = existingId || `plant_${Date.now()}_${Math.random()}`;
+    const id = `plant_${Date.now()}_${Math.random()}`;
 
     const x = 25 + position.col * 50 + 25;
     const y = 60 + position.row * 50 + 25;
 
-    const graphics = scene.add.graphics();
-    const color = plantType === 'peashooter' ? 0x90EE90 :
-                  plantType === 'sunflower' ? 0xFFD700 : 0xDEB887;
-    graphics.fillStyle(color, 1);
-    graphics.fillRect(-20, -20, 40, 40);
-    graphics.lineStyle(2, 0x000000, 1);
-    graphics.strokeRect(-20, -20, 40, 40);
-
-    const container = scene.add.container(x, y, [graphics]);
-    container.setData('plantId', id);
+    // 使用纹理
+    const sprite = scene.add.image(x, y, plantType);
+    sprite.setData('plantId', id);
 
     return {
       id,
@@ -33,8 +25,8 @@ export class Plant {
       hp: config.hp,
       maxHp: config.hp,
       state: 'idle',
-      lastActionTime: Date.now(),
-      sprite: container as unknown as Phaser.GameObjects.Sprite,
+      lastActionTime: 0, // 使用游戏内时间，初始化为0
+      sprite,
       config,
     };
   }

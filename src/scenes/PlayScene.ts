@@ -57,7 +57,7 @@ export class PlayScene extends Phaser.Scene {
   update(time: number, delta: number): void {
     if (this.gameState !== 'playing') return;
 
-    this.updateZombies(delta);
+    this.updateZombies(time, delta);
     this.updatePlants(time);
     this.updateProjectiles(delta);
     this.checkGameOver();
@@ -186,7 +186,7 @@ export class PlayScene extends Phaser.Scene {
         const damage = Plant.getDamage(plant);
 
         if (interval && damage && time - plant.lastActionTime >= interval) {
-          const hasTarget = this.checkZombiesInRow(plant.position.row);
+          const hasTarget = this.checkZombiesInRow(plant.position.row, plant.position.col);
 
           if (hasTarget) {
             const pos = this.gridManager.getGridPosition(plant.position.row, plant.position.col);
@@ -199,16 +199,23 @@ export class PlayScene extends Phaser.Scene {
     }
   }
 
-  private checkZombiesInRow(row: number): boolean {
+  private checkZombiesInRow(row: number, shooterCol: number): boolean {
     for (const zombie of this.zombies.values()) {
-      if (Zombie.getRow(zombie) === row && zombie.state === 'walking') {
+      if (Zombie.getRow(zombie) !== row) continue;
+      if (zombie.state === 'dead' || zombie.state === 'dying') continue;
+
+      // 检查僵尸是否在射手右侧（可以被射手打到）
+      const zombieX = Zombie.getCurrentX(zombie);
+      const shooterX = 25 + shooterCol * 50 + 25; // 射手中心x
+
+      if (zombieX > shooterX) {
         return true;
       }
     }
     return false;
   }
 
-  private updateZombies(delta: number): void {
+  private updateZombies(time: number, delta: number): void {
     for (const zombie of this.zombies.values()) {
       if (zombie.state === 'dying' || zombie.state === 'dead') continue;
 
@@ -222,9 +229,9 @@ export class PlayScene extends Phaser.Scene {
         zombie.state = 'attacking';
         zombie.targetPlant = targetPlant;
 
-        if (Date.now() - zombie.lastAttackTime >= zombie.config.attackInterval) {
+        if (time - zombie.lastAttackTime >= zombie.config.attackInterval) {
           Plant.takeDamage(targetPlant, zombie.config.damage);
-          zombie.lastAttackTime = Date.now();
+          zombie.lastAttackTime = time;
 
           if (Plant.isDead(targetPlant)) {
             this.removePlant(targetPlant);
@@ -237,8 +244,8 @@ export class PlayScene extends Phaser.Scene {
         zombie.targetPlant = null;
         Zombie.updatePosition(zombie, delta);
 
-        const newCol = Math.max(0, Math.floor((Zombie.getCurrentX(zombie) - 25) / 50));
-        (zombie.sprite as unknown as Phaser.GameObjects.Container).setData('row', newCol);
+        const newRow = Zombie.getRow(zombie);
+        zombie.sprite.setData('row', newRow);
       }
     }
   }

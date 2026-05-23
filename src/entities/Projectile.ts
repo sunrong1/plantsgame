@@ -10,21 +10,12 @@ export class Projectile {
     scene: Phaser.Scene,
     x: number,
     y: number,
-    damage: number,
-    existingId?: string
+    damage: number
   ): ProjectileEntity {
-    const id = existingId || `projectile_${Date.now()}_${Math.random()}`;
+    const id = `projectile_${Date.now()}_${Math.random()}`;
 
-    const graphics = scene.add.graphics();
-    graphics.fillStyle(0x32CD32, 1);
-    graphics.fillCircle(8, 8, 8);
-    graphics.lineStyle(2, 0x228B22, 1);
-    graphics.strokeCircle(8, 8, 6);
-
-    const container = scene.add.container(x, y, [graphics]);
-    container.setSize(16, 16);
-
-    const sprite = container as unknown as Phaser.GameObjects.Image;
+    // 使用纹理
+    const sprite = scene.add.image(x, y, 'pea');
 
     const projectile: ProjectileEntity = {
       id,
@@ -41,16 +32,16 @@ export class Projectile {
 
   static update(projectile: ProjectileEntity, delta: number): void {
     const dx = projectile.speed * (delta / 1000);
-    (projectile.sprite as unknown as Phaser.GameObjects.Container).x += dx;
+    projectile.sprite.x += dx;
     projectile.x += dx;
   }
 
   static getX(projectile: ProjectileEntity): number {
-    return projectile.x;
+    return projectile.sprite.x;
   }
 
   static getY(projectile: ProjectileEntity): number {
-    return projectile.y;
+    return projectile.sprite.y;
   }
 
   static getProjectiles(): ProjectileEntity[] {
@@ -62,11 +53,11 @@ export class Projectile {
     if (index !== -1) {
       this.projectiles.splice(index, 1);
     }
-    (projectile.sprite as unknown as Phaser.GameObjects.Container).destroy();
+    projectile.sprite.destroy();
   }
 
   static isOffScreen(projectile: ProjectileEntity, maxX: number): boolean {
-    return projectile.x > maxX;
+    return projectile.sprite.x > maxX;
   }
 
   static checkCollision(
