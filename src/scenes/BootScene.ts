@@ -47,6 +47,37 @@ export class BootScene extends Phaser.Scene {
 
     // 入侵箭头
     this.createInvasionArrow(textures);
+
+    // 草坪背景
+    this.createLawn(textures);
+  }
+
+  private createLawn(textures: Phaser.Textures.TextureManager): void {
+    const canvas = textures.createCanvas('lawn', 530, 350);
+    if (!canvas) return;
+    const ctx = canvas.context;
+
+    // 基础绿色
+    ctx.fillStyle = '#228B22';
+    ctx.fillRect(0, 0, 530, 350);
+
+    // 添加草地质感
+    ctx.fillStyle = '#2E8B2E';
+    for (let i = 0; i < 200; i++) {
+      const x = Math.random() * 530;
+      const y = Math.random() * 350;
+      ctx.fillRect(x, y, 2, 4);
+    }
+
+    // 深色斑点增加层次
+    ctx.fillStyle = '#1E6B1E';
+    for (let i = 0; i < 80; i++) {
+      const x = Math.random() * 530;
+      const y = Math.random() * 350;
+      ctx.fillRect(x, y, 4, 4);
+    }
+
+    canvas.refresh();
   }
 
   private createInvasionArrow(textures: Phaser.Textures.TextureManager): void {

@@ -28,6 +28,9 @@ export class PlayScene extends Phaser.Scene {
   }
 
   create(): void {
+    // 创建草坪背景
+    this.add.image(265, 185, 'lawn').setDepth(-1);
+
     this.gridManager = new GridManager(this);
     this.economyManager = new EconomyManager(this);
 

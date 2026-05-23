@@ -92,7 +92,7 @@ export class GridManager {
     const offsetY = 60;
 
     this.gridGraphics.clear();
-    this.gridGraphics.lineStyle(1, 0x228B22, 0.5);
+    this.gridGraphics.lineStyle(1, 0x1B5E20, 0.3); // 深绿色网格线，低透明度
 
     for (let row = 0; row < GAME_CONFIG.grid.rows; row++) {
       for (let col = 0; col < GAME_CONFIG.grid.cols; col++) {
