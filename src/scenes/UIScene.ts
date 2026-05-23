@@ -65,28 +65,33 @@ export class UIScene extends Phaser.Scene {
   ): Phaser.GameObjects.Container {
     const container = this.add.container(x, y);
 
+    // 卡片背景
     const bg = this.add.graphics();
     bg.lineStyle(2, 0xFFFFFF, 0.8);
-    bg.fillStyle(0x555555, 1);
-    bg.fillRect(0, 0, 55, 40);
-    bg.strokeRect(0, 0, 55, 40);
+    bg.fillStyle(0x2a2a2a, 1);
+    bg.fillRoundedRect(0, 0, 55, 40, 4);
+    bg.strokeRoundedRect(0, 0, 55, 40, 4);
 
-    const icon = this.add.graphics();
-    const color = plantType === 'peashooter' ? 0x90EE90 :
-                  plantType === 'sunflower' ? 0xFFD700 : 0xDEB887;
-    icon.fillStyle(color, 1);
-    icon.fillRect(5, 5, 30, 30);
-    icon.lineStyle(1, 0x000000, 1);
-    icon.strokeRect(5, 5, 30, 30);
+    // 使用游戏纹理作为图标
+    const icon = this.add.image(20, 18, plantType);
+    icon.setScale(0.7);
 
-    const costText = this.add.text(20, 30, cost.toString(), {
-      fontSize: '12px',
-      color: '#FFFF00',
+    // 阳光成本
+    const sunIcon = this.add.graphics();
+    sunIcon.fillStyle(0xFFFF00, 1);
+    sunIcon.fillCircle(45, 32, 6);
+    sunIcon.lineStyle(1, 0xDAA520, 1);
+    sunIcon.strokeCircle(45, 32, 6);
+
+    const costText = this.add.text(45, 32, '', {
+      fontSize: '10px',
+      color: '#000000',
       fontFamily: 'Arial',
+      fontStyle: 'bold',
     });
-    costText.setOrigin(0.5, 0.5);
+    costText.setOrigin(0.5);
 
-    container.add([bg, icon, costText]);
+    container.add([bg, icon, sunIcon, costText]);
     container.setSize(55, 40);
     container.setInteractive();
 
