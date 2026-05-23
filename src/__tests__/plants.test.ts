@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { PLANT_CONFIGS, PLANT_CONFIG_MAP } from '../config/plants';
 
 describe('植物配置测试', () => {
-  it('应该有3种植物', () => {
-    expect(PLANT_CONFIGS).toHaveLength(3);
+  it('应该有4种植物', () => {
+    expect(PLANT_CONFIGS).toHaveLength(4);
   });
 
   it('每种植物应该有必填字段', () => {
@@ -38,10 +38,12 @@ describe('植物配置测试', () => {
     const peashooter = PLANT_CONFIG_MAP.get('peashooter');
     const sunflower = PLANT_CONFIG_MAP.get('sunflower');
     const wallnut = PLANT_CONFIG_MAP.get('wallnut');
+    const cherrybomb = PLANT_CONFIG_MAP.get('cherrybomb');
 
     expect(peashooter?.cost).toBe(100);
     expect(sunflower?.cost).toBe(50);
     expect(wallnut?.cost).toBe(50);
+    expect(cherrybomb?.cost).toBe(150);
   });
 
   it('植物HP应该合理', () => {

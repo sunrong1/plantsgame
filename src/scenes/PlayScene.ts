@@ -105,10 +105,10 @@ export class PlayScene extends Phaser.Scene {
   }
 
   private handleUIClick(x: number, y: number): void {
-    // 已移除 - 现在由 UIScene 通过事件统一处理
+    // 已移除 - 现在由 UIScene 直接调用 selectPlant
   }
 
-  private selectPlant(plantType: string): void {
+  public selectPlant(plantType: string): void {
     this.selectedPlant = plantType;
 
     if (this.previewSprite) {
@@ -163,12 +163,55 @@ export class PlayScene extends Phaser.Scene {
     }
 
     // 放置植物
+    if (this.selectedPlant === 'cherrybomb') {
+      // 樱桃炸弹：立即消灭整排僵尸，不创建植物
+      this.explodeRow(cell.row);
+      this.cancelSelection();
+      return;
+    }
+
     const plant = Plant.create(this as unknown as Phaser.Scene, this.selectedPlant, cell);
     this.plants.set(plant.id, plant);
     this.gridManager.occupyCell(cell.row, cell.col, plant.id);
     this.gridManager.addPlant(plant.sprite, plant.id);
 
     this.cancelSelection();
+  }
+
+  private explodeRow(row: number): void {
+    // 获取该行所有僵尸并消灭
+    const zombiesToRemove: ZombieEntity[] = [];
+    for (const zombie of this.zombies.values()) {
+      if (Zombie.getRow(zombie) === row && zombie.state !== 'dead') {
+        Zombie.takeDamage(zombie, zombie.hp); // 立即杀死
+        zombiesToRemove.push(zombie);
+      }
+    }
+
+    // 显示爆炸效果
+    const pos = this.gridManager.getGridPosition(row, 4); // 取中间列
+    const explosion = this.add.graphics();
+    explosion.fillStyle(0xFF4500, 0.8);
+    explosion.fillCircle(pos.x, pos.y, 80);
+    explosion.setDepth(10);
+
+    this.tweens.add({
+      targets: explosion,
+      alpha: 0,
+      scaleX: 2,
+      scaleY: 2,
+      duration: 500,
+      onComplete: () => explosion.destroy()
+    });
+
+    // 延迟移除僵尸（让死亡动画显示）
+    this.time.delayedCall(300, () => {
+      for (const zombie of zombiesToRemove) {
+        if (this.zombies.has(zombie.id)) {
+          this.removeZombie(zombie);
+        }
+      }
+    });
   }
 
   private showInvalidFeedback(x: number, y: number): void {

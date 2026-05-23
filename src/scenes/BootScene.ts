@@ -50,6 +50,9 @@ export class BootScene extends Phaser.Scene {
 
     // 草坪背景
     this.createLawn(textures);
+
+    // 樱桃炸弹
+    this.createCherryBomb(textures);
   }
 
   private createLawn(textures: Phaser.Textures.TextureManager): void {
@@ -76,6 +79,36 @@ export class BootScene extends Phaser.Scene {
       const y = Math.random() * 350;
       ctx.fillRect(x, y, 4, 4);
     }
+
+    canvas.refresh();
+  }
+
+  private createCherryBomb(textures: Phaser.Textures.TextureManager): void {
+    const canvas = textures.createCanvas('cherrybomb', 48, 48);
+    if (!canvas) return;
+    const ctx = canvas.context;
+
+    // 主体 - 深红色圆球
+    ctx.fillStyle = '#8B0000';
+    ctx.beginPath();
+    ctx.arc(24, 26, 18, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 高光
+    ctx.fillStyle = '#CD5C5C';
+    ctx.beginPath();
+    ctx.arc(18, 20, 8, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 叶子
+    ctx.fillStyle = '#228B22';
+    ctx.beginPath();
+    ctx.ellipse(12, 20, 6, 4, -0.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 小茎
+    ctx.fillStyle = '#006400';
+    ctx.fillRect(22, 8, 4, 6);
 
     canvas.refresh();
   }

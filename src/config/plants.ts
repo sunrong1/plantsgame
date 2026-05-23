@@ -26,6 +26,13 @@ export const PLANT_CONFIGS: PlantConfig[] = [
     hp: 400,
     animationFrames: 2,
   },
+  {
+    id: 'cherrybomb',
+    name: '樱桃炸弹',
+    cost: 150,
+    hp: 1,
+    animationFrames: 1,
+  },
 ];
 
 export const PLANT_CONFIG_MAP = new Map(

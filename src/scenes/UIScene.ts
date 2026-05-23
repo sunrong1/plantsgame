@@ -50,7 +50,7 @@ export class UIScene extends Phaser.Scene {
     const cardWidth = 60;
     const cardY = 10;
 
-    const plants = ['peashooter', 'sunflower', 'wallnut'];
+    const plants = ['peashooter', 'sunflower', 'wallnut', 'cherrybomb'];
 
     plants.forEach((plantId, index) => {
       const config = PLANT_CONFIG_MAP.get(plantId)!;
@@ -113,7 +113,7 @@ export class UIScene extends Phaser.Scene {
     const sunlight = playScene.getSunlight();
 
     const index = this.plantCards.indexOf(card);
-    const plants = ['peashooter', 'sunflower', 'wallnut'];
+    const plants = ['peashooter', 'sunflower', 'wallnut', 'cherrybomb'];
     const plantType = plants[index];
 
     const config = PLANT_CONFIG_MAP.get(plantType)!;
@@ -126,7 +126,8 @@ export class UIScene extends Phaser.Scene {
       this.selectedCard = card;
       this.highlightCard(card);
 
-      this.events.emit('plantSelected', plantType);
+      // 直接调用 PlayScene 的方法，而不是通过事件
+      playScene.selectPlant(plantType);
     }
   }
 
