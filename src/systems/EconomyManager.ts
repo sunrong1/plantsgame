@@ -40,16 +40,50 @@ export class EconomyManager {
     const id = `sun_${Date.now()}_${Math.random()}`;
     const createdAt = Date.now();
 
+    // 绘制阳光 - 更大更醒目
     const graphics = this.scene.add.graphics();
+    // 外圈光芒
+    graphics.fillStyle(0xFFD700, 1);
+    graphics.fillCircle(20, 20, 20);
+    // 内圈主体
     graphics.fillStyle(0xFFFF00, 1);
-    graphics.fillCircle(15, 15, 15);
-    graphics.lineStyle(2, 0xFFA500, 1);
-    graphics.strokeCircle(15, 15, 12);
+    graphics.fillCircle(20, 20, 15);
+    // 中心高光
+    graphics.fillStyle(0xFFFFFF, 0.5);
+    graphics.fillCircle(16, 16, 6);
 
+    // 增大触摸区域到 50x50
     const container = this.scene.add.container(x, y, [graphics]);
-    container.setSize(30, 30);
-    container.setInteractive();
+    container.setSize(50, 50);
+    container.setInteractive({ useHandCursor: true });
     container.setData('isSunlight', true);
+
+    // 添加下落动画
+    container.setAlpha(0);
+    this.scene.tweens.add({
+      targets: container,
+      alpha: 1,
+      y: y + 20,
+      duration: 500,
+      ease: 'Bounce.easeOut'
+    });
+
+    // 触摸时有放大反馈
+    container.on('pointerover', () => {
+      this.scene.tweens.add({
+        targets: container,
+        scale: 1.2,
+        duration: 100
+      });
+    });
+
+    container.on('pointerout', () => {
+      this.scene.tweens.add({
+        targets: container,
+        scale: 1,
+        duration: 100
+      });
+    });
 
     container.on('pointerdown', () => {
       this.collectSunlight(id);
