@@ -8,7 +8,7 @@ export class BootScene extends Phaser.Scene {
   }
 
   preload(): void {
-    this.createPlaceholderTextures();
+    this.createTextures();
   }
 
   create(): void {
@@ -18,31 +18,31 @@ export class BootScene extends Phaser.Scene {
     this.scene.start('PlayScene');
   }
 
-  private createPlaceholderTextures(): void {
+  private createTextures(): void {
     const textures = this.textures;
 
-    // === 草地格子 ===
+    // 草地格子
     this.createGrassTile(textures);
 
-    // === 豌豆射手 ===
+    // 豌豆射手 - 简化像素风
     this.createPeashooter(textures);
 
-    // === 向日葵 ===
+    // 向日葵 - 简化像素风
     this.createSunflower(textures);
 
-    // === 坚果墙 ===
+    // 坚果墙 - 简化像素风
     this.createWallnut(textures);
 
-    // === 普通僵尸 ===
+    // 普通僵尸 - 简化像素风
     this.createZombieNormal(textures);
 
-    // === 旗帜僵尸 ===
+    // 旗帜僵尸 - 简化像素风
     this.createZombieFlag(textures);
 
-    // === 豌豆 ===
+    // 豌豆
     this.createPea(textures);
 
-    // === 阳光 ===
+    // 阳光
     this.createSunlight(textures);
   }
 
@@ -51,16 +51,15 @@ export class BootScene extends Phaser.Scene {
     if (!canvas) return;
     const ctx = canvas.context;
 
-    // 草地背景
-    ctx.fillStyle = '#2E8B2E';
+    ctx.fillStyle = '#228B22';
     ctx.fillRect(0, 0, 50, 50);
 
-    // 添加草地纹理
+    // 草地质感
     ctx.fillStyle = '#32CD32';
-    for (let i = 0; i < 15; i++) {
+    for (let i = 0; i < 20; i++) {
       const x = Math.random() * 50;
       const y = Math.random() * 50;
-      ctx.fillRect(x, y, 2, 4);
+      ctx.fillRect(x, y, 2, 3);
     }
 
     canvas.refresh();
@@ -71,39 +70,33 @@ export class BootScene extends Phaser.Scene {
     if (!canvas) return;
     const ctx = canvas.context;
 
-    // 身体 - 深绿色圆形
+    // 身体 - 绿色圆形
     ctx.fillStyle = '#228B22';
     ctx.beginPath();
     ctx.arc(24, 28, 16, 0, Math.PI * 2);
     ctx.fill();
 
-    // 头部 - 浅绿色圆形
-    ctx.fillStyle = '#90EE90';
+    // 头部 - 浅绿
+    ctx.fillStyle = '#32CD32';
     ctx.beginPath();
-    ctx.arc(24, 16, 12, 0, Math.PI * 2);
+    ctx.arc(24, 14, 12, 0, Math.PI * 2);
     ctx.fill();
 
-    // 嘴巴/炮管 - 绿色矩形
+    // 炮管
     ctx.fillStyle = '#228B22';
-    ctx.fillRect(32, 12, 12, 8);
+    ctx.fillRect(30, 10, 14, 8);
 
-    // 嘴巴内部
+    // 炮管口
     ctx.fillStyle = '#006400';
-    ctx.fillRect(38, 14, 6, 4);
+    ctx.fillRect(40, 12, 6, 4);
 
     // 眼睛
-    ctx.fillStyle = '#000000';
+    ctx.fillStyle = '#000';
     ctx.beginPath();
-    ctx.arc(20, 14, 3, 0, Math.PI * 2);
+    ctx.arc(20, 12, 3, 0, Math.PI * 2);
     ctx.fill();
     ctx.beginPath();
-    ctx.arc(28, 14, 3, 0, Math.PI * 2);
-    ctx.fill();
-
-    // 眼睛高光
-    ctx.fillStyle = '#FFFFFF';
-    ctx.beginPath();
-    ctx.arc(21, 13, 1, 0, Math.PI * 2);
+    ctx.arc(28, 12, 3, 0, Math.PI * 2);
     ctx.fill();
 
     canvas.refresh();
@@ -117,42 +110,34 @@ export class BootScene extends Phaser.Scene {
     // 花瓣
     ctx.fillStyle = '#FFD700';
     for (let i = 0; i < 8; i++) {
-      const angle = (i * Math.PI * 2) / 8;
-      const x = 24 + Math.cos(angle) * 10;
-      const y = 24 + Math.sin(angle) * 10;
+      const angle = (i * Math.PI * 2) / 8 - Math.PI / 2;
+      const px = 24 + Math.cos(angle) * 12;
+      const py = 24 + Math.sin(angle) * 12;
       ctx.beginPath();
-      ctx.ellipse(x, y, 6, 4, angle, 0, Math.PI * 2);
+      ctx.ellipse(px, py, 6, 4, angle + Math.PI / 2, 0, Math.PI * 2);
       ctx.fill();
     }
 
-    // 花盘 - 棕色圆形
+    // 花盘
     ctx.fillStyle = '#8B4513';
     ctx.beginPath();
     ctx.arc(24, 24, 10, 0, Math.PI * 2);
     ctx.fill();
 
-    // 花盘纹理
+    // 花盘点
     ctx.fillStyle = '#654321';
-    for (let i = 0; i < 6; i++) {
-      const x = 20 + (i % 3) * 4;
-      const y = 20 + Math.floor(i / 3) * 8;
+    for (let i = 0; i < 8; i++) {
+      const angle = (i * Math.PI * 2) / 8;
+      const px = 24 + Math.cos(angle) * 6;
+      const py = 24 + Math.sin(angle) * 6;
       ctx.beginPath();
-      ctx.arc(x, y, 2, 0, Math.PI * 2);
+      ctx.arc(px, py, 2, 0, Math.PI * 2);
       ctx.fill();
     }
 
     // 茎
     ctx.fillStyle = '#228B22';
     ctx.fillRect(22, 36, 4, 12);
-
-    // 叶子
-    ctx.fillStyle = '#32CD32';
-    ctx.beginPath();
-    ctx.ellipse(16, 40, 6, 3, -0.5, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.ellipse(32, 40, 6, 3, 0.5, 0, Math.PI * 2);
-    ctx.fill();
 
     canvas.refresh();
   }
@@ -162,28 +147,20 @@ export class BootScene extends Phaser.Scene {
     if (!canvas) return;
     const ctx = canvas.context;
 
-    // 坚果主体 - 椭圆形
+    // 主体
     ctx.fillStyle = '#D2691E';
     ctx.beginPath();
-    ctx.ellipse(24, 26, 18, 16, 0, 0, Math.PI * 2);
+    ctx.ellipse(24, 26, 18, 14, 0, 0, Math.PI * 2);
     ctx.fill();
 
     // 高光
     ctx.fillStyle = '#DEB887';
     ctx.beginPath();
-    ctx.ellipse(20, 22, 8, 6, -0.3, 0, Math.PI * 2);
+    ctx.ellipse(18, 20, 8, 5, -0.3, 0, Math.PI * 2);
     ctx.fill();
 
-    // 纹理线
-    ctx.strokeStyle = '#8B4513';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(24, 10);
-    ctx.lineTo(24, 42);
-    ctx.stroke();
-
     // 眼睛
-    ctx.fillStyle = '#000000';
+    ctx.fillStyle = '#000';
     ctx.beginPath();
     ctx.arc(18, 24, 3, 0, Math.PI * 2);
     ctx.fill();
@@ -192,21 +169,21 @@ export class BootScene extends Phaser.Scene {
     ctx.fill();
 
     // 眼睛高光
-    ctx.fillStyle = '#FFFFFF';
+    ctx.fillStyle = '#FFF';
     ctx.beginPath();
     ctx.arc(17, 23, 1, 0, Math.PI * 2);
     ctx.fill();
 
-    // 眉毛 - 表示坚定
+    // 眉毛
     ctx.strokeStyle = '#8B4513';
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(14, 19);
-    ctx.lineTo(22, 21);
+    ctx.moveTo(14, 18);
+    ctx.lineTo(22, 20);
     ctx.stroke();
     ctx.beginPath();
-    ctx.moveTo(34, 19);
-    ctx.lineTo(26, 21);
+    ctx.moveTo(34, 18);
+    ctx.lineTo(26, 20);
     ctx.stroke();
 
     canvas.refresh();
@@ -217,11 +194,11 @@ export class BootScene extends Phaser.Scene {
     if (!canvas) return;
     const ctx = canvas.context;
 
-    // 身体 - 灰色衬衫
+    // 身体
     ctx.fillStyle = '#696969';
-    ctx.fillRect(16, 24, 16, 20);
+    ctx.fillRect(16, 26, 16, 18);
 
-    // 头 - 灰绿色
+    // 头
     ctx.fillStyle = '#7CB342';
     ctx.beginPath();
     ctx.arc(24, 14, 12, 0, Math.PI * 2);
@@ -229,12 +206,10 @@ export class BootScene extends Phaser.Scene {
 
     // 头发
     ctx.fillStyle = '#4A4A4A';
-    ctx.beginPath();
-    ctx.ellipse(24, 6, 10, 4, 0, 0, Math.PI);
-    ctx.fill();
+    ctx.fillRect(14, 4, 20, 4);
 
     // 眼睛
-    ctx.fillStyle = '#FFFFFF';
+    ctx.fillStyle = '#FFF';
     ctx.beginPath();
     ctx.arc(20, 12, 4, 0, Math.PI * 2);
     ctx.fill();
@@ -243,7 +218,7 @@ export class BootScene extends Phaser.Scene {
     ctx.fill();
 
     // 瞳孔
-    ctx.fillStyle = '#FF0000';
+    ctx.fillStyle = '#F00';
     ctx.beginPath();
     ctx.arc(20, 13, 2, 0, Math.PI * 2);
     ctx.fill();
@@ -251,13 +226,7 @@ export class BootScene extends Phaser.Scene {
     ctx.arc(28, 13, 2, 0, Math.PI * 2);
     ctx.fill();
 
-    // 嘴巴
-    ctx.fillStyle = '#4A4A4A';
-    ctx.beginPath();
-    ctx.arc(24, 22, 4, 0, Math.PI);
-    ctx.fill();
-
-    // 手臂 - 伸向前方
+    // 手臂
     ctx.fillStyle = '#7CB342';
     ctx.fillRect(32, 28, 12, 4);
     ctx.fillRect(32, 32, 10, 4);
@@ -270,23 +239,21 @@ export class BootScene extends Phaser.Scene {
     if (!canvas) return;
     const ctx = canvas.context;
 
-    // 身体 - 红色衬衫
+    // 身体
     ctx.fillStyle = '#8B0000';
-    ctx.fillRect(16, 24, 16, 20);
+    ctx.fillRect(16, 26, 16, 18);
 
-    // 头 - 红色调僵尸
-    ctx.fillStyle = '#8B0000';
+    // 头
+    ctx.fillStyle = '#A52A2A';
     ctx.beginPath();
     ctx.arc(24, 14, 12, 0, Math.PI * 2);
     ctx.fill();
 
     // 头发
     ctx.fillStyle = '#2F2F2F';
-    ctx.beginPath();
-    ctx.ellipse(24, 6, 10, 4, 0, 0, Math.PI);
-    ctx.fill();
+    ctx.fillRect(14, 4, 20, 4);
 
-    // 眼睛 - 发光红色
+    // 眼睛
     ctx.fillStyle = '#FF4444';
     ctx.beginPath();
     ctx.arc(20, 12, 4, 0, Math.PI * 2);
@@ -296,7 +263,7 @@ export class BootScene extends Phaser.Scene {
     ctx.fill();
 
     // 瞳孔
-    ctx.fillStyle = '#000000';
+    ctx.fillStyle = '#000';
     ctx.beginPath();
     ctx.arc(20, 13, 2, 0, Math.PI * 2);
     ctx.fill();
@@ -304,27 +271,21 @@ export class BootScene extends Phaser.Scene {
     ctx.arc(28, 13, 2, 0, Math.PI * 2);
     ctx.fill();
 
-    // 嘴巴
-    ctx.fillStyle = '#000000';
-    ctx.beginPath();
-    ctx.arc(24, 22, 4, 0, Math.PI);
-    ctx.fill();
-
     // 手臂
-    ctx.fillStyle = '#8B0000';
+    ctx.fillStyle = '#A52A2A';
     ctx.fillRect(32, 28, 12, 4);
     ctx.fillRect(32, 32, 10, 4);
 
-    // 旗帜杆
+    // 旗杆
     ctx.fillStyle = '#8B4513';
-    ctx.fillRect(6, 0, 4, 30);
+    ctx.fillRect(4, 0, 3, 32);
 
     // 旗帜
     ctx.fillStyle = '#FF0000';
     ctx.beginPath();
-    ctx.moveTo(10, 2);
-    ctx.lineTo(26, 8);
-    ctx.lineTo(10, 16);
+    ctx.moveTo(7, 2);
+    ctx.lineTo(22, 8);
+    ctx.lineTo(7, 16);
     ctx.closePath();
     ctx.fill();
 
@@ -336,19 +297,14 @@ export class BootScene extends Phaser.Scene {
     if (!canvas) return;
     const ctx = canvas.context;
 
-    // 豌豆主体
-    const gradient = ctx.createRadialGradient(8, 8, 0, 10, 10, 10);
-    gradient.addColorStop(0, '#90EE90');
-    gradient.addColorStop(0.5, '#32CD32');
-    gradient.addColorStop(1, '#228B22');
-
-    ctx.fillStyle = gradient;
+    // 主体
+    ctx.fillStyle = '#32CD32';
     ctx.beginPath();
     ctx.arc(10, 10, 9, 0, Math.PI * 2);
     ctx.fill();
 
     // 高光
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
     ctx.beginPath();
     ctx.arc(7, 7, 3, 0, Math.PI * 2);
     ctx.fill();
@@ -365,26 +321,21 @@ export class BootScene extends Phaser.Scene {
     ctx.fillStyle = '#FFD700';
     for (let i = 0; i < 8; i++) {
       const angle = (i * Math.PI * 2) / 8;
-      const x = 20 + Math.cos(angle) * 16;
-      const y = 20 + Math.sin(angle) * 16;
+      const px = 20 + Math.cos(angle) * 16;
+      const py = 20 + Math.sin(angle) * 16;
       ctx.beginPath();
-      ctx.arc(x, y, 4, 0, Math.PI * 2);
+      ctx.arc(px, py, 4, 0, Math.PI * 2);
       ctx.fill();
     }
 
-    // 太阳主体
-    const gradient = ctx.createRadialGradient(20, 20, 0, 20, 20, 14);
-    gradient.addColorStop(0, '#FFFF00');
-    gradient.addColorStop(0.7, '#FFD700');
-    gradient.addColorStop(1, '#FFA500');
-
-    ctx.fillStyle = gradient;
+    // 主体
+    ctx.fillStyle = '#FFD700';
     ctx.beginPath();
     ctx.arc(20, 20, 12, 0, Math.PI * 2);
     ctx.fill();
 
     // 笑脸
-    ctx.fillStyle = '#DAA520';
+    ctx.fillStyle = '#FFA500';
     ctx.beginPath();
     ctx.arc(16, 18, 2, 0, Math.PI * 2);
     ctx.fill();
@@ -392,8 +343,8 @@ export class BootScene extends Phaser.Scene {
     ctx.arc(24, 18, 2, 0, Math.PI * 2);
     ctx.fill();
 
-    // 嘴巴
-    ctx.strokeStyle = '#DAA520';
+    // 嘴
+    ctx.strokeStyle = '#FFA500';
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.arc(20, 22, 5, 0.2, Math.PI - 0.2);
