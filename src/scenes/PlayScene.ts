@@ -80,22 +80,16 @@ export class PlayScene extends Phaser.Scene {
       }
     });
 
-    // 点击时尝试放置
+    // 点击时尝试放置或取消
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-      // UI 区域点击
-      if (pointer.y < 50) {
-        this.handleUIClick(pointer.x, pointer.y);
-        return;
-      }
-
       // 右键取消
       if (pointer.rightButtonDown()) {
         this.cancelSelection();
         return;
       }
 
-      // 种植逻辑（分离预览和放置）
-      if (this.selectedPlant) {
+      // 游戏区域放置
+      if (pointer.y >= 50 && this.selectedPlant) {
         this.tryPlant(pointer.x, pointer.y);
       }
     });
@@ -103,23 +97,15 @@ export class PlayScene extends Phaser.Scene {
     this.input.keyboard?.on('keydown-ESC', () => {
       this.cancelSelection();
     });
+
+    // 监听来自 UIScene 的植物选择事件
+    this.events.on('plantSelected', (plantType: string) => {
+      this.selectPlant(plantType);
+    });
   }
 
   private handleUIClick(x: number, y: number): void {
-    const cardStartX = 150;
-    const cards = ['peashooter', 'sunflower', 'wallnut'];
-    const cardWidth = 60;
-
-    for (let i = 0; i < cards.length; i++) {
-      const cardX = cardStartX + i * cardWidth;
-      if (x >= cardX && x < cardX + cardWidth && y >= 10 && y <= 50) {
-        const config = PLANT_CONFIG_MAP.get(cards[i])!;
-        if (this.economyManager.getSunlight() >= config.cost) {
-          this.selectPlant(cards[i]);
-        }
-        break;
-      }
-    }
+    // 已移除 - 现在由 UIScene 通过事件统一处理
   }
 
   private selectPlant(plantType: string): void {
@@ -306,17 +292,24 @@ export class PlayScene extends Phaser.Scene {
   private updateProjectiles(delta: number): void {
     const toRemove: ProjectileEntity[] = [];
 
+    // 缓存僵尸数据，避免每帧创建新数组
+    const zombieData = Array.from(this.zombies.values()).map(z => ({
+      id: z.id,
+      x: Zombie.getCurrentX(z),
+      y: Zombie.getCurrentY(z),
+      row: Zombie.getRow(z),
+    }));
+
     for (const projectile of this.projectiles) {
       Projectile.update(projectile, delta);
 
+      // 计算子弹所在行
+      const projectileRow = Math.floor((projectile.y - 60) / 50);
+
       const hitZombieId = Projectile.checkCollision(
         projectile,
-        Array.from(this.zombies.values()).map(z => ({
-          id: z.id,
-          x: Zombie.getCurrentX(z),
-          y: Zombie.getCurrentY(z),
-          row: Zombie.getRow(z),
-        }))
+        zombieData,
+        projectileRow
       );
 
       if (hitZombieId) {

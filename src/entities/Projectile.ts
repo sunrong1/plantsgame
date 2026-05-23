@@ -70,17 +70,22 @@ export class Projectile {
 
   static checkCollision(
     projectile: ProjectileEntity,
-    zombies: { id: string; x: number; y: number; row: number }[]
+    zombies: { id: string; x: number; y: number; row: number }[],
+    projectileRow: number
   ): string | null {
     const px = this.getX(projectile);
     const py = this.getY(projectile);
+    const hitRadiusSq = 30 * 30;
 
     for (const zombie of zombies) {
+      // 只检查同行的僵尸
+      if (zombie.row !== projectileRow) continue;
+
       const dx = px - zombie.x;
       const dy = py - zombie.y;
-      const distance = Math.sqrt(dx * dx + dy * dy);
+      const distSq = dx * dx + dy * dy;
 
-      if (distance < 30) {
+      if (distSq < hitRadiusSq) {
         return zombie.id;
       }
     }

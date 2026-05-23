@@ -7,7 +7,6 @@ export class UIScene extends Phaser.Scene {
   private plantCards: Phaser.GameObjects.Container[] = [];
   private selectedCard: Phaser.GameObjects.Container | null = null;
   private overlayShown: boolean = false;
-  private playScene: PlayScene | null = null;
 
   constructor() {
     super({ key: 'UIScene' });
@@ -27,12 +26,7 @@ export class UIScene extends Phaser.Scene {
   }
 
   private getPlayScene(): PlayScene | null {
-    if (!this.playScene) {
-      const sceneManager = this.scene.manager;
-      const scenes = sceneManager.getScenes();
-      this.playScene = scenes.find(s => s.scene.key === 'PlayScene') as PlayScene | undefined || null;
-    }
-    return this.playScene;
+    return this.scene.get('PlayScene') as PlayScene | null;
   }
 
   private createTopBar(): void {
