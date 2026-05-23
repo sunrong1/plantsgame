@@ -32,7 +32,7 @@ export class UIScene extends Phaser.Scene {
   private createTopBar(): void {
     const graphics = this.add.graphics();
     graphics.fillStyle(0x333333, 1);
-    graphics.fillRect(0, 0, 530, 50);
+    graphics.fillRect(0, 0, 530, 55); // 稍微高一点
 
     const sunIcon = this.add.graphics();
     sunIcon.fillStyle(0xFFFF00, 1);
@@ -69,27 +69,27 @@ export class UIScene extends Phaser.Scene {
   ): Phaser.GameObjects.Container {
     const container = this.add.container(x, y);
 
-    // 卡片背景
+    // 卡片背景 - 稍微大一点便于触摸
     const bg = this.add.graphics();
     bg.lineStyle(2, 0xFFFFFF, 0.8);
     bg.fillStyle(0x2a2a2a, 1);
-    bg.fillRoundedRect(0, 0, 55, 40, 4);
-    bg.strokeRoundedRect(0, 0, 55, 40, 4);
+    bg.fillRoundedRect(0, 0, 60, 45, 4);
+    bg.strokeRoundedRect(0, 0, 60, 45, 4);
 
     // 使用游戏纹理作为图标
-    // AI生成的图片是512x512，缩放到约35x35
-    const icon = this.add.image(20, 18, plantType);
-    icon.setScale(35 / 512);
+    // AI生成的图片是512x512，缩放到约38x38
+    const icon = this.add.image(30, 20, plantType);
+    icon.setScale(38 / 512);
 
     // 阳光成本
     const sunIcon = this.add.graphics();
     sunIcon.fillStyle(0xFFFF00, 1);
-    sunIcon.fillCircle(45, 32, 6);
+    sunIcon.fillCircle(50, 36, 7);
     sunIcon.lineStyle(1, 0xDAA520, 1);
-    sunIcon.strokeCircle(45, 32, 6);
+    sunIcon.strokeCircle(50, 36, 7);
 
-    const costText = this.add.text(45, 32, '', {
-      fontSize: '10px',
+    const costText = this.add.text(50, 36, '', {
+      fontSize: '11px',
       color: '#000000',
       fontFamily: 'Arial',
       fontStyle: 'bold',
@@ -97,8 +97,26 @@ export class UIScene extends Phaser.Scene {
     costText.setOrigin(0.5);
 
     container.add([bg, icon, sunIcon, costText]);
-    container.setSize(55, 40);
-    container.setInteractive();
+    // 增大触摸区域
+    container.setSize(60, 45);
+    container.setInteractive({ useHandCursor: true, draggable: false });
+
+    // 触摸反馈
+    container.on('pointerover', () => {
+      bg.clear();
+      bg.lineStyle(3, 0x00FF00, 1);
+      bg.fillStyle(0x3a3a3a, 1);
+      bg.fillRoundedRect(0, 0, 60, 45, 4);
+      bg.strokeRoundedRect(0, 0, 60, 45, 4);
+    });
+
+    container.on('pointerout', () => {
+      bg.clear();
+      bg.lineStyle(2, 0xFFFFFF, 0.8);
+      bg.fillStyle(0x2a2a2a, 1);
+      bg.fillRoundedRect(0, 0, 60, 45, 4);
+      bg.strokeRoundedRect(0, 0, 60, 45, 4);
+    });
 
     container.on('pointerdown', () => {
       this.selectCard(container);

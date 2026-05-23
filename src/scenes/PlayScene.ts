@@ -75,7 +75,7 @@ export class PlayScene extends Phaser.Scene {
   private setupInput(): void {
     // 鼠标移动时更新预览位置
     this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
-      if (this.selectedPlant && pointer.y >= 50) {
+      if (this.selectedPlant && pointer.y >= 55) {
         this.updatePreview(pointer.x, pointer.y);
       }
     });
@@ -89,7 +89,7 @@ export class PlayScene extends Phaser.Scene {
       }
 
       // 游戏区域放置
-      if (pointer.y >= 50 && this.selectedPlant) {
+      if (pointer.y >= 55 && this.selectedPlant) {
         this.tryPlant(pointer.x, pointer.y);
       }
     });
