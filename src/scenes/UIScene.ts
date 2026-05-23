@@ -7,6 +7,7 @@ export class UIScene extends Phaser.Scene {
   private plantCards: Phaser.GameObjects.Container[] = [];
   private selectedCard: Phaser.GameObjects.Container | null = null;
   private overlayShown: boolean = false;
+  private playScene: PlayScene | null = null;
 
   constructor() {
     super({ key: 'UIScene' });
@@ -18,11 +19,20 @@ export class UIScene extends Phaser.Scene {
     this.showTutorialOverlay();
 
     this.time.addEvent({
-      delay: 100,
+      delay: 500,
       callback: this.updateUI,
       callbackScope: this,
       loop: true,
     });
+  }
+
+  private getPlayScene(): PlayScene | null {
+    if (!this.playScene) {
+      const sceneManager = this.scene.manager;
+      const scenes = sceneManager.getScenes();
+      this.playScene = scenes.find(s => s.scene.key === 'PlayScene') as PlayScene | undefined || null;
+    }
+    return this.playScene;
   }
 
   private createTopBar(): void {
@@ -103,9 +113,7 @@ export class UIScene extends Phaser.Scene {
   }
 
   private selectCard(card: Phaser.GameObjects.Container): void {
-    const sceneManager = this.scene.manager;
-    const scenes = sceneManager.getScenes();
-    const playScene = scenes.find(s => s.scene.key === 'PlayScene') as PlayScene | undefined;
+    const playScene = this.getPlayScene();
     if (!playScene) return;
 
     const sunlight = playScene.getSunlight();
@@ -147,10 +155,7 @@ export class UIScene extends Phaser.Scene {
   }
 
   private updateUI(): void {
-    const sceneManager = this.scene.manager;
-    const scenes = sceneManager.getScenes();
-    const playScene = scenes.find(s => s.scene.key === 'PlayScene') as PlayScene | undefined;
-
+    const playScene = this.getPlayScene();
     if (playScene && this.sunlightText) {
       this.sunlightText.setText(playScene.getSunlight().toString());
     }

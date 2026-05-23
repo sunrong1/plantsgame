@@ -2,20 +2,82 @@ import Phaser from 'phaser';
 import type { GridPosition } from '../types';
 import { GAME_CONFIG } from '../config';
 
+const EMPTY_CELL_COLOR = 0x90EE90;
+const OCCUPIED_CELL_COLOR = 0xFFB6C1;
+const HIGHLIGHT_ALPHA = 0.8;
+
 export class GridManager {
   private scene: Phaser.Scene;
   private gridGraphics: Phaser.GameObjects.Graphics;
+  private highlightGraphics: Phaser.GameObjects.Graphics;
   private plantLayer: Phaser.GameObjects.Container;
   private grid: (string | null)[][];
+  private hoverRow: number = -1;
+  private hoverCol: number = -1;
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
     this.grid = this.createEmptyGrid();
 
     this.gridGraphics = scene.add.graphics();
+    this.highlightGraphics = scene.add.graphics();
     this.drawGrid();
 
     this.plantLayer = scene.add.container(0, 0);
+
+    this.setupHoverDetection();
+  }
+
+  private setupHoverDetection(): void {
+    let lastHoverTime = 0;
+    const hoverThrottle = 50; // 节流：每50ms最多更新一次
+
+    this.scene.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
+      const now = Date.now();
+      if (now - lastHoverTime < hoverThrottle) return;
+      lastHoverTime = now;
+
+      if (pointer.y < 60) {
+        this.clearHighlight();
+        return;
+      }
+
+      const cell = this.getCellFromPixel(pointer.x, pointer.y);
+      if (cell) {
+        this.updateHighlight(cell.row, cell.col);
+      } else {
+        this.clearHighlight();
+      }
+    });
+
+    this.scene.input.on('pointerdown', () => {
+      this.clearHighlight();
+    });
+  }
+
+  private updateHighlight(row: number, col: number): void {
+    if (this.hoverRow === row && this.hoverCol === col) return;
+
+    this.hoverRow = row;
+    this.hoverCol = col;
+
+    this.highlightGraphics.clear();
+
+    const isEmpty = this.isCellEmpty(row, col);
+    const color = isEmpty ? EMPTY_CELL_COLOR : OCCUPIED_CELL_COLOR;
+
+    const { cellSize } = GAME_CONFIG.grid;
+    const x = 25 + col * cellSize;
+    const y = 60 + row * cellSize;
+
+    this.highlightGraphics.lineStyle(2, color, HIGHLIGHT_ALPHA);
+    this.highlightGraphics.strokeRect(x, y, cellSize, cellSize);
+  }
+
+  private clearHighlight(): void {
+    this.hoverRow = -1;
+    this.hoverCol = -1;
+    this.highlightGraphics.clear();
   }
 
   private createEmptyGrid(): (string | null)[][] {

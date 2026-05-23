@@ -37,6 +37,9 @@ export class PlayScene extends Phaser.Scene {
       (wave) => this.onWaveComplete(wave)
     );
 
+    // 创建入侵方向箭头
+    this.createInvasionArrow();
+
     // 监听场景关闭事件，用于清理
     this.events.on('shutdown', this.shutdown, this);
 
@@ -67,9 +70,24 @@ export class PlayScene extends Phaser.Scene {
   }
 
   private setupInput(): void {
+    // 统一处理点击事件
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+      // UI 区域点击
       if (pointer.y < 50) {
         this.handleUIClick(pointer.x, pointer.y);
+        return;
+      }
+
+      // 右键取消
+      if (pointer.rightButtonDown()) {
+        this.cancelSelection();
+        return;
+      }
+
+      // 种植预览移动
+      if (this.selectedPlant) {
+        this.updatePreview(pointer.x, pointer.y);
+        this.tryPlant(pointer.x, pointer.y);
       }
     });
 
@@ -79,20 +97,8 @@ export class PlayScene extends Phaser.Scene {
       }
     });
 
-    this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-      if (this.selectedPlant && pointer.y >= 50) {
-        this.tryPlant(pointer.x, pointer.y);
-      }
-    });
-
     this.input.keyboard?.on('keydown-ESC', () => {
       this.cancelSelection();
-    });
-
-    this.input.on('pointerdown', (pointer: Phaser.Input.Pointer, event: any) => {
-      if (pointer.rightButtonDown()) {
-        this.cancelSelection();
-      }
     });
   }
 
@@ -383,6 +389,11 @@ export class PlayScene extends Phaser.Scene {
     restartBtn.on('pointerdown', () => {
       this.scene.restart();
     });
+  }
+
+  private createInvasionArrow(): void {
+    const arrow = this.add.image(12, 185, 'invasion_arrow');
+    arrow.setDepth(0);
   }
 
   public getSunlight(): number {

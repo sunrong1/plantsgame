@@ -44,6 +44,30 @@ export class BootScene extends Phaser.Scene {
 
     // 阳光
     this.createSunlight(textures);
+
+    // 入侵箭头
+    this.createInvasionArrow(textures);
+  }
+
+  private createInvasionArrow(textures: Phaser.Textures.TextureManager): void {
+    const canvas = textures.createCanvas('invasion_arrow', 20, 250);
+    if (!canvas) return;
+    const ctx = canvas.context;
+
+    ctx.fillStyle = '#2F4F4F';
+
+    // 5个三角形箭头，覆盖250px高度
+    for (let i = 0; i < 5; i++) {
+      const y = i * 50 + 10;
+      ctx.beginPath();
+      ctx.moveTo(0, y + 15);
+      ctx.lineTo(20, y + 25);
+      ctx.lineTo(0, y + 35);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    canvas.refresh();
   }
 
   private createGrassTile(textures: Phaser.Textures.TextureManager): void {
