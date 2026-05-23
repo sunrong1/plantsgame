@@ -22,6 +22,13 @@ export class Zombie {
     sprite.setData('zombieId', id);
     sprite.setData('row', row);
 
+    // AI生成的图片是512x512，需要缩放到目标尺寸
+    const targetWidth = 48;
+    const targetHeight = 56;
+    const scaleX = targetWidth / 512;
+    const scaleY = targetHeight / 512;
+    sprite.setScale(scaleX, scaleY);
+
     return {
       id,
       type: config.id,

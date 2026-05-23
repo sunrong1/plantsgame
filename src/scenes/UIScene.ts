@@ -77,8 +77,9 @@ export class UIScene extends Phaser.Scene {
     bg.strokeRoundedRect(0, 0, 55, 40, 4);
 
     // 使用游戏纹理作为图标
+    // AI生成的图片是512x512，缩放到约35x35
     const icon = this.add.image(20, 18, plantType);
-    icon.setScale(0.7);
+    icon.setScale(35 / 512);
 
     // 阳光成本
     const sunIcon = this.add.graphics();

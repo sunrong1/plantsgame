@@ -18,6 +18,11 @@ export class Plant {
     const sprite = scene.add.image(x, y, plantType);
     sprite.setData('plantId', id);
 
+    // AI生成的图片是512x512，需要缩放到目标尺寸
+    const targetSize = 48;
+    const scale = targetSize / 512;
+    sprite.setScale(scale);
+
     return {
       id,
       type: plantType,

@@ -25,6 +25,10 @@ export class Projectile {
     // 使用纹理
     const sprite = scene.add.image(x, y, 'pea');
 
+    // AI生成的图片是512x512，需要缩放到20x20
+    const scale = 20 / 512;
+    sprite.setScale(scale);
+
     const projectile: ProjectileEntity = {
       id,
       damage,
