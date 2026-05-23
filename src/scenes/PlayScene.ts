@@ -70,7 +70,14 @@ export class PlayScene extends Phaser.Scene {
   }
 
   private setupInput(): void {
-    // 统一处理点击事件
+    // 鼠标移动时更新预览位置
+    this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
+      if (this.selectedPlant && pointer.y >= 50) {
+        this.updatePreview(pointer.x, pointer.y);
+      }
+    });
+
+    // 点击时尝试放置
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
       // UI 区域点击
       if (pointer.y < 50) {
@@ -84,16 +91,9 @@ export class PlayScene extends Phaser.Scene {
         return;
       }
 
-      // 种植预览移动
+      // 种植逻辑（分离预览和放置）
       if (this.selectedPlant) {
-        this.updatePreview(pointer.x, pointer.y);
         this.tryPlant(pointer.x, pointer.y);
-      }
-    });
-
-    this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
-      if (this.selectedPlant && pointer.y >= 50) {
-        this.updatePreview(pointer.x, pointer.y);
       }
     });
 
@@ -136,10 +136,19 @@ export class PlayScene extends Phaser.Scene {
     if (!this.previewSprite || !this.selectedPlant) return;
 
     const cell = this.gridManager.getCellFromPixel(x, y);
-    if (cell && this.gridManager.isCellEmpty(cell.row, cell.col)) {
+    const canPlace = cell && this.gridManager.isCellEmpty(cell.row, cell.col);
+
+    if (cell && canPlace) {
       const pos = this.gridManager.getGridPosition(cell.row, cell.col);
       this.previewSprite.setPosition(pos.x, pos.y);
       this.previewSprite.setVisible(true);
+      this.previewSprite.setTint(0x00FF00); // 绿色：可放置
+    } else if (cell) {
+      // 有格子但不可放置（已占用）
+      const pos = this.gridManager.getGridPosition(cell.row, cell.col);
+      this.previewSprite.setPosition(pos.x, pos.y);
+      this.previewSprite.setVisible(true);
+      this.previewSprite.setTint(0xFF0000); // 红色：已占用
     } else {
       this.previewSprite.setVisible(false);
     }
@@ -149,21 +158,45 @@ export class PlayScene extends Phaser.Scene {
     if (!this.selectedPlant) return;
 
     const cell = this.gridManager.getCellFromPixel(x, y);
-    if (!cell || !this.gridManager.isCellEmpty(cell.row, cell.col)) {
-      return;
-    }
+    if (!cell) return;
 
+    // 检查是否有阳光
     const config = PLANT_CONFIG_MAP.get(this.selectedPlant)!;
     if (!this.economyManager.spendSunlight(config.cost)) {
+      this.showInvalidFeedback(x, y);
       return;
     }
 
+    // 检查格子是否可用
+    if (!this.gridManager.isCellEmpty(cell.row, cell.col)) {
+      this.showInvalidFeedback(x, y);
+      return;
+    }
+
+    // 放置植物
     const plant = Plant.create(this as unknown as Phaser.Scene, this.selectedPlant, cell);
     this.plants.set(plant.id, plant);
     this.gridManager.occupyCell(cell.row, cell.col, plant.id);
     this.gridManager.addPlant(plant.sprite, plant.id);
 
     this.cancelSelection();
+  }
+
+  private showInvalidFeedback(x: number, y: number): void {
+    const cell = this.gridManager.getCellFromPixel(x, y);
+    if (!cell) return;
+
+    const pos = this.gridManager.getGridPosition(cell.row, cell.col);
+    const feedback = this.add.graphics();
+    feedback.lineStyle(3, 0xFF0000, 0.8);
+    feedback.strokeRect(pos.x - 25, pos.y - 25, 50, 50);
+
+    this.tweens.add({
+      targets: feedback,
+      alpha: 0,
+      duration: 300,
+      onComplete: () => feedback.destroy()
+    });
   }
 
   private cancelSelection(): void {
