@@ -25,8 +25,8 @@ export class Zombie {
     sprite.setData('row', row);
 
     // AI生成的图片是512x512，需要缩放到目标尺寸
-    const targetWidth = 72;
-    const targetHeight = 84;
+    const targetWidth = 48;
+    const targetHeight = 56;
     const scaleX = targetWidth / 512;
     const scaleY = targetHeight / 512;
     sprite.setScale(scaleX, scaleY);
@@ -52,13 +52,13 @@ export class Zombie {
 
   private static createHealthBar(scene: Phaser.Scene, zombie: ZombieEntity): void {
     const bar = scene.add.graphics();
-    const x = zombie.sprite.x - 27;
-    const y = zombie.sprite.y - 45;
+    const x = zombie.sprite.x - 18;
+    const y = zombie.sprite.y - 32;
 
     bar.lineStyle(1, 0x000000, 1);
     bar.fillStyle(0x4a3728, 1);
-    bar.fillRect(x, y, 54, 7);
-    bar.strokeRect(x, y, 54, 7);
+    bar.fillRect(x, y, 36, 5);
+    bar.strokeRect(x, y, 36, 5);
 
     this.healthBars.set(zombie.id, bar);
     this.updateHealthBar(zombie);
@@ -68,22 +68,22 @@ export class Zombie {
     const bar = this.healthBars.get(zombie.id);
     if (!bar) return;
 
-    const x = zombie.sprite.x - 27;
-    const y = zombie.sprite.y - 45;
+    const x = zombie.sprite.x - 18;
+    const y = zombie.sprite.y - 32;
     const hpPercent = zombie.hp / zombie.maxHp;
 
     bar.clear();
     bar.lineStyle(1, 0x000000, 1);
     bar.fillStyle(0x4a3728, 1);
-    bar.fillRect(x, y, 54, 7);
-    bar.strokeRect(x, y, 54, 7);
+    bar.fillRect(x, y, 36, 5);
+    bar.strokeRect(x, y, 36, 5);
 
     let color = 0x44BB44;
     if (hpPercent <= 0.3) color = 0xFF4444;
     else if (hpPercent <= 0.6) color = 0xFFCC00;
 
     bar.fillStyle(color, 1);
-    bar.fillRect(x + 1, y + 1, Math.max(0, 52 * hpPercent), 5);
+    bar.fillRect(x + 1, y + 1, Math.max(0, 34 * hpPercent), 3);
   }
 
   static removeHealthBar(zombieId: string): void {

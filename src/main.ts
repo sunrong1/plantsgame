@@ -12,6 +12,7 @@ const config: Phaser.Types.Core.GameConfig = {
     mode: Phaser.Scale.ScaleModes.FIT,
     autoCenter: Phaser.Scale.Center.CENTER_BOTH,
   },
+  zoom: 2,
   physics: {
     default: 'arcade',
     arcade: {

@@ -21,7 +21,7 @@ export class Plant {
     sprite.setData('plantId', id);
 
     // AI生成的图片是512x512，需要缩放到目标尺寸
-    const targetSize = 72;
+    const targetSize = 48;
     const scale = targetSize / 512;
     sprite.setScale(scale);
 
@@ -45,13 +45,13 @@ export class Plant {
 
   private static createHealthBar(scene: Phaser.Scene, plant: PlantEntity): void {
     const bar = scene.add.graphics();
-    const x = plant.sprite.x - 30;
-    const y = plant.sprite.y - 40;
+    const x = plant.sprite.x - 20;
+    const y = plant.sprite.y - 30;
 
     bar.lineStyle(1, 0x000000, 1);
     bar.fillStyle(0x4a3728, 1);
-    bar.fillRect(x, y, 60, 8);
-    bar.strokeRect(x, y, 60, 8);
+    bar.fillRect(x, y, 40, 6);
+    bar.strokeRect(x, y, 40, 6);
 
     this.healthBars.set(plant.id, bar);
     this.updateHealthBar(plant);
@@ -61,22 +61,22 @@ export class Plant {
     const bar = this.healthBars.get(plant.id);
     if (!bar) return;
 
-    const x = plant.sprite.x - 30;
-    const y = plant.sprite.y - 40;
+    const x = plant.sprite.x - 20;
+    const y = plant.sprite.y - 30;
     const hpPercent = plant.hp / plant.maxHp;
 
     bar.clear();
     bar.lineStyle(1, 0x000000, 1);
     bar.fillStyle(0x4a3728, 1);
-    bar.fillRect(x, y, 60, 8);
-    bar.strokeRect(x, y, 60, 8);
+    bar.fillRect(x, y, 40, 6);
+    bar.strokeRect(x, y, 40, 6);
 
     let color = 0x44BB44;
     if (hpPercent <= 0.3) color = 0xFF4444;
     else if (hpPercent <= 0.6) color = 0xFFCC00;
 
     bar.fillStyle(color, 1);
-    bar.fillRect(x + 1, y + 1, Math.max(0, 58 * hpPercent), 6);
+    bar.fillRect(x + 1, y + 1, Math.max(0, 38 * hpPercent), 4);
   }
 
   static removeHealthBar(plantId: string): void {
