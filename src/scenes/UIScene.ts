@@ -73,12 +73,12 @@ export class UIScene extends Phaser.Scene {
     hitArea.setDepth(100 + index);
     hitArea.setInteractive({ useHandCursor: true });
 
-    // 卡片背景
+    // 卡片背景 - 画在正确的位置
     const bg = this.add.graphics();
     bg.lineStyle(2, 0xFFFFFF, 0.8);
     bg.fillStyle(0x2a2a2a, 1);
-    bg.fillRoundedRect(0, 0, 60, 45, 4);
-    bg.strokeRoundedRect(0, 0, 60, 45, 4);
+    bg.fillRoundedRect(x, y, 60, 45, 4);
+    bg.strokeRoundedRect(x, y, 60, 45, 4);
     bg.setDepth(101 + index);
 
     // 使用游戏纹理作为图标
@@ -108,16 +108,16 @@ export class UIScene extends Phaser.Scene {
       bg.clear();
       bg.lineStyle(3, 0x00FF00, 1);
       bg.fillStyle(0x3a3a3a, 1);
-      bg.fillRoundedRect(0, 0, 60, 45, 4);
-      bg.strokeRoundedRect(0, 0, 60, 45, 4);
+      bg.fillRoundedRect(x, y, 60, 45, 4);
+      bg.strokeRoundedRect(x, y, 60, 45, 4);
     });
 
     hitArea.on('pointerout', () => {
       bg.clear();
       bg.lineStyle(2, 0xFFFFFF, 0.8);
       bg.fillStyle(0x2a2a2a, 1);
-      bg.fillRoundedRect(0, 0, 60, 45, 4);
-      bg.strokeRoundedRect(0, 0, 60, 45, 4);
+      bg.fillRoundedRect(x, y, 60, 45, 4);
+      bg.strokeRoundedRect(x, y, 60, 45, 4);
     });
 
     hitArea.on('pointerdown', () => {
