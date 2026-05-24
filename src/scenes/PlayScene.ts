@@ -29,7 +29,7 @@ export class PlayScene extends Phaser.Scene {
 
   create(): void {
     // 创建草坪背景
-    this.add.image(265, 185, 'lawn').setDepth(-1);
+    this.add.image(530, 350, 'lawn').setDepth(-1).setScale(2);
 
     this.gridManager = new GridManager(this);
     this.economyManager = new EconomyManager(this);
@@ -75,7 +75,7 @@ export class PlayScene extends Phaser.Scene {
   private setupInput(): void {
     // 鼠标移动时更新预览位置
     this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
-      if (this.selectedPlant && pointer.y >= 55) {
+      if (this.selectedPlant && pointer.y >= 110) {
         this.updatePreview(pointer.x, pointer.y);
       }
     });
@@ -89,7 +89,7 @@ export class PlayScene extends Phaser.Scene {
       }
 
       // 游戏区域放置
-      if (pointer.y >= 55 && this.selectedPlant) {
+      if (pointer.y >= 110 && this.selectedPlant) {
         this.tryPlant(pointer.x, pointer.y);
       }
     });
@@ -195,7 +195,7 @@ export class PlayScene extends Phaser.Scene {
     const pos = this.gridManager.getGridPosition(row, 4); // 取中间列
     const explosion = this.add.graphics();
     explosion.fillStyle(0xFF4500, 0.8);
-    explosion.fillCircle(pos.x, pos.y, 80);
+    explosion.fillCircle(pos.x, pos.y, 160);
     explosion.setDepth(10);
 
     this.tweens.add({
@@ -267,7 +267,7 @@ export class PlayScene extends Phaser.Scene {
 
           if (hasTarget) {
             const pos = this.gridManager.getGridPosition(plant.position.row, plant.position.col);
-            const projectile = Projectile.create(this as unknown as Phaser.Scene, pos.x + 25, pos.y, damage);
+            const projectile = Projectile.create(this as unknown as Phaser.Scene, pos.x + 50, pos.y, damage);
             this.projectiles.push(projectile);
             plant.lastActionTime = time;
           }
@@ -283,7 +283,7 @@ export class PlayScene extends Phaser.Scene {
 
       // 检查僵尸是否在射手右侧（可以被射手打到）
       const zombieX = Zombie.getCurrentX(zombie);
-      const shooterX = 25 + shooterCol * 50 + 25; // 射手中心x
+      const shooterX = 50 + shooterCol * 50 + 25; // 射手中心x
 
       if (zombieX > shooterX) {
         return true;
@@ -299,7 +299,7 @@ export class PlayScene extends Phaser.Scene {
       const currentX = Zombie.getCurrentX(zombie);
       const row = Zombie.getRow(zombie);
 
-      const cellCol = Math.floor((currentX - 25) / 50);
+      const cellCol = Math.floor((currentX - 50) / 50);
       const targetPlant = this.findPlantAt(row, cellCol - 1);
 
       if (targetPlant) {
@@ -458,7 +458,7 @@ export class PlayScene extends Phaser.Scene {
 
     for (const zombie of this.zombies.values()) {
       const x = Zombie.getCurrentX(zombie);
-      if (x <= 25) {
+      if (x <= 50) {
         this.gameState = 'lost';
         this.showGameOver('defeat');
         return;
@@ -472,17 +472,17 @@ export class PlayScene extends Phaser.Scene {
 
     const graphics = this.add.graphics();
     graphics.fillStyle(0x000000, 0.7);
-    graphics.fillRect(0, 0, 530, 350);
+    graphics.fillRect(0, 0, 1060, 700);
 
-    const textObj = this.add.text(265, 175, text, {
-      fontSize: '48px',
+    const textObj = this.add.text(530, 350, text, {
+      fontSize: '96px',
       color: `#${color.toString(16)}`,
       fontFamily: 'Arial',
     });
     textObj.setOrigin(0.5);
 
-    const restartBtn = this.add.text(265, 230, '点击重新开始', {
-      fontSize: '24px',
+    const restartBtn = this.add.text(530, 460, '点击重新开始', {
+      fontSize: '48px',
       color: '#FFFFFF',
       fontFamily: 'Arial',
     });
@@ -494,7 +494,8 @@ export class PlayScene extends Phaser.Scene {
   }
 
   private createInvasionArrow(): void {
-    const arrow = this.add.image(12, 185, 'invasion_arrow');
+    const arrow = this.add.image(24, 370, 'invasion_arrow');
+    arrow.setScale(2);
     arrow.setDepth(0);
   }
 

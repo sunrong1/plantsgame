@@ -30,14 +30,14 @@ export class GridManager {
 
   private setupHoverDetection(): void {
     let lastHoverTime = 0;
-    const hoverThrottle = 50; // 节流：每50ms最多更新一次
+    const hoverThrottle = 50;
 
     this.scene.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
       const now = Date.now();
       if (now - lastHoverTime < hoverThrottle) return;
       lastHoverTime = now;
 
-      if (pointer.y < 60) {
+      if (pointer.y < 110) {
         this.clearHighlight();
         return;
       }
@@ -67,8 +67,8 @@ export class GridManager {
     const color = isEmpty ? EMPTY_CELL_COLOR : OCCUPIED_CELL_COLOR;
 
     const { cellSize } = GAME_CONFIG.grid;
-    const x = 25 + col * cellSize;
-    const y = 60 + row * cellSize;
+    const x = 50 + col * cellSize;
+    const y = 120 + row * cellSize;
 
     this.highlightGraphics.lineStyle(2, color, HIGHLIGHT_ALPHA);
     this.highlightGraphics.strokeRect(x, y, cellSize, cellSize);
@@ -88,11 +88,11 @@ export class GridManager {
 
   private drawGrid(): void {
     const { cellSize } = GAME_CONFIG.grid;
-    const offsetX = 25;
-    const offsetY = 60;
+    const offsetX = 50;
+    const offsetY = 120;
 
     this.gridGraphics.clear();
-    this.gridGraphics.lineStyle(1, 0x1B5E20, 0.3); // 深绿色网格线，低透明度
+    this.gridGraphics.lineStyle(1, 0x1B5E20, 0.3);
 
     for (let row = 0; row < GAME_CONFIG.grid.rows; row++) {
       for (let col = 0; col < GAME_CONFIG.grid.cols; col++) {
@@ -136,15 +136,15 @@ export class GridManager {
   getGridPosition(row: number, col: number): { x: number; y: number } {
     const { cellSize } = GAME_CONFIG.grid;
     return {
-      x: 25 + col * cellSize + cellSize / 2,
-      y: 60 + row * cellSize + cellSize / 2,
+      x: 50 + col * cellSize + cellSize / 2,
+      y: 120 + row * cellSize + cellSize / 2,
     };
   }
 
   getCellFromPixel(x: number, y: number): GridPosition | null {
     const { cellSize } = GAME_CONFIG.grid;
-    const col = Math.floor((x - 25) / cellSize);
-    const row = Math.floor((y - 60) / cellSize);
+    const col = Math.floor((x - 50) / cellSize);
+    const row = Math.floor((y - 120) / cellSize);
 
     if (!this.isValidPosition(row, col)) return null;
     return { row, col };
