@@ -75,7 +75,7 @@ export class PlayScene extends Phaser.Scene {
   private setupInput(): void {
     // 鼠标移动时更新预览位置
     this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
-      if (this.selectedPlant && pointer.y >= 110) {
+      if (this.selectedPlant && pointer.y >= 60) {
         this.updatePreview(pointer.x, pointer.y);
       }
     });
@@ -89,7 +89,7 @@ export class PlayScene extends Phaser.Scene {
       }
 
       // 游戏区域放置
-      if (pointer.y >= 110 && this.selectedPlant) {
+      if (pointer.y >= 60 && this.selectedPlant) {
         this.tryPlant(pointer.x, pointer.y);
       }
     });
@@ -283,7 +283,7 @@ export class PlayScene extends Phaser.Scene {
 
       // 检查僵尸是否在射手右侧（可以被射手打到）
       const zombieX = Zombie.getCurrentX(zombie);
-      const shooterX = 50 + shooterCol * 50 + 25; // 射手中心x
+      const shooterX = 25 + shooterCol * 50 + 25; // 射手中心x
 
       if (zombieX > shooterX) {
         return true;
@@ -299,7 +299,7 @@ export class PlayScene extends Phaser.Scene {
       const currentX = Zombie.getCurrentX(zombie);
       const row = Zombie.getRow(zombie);
 
-      const cellCol = Math.floor((currentX - 50) / 50);
+      const cellCol = Math.floor((currentX - 25) / 50);
       const targetPlant = this.findPlantAt(row, cellCol - 1);
 
       if (targetPlant) {
@@ -458,7 +458,7 @@ export class PlayScene extends Phaser.Scene {
 
     for (const zombie of this.zombies.values()) {
       const x = Zombie.getCurrentX(zombie);
-      if (x <= 50) {
+      if (x <= 25) {
         this.gameState = 'lost';
         this.showGameOver('defeat');
         return;

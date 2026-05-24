@@ -32,23 +32,23 @@ export class UIScene extends Phaser.Scene {
   private createTopBar(): void {
     const graphics = this.add.graphics();
     graphics.fillStyle(0x333333, 1);
-    graphics.fillRect(0, 0, 1060, 110);
+    graphics.fillRect(0, 0, 530, 55);
 
     const sunIcon = this.add.graphics();
     sunIcon.fillStyle(0xFFFF00, 1);
-    sunIcon.fillCircle(60, 50, 30);
+    sunIcon.fillCircle(30, 27, 15);
 
-    this.sunlightText = this.add.text(100, 30, '150', {
-      fontSize: '48px',
+    this.sunlightText = this.add.text(50, 15, '150', {
+      fontSize: '24px',
       color: '#FFFFFF',
       fontFamily: 'Arial',
     });
   }
 
   private createPlantCards(): void {
-    const cardStartX = 300;
-    const cardWidth = 120;
-    const cardY = 20;
+    const cardStartX = 150;
+    const cardWidth = 60;
+    const cardY = 10;
 
     const plants = ['peashooter', 'sunflower', 'wallnut', 'cherrybomb'];
 
@@ -68,34 +68,34 @@ export class UIScene extends Phaser.Scene {
     index: number = 0
   ): Phaser.GameObjects.Container {
     // 创建一个独立的透明背景用于交互检测
-    const hitArea = this.add.rectangle(x + 60, y + 45, 120, 90);
+    const hitArea = this.add.rectangle(x + 30, y + 22, 60, 45);
     hitArea.setFillStyle(0x000000, 0.001);
     hitArea.setDepth(100 + index);
     hitArea.setInteractive({ useHandCursor: true });
 
-    // 卡片背景 - 画在正确的位置 (2x size)
+    // 卡片背景 - 画在正确的位置
     const bg = this.add.graphics();
-    bg.lineStyle(4, 0xFFFFFF, 0.8);
+    bg.lineStyle(2, 0xFFFFFF, 0.8);
     bg.fillStyle(0x2a2a2a, 1);
-    bg.fillRoundedRect(x, y, 120, 90, 8);
-    bg.strokeRoundedRect(x, y, 120, 90, 8);
+    bg.fillRoundedRect(x, y, 60, 45, 4);
+    bg.strokeRoundedRect(x, y, 60, 45, 4);
     bg.setDepth(101 + index);
 
     // 使用游戏纹理作为图标
-    const icon = this.add.image(x + 60, y + 40, plantType);
-    icon.setScale(76 / 512);
+    const icon = this.add.image(x + 30, y + 20, plantType);
+    icon.setScale(38 / 512);
     icon.setDepth(102 + index);
 
     // 阳光成本图标
     const sunIcon = this.add.graphics();
     sunIcon.fillStyle(0xFFFF00, 1);
-    sunIcon.fillCircle(x + 100, y + 72, 14);
-    sunIcon.lineStyle(2, 0xDAA520, 1);
-    sunIcon.strokeCircle(x + 100, y + 72, 14);
+    sunIcon.fillCircle(x + 50, y + 36, 7);
+    sunIcon.lineStyle(1, 0xDAA520, 1);
+    sunIcon.strokeCircle(x + 50, y + 36, 7);
     sunIcon.setDepth(102 + index);
 
-    const costText = this.add.text(x + 100, y + 72, '', {
-      fontSize: '22px',
+    const costText = this.add.text(x + 50, y + 36, '', {
+      fontSize: '11px',
       color: '#000000',
       fontFamily: 'Arial',
       fontStyle: 'bold',
@@ -106,18 +106,18 @@ export class UIScene extends Phaser.Scene {
     // 触摸反馈 - 使用 hitArea 作为引用
     hitArea.on('pointerover', () => {
       bg.clear();
-      bg.lineStyle(6, 0x00FF00, 1);
+      bg.lineStyle(3, 0x00FF00, 1);
       bg.fillStyle(0x3a3a3a, 1);
-      bg.fillRoundedRect(x, y, 120, 90, 8);
-      bg.strokeRoundedRect(x, y, 120, 90, 8);
+      bg.fillRoundedRect(x, y, 60, 45, 4);
+      bg.strokeRoundedRect(x, y, 60, 45, 4);
     });
 
     hitArea.on('pointerout', () => {
       bg.clear();
-      bg.lineStyle(4, 0xFFFFFF, 0.8);
+      bg.lineStyle(2, 0xFFFFFF, 0.8);
       bg.fillStyle(0x2a2a2a, 1);
-      bg.fillRoundedRect(x, y, 120, 90, 8);
-      bg.strokeRoundedRect(x, y, 120, 90, 8);
+      bg.fillRoundedRect(x, y, 60, 45, 4);
+      bg.strokeRoundedRect(x, y, 60, 45, 4);
     });
 
     hitArea.on('pointerdown', () => {

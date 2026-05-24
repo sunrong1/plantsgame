@@ -3,15 +3,16 @@ import { BootScene } from './scenes/BootScene';
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
-  width: 1060,
-  height: 700,
+  width: 530,
+  height: 350,
   parent: 'game-container',
   backgroundColor: '#1a1a2e',
   scene: [BootScene],
   scale: {
-    mode: Phaser.Scale.ScaleModes.ENVELOP,
+    mode: Phaser.Scale.ScaleModes.FIT,
     autoCenter: Phaser.Scale.Center.CENTER_BOTH,
   },
+  zoom: 2,
   physics: {
     default: 'arcade',
     arcade: {

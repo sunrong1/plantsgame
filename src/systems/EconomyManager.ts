@@ -50,7 +50,7 @@ export class EconomyManager {
     graphics.fillCircle(40, 40, 30);
     // 中心高光
     graphics.fillStyle(0xFFFFFF, 0.5);
-    graphics.fillCircle(32, 32, 12);
+    graphics.fillCircle(40, 40, 10);
 
     // 增大触摸区域到 100x100
     const container = this.scene.add.container(x, y, [graphics]);

@@ -37,7 +37,7 @@ export class GridManager {
       if (now - lastHoverTime < hoverThrottle) return;
       lastHoverTime = now;
 
-      if (pointer.y < 110) {
+      if (pointer.y < 60) {
         this.clearHighlight();
         return;
       }
@@ -67,8 +67,8 @@ export class GridManager {
     const color = isEmpty ? EMPTY_CELL_COLOR : OCCUPIED_CELL_COLOR;
 
     const { cellSize } = GAME_CONFIG.grid;
-    const x = 50 + col * cellSize;
-    const y = 120 + row * cellSize;
+    const x = 25 + col * cellSize;
+    const y = 60 + row * cellSize;
 
     this.highlightGraphics.lineStyle(2, color, HIGHLIGHT_ALPHA);
     this.highlightGraphics.strokeRect(x, y, cellSize, cellSize);
@@ -88,8 +88,8 @@ export class GridManager {
 
   private drawGrid(): void {
     const { cellSize } = GAME_CONFIG.grid;
-    const offsetX = 50;
-    const offsetY = 120;
+    const offsetX = 25;
+    const offsetY = 60;
 
     this.gridGraphics.clear();
     this.gridGraphics.lineStyle(1, 0x1B5E20, 0.3);
@@ -136,15 +136,15 @@ export class GridManager {
   getGridPosition(row: number, col: number): { x: number; y: number } {
     const { cellSize } = GAME_CONFIG.grid;
     return {
-      x: 50 + col * cellSize + cellSize / 2,
-      y: 120 + row * cellSize + cellSize / 2,
+      x: 25 + col * cellSize + cellSize / 2,
+      y: 60 + row * cellSize + cellSize / 2,
     };
   }
 
   getCellFromPixel(x: number, y: number): GridPosition | null {
     const { cellSize } = GAME_CONFIG.grid;
-    const col = Math.floor((x - 50) / cellSize);
-    const row = Math.floor((y - 120) / cellSize);
+    const col = Math.floor((x - 25) / cellSize);
+    const row = Math.floor((y - 60) / cellSize);
 
     if (!this.isValidPosition(row, col)) return null;
     return { row, col };

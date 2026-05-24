@@ -13,8 +13,8 @@ export class Plant {
     const config = PLANT_CONFIG_MAP.get(plantType)!;
     const id = `plant_${Date.now()}_${Math.random()}`;
 
-    const x = 50 + position.col * 50 + 25;
-    const y = 120 + position.row * 50 + 25;
+    const x = 25 + position.col * 50 + 25;
+    const y = 60 + position.row * 50 + 25;
 
     // 使用纹理
     const sprite = scene.add.image(x, y, plantType);
