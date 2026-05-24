@@ -56,8 +56,7 @@ export class UIScene extends Phaser.Scene {
       const config = PLANT_CONFIG_MAP.get(plantId)!;
       const x = cardStartX + index * cardWidth;
 
-      const card = this.createCard(x, cardY, plantId, config.cost, index);
-      this.plantCards.push(card);
+      this.createCard(x, cardY, plantId, config.cost, index);
     });
   }
 
@@ -68,43 +67,44 @@ export class UIScene extends Phaser.Scene {
     cost: number,
     index: number = 0
   ): Phaser.GameObjects.Container {
-    const container = this.add.container(x, y);
+    // 创建一个独立的透明背景用于交互检测
+    const hitArea = this.add.rectangle(x + 30, y + 22, 60, 45);
+    hitArea.setFillStyle(0x000000, 0.001); // 几乎透明但可点击
+    hitArea.setDepth(100 + index);
+    hitArea.setInteractive({ useHandCursor: true });
 
-    // 卡片背景 - 稍微大一点便于触摸
+    // 卡片背景
     const bg = this.add.graphics();
     bg.lineStyle(2, 0xFFFFFF, 0.8);
     bg.fillStyle(0x2a2a2a, 1);
     bg.fillRoundedRect(0, 0, 60, 45, 4);
     bg.strokeRoundedRect(0, 0, 60, 45, 4);
+    bg.setDepth(101 + index);
 
     // 使用游戏纹理作为图标
-    // AI生成的图片是512x512，缩放到约38x38
-    const icon = this.add.image(30, 20, plantType);
+    const icon = this.add.image(x + 30, y + 20, plantType);
     icon.setScale(38 / 512);
+    icon.setDepth(102 + index);
 
-    // 阳光成本
+    // 阳光成本图标
     const sunIcon = this.add.graphics();
     sunIcon.fillStyle(0xFFFF00, 1);
-    sunIcon.fillCircle(50, 36, 7);
+    sunIcon.fillCircle(x + 50, y + 36, 7);
     sunIcon.lineStyle(1, 0xDAA520, 1);
-    sunIcon.strokeCircle(50, 36, 7);
+    sunIcon.strokeCircle(x + 50, y + 36, 7);
+    sunIcon.setDepth(102 + index);
 
-    const costText = this.add.text(50, 36, '', {
+    const costText = this.add.text(x + 50, y + 36, '', {
       fontSize: '11px',
       color: '#000000',
       fontFamily: 'Arial',
       fontStyle: 'bold',
     });
     costText.setOrigin(0.5);
+    costText.setDepth(103 + index);
 
-    container.add([bg, icon, sunIcon, costText]);
-    // 设置触摸区域
-    container.setSize(60, 45);
-    container.setInteractive({ useHandCursor: true });
-    container.setDepth(100 + index);
-
-    // 触摸反馈
-    container.on('pointerover', () => {
+    // 触摸反馈 - 使用 hitArea 作为引用
+    hitArea.on('pointerover', () => {
       bg.clear();
       bg.lineStyle(3, 0x00FF00, 1);
       bg.fillStyle(0x3a3a3a, 1);
@@ -112,7 +112,7 @@ export class UIScene extends Phaser.Scene {
       bg.strokeRoundedRect(0, 0, 60, 45, 4);
     });
 
-    container.on('pointerout', () => {
+    hitArea.on('pointerout', () => {
       bg.clear();
       bg.lineStyle(2, 0xFFFFFF, 0.8);
       bg.fillStyle(0x2a2a2a, 1);
@@ -120,54 +120,25 @@ export class UIScene extends Phaser.Scene {
       bg.strokeRoundedRect(0, 0, 60, 45, 4);
     });
 
-    container.on('pointerdown', () => {
-      this.selectCard(container);
+    hitArea.on('pointerdown', () => {
+      this.selectCard(index);
     });
 
-    return container;
+    return hitArea as unknown as Phaser.GameObjects.Container;
   }
 
-  private selectCard(card: Phaser.GameObjects.Container): void {
+  private selectCard(index: number): void {
     const playScene = this.getPlayScene();
     if (!playScene) return;
 
-    const sunlight = playScene.getSunlight();
-
-    const index = this.plantCards.indexOf(card);
     const plants = ['peashooter', 'sunflower', 'wallnut', 'cherrybomb'];
     const plantType = plants[index];
-
     const config = PLANT_CONFIG_MAP.get(plantType)!;
+    const sunlight = playScene.getSunlight();
 
     if (sunlight >= config.cost) {
-      if (this.selectedCard) {
-        this.unhighlightCard(this.selectedCard);
-      }
-
-      this.selectedCard = card;
-      this.highlightCard(card);
-
-      // 直接调用 PlayScene 的方法，而不是通过事件
       playScene.selectPlant(plantType);
     }
-  }
-
-  private highlightCard(card: Phaser.GameObjects.Container): void {
-    const bg = card.list[0] as Phaser.GameObjects.Graphics;
-    bg.clear();
-    bg.lineStyle(3, 0x00FF00, 1);
-    bg.fillStyle(0x555555, 1);
-    bg.fillRect(0, 0, 55, 40);
-    bg.strokeRect(0, 0, 55, 40);
-  }
-
-  private unhighlightCard(card: Phaser.GameObjects.Container): void {
-    const bg = card.list[0] as Phaser.GameObjects.Graphics;
-    bg.clear();
-    bg.lineStyle(2, 0xFFFFFF, 0.8);
-    bg.fillStyle(0x555555, 1);
-    bg.fillRect(0, 0, 55, 40);
-    bg.strokeRect(0, 0, 55, 40);
   }
 
   private updateUI(): void {
