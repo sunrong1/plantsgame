@@ -97,7 +97,7 @@ export class WaveManager {
       this.waveActive = false;
       this.onWaveComplete(this.currentWave);
 
-      this.scene.time.delayedCall(3000, () => {
+      this.scene.time.delayedCall(2000, () => {
         this.startNextWave();
       });
     }
