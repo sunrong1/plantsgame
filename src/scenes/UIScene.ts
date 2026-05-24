@@ -56,7 +56,7 @@ export class UIScene extends Phaser.Scene {
       const config = PLANT_CONFIG_MAP.get(plantId)!;
       const x = cardStartX + index * cardWidth;
 
-      const card = this.createCard(x, cardY, plantId, config.cost);
+      const card = this.createCard(x, cardY, plantId, config.cost, index);
       this.plantCards.push(card);
     });
   }
@@ -65,7 +65,8 @@ export class UIScene extends Phaser.Scene {
     x: number,
     y: number,
     plantType: string,
-    cost: number
+    cost: number,
+    index: number = 0
   ): Phaser.GameObjects.Container {
     const container = this.add.container(x, y);
 
@@ -97,9 +98,10 @@ export class UIScene extends Phaser.Scene {
     costText.setOrigin(0.5);
 
     container.add([bg, icon, sunIcon, costText]);
-    // 增大触摸区域
+    // 增大触摸区域 - 使用精确的交互区域
     container.setSize(60, 45);
-    container.setInteractive({ useHandCursor: true, draggable: false });
+    container.setInteractive(new Phaser.Geom.Rectangle(0, 0, 60, 45), Phaser.Geom.Rectangle.Contains);
+    container.setDepth(100 + index);
 
     // 触摸反馈
     container.on('pointerover', () => {
