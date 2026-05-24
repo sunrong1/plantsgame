@@ -9,7 +9,7 @@ const config: Phaser.Types.Core.GameConfig = {
   backgroundColor: '#1a1a2e',
   scene: [BootScene],
   scale: {
-    mode: Phaser.Scale.ScaleModes.RESIZE,
+    mode: Phaser.Scale.ScaleModes.ENVELOP,
     autoCenter: Phaser.Scale.Center.CENTER_BOTH,
   },
   physics: {
