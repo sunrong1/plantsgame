@@ -98,9 +98,9 @@ export class UIScene extends Phaser.Scene {
     costText.setOrigin(0.5);
 
     container.add([bg, icon, sunIcon, costText]);
-    // 增大触摸区域 - 使用精确的交互区域
+    // 设置触摸区域
     container.setSize(60, 45);
-    container.setInteractive(new Phaser.Geom.Rectangle(0, 0, 60, 45), Phaser.Geom.Rectangle.Contains);
+    container.setInteractive({ useHandCursor: true });
     container.setDepth(100 + index);
 
     // 触摸反馈
