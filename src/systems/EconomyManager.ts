@@ -27,34 +27,34 @@ export class EconomyManager {
   }
 
   spawnSkyDrop(): void {
-    const x = 200 + Math.random() * 600;
-    const y = 160 + Math.random() * 400;
+    const x = 100 + Math.random() * 300;
+    const y = 80 + Math.random() * 200;
     this.createSunlight(x, y, GAME_CONFIG.skyDropAmount);
   }
 
   spawnPlantDrop(x: number, y: number, amount: number): void {
-    this.createSunlight(x + 40, y - 60, amount);
+    this.createSunlight(x + 20, y - 30, amount);
   }
 
   private createSunlight(x: number, y: number, amount: number): void {
     const id = `sun_${Date.now()}_${Math.random()}`;
     const createdAt = Date.now();
 
-    // 绘制阳光 - 2x size
+    // 绘制阳光
     const graphics = this.scene.add.graphics();
     // 外圈光芒
     graphics.fillStyle(0xFFD700, 1);
-    graphics.fillCircle(40, 40, 40);
+    graphics.fillCircle(20, 20, 20);
     // 内圈主体
     graphics.fillStyle(0xFFFF00, 1);
-    graphics.fillCircle(40, 40, 30);
+    graphics.fillCircle(20, 20, 15);
     // 中心高光
     graphics.fillStyle(0xFFFFFF, 0.5);
-    graphics.fillCircle(40, 40, 10);
+    graphics.fillCircle(20, 20, 5);
 
-    // 增大触摸区域到 100x100
+    // 触摸区域
     const container = this.scene.add.container(x, y, [graphics]);
-    container.setSize(100, 100);
+    container.setSize(50, 50);
     container.setInteractive({ useHandCursor: true });
     container.setData('isSunlight', true);
 

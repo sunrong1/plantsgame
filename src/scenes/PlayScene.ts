@@ -472,7 +472,7 @@ export class PlayScene extends Phaser.Scene {
 
     const graphics = this.add.graphics();
     graphics.fillStyle(0x000000, 0.7);
-    graphics.fillRect(0, 0, 1060, 700);
+    graphics.fillRect(0, 0, 530, 350);
 
     const textObj = this.add.text(530, 350, text, {
       fontSize: '96px',
