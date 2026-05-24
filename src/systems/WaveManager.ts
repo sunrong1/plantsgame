@@ -52,10 +52,9 @@ export class WaveManager {
     const waveConfig = GAME_CONFIG.waves[this.currentWave - 1];
 
     let zombieType = 'normal';
-    if (waveConfig.zombieType === 'flag' && this.zombiesSpawned === 0) {
-      zombieType = 'flag';
-    } else if (waveConfig.zombieType === 'mixed') {
-      if (this.zombiesSpawned === 0) {
+    if (waveConfig.zombieType === 'mixed') {
+      // 每波每3只僵尸中有1只旗帜僵尸（第1只一定是旗帜）
+      if (this.zombiesSpawned % 3 === 0) {
         zombieType = 'flag';
       } else {
         zombieType = 'normal';
