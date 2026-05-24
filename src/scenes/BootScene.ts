@@ -22,9 +22,21 @@ export class BootScene extends Phaser.Scene {
 
   create(): void {
     this.createTextures();
+    this.setPixelArtStyle();
     this.scene.add('PlayScene', PlayScene, true);
     this.scene.add('UIScene', UIScene, true);
     this.scene.start('PlayScene');
+  }
+
+  private setPixelArtStyle(): void {
+    // 设置纹理为最近邻像素过滤，避免模糊缩放
+    const keys = ['peashooter', 'sunflower', 'wallnut', 'cherrybomb', 'zombie_normal', 'zombie_flag', 'pea', 'sunlight', 'lawn'];
+    keys.forEach(key => {
+      const texture = this.textures.get(key);
+      if (texture) {
+        texture.setFilter(Phaser.Textures.FilterMode.NEAREST);
+      }
+    });
   }
 
   private createTextures(): void {

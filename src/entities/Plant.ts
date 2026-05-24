@@ -3,6 +3,8 @@ import type { PlantEntity, GridPosition } from '../types';
 import { PLANT_CONFIG_MAP } from '../config';
 
 export class Plant {
+  private static healthBars: Map<string, Phaser.GameObjects.Graphics> = new Map();
+
   static create(
     scene: Phaser.Scene,
     plantType: string,
@@ -23,21 +25,71 @@ export class Plant {
     const scale = targetSize / 512;
     sprite.setScale(scale);
 
-    return {
+    const entity: PlantEntity = {
       id,
       type: plantType,
       position,
       hp: config.hp,
       maxHp: config.hp,
       state: 'idle',
-      lastActionTime: 0, // 使用游戏内时间，初始化为0
+      lastActionTime: 0,
       sprite,
       config,
     };
+
+    // 创建血条
+    this.createHealthBar(scene, entity);
+
+    return entity;
+  }
+
+  private static createHealthBar(scene: Phaser.Scene, plant: PlantEntity): void {
+    const bar = scene.add.graphics();
+    const x = plant.sprite.x - 20;
+    const y = plant.sprite.y - 30;
+
+    bar.lineStyle(1, 0x000000, 1);
+    bar.fillStyle(0x4a3728, 1);
+    bar.fillRect(x, y, 40, 6);
+    bar.strokeRect(x, y, 40, 6);
+
+    this.healthBars.set(plant.id, bar);
+    this.updateHealthBar(plant);
+  }
+
+  static updateHealthBar(plant: PlantEntity): void {
+    const bar = this.healthBars.get(plant.id);
+    if (!bar) return;
+
+    const x = plant.sprite.x - 20;
+    const y = plant.sprite.y - 30;
+    const hpPercent = plant.hp / plant.maxHp;
+
+    bar.clear();
+    bar.lineStyle(1, 0x000000, 1);
+    bar.fillStyle(0x4a3728, 1);
+    bar.fillRect(x, y, 40, 6);
+    bar.strokeRect(x, y, 40, 6);
+
+    let color = 0x44BB44;
+    if (hpPercent <= 0.3) color = 0xFF4444;
+    else if (hpPercent <= 0.6) color = 0xFFCC00;
+
+    bar.fillStyle(color, 1);
+    bar.fillRect(x + 1, y + 1, Math.max(0, 38 * hpPercent), 4);
+  }
+
+  static removeHealthBar(plantId: string): void {
+    const bar = this.healthBars.get(plantId);
+    if (bar) {
+      bar.destroy();
+      this.healthBars.delete(plantId);
+    }
   }
 
   static takeDamage(plant: PlantEntity, damage: number): void {
     plant.hp -= damage;
+    this.updateHealthBar(plant);
     if (plant.hp <= 0) {
       plant.state = 'dead';
     }

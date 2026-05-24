@@ -3,6 +3,8 @@ import type { ZombieEntity, ZombieConfig } from '../types';
 import { GAME_CONFIG } from '../config';
 
 export class Zombie {
+  private static healthBars: Map<string, Phaser.GameObjects.Graphics> = new Map();
+
   static create(
     scene: Phaser.Scene,
     config: ZombieConfig,
@@ -29,7 +31,7 @@ export class Zombie {
     const scaleY = targetHeight / 512;
     sprite.setScale(scaleX, scaleY);
 
-    return {
+    const entity: ZombieEntity = {
       id,
       type: config.id,
       position: { row, col: GAME_CONFIG.grid.cols },
@@ -37,14 +39,64 @@ export class Zombie {
       maxHp: config.hp,
       state: 'walking',
       targetPlant: null,
-      lastAttackTime: 0, // 使用游戏内时间，初始化为0
+      lastAttackTime: 0,
       sprite,
       config,
     };
+
+    // 创建血条
+    this.createHealthBar(scene, entity);
+
+    return entity;
+  }
+
+  private static createHealthBar(scene: Phaser.Scene, zombie: ZombieEntity): void {
+    const bar = scene.add.graphics();
+    const x = zombie.sprite.x - 18;
+    const y = zombie.sprite.y - 32;
+
+    bar.lineStyle(1, 0x000000, 1);
+    bar.fillStyle(0x4a3728, 1);
+    bar.fillRect(x, y, 36, 5);
+    bar.strokeRect(x, y, 36, 5);
+
+    this.healthBars.set(zombie.id, bar);
+    this.updateHealthBar(zombie);
+  }
+
+  static updateHealthBar(zombie: ZombieEntity): void {
+    const bar = this.healthBars.get(zombie.id);
+    if (!bar) return;
+
+    const x = zombie.sprite.x - 18;
+    const y = zombie.sprite.y - 32;
+    const hpPercent = zombie.hp / zombie.maxHp;
+
+    bar.clear();
+    bar.lineStyle(1, 0x000000, 1);
+    bar.fillStyle(0x4a3728, 1);
+    bar.fillRect(x, y, 36, 5);
+    bar.strokeRect(x, y, 36, 5);
+
+    let color = 0x44BB44;
+    if (hpPercent <= 0.3) color = 0xFF4444;
+    else if (hpPercent <= 0.6) color = 0xFFCC00;
+
+    bar.fillStyle(color, 1);
+    bar.fillRect(x + 1, y + 1, Math.max(0, 34 * hpPercent), 3);
+  }
+
+  static removeHealthBar(zombieId: string): void {
+    const bar = this.healthBars.get(zombieId);
+    if (bar) {
+      bar.destroy();
+      this.healthBars.delete(zombieId);
+    }
   }
 
   static takeDamage(zombie: ZombieEntity, damage: number): void {
     zombie.hp -= damage;
+    this.updateHealthBar(zombie);
     if (zombie.hp <= 0) {
       zombie.state = 'dying';
     }

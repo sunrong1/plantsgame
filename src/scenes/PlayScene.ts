@@ -188,6 +188,9 @@ export class PlayScene extends Phaser.Scene {
       }
     }
 
+    // 屏幕震动效果
+    this.cameras.main.shake(300, 0.008);
+
     // 显示爆炸效果
     const pos = this.gridManager.getGridPosition(row, 4); // 取中间列
     const explosion = this.add.graphics();
@@ -386,8 +389,34 @@ export class PlayScene extends Phaser.Scene {
     this.zombies.set(zombie.id, zombie);
   }
 
+  private createDeathParticles(x: number, y: number): void {
+    for (let i = 0; i < 8; i++) {
+      const particle = this.add.graphics();
+      particle.fillStyle(0xCC0000, 1);
+      particle.fillRect(-2, -2, 4, 4);
+      particle.setPosition(x, y);
+
+      const angle = (Math.PI * 2 * i) / 8;
+      const speed = 50 + Math.random() * 50;
+      const vx = Math.cos(angle) * speed;
+      const vy = Math.sin(angle) * speed;
+
+      this.tweens.add({
+        targets: particle,
+        x: x + vx * 0.3,
+        y: y + vy * 0.3,
+        alpha: 0,
+        duration: 400,
+        ease: 'Quad.easeOut',
+        onComplete: () => particle.destroy()
+      });
+    }
+  }
+
   private removeZombie(zombie: ZombieEntity): void {
+    this.createDeathParticles(zombie.sprite.x, zombie.sprite.y);
     this.zombies.delete(zombie.id);
+    Zombie.removeHealthBar(zombie.id);
     zombie.sprite.destroy();
     this.waveManager.removeZombie(zombie);
   }
@@ -395,6 +424,7 @@ export class PlayScene extends Phaser.Scene {
   private removePlant(plant: PlantEntity): void {
     this.plants.delete(plant.id);
     this.gridManager.releaseCell(plant.position.row, plant.position.col);
+    Plant.removeHealthBar(plant.id);
     plant.sprite.destroy();
   }
 
