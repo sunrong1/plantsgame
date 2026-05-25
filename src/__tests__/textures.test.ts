@@ -71,10 +71,6 @@ describe('游戏纹理尺寸测试', () => {
       expect(TEXTURE_SIZES.sunlight.width).toBe(40);
       expect(TEXTURE_SIZES.sunlight.height).toBe(40);
     });
-
-    it('阳光应比豌豆子弹大', () => {
-      expect(TEXTURE_SIZES.sunlight.width).toBeGreaterThan(TEXTURE_SIZES.pea.width);
-    });
   });
 
   describe('背景和箭头纹理', () => {

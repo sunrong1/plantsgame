@@ -34,51 +34,48 @@ describe('波次配置测试', () => {
     expect(GAME_CONFIG.waves[0].delay).toBe(20000);
   });
 
-  it('第1波应该有3只僵尸', () => {
-    expect(GAME_CONFIG.waves[0].count).toBe(3);
-    expect(GAME_CONFIG.waves[0].interval).toBe(4000); // 间隔4秒
+  it('第1波应该有6只僵尸', () => {
+    expect(GAME_CONFIG.waves[0].count).toBe(6);
+    expect(GAME_CONFIG.waves[0].interval).toBe(2500); // 间隔2.5秒
     expect(GAME_CONFIG.waves[0].zombieType).toBe('normal');
   });
 
-  it('第2波应该在38秒后开始', () => {
-    expect(GAME_CONFIG.waves[1].delay).toBe(38000);
+  it('第2波应该在30秒后开始', () => {
+    expect(GAME_CONFIG.waves[1].delay).toBe(30000);
   });
 
-  it('第2波应该有5只僵尸', () => {
-    expect(GAME_CONFIG.waves[1].count).toBe(5);
-    expect(GAME_CONFIG.waves[1].interval).toBe(3000); // 间隔3秒
+  it('第2波应该有10只僵尸', () => {
+    expect(GAME_CONFIG.waves[1].count).toBe(10);
+    expect(GAME_CONFIG.waves[1].interval).toBe(1800); // 间隔1.8秒
   });
 
-  it('第3波应该在53秒后开始', () => {
-    expect(GAME_CONFIG.waves[2].delay).toBe(53000);
+  it('第3波应该在30秒后开始', () => {
+    expect(GAME_CONFIG.waves[2].delay).toBe(30000);
   });
 
-  it('第3波应该有7只僵尸，包含旗帜僵尸', () => {
-    expect(GAME_CONFIG.waves[2].count).toBe(7);
-    expect(GAME_CONFIG.waves[2].interval).toBe(2000); // 间隔2秒
+  it('第3波应该有18只僵尸，包含混合类型', () => {
+    expect(GAME_CONFIG.waves[2].count).toBe(18);
+    expect(GAME_CONFIG.waves[2].interval).toBe(1000); // 间隔1秒
     expect(GAME_CONFIG.waves[2].zombieType).toBe('mixed');
   });
 });
 
 describe('波次时间线测试', () => {
-  it('第1波与第2波间隔应该是18秒', () => {
+  it('第1波与第2波间隔应该是10秒', () => {
     const wave1Start = GAME_CONFIG.waves[0].delay;
     const wave2Start = GAME_CONFIG.waves[1].delay;
-    expect(wave2Start - wave1Start).toBe(18000);
+    expect(wave2Start - wave1Start).toBe(10000);
   });
 
-  it('第2波与第3波间隔应该是15秒', () => {
+  it('第2波与第3波间隔应该是0秒', () => {
     const wave2Start = GAME_CONFIG.waves[1].delay;
     const wave3Start = GAME_CONFIG.waves[2].delay;
-    expect(wave3Start - wave2Start).toBe(15000);
+    expect(wave3Start - wave2Start).toBe(0);
   });
 
-  it('总游戏时间约60秒', () => {
+  it('总游戏时间约30秒', () => {
     const wave3Start = GAME_CONFIG.waves[2].delay;
-    // 第3波生成完需要 15 + 2*7 = 29秒
-    // 加上第3波最后一波僵尸走完时间约30秒
-    // 总计约 53 + 29 = 82秒
-    expect(wave3Start).toBe(53000);
+    expect(wave3Start).toBe(30000);
   });
 });
 

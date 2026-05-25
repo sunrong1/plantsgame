@@ -88,35 +88,35 @@ describe('僵尸推进时间测试', () => {
 });
 
 describe('波次压力测试', () => {
-  it('第1波总计3只僵尸', () => {
-    const wave1 = { count: 3, interval: 4000 };
+  it('第1波总计6只僵尸', () => {
+    const wave1 = { count: 6, interval: 2500 };
     const totalTime = (wave1.count - 1) * wave1.interval / 1000;
-    expect(wave1.count).toBe(3);
-    expect(totalTime).toBe(8); // 生成完需要8秒
+    expect(wave1.count).toBe(6);
+    expect(totalTime).toBe(12.5); // 生成完需要12.5秒
   });
 
-  it('第2波总计5只僵尸', () => {
-    const wave2 = { count: 5, interval: 3000 };
+  it('第2波总计10只僵尸', () => {
+    const wave2 = { count: 10, interval: 1800 };
     const totalTime = (wave2.count - 1) * wave2.interval / 1000;
-    expect(wave2.count).toBe(5);
-    expect(totalTime).toBe(12); // 生成完需要12秒
+    expect(wave2.count).toBe(10);
+    expect(totalTime).toBe(16.2); // 生成完需要16.2秒
   });
 
-  it('第3波总计7只僵尸', () => {
-    const wave3 = { count: 7, interval: 2000 };
+  it('第3波总计18只僵尸', () => {
+    const wave3 = { count: 18, interval: 1000 };
     const totalTime = (wave3.count - 1) * wave3.interval / 1000;
-    expect(wave3.count).toBe(7);
-    expect(totalTime).toBe(12); // 生成完需要12秒
+    expect(wave3.count).toBe(18);
+    expect(totalTime).toBe(17); // 生成完需要17秒
   });
 
-  it('波次间隔递增，增加压力', () => {
-    const wave1Interval = 4000;
-    const wave2Interval = 3000;
-    const wave3Interval = 2000;
+  it('波次间隔递减，增加压力', () => {
+    const wave1Interval = 2500;
+    const wave2Interval = 1800;
+    const wave3Interval = 1000;
 
     expect(wave1Interval).toBeGreaterThan(wave2Interval);
     expect(wave2Interval).toBeGreaterThan(wave3Interval);
-    expect(wave3Interval).toBe(wave1Interval / 2);
+    expect(wave3Interval).toBe(wave1Interval * 0.4);
   });
 });
 
