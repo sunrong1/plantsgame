@@ -13,15 +13,18 @@ export class WaveManager {
   private spawnTimer: Phaser.Time.TimerEvent | null = null;
   private onZombieSpawn: (zombie: ZombieEntity) => void;
   private onWaveComplete: (wave: number) => void;
+  private onWaveStart: (wave: number) => void;
 
   constructor(
     scene: Phaser.Scene,
     onZombieSpawn: (zombie: ZombieEntity) => void,
-    onWaveComplete: (wave: number) => void
+    onWaveComplete: (wave: number) => void,
+    onWaveStart?: (wave: number) => void
   ) {
     this.scene = scene;
     this.onZombieSpawn = onZombieSpawn;
     this.onWaveComplete = onWaveComplete;
+    this.onWaveStart = onWaveStart || (() => {});
   }
 
   startWaves(): void {
@@ -36,6 +39,7 @@ export class WaveManager {
 
     this.currentWave++;
     this.waveActive = true;
+    this.onWaveStart(this.currentWave);
 
     const waveConfig = GAME_CONFIG.waves[this.currentWave - 1];
     this.totalZombiesToSpawn = waveConfig.count;

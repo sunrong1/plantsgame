@@ -44,7 +44,8 @@ export class PlayScene extends Phaser.Scene {
     this.waveManager = new WaveManager(
       this,
       (zombie) => this.onZombieSpawn(zombie),
-      (wave) => this.onWaveComplete(wave)
+      (wave) => this.onWaveComplete(wave),
+      (wave) => this.onWaveStart(wave)
     );
 
     // 创建入侵方向箭头
@@ -441,6 +442,19 @@ export class PlayScene extends Phaser.Scene {
   private onWaveComplete(wave: number): void {
     if (wave === 3) {
       this.thirdWaveCleared = true;
+    }
+    // Notify UI of wave change
+    const uiScene = this.scene.get('UIScene') as any;
+    if (uiScene && uiScene.updateWave) {
+      uiScene.updateWave(wave, GAME_CONFIG.waves.length);
+    }
+  }
+
+  private onWaveStart(wave: number): void {
+    // Notify UI of wave start
+    const uiScene = this.scene.get('UIScene') as any;
+    if (uiScene && uiScene.updateWave) {
+      uiScene.updateWave(wave, GAME_CONFIG.waves.length);
     }
   }
 

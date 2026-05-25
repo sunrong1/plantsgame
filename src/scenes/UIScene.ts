@@ -12,10 +12,12 @@ const PLANT_ENGLISH_NAMES: Record<string, string> = {
 
 export class UIScene extends Phaser.Scene {
   private sunlightText!: Phaser.GameObjects.Text;
+  private waveText!: Phaser.GameObjects.Text;
   private plantCards: PlantCard[] = [];
   private selectedCardIndex: number = -1;
   private overlayShown: boolean = false;
   private audioUnlocked: boolean = false;
+  private currentWave: number = 0;
 
   constructor() {
     super({ key: 'UIScene' });
@@ -52,6 +54,14 @@ export class UIScene extends Phaser.Scene {
       fontSize: '24px',
       color: '#FFFFFF',
       fontFamily: 'Arial',
+    });
+
+    // Wave indicator
+    this.waveText = this.add.text(470, 25, 'Wave 0/3', {
+      fontSize: '18px',
+      color: '#FF6666',
+      fontFamily: 'Arial',
+      fontStyle: 'bold',
     });
   }
 
@@ -288,6 +298,13 @@ export class UIScene extends Phaser.Scene {
 
   public isOverlayShown(): boolean {
     return this.overlayShown;
+  }
+
+  public updateWave(wave: number, total: number = 3): void {
+    this.currentWave = wave;
+    if (this.waveText) {
+      this.waveText.setText(`Wave ${wave}/${total}`);
+    }
   }
 }
 
