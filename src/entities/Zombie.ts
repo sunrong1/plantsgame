@@ -16,7 +16,7 @@ export class Zombie {
       : `zombie_${Date.now()}_${Math.random()}`;
 
     const x = 25 + GAME_CONFIG.grid.cols * 50 + 30;
-    const y = 60 + row * 50 + 25;
+    const y = 80 + row * 50 + 25;
 
     // 使用纹理
     const textureKey = config.isFlag ? 'zombie_flag' : 'zombie_normal';
