@@ -2,11 +2,20 @@ import Phaser from 'phaser';
 import { PLANT_CONFIG_MAP } from '../config';
 import type { PlayScene } from './PlayScene';
 
+// 植物英文名映射
+const PLANT_ENGLISH_NAMES: Record<string, string> = {
+  peashooter: 'Peashooter',
+  sunflower: 'Sunflower',
+  wallnut: 'Wall-nut',
+  cherrybomb: 'Cherry Bomb',
+};
+
 export class UIScene extends Phaser.Scene {
   private sunlightText!: Phaser.GameObjects.Text;
-  private plantCards: Phaser.GameObjects.Container[] = [];
-  private selectedCard: Phaser.GameObjects.Container | null = null;
+  private plantCards: PlantCard[] = [];
+  private selectedCardIndex: number = -1;
   private overlayShown: boolean = false;
+  private audioUnlocked: boolean = false;
 
   constructor() {
     super({ key: 'UIScene' });
@@ -15,6 +24,7 @@ export class UIScene extends Phaser.Scene {
   create(): void {
     this.createTopBar();
     this.createPlantCards();
+    this.createAudioUnlockButton();
     this.showTutorialOverlay();
 
     this.time.addEvent({
@@ -46,88 +56,50 @@ export class UIScene extends Phaser.Scene {
   }
 
   private createPlantCards(): void {
-    const cardStartX = 150;
-    const cardWidth = 60;
+    const cardStartX = 130;
+    const cardWidth = 80;
+    const cardHeight = 100;
     const cardY = 10;
+    const cardGap = 10;
 
     const plants = ['peashooter', 'sunflower', 'wallnut', 'cherrybomb'];
 
     plants.forEach((plantId, index) => {
       const config = PLANT_CONFIG_MAP.get(plantId)!;
-      const x = cardStartX + index * cardWidth;
+      const x = cardStartX + index * (cardWidth + cardGap);
 
-      this.createCard(x, cardY, plantId, config.cost, index);
+      const card = new PlantCard(this, x, cardY, cardWidth, cardHeight, plantId, config.cost, index);
+      this.plantCards.push(card);
     });
   }
 
-  private createCard(
-    x: number,
-    y: number,
-    plantType: string,
-    cost: number,
-    index: number = 0
-  ): Phaser.GameObjects.Container {
-    // 创建一个独立的透明背景用于交互检测
-    const hitArea = this.add.rectangle(x + 30, y + 22, 60, 45);
-    hitArea.setFillStyle(0x000000, 0.001);
-    hitArea.setDepth(100 + index);
-    hitArea.setInteractive({ useHandCursor: true });
-
-    // 卡片背景 - 画在正确的位置
-    const bg = this.add.graphics();
-    bg.lineStyle(2, 0xFFFFFF, 0.8);
-    bg.fillStyle(0x2a2a2a, 1);
-    bg.fillRoundedRect(x, y, 60, 45, 4);
-    bg.strokeRoundedRect(x, y, 60, 45, 4);
-    bg.setDepth(101 + index);
-
-    // 使用游戏纹理作为图标
-    const icon = this.add.image(x + 30, y + 20, plantType);
-    icon.setScale(38 / 512);
-    icon.setDepth(102 + index);
-
-    // 阳光成本图标
-    const sunIcon = this.add.graphics();
-    sunIcon.fillStyle(0xFFFF00, 1);
-    sunIcon.fillCircle(x + 50, y + 36, 7);
-    sunIcon.lineStyle(1, 0xDAA520, 1);
-    sunIcon.strokeCircle(x + 50, y + 36, 7);
-    sunIcon.setDepth(102 + index);
-
-    const costText = this.add.text(x + 50, y + 36, '', {
-      fontSize: '11px',
-      color: '#000000',
-      fontFamily: 'Arial',
-      fontStyle: 'bold',
+  private createAudioUnlockButton(): void {
+    // 一个小按钮用于解锁音频上下文
+    const btn = this.add.text(490, 15, '🔊', {
+      fontSize: '20px',
     });
-    costText.setOrigin(0.5);
-    costText.setDepth(103 + index);
-
-    // 触摸反馈 - 使用 hitArea 作为引用
-    hitArea.on('pointerover', () => {
-      bg.clear();
-      bg.lineStyle(3, 0x00FF00, 1);
-      bg.fillStyle(0x3a3a3a, 1);
-      bg.fillRoundedRect(x, y, 60, 45, 4);
-      bg.strokeRoundedRect(x, y, 60, 45, 4);
+    btn.setDepth(200);
+    btn.setInteractive({ useHandCursor: true });
+    btn.on('pointerdown', () => {
+      this.audioUnlocked = true;
+      btn.setText('🔊');
+      // 尝试激活音频上下文
+      const dummy = this.sound.add('dummy') || null;
     });
-
-    hitArea.on('pointerout', () => {
-      bg.clear();
-      bg.lineStyle(2, 0xFFFFFF, 0.8);
-      bg.fillStyle(0x2a2a2a, 1);
-      bg.fillRoundedRect(x, y, 60, 45, 4);
-      bg.strokeRoundedRect(x, y, 60, 45, 4);
-    });
-
-    hitArea.on('pointerdown', () => {
-      this.selectCard(index);
-    });
-
-    return hitArea as unknown as Phaser.GameObjects.Container;
   }
 
-  private selectCard(index: number): void {
+  private speak(text: string): void {
+    if (!this.audioUnlocked) return;
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = 'en-US';
+      utterance.rate = 0.85;
+      window.speechSynthesis.speak(utterance);
+    }
+  }
+
+  public selectCard(index: number): void {
     const playScene = this.getPlayScene();
     if (!playScene) return;
 
@@ -136,7 +108,17 @@ export class UIScene extends Phaser.Scene {
     const config = PLANT_CONFIG_MAP.get(plantType)!;
     const sunlight = playScene.getSunlight();
 
+    // 朗读植物英文名
+    this.speak(PLANT_ENGLISH_NAMES[plantType]);
+
     if (sunlight >= config.cost) {
+      // 取消之前选中
+      if (this.selectedCardIndex >= 0) {
+        this.plantCards[this.selectedCardIndex].setSelected(false);
+      }
+
+      this.selectedCardIndex = index;
+      this.plantCards[index].setSelected(true);
       playScene.selectPlant(plantType);
     }
   }
@@ -144,7 +126,17 @@ export class UIScene extends Phaser.Scene {
   private updateUI(): void {
     const playScene = this.getPlayScene();
     if (playScene && this.sunlightText) {
-      this.sunlightText.setText(playScene.getSunlight().toString());
+      const sunlight = playScene.getSunlight();
+      this.sunlightText.setText(sunlight.toString());
+
+      // 更新每个卡片的状态
+      this.plantCards.forEach((card) => {
+        const config = card.getConfig();
+        if (config) {
+          const canAfford = sunlight >= config.cost;
+          card.setAffordable(canAfford);
+        }
+      });
     }
   }
 
@@ -212,9 +204,9 @@ export class UIScene extends Phaser.Scene {
     plantsTitle.setDepth(102);
 
     const plantInfo = [
-      { icon: '🟢', name: '豌豆射手', desc: '100阳光 · 攻击僵尸' },
-      { icon: '🟡', name: '向日葵', desc: '50阳光 · 产出阳光' },
-      { icon: '🟤', name: '坚果墙', desc: '50阳光 · 阻挡敌人' },
+      { icon: '🟢', name: '豌豆射手 Peashooter', desc: '100阳光 · 攻击僵尸' },
+      { icon: '🟡', name: '向日葵 Sunflower', desc: '50阳光 · 产出阳光' },
+      { icon: '🟤', name: '坚果墙 Wall-nut', desc: '50阳光 · 阻挡敌人' },
     ];
 
     const plantInfoTexts: Phaser.GameObjects.GameObject[] = [];
@@ -227,7 +219,7 @@ export class UIScene extends Phaser.Scene {
       plantInfoTexts.push(card);
 
       const nameText = this.add.text(x + 60, 263, `${plant.icon} ${plant.name}`, {
-        fontSize: '13px',
+        fontSize: '12px',
         fontFamily: 'Arial',
         color: '#FFFFFF',
         fontStyle: 'bold',
@@ -294,5 +286,265 @@ export class UIScene extends Phaser.Scene {
 
   public isOverlayShown(): boolean {
     return this.overlayShown;
+  }
+}
+
+// 植物卡片类 - 封装卡片渲染逻辑
+class PlantCard {
+  private scene: Phaser.Scene;
+  private x: number;
+  private y: number;
+  private width: number;
+  private height: number;
+  private plantType: string;
+  private cost: number;
+  private index: number;
+
+  private container!: Phaser.GameObjects.Container;
+  private bgShadow!: Phaser.GameObjects.Graphics;
+  private bg!: Phaser.GameObjects.Graphics;
+  private iconPlaceholder!: Phaser.GameObjects.Graphics;
+  private nameText!: Phaser.GameObjects.Text;
+  private costBg!: Phaser.GameObjects.Graphics;
+  private costText!: Phaser.GameObjects.Text;
+  private cooldownOverlay!: Phaser.GameObjects.Graphics;
+  private cooldownText!: Phaser.GameObjects.Text;
+  private disabledX!: Phaser.GameObjects.Graphics;
+
+  private isSelected: boolean = false;
+  private isAffordable: boolean = true;
+  private baseY: number;
+
+  constructor(
+    scene: Phaser.Scene,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    plantType: string,
+    cost: number,
+    index: number
+  ) {
+    this.scene = scene;
+    this.x = x;
+    this.y = y;
+    this.width = width;
+    this.height = height;
+    this.plantType = plantType;
+    this.cost = cost;
+    this.index = index;
+    this.baseY = y;
+
+    this.create();
+    this.createInteraction();
+  }
+
+  private create(): void {
+    this.container = this.scene.add.container(this.x, this.y);
+    this.container.setDepth(100 + this.index);
+
+    // 1. 阴影层 (向下偏移4px，模拟立体阴影)
+    this.bgShadow = this.scene.add.graphics();
+    this.bgShadow.fillStyle(0x000000, 0.2);
+    this.bgShadow.fillRoundedRect(4, 4, this.width, this.height, 8);
+    this.container.add(this.bgShadow);
+
+    // 2. 卡片背景 - #FFF8E7 (Card White)
+    this.bg = this.scene.add.graphics();
+    this.bg.fillStyle(0xFFF8E7, 1);
+    this.bg.lineStyle(2, 0x4A3B2C, 0.3); // 淡边框
+    this.bg.fillRoundedRect(0, 0, this.width, this.height, 8);
+    this.bg.strokeRoundedRect(0, 0, this.width, this.height, 8);
+    this.container.add(this.bg);
+
+    // 3. 植物图片占位符 (色块)
+    const iconSize = 50;
+    const iconColors: Record<string, number> = {
+      peashooter: 0x32CD32, // Plant Green
+      sunflower: 0xFFD700,   // Sun Gold
+      wallnut: 0x8B4513,    // Brown
+      cherrybomb: 0xFF4444,  // Red
+    };
+    this.iconPlaceholder = this.scene.add.graphics();
+    this.iconPlaceholder.fillStyle(iconColors[this.plantType] || 0x32CD32, 1);
+    this.iconPlaceholder.fillRoundedRect(
+      (this.width - iconSize) / 2,
+      8,
+      iconSize,
+      iconSize,
+      4
+    );
+    this.container.add(this.iconPlaceholder);
+
+    // 4. 英文名称 - Fredoka One, #4A3B2C, 14px
+    this.nameText = this.scene.add.text(this.width / 2, this.height - 18, PLANT_ENGLISH_NAMES[this.plantType], {
+      fontSize: '14px',
+      fontFamily: "'Fredoka One', sans-serif",
+      color: '#4A3B2C',
+    });
+    this.nameText.setOrigin(0.5, 0);
+    this.container.add(this.nameText);
+
+    // 5. 阳光成本图标 (右上角)
+    const costRadius = 12;
+    const costX = this.width - costRadius - 4;
+    const costY = costRadius + 4;
+
+    this.costBg = this.scene.add.graphics();
+    this.costBg.fillStyle(0xFFD700, 1); // Sun Gold
+    this.costBg.fillCircle(costX, costY, costRadius);
+    this.costBg.lineStyle(1, 0xDAA520, 1);
+    this.costBg.strokeCircle(costX, costY, costRadius);
+    this.container.add(this.costBg);
+
+    this.costText = this.scene.add.text(costX, costY, this.cost.toString(), {
+      fontSize: '10px',
+      fontFamily: 'Arial',
+      color: '#4A3B2C',
+      fontStyle: 'bold',
+    });
+    this.costText.setOrigin(0.5, 0.5);
+    this.container.add(this.costText);
+
+    // 6. 冷却遮罩 (默认隐藏)
+    this.cooldownOverlay = this.scene.add.graphics();
+    this.cooldownOverlay.fillStyle(0x888888, 0.6);
+    this.cooldownOverlay.fillRoundedRect(0, 0, this.width, this.height, 8);
+    this.cooldownOverlay.setAlpha(0);
+    this.container.add(this.cooldownOverlay);
+
+    this.cooldownText = this.scene.add.text(this.width / 2, this.height / 2, '', {
+      fontSize: '32px',
+      fontFamily: "'Fredoka One', sans-serif",
+      color: '#FFFFFF',
+    });
+    this.cooldownText.setOrigin(0.5, 0.5);
+    this.cooldownText.setAlpha(0);
+    this.container.add(this.cooldownText);
+
+    // 7. 禁用叉号 (默认隐藏)
+    this.disabledX = this.scene.add.graphics();
+    this.disabledX.lineStyle(3, 0xFF0000, 0.8);
+    this.disabledX.lineBetween(10, 10, this.width - 10, this.height - 10);
+    this.disabledX.lineBetween(this.width - 10, 10, 10, this.height - 10);
+    this.disabledX.setAlpha(0);
+    this.container.add(this.disabledX);
+  }
+
+  private createInteraction(): void {
+    const hitArea = this.scene.add.rectangle(
+      this.x + this.width / 2,
+      this.y + this.height / 2,
+      Math.max(48, this.width),
+      Math.max(48, this.height)
+    );
+    hitArea.setFillStyle(0x000000, 0.001);
+    hitArea.setInteractive({ useHandCursor: true });
+
+    hitArea.on('pointerover', () => this.onHover());
+    hitArea.on('pointerout', () => this.onOut());
+    hitArea.on('pointerdown', () => this.onClick());
+  }
+
+  private onHover(): void {
+    if (!this.isAffordable) return;
+    this.scene.tweens.add({
+      targets: this.container,
+      y: this.baseY - 2,
+      duration: 100,
+      ease: 'ease-out',
+    });
+  }
+
+  private onOut(): void {
+    if (this.isSelected) return;
+    this.scene.tweens.add({
+      targets: this.container,
+      y: this.baseY,
+      duration: 100,
+      ease: 'ease-out',
+    });
+  }
+
+  private onClick(): void {
+    const uiScene = this.scene.scene.get('UIScene') as UIScene;
+    if (uiScene) {
+      uiScene.selectCard(this.index);
+    }
+  }
+
+  public setSelected(selected: boolean): void {
+    this.isSelected = selected;
+
+    if (selected) {
+      // 选中状态：上移4px，边框变亮绿
+      this.scene.tweens.add({
+        targets: this.container,
+        y: this.baseY - 4,
+        duration: 150,
+        ease: 'ease-out',
+      });
+
+      // 边框变亮绿 #32CD32
+      this.bg.clear();
+      this.bg.fillStyle(0xFFF8E7, 1);
+      this.bg.lineStyle(3, 0x32CD32, 1); // Plant Green
+      this.bg.fillRoundedRect(0, 0, this.width, this.height, 8);
+      this.bg.strokeRoundedRect(0, 0, this.width, this.height, 8);
+
+      // 阴影加深
+      this.bgShadow.clear();
+      this.bgShadow.fillStyle(0x000000, 0.35);
+      this.bgShadow.fillRoundedRect(4, 6, this.width, this.height, 8);
+    } else {
+      // 取消选中
+      this.scene.tweens.add({
+        targets: this.container,
+        y: this.baseY,
+        duration: 150,
+        ease: 'ease-out',
+      });
+
+      this.resetAppearance();
+    }
+  }
+
+  public setAffordable(affordable: boolean): void {
+    this.isAffordable = affordable;
+
+    if (affordable) {
+      this.container.setAlpha(1);
+      this.disabledX.setAlpha(0);
+    } else {
+      this.container.setAlpha(0.5);
+      this.disabledX.setAlpha(0.8);
+    }
+  }
+
+  public setCooldown(remaining: number): void {
+    if (remaining <= 0) {
+      this.cooldownOverlay.setAlpha(0);
+      this.cooldownText.setAlpha(0);
+    } else {
+      this.cooldownOverlay.setAlpha(1);
+      this.cooldownText.setAlpha(1);
+      this.cooldownText.setText(Math.ceil(remaining / 1000).toString());
+    }
+  }
+
+  public getConfig() {
+    return PLANT_CONFIG_MAP.get(this.plantType);
+  }
+
+  private resetAppearance(): void {
+    this.bg.clear();
+    this.bg.fillStyle(0xFFF8E7, 1);
+    this.bg.lineStyle(2, 0x4A3B2C, 0.3);
+    this.bg.fillRoundedRect(0, 0, this.width, this.height, 8);
+    this.bg.strokeRoundedRect(0, 0, this.width, this.height, 8);
+
+    this.bgShadow.clear();
+    this.bgShadow.fillStyle(0x000000, 0.2);
+    this.bgShadow.fillRoundedRect(4, 4, this.width, this.height, 8);
   }
 }
