@@ -42,13 +42,13 @@ export class UIScene extends Phaser.Scene {
   private createTopBar(): void {
     const graphics = this.add.graphics();
     graphics.fillStyle(0x333333, 1);
-    graphics.fillRect(0, 0, 530, 55);
+    graphics.fillRect(0, 0, 530, 75);
 
     const sunIcon = this.add.graphics();
     sunIcon.fillStyle(0xFFFF00, 1);
-    sunIcon.fillCircle(30, 27, 15);
+    sunIcon.fillCircle(30, 37, 15);
 
-    this.sunlightText = this.add.text(50, 15, '150', {
+    this.sunlightText = this.add.text(50, 25, '150', {
       fontSize: '24px',
       color: '#FFFFFF',
       fontFamily: 'Arial',
@@ -59,7 +59,7 @@ export class UIScene extends Phaser.Scene {
     const cardStartX = 130;
     const cardWidth = 65;
     const cardHeight = 50;
-    const cardY = 58;
+    const cardY = 70;
     const cardGap = 6;
 
     const plants = ['peashooter', 'sunflower', 'wallnut', 'cherrybomb'];

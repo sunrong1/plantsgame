@@ -23,9 +23,9 @@ export class GridManager {
   private selectedPlantType: string | null = null;
   private cloudTweens: Phaser.Tweens.Tween[] = [];
 
-  // Grid offset - slightly lower to give more sky space
+  // Grid offset - more space at top for plant cards
   private offsetX = 25;
-  private offsetY = 80; // Moved down from 60
+  private offsetY = 110; // Moved down to avoid overlapping plant cards
 
   // Track flower positions for redrawing
   private flowerCells: Set<string> = new Set();
@@ -74,9 +74,9 @@ export class GridManager {
     };
 
     // Create 3 clouds at different positions
-    createCloud(80, 30, 0.6);
-    createCloud(300, 20, 0.8);
-    createCloud(450, 40, 0.5);
+    createCloud(80, 50, 0.6);
+    createCloud(300, 40, 0.8);
+    createCloud(450, 60, 0.5);
   }
 
   private setupHoverDetection(): void {

@@ -28,7 +28,7 @@ export class EconomyManager {
 
   spawnSkyDrop(): void {
     const x = 100 + Math.random() * 300;
-    const y = 80 + Math.random() * 200;
+    const y = 110 + Math.random() * 200;
     this.createSunlight(x, y, GAME_CONFIG.skyDropAmount);
   }
 

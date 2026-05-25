@@ -28,8 +28,15 @@ export class PlayScene extends Phaser.Scene {
   }
 
   create(): void {
-    // 创建草坪背景
-    this.add.image(530, 350, 'lawn').setDepth(-1).setScale(2);
+    // 创建草坪背景 - 覆盖整个网格区域
+    // Grid spans: cols=9*50=450, rows=5*50=250, offset=(25,110)
+    // Center at grid area center
+    const gridCenterX = 25 + (9 * 50) / 2;  // 250
+    const gridCenterY = 110 + (5 * 50) / 2;  // 235
+    this.add.image(gridCenterX, gridCenterY, 'lawn')
+      .setScale(2.2)
+      .setDepth(-1);
+    // Scale 2.2 covers 530*2.2=1166 width, 350*2.2=770 height - enough to cover grid area
 
     this.gridManager = new GridManager(this);
     this.economyManager = new EconomyManager(this);
@@ -482,7 +489,9 @@ export class PlayScene extends Phaser.Scene {
   }
 
   private createInvasionArrow(): void {
-    const arrow = this.add.image(24, 370, 'invasion_arrow');
+    // Position arrow at left side, aligned with grid rows
+    const gridCenterY = 110 + (5 * 50) / 2;  // 235
+    const arrow = this.add.image(24, gridCenterY, 'invasion_arrow');
     arrow.setScale(2);
     arrow.setDepth(0);
   }

@@ -14,7 +14,7 @@ export class Plant {
     const id = `plant_${Date.now()}_${Math.random()}`;
 
     const x = 25 + position.col * 50 + 25;
-    const y = 80 + position.row * 50 + 25;
+    const y = 110 + position.row * 50 + 25;
 
     // 使用纹理
     const sprite = scene.add.image(x, y, plantType);
