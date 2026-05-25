@@ -303,7 +303,7 @@ class PlantCard {
   private container!: Phaser.GameObjects.Container;
   private bgShadow!: Phaser.GameObjects.Graphics;
   private bg!: Phaser.GameObjects.Graphics;
-  private iconPlaceholder!: Phaser.GameObjects.Graphics;
+  private iconPlaceholder!: Phaser.GameObjects.Image;
   private nameText!: Phaser.GameObjects.Text;
   private costBg!: Phaser.GameObjects.Graphics;
   private costText!: Phaser.GameObjects.Text;
@@ -357,27 +357,14 @@ class PlantCard {
     this.bg.strokeRoundedRect(0, 0, this.width, this.height, 8);
     this.container.add(this.bg);
 
-    // 3. 植物图片占位符 (色块)
-    const iconSize = 30;
-    const iconColors: Record<string, number> = {
-      peashooter: 0x32CD32, // Plant Green
-      sunflower: 0xFFD700,   // Sun Gold
-      wallnut: 0x8B4513,    // Brown
-      cherrybomb: 0xFF4444,  // Red
-    };
-    this.iconPlaceholder = this.scene.add.graphics();
-    this.iconPlaceholder.fillStyle(iconColors[this.plantType] || 0x32CD32, 1);
-    this.iconPlaceholder.fillRoundedRect(
-      (this.width - iconSize) / 2,
-      4,
-      iconSize,
-      iconSize,
-      4
-    );
+    // 3. 植物图片 (使用游戏纹理)
+    const iconSize = 36;
+    this.iconPlaceholder = this.scene.add.image(this.width / 2, 4 + iconSize / 2, this.plantType);
+    this.iconPlaceholder.setScale(iconSize / 512);
     this.container.add(this.iconPlaceholder);
 
     // 4. 英文名称 - Fredoka One, #4A3B2C, 10px
-    this.nameText = this.scene.add.text(this.width / 2, this.height - 8, PLANT_ENGLISH_NAMES[this.plantType], {
+    this.nameText = this.scene.add.text(this.width / 2, this.height - 6, PLANT_ENGLISH_NAMES[this.plantType], {
       fontSize: '10px',
       fontFamily: "'Fredoka One', sans-serif",
       color: '#4A3B2C',
