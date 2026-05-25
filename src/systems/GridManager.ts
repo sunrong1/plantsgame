@@ -23,9 +23,9 @@ export class GridManager {
   private selectedPlantType: string | null = null;
   private cloudTweens: Phaser.Tweens.Tween[] = [];
 
-  // Grid offset - more space at top for plant cards
-  private offsetX = 25;
-  private offsetY = 110; // Moved down to avoid overlapping plant cards
+  // Grid offset - adjusted for larger cells
+  private offsetX = 0;
+  private offsetY = 150; // Below top bar (75) + plant cards area
 
   // Track flower positions for redrawing
   private flowerCells: Set<string> = new Set();
@@ -88,7 +88,7 @@ export class GridManager {
       if (now - lastHoverTime < hoverThrottle) return;
       lastHoverTime = now;
 
-      if (pointer.y < 60) {
+      if (pointer.y < 150) {
         this.clearHighlight();
         return;
       }

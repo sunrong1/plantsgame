@@ -7,7 +7,7 @@ const WAVE_CONFIG: WaveConfig[] = [
 ];
 
 export const GAME_CONFIG: GameConfig = {
-  grid: { rows: 5, cols: 9, cellSize: 50 },
+  grid: { rows: 5, cols: 9, cellSize: 80 },
   initialSunlight: 150,
   skyDropInterval: 10000,
   skyDropAmount: 25,

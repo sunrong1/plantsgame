@@ -44,7 +44,7 @@ export class UIScene extends Phaser.Scene {
   private createTopBar(): void {
     const graphics = this.add.graphics();
     graphics.fillStyle(0x333333, 1);
-    graphics.fillRect(0, 0, 530, 75);
+    graphics.fillRect(0, 0, 720, 75); // Full width now
 
     const sunIcon = this.add.graphics();
     sunIcon.fillStyle(0xFFFF00, 1);
@@ -57,7 +57,7 @@ export class UIScene extends Phaser.Scene {
     });
 
     // Wave indicator
-    this.waveText = this.add.text(470, 25, 'Wave 0/3', {
+    this.waveText = this.add.text(580, 25, 'Wave 0/3', {
       fontSize: '18px',
       color: '#FF6666',
       fontFamily: 'Arial',
@@ -66,11 +66,11 @@ export class UIScene extends Phaser.Scene {
   }
 
   private createPlantCards(): void {
-    const cardStartX = 130;
-    const cardWidth = 65;
-    const cardHeight = 50;
-    const cardY = 70;
-    const cardGap = 6;
+    const cardStartX = 180;
+    const cardWidth = 80;
+    const cardHeight = 60;
+    const cardY = 68;
+    const cardGap = 10;
 
     const plants = ['peashooter', 'sunflower', 'wallnut', 'cherrybomb'];
 
@@ -85,7 +85,7 @@ export class UIScene extends Phaser.Scene {
 
   private createAudioUnlockButton(): void {
     // 一个小按钮用于解锁音频上下文
-    const btn = this.add.text(490, 72, '🔊', {
+    const btn = this.add.text(640, 72, '🔊', {
       fontSize: '16px',
     });
     btn.setDepth(200);
@@ -156,20 +156,20 @@ export class UIScene extends Phaser.Scene {
     // 半透明黑色背景
     const overlay = this.add.graphics();
     overlay.fillStyle(0x000000, 0.85);
-    overlay.fillRect(0, 0, 530, 350);
+    overlay.fillRect(0, 0, 720, 580);
     overlay.setDepth(100);
 
     // 主面板背景
     const panelBg = this.add.graphics();
     panelBg.fillStyle(0x1a472a, 1);
-    panelBg.fillRoundedRect(65, 50, 400, 250, 16);
+    panelBg.fillRoundedRect(110, 100, 500, 350, 16);
     panelBg.lineStyle(4, 0x4CAF50, 1);
-    panelBg.strokeRoundedRect(65, 50, 400, 250, 16);
+    panelBg.strokeRoundedRect(110, 100, 500, 350, 16);
     panelBg.setDepth(101);
 
     // 标题
-    const title = this.add.text(265, 75, '🌻 PVZ 像素版 🌻', {
-      fontSize: '28px',
+    const title = this.add.text(360, 130, '🌻 PVZ 像素版 🌻', {
+      fontSize: '32px',
       fontFamily: 'Arial',
       color: '#FFD700',
       fontStyle: 'bold',
@@ -178,8 +178,8 @@ export class UIScene extends Phaser.Scene {
     title.setDepth(102);
 
     // 操作说明
-    const guideTitle = this.add.text(265, 115, '【操作指南】', {
-      fontSize: '16px',
+    const guideTitle = this.add.text(360, 175, '【操作指南】', {
+      fontSize: '18px',
       fontFamily: 'Arial',
       color: '#FFFFFF',
       fontStyle: 'bold',
@@ -196,8 +196,8 @@ export class UIScene extends Phaser.Scene {
     ];
 
     instructions.forEach((text, i) => {
-      const item = this.add.text(100, 140 + i * 22, text, {
-        fontSize: '14px',
+      const item = this.add.text(150, 205 + i * 28, text, {
+        fontSize: '16px',
         fontFamily: 'Arial',
         color: '#E8F5E9',
       });
@@ -206,8 +206,8 @@ export class UIScene extends Phaser.Scene {
     });
 
     // 植物卡片说明
-    const plantsTitle = this.add.text(265, 230, '【植物图鉴】', {
-      fontSize: '16px',
+    const plantsTitle = this.add.text(360, 330, '【植物图鉴】', {
+      fontSize: '18px',
       fontFamily: 'Arial',
       color: '#FFFFFF',
       fontStyle: 'bold',
@@ -223,15 +223,15 @@ export class UIScene extends Phaser.Scene {
 
     const plantInfoTexts: Phaser.GameObjects.GameObject[] = [];
     plantInfo.forEach((plant, i) => {
-      const x = 90 + i * 130;
+      const x = 160 + i * 160;
       const card = this.add.graphics();
       card.fillStyle(0x333333, 1);
-      card.fillRoundedRect(x, 255, 120, 35, 6);
+      card.fillRoundedRect(x, 355, 140, 40, 6);
       card.setDepth(102);
       plantInfoTexts.push(card);
 
-      const nameText = this.add.text(x + 60, 263, `${plant.icon} ${plant.name}`, {
-        fontSize: '12px',
+      const nameText = this.add.text(x + 70, 363, `${plant.icon} ${plant.name}`, {
+        fontSize: '13px',
         fontFamily: 'Arial',
         color: '#FFFFFF',
         fontStyle: 'bold',
@@ -240,8 +240,8 @@ export class UIScene extends Phaser.Scene {
       nameText.setDepth(103);
       plantInfoTexts.push(nameText);
 
-      const descText = this.add.text(x + 60, 278, plant.desc, {
-        fontSize: '11px',
+      const descText = this.add.text(x + 70, 378, plant.desc, {
+        fontSize: '12px',
         fontFamily: 'Arial',
         color: '#AAAAAA',
       });
@@ -253,12 +253,12 @@ export class UIScene extends Phaser.Scene {
     // 开始游戏按钮
     const btnBg = this.add.graphics();
     btnBg.fillStyle(0x4CAF50, 1);
-    btnBg.fillRoundedRect(175, 300, 180, 40, 8);
+    btnBg.fillRoundedRect(260, 410, 200, 50, 8);
     btnBg.setDepth(102);
-    btnBg.setInteractive(new Phaser.Geom.Rectangle(175, 300, 180, 40), Phaser.Geom.Rectangle.Contains);
+    btnBg.setInteractive(new Phaser.Geom.Rectangle(260, 410, 200, 50), Phaser.Geom.Rectangle.Contains);
 
-    const btnText = this.add.text(265, 320, '开始游戏', {
-      fontSize: '20px',
+    const btnText = this.add.text(360, 435, '开始游戏', {
+      fontSize: '24px',
       fontFamily: 'Arial',
       color: '#FFFFFF',
       fontStyle: 'bold',
@@ -277,13 +277,13 @@ export class UIScene extends Phaser.Scene {
     btnBg.on('pointerover', () => {
       btnBg.clear();
       btnBg.fillStyle(0x66BB6A, 1);
-      btnBg.fillRoundedRect(175, 300, 180, 40, 8);
+      btnBg.fillRoundedRect(260, 410, 200, 50, 8);
     });
 
     btnBg.on('pointerout', () => {
       btnBg.clear();
       btnBg.fillStyle(0x4CAF50, 1);
-      btnBg.fillRoundedRect(175, 300, 180, 40, 8);
+      btnBg.fillRoundedRect(260, 410, 200, 50, 8);
     });
 
     btnBg.on('pointerdown', () => {

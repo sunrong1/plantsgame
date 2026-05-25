@@ -15,8 +15,8 @@ export class Zombie {
       ? `zombie_${Date.now()}_${index}`
       : `zombie_${Date.now()}_${Math.random()}`;
 
-    const x = 25 + GAME_CONFIG.grid.cols * 50 + 30;
-    const y = 110 + row * 50 + 25;
+    const x = 0 + GAME_CONFIG.grid.cols * 80 + 50;
+    const y = 150 + row * 80 + 40;
 
     // 使用纹理
     const textureKey = config.isFlag ? 'zombie_flag' : 'zombie_normal';
@@ -113,7 +113,7 @@ export class Zombie {
     const dx = -speed * (delta / 1000);
 
     zombie.sprite.x += dx;
-    zombie.position.col = Math.max(0, Math.floor((zombie.sprite.x - 25) / 50));
+    zombie.position.col = Math.max(0, Math.floor(zombie.sprite.x / 80));
   }
 
   static getCurrentX(zombie: ZombieEntity): number {
