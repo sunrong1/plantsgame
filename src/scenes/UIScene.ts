@@ -57,10 +57,10 @@ export class UIScene extends Phaser.Scene {
 
   private createPlantCards(): void {
     const cardStartX = 130;
-    const cardWidth = 80;
-    const cardHeight = 100;
-    const cardY = 10;
-    const cardGap = 10;
+    const cardWidth = 65;
+    const cardHeight = 50;
+    const cardY = 58;
+    const cardGap = 6;
 
     const plants = ['peashooter', 'sunflower', 'wallnut', 'cherrybomb'];
 
@@ -75,8 +75,8 @@ export class UIScene extends Phaser.Scene {
 
   private createAudioUnlockButton(): void {
     // 一个小按钮用于解锁音频上下文
-    const btn = this.add.text(490, 15, '🔊', {
-      fontSize: '20px',
+    const btn = this.add.text(490, 72, '🔊', {
+      fontSize: '16px',
     });
     btn.setDepth(200);
     btn.setInteractive({ useHandCursor: true });
@@ -358,7 +358,7 @@ class PlantCard {
     this.container.add(this.bg);
 
     // 3. 植物图片占位符 (色块)
-    const iconSize = 50;
+    const iconSize = 30;
     const iconColors: Record<string, number> = {
       peashooter: 0x32CD32, // Plant Green
       sunflower: 0xFFD700,   // Sun Gold
@@ -369,16 +369,16 @@ class PlantCard {
     this.iconPlaceholder.fillStyle(iconColors[this.plantType] || 0x32CD32, 1);
     this.iconPlaceholder.fillRoundedRect(
       (this.width - iconSize) / 2,
-      8,
+      4,
       iconSize,
       iconSize,
       4
     );
     this.container.add(this.iconPlaceholder);
 
-    // 4. 英文名称 - Fredoka One, #4A3B2C, 14px
-    this.nameText = this.scene.add.text(this.width / 2, this.height - 18, PLANT_ENGLISH_NAMES[this.plantType], {
-      fontSize: '14px',
+    // 4. 英文名称 - Fredoka One, #4A3B2C, 10px
+    this.nameText = this.scene.add.text(this.width / 2, this.height - 8, PLANT_ENGLISH_NAMES[this.plantType], {
+      fontSize: '10px',
       fontFamily: "'Fredoka One', sans-serif",
       color: '#4A3B2C',
     });
@@ -386,9 +386,9 @@ class PlantCard {
     this.container.add(this.nameText);
 
     // 5. 阳光成本图标 (右上角)
-    const costRadius = 12;
-    const costX = this.width - costRadius - 4;
-    const costY = costRadius + 4;
+    const costRadius = 7;
+    const costX = this.width - costRadius - 3;
+    const costY = costRadius + 3;
 
     this.costBg = this.scene.add.graphics();
     this.costBg.fillStyle(0xFFD700, 1); // Sun Gold
@@ -398,7 +398,7 @@ class PlantCard {
     this.container.add(this.costBg);
 
     this.costText = this.scene.add.text(costX, costY, this.cost.toString(), {
-      fontSize: '10px',
+      fontSize: '8px',
       fontFamily: 'Arial',
       color: '#4A3B2C',
       fontStyle: 'bold',
@@ -414,7 +414,7 @@ class PlantCard {
     this.container.add(this.cooldownOverlay);
 
     this.cooldownText = this.scene.add.text(this.width / 2, this.height / 2, '', {
-      fontSize: '32px',
+      fontSize: '16px',
       fontFamily: "'Fredoka One', sans-serif",
       color: '#FFFFFF',
     });
@@ -424,9 +424,9 @@ class PlantCard {
 
     // 7. 禁用叉号 (默认隐藏)
     this.disabledX = this.scene.add.graphics();
-    this.disabledX.lineStyle(3, 0xFF0000, 0.8);
-    this.disabledX.lineBetween(10, 10, this.width - 10, this.height - 10);
-    this.disabledX.lineBetween(this.width - 10, 10, 10, this.height - 10);
+    this.disabledX.lineStyle(2, 0xFF0000, 0.8);
+    this.disabledX.lineBetween(6, 6, this.width - 6, this.height - 6);
+    this.disabledX.lineBetween(this.width - 6, 6, 6, this.height - 6);
     this.disabledX.setAlpha(0);
     this.container.add(this.disabledX);
   }
