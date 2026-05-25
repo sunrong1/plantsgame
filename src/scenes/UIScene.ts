@@ -83,8 +83,8 @@ export class UIScene extends Phaser.Scene {
     btn.on('pointerdown', () => {
       this.audioUnlocked = true;
       btn.setText('🔊');
-      // 尝试激活音频上下文
-      const dummy = this.sound.add('dummy') || null;
+      // Speech synthesis doesn't need audio context unlocking like Web Audio API
+      // This just marks the flag to enable speech
     });
   }
 
@@ -105,13 +105,15 @@ export class UIScene extends Phaser.Scene {
 
     const plants = ['peashooter', 'sunflower', 'wallnut', 'cherrybomb'];
     const plantType = plants[index];
-    const config = PLANT_CONFIG_MAP.get(plantType)!;
+    const config = PLANT_CONFIG_MAP.get(plantType);
+    if (!config) return;
+
     const sunlight = playScene.getSunlight();
 
-    // 朗读植物英文名
-    this.speak(PLANT_ENGLISH_NAMES[plantType]);
-
     if (sunlight >= config.cost) {
+      // Only speak if affordable
+      this.speak(PLANT_ENGLISH_NAMES[plantType]);
+
       // 取消之前选中
       if (this.selectedCardIndex >= 0) {
         this.plantCards[this.selectedCardIndex].setSelected(false);

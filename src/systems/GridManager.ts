@@ -21,10 +21,14 @@ export class GridManager {
   private hoverCol: number = -1;
   private previewSprite: Phaser.GameObjects.Image | null = null;
   private selectedPlantType: string | null = null;
+  private cloudTweens: Phaser.Tweens.Tween[] = [];
 
   // Grid offset - slightly lower to give more sky space
   private offsetX = 25;
   private offsetY = 80; // Moved down from 60
+
+  // Track flower positions for redrawing
+  private flowerCells: Set<string> = new Set();
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
@@ -58,7 +62,7 @@ export class GridManager {
       cloud.setDepth(-1);
 
       // Slow floating animation
-      this.scene.tweens.add({
+      const tween = this.scene.tweens.add({
         targets: cloud,
         x: x + 30,
         duration: 8000 + Math.random() * 4000,
@@ -66,6 +70,7 @@ export class GridManager {
         yoyo: true,
         repeat: -1,
       });
+      this.cloudTweens.push(tween);
     };
 
     // Create 3 clouds at different positions
@@ -201,19 +206,35 @@ export class GridManager {
     const centerY = this.offsetY + row * cellSize + cellSize / 2;
     const color = FLOWER_COLORS[Math.floor(Math.random() * FLOWER_COLORS.length)];
 
+    // Track this cell as having a flower
+    this.flowerCells.add(`${row},${col}`);
+
+    // Redraw all flowers (can't just append since we share one graphics object)
+    this.redrawFlowers();
+  }
+
+  private redrawFlowers(): void {
     this.flowerGraphics.clear();
 
-    // Center circle
-    this.flowerGraphics.fillStyle(color, 0.9);
-    this.flowerGraphics.fillCircle(centerX, centerY, 4);
+    for (const cellKey of this.flowerCells) {
+      const [row, col] = cellKey.split(',').map(Number);
+      const { cellSize } = GAME_CONFIG.grid;
+      const centerX = this.offsetX + col * cellSize + cellSize / 2;
+      const centerY = this.offsetY + row * cellSize + cellSize / 2;
+      const color = FLOWER_COLORS[Math.floor(Math.random() * FLOWER_COLORS.length)];
 
-    // 5 petals
-    for (let i = 0; i < 5; i++) {
-      const angle = (i * Math.PI * 2) / 5 - Math.PI / 2;
-      const petalX = centerX + Math.cos(angle) * 8;
-      const petalY = centerY + Math.sin(angle) * 8;
-      this.flowerGraphics.fillStyle(color, 0.7);
-      this.flowerGraphics.fillCircle(petalX, petalY, 3);
+      // Center circle
+      this.flowerGraphics.fillStyle(color, 0.9);
+      this.flowerGraphics.fillCircle(centerX, centerY, 4);
+
+      // 5 petals
+      for (let i = 0; i < 5; i++) {
+        const angle = (i * Math.PI * 2) / 5 - Math.PI / 2;
+        const petalX = centerX + Math.cos(angle) * 8;
+        const petalY = centerY + Math.sin(angle) * 8;
+        this.flowerGraphics.fillStyle(color, 0.7);
+        this.flowerGraphics.fillCircle(petalX, petalY, 3);
+      }
     }
   }
 
