@@ -28,15 +28,8 @@ export class PlayScene extends Phaser.Scene {
   }
 
   create(): void {
-    // 创建草坪背景 - 覆盖整个网格区域
-    // Grid spans: cols=9*50=450, rows=5*50=250, offset=(25,110)
-    // Center at grid area center
-    const gridCenterX = 25 + (9 * 50) / 2;  // 250
-    const gridCenterY = 110 + (5 * 50) / 2;  // 235
-    this.add.image(gridCenterX, gridCenterY, 'lawn')
-      .setScale(2.2)
-      .setDepth(-1);
-    // Scale 2.2 covers 530*2.2=1166 width, 350*2.2=770 height - enough to cover grid area
+    // Create layered background
+    this.createBackground();
 
     this.gridManager = new GridManager(this);
     this.economyManager = new EconomyManager(this);
@@ -114,6 +107,25 @@ export class PlayScene extends Phaser.Scene {
 
   private handleUIClick(x: number, y: number): void {
     // 已移除 - 现在由 UIScene 直接调用 selectPlant
+  }
+
+  private createBackground(): void {
+    // Sky area - soft blue above the grid
+    const sky = this.add.graphics();
+    sky.fillStyle(0x87CEEB, 1); // Sky blue
+    sky.fillRect(0, 75, 530, 50);
+
+    // Lawn texture - tiled grass pattern
+    const gridCenterX = 25 + (9 * 50) / 2;
+    const gridCenterY = 110 + (5 * 50) / 2;
+    this.add.image(gridCenterX, gridCenterY, 'lawn')
+      .setScale(2.2)
+      .setDepth(-1);
+
+    // Decorative grass strip at bottom
+    const bottomGrass = this.add.graphics();
+    bottomGrass.fillStyle(0x3D6B33, 1);
+    bottomGrass.fillRect(0, 355, 530, 25);
   }
 
   public selectPlant(plantType: string): void {
