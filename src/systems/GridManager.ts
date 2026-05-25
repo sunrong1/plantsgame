@@ -2,18 +2,29 @@ import Phaser from 'phaser';
 import type { GridPosition } from '../types';
 import { GAME_CONFIG } from '../config';
 
-const EMPTY_CELL_COLOR = 0x90EE90;
-const OCCUPIED_CELL_COLOR = 0xFFB6C1;
-const HIGHLIGHT_ALPHA = 0.8;
+// STYLE_GUIDE colors
+const CELL_LIGHT = 0xB8F0A8; // Light green #B8F0A8
+const CELL_DARK = 0x8ED87A;  // Darker green #8ED87A
+const GRID_LINE = 0xA0D68A; // Dotted line #A0D68A
+
+// Flower colors (light pink, light yellow, light purple)
+const FLOWER_COLORS = [0xFFB8D4, 0xFFF8B8, 0xE0B8FF];
 
 export class GridManager {
   private scene: Phaser.Scene;
-  private gridGraphics: Phaser.GameObjects.Graphics;
-  private highlightGraphics: Phaser.GameObjects.Graphics;
+  private gridGraphics!: Phaser.GameObjects.Graphics;
+  private highlightGraphics!: Phaser.GameObjects.Graphics;
+  private flowerGraphics!: Phaser.GameObjects.Graphics;
   private plantLayer: Phaser.GameObjects.Container;
   private grid: (string | null)[][];
   private hoverRow: number = -1;
   private hoverCol: number = -1;
+  private previewSprite: Phaser.GameObjects.Image | null = null;
+  private selectedPlantType: string | null = null;
+
+  // Grid offset - slightly lower to give more sky space
+  private offsetX = 25;
+  private offsetY = 80; // Moved down from 60
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
@@ -21,11 +32,46 @@ export class GridManager {
 
     this.gridGraphics = scene.add.graphics();
     this.highlightGraphics = scene.add.graphics();
+    this.flowerGraphics = scene.add.graphics();
     this.drawGrid();
+    this.createClouds();
 
     this.plantLayer = scene.add.container(0, 0);
 
     this.setupHoverDetection();
+  }
+
+  private createClouds(): void {
+    // Simple clouds made of overlapping circles
+    const createCloud = (x: number, y: number, scale: number) => {
+      const cloud = this.scene.add.graphics();
+      cloud.fillStyle(0xFFFFFF, 0.7);
+
+      // Main body
+      cloud.fillCircle(0, 0, 20 * scale);
+      cloud.fillCircle(25 * scale, -5 * scale, 15 * scale);
+      cloud.fillCircle(50 * scale, 0, 20 * scale);
+      cloud.fillCircle(15 * scale, 10 * scale, 12 * scale);
+      cloud.fillCircle(35 * scale, 10 * scale, 12 * scale);
+
+      cloud.setPosition(x, y);
+      cloud.setDepth(-1);
+
+      // Slow floating animation
+      this.scene.tweens.add({
+        targets: cloud,
+        x: x + 30,
+        duration: 8000 + Math.random() * 4000,
+        ease: 'ease-in-out',
+        yoyo: true,
+        repeat: -1,
+      });
+    };
+
+    // Create 3 clouds at different positions
+    createCloud(80, 30, 0.6);
+    createCloud(300, 20, 0.8);
+    createCloud(450, 40, 0.5);
   }
 
   private setupHoverDetection(): void {
@@ -63,21 +109,32 @@ export class GridManager {
 
     this.highlightGraphics.clear();
 
-    const isEmpty = this.isCellEmpty(row, col);
-    const color = isEmpty ? EMPTY_CELL_COLOR : OCCUPIED_CELL_COLOR;
-
     const { cellSize } = GAME_CONFIG.grid;
-    const x = 25 + col * cellSize;
-    const y = 60 + row * cellSize;
+    const x = this.offsetX + col * cellSize;
+    const y = this.offsetY + row * cellSize;
+    const isEmpty = this.isCellEmpty(row, col);
 
-    this.highlightGraphics.lineStyle(2, color, HIGHLIGHT_ALPHA);
-    this.highlightGraphics.strokeRect(x, y, cellSize, cellSize);
+    if (isEmpty) {
+      // Brighten empty cell with semi-transparent white overlay
+      this.highlightGraphics.fillStyle(0xFFFFFF, 0.3);
+      this.highlightGraphics.fillRect(x, y, cellSize, cellSize);
+    }
+
+    // Update preview sprite position if we have a selected plant
+    if (this.previewSprite && isEmpty) {
+      const pos = this.getGridPosition(row, col);
+      this.previewSprite.setPosition(pos.x, pos.y);
+      this.previewSprite.setVisible(true);
+    }
   }
 
   private clearHighlight(): void {
     this.hoverRow = -1;
     this.hoverCol = -1;
     this.highlightGraphics.clear();
+    if (this.previewSprite) {
+      this.previewSprite.setVisible(false);
+    }
   }
 
   private createEmptyGrid(): (string | null)[][] {
@@ -87,19 +144,76 @@ export class GridManager {
   }
 
   private drawGrid(): void {
-    const { cellSize } = GAME_CONFIG.grid;
-    const offsetX = 25;
-    const offsetY = 60;
+    const { cellSize, rows, cols } = GAME_CONFIG.grid;
 
     this.gridGraphics.clear();
-    this.gridGraphics.lineStyle(1, 0x1B5E20, 0.3);
 
-    for (let row = 0; row < GAME_CONFIG.grid.rows; row++) {
-      for (let col = 0; col < GAME_CONFIG.grid.cols; col++) {
-        const x = offsetX + col * cellSize;
-        const y = offsetY + row * cellSize;
-        this.gridGraphics.strokeRect(x, y, cellSize, cellSize);
+    // Draw checkerboard pattern
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < cols; col++) {
+        const x = this.offsetX + col * cellSize;
+        const y = this.offsetY + row * cellSize;
+
+        // Alternating colors (checkerboard)
+        const isLight = (row + col) % 2 === 0;
+        this.gridGraphics.fillStyle(isLight ? CELL_LIGHT : CELL_DARK, 1);
+        this.gridGraphics.fillRect(x, y, cellSize, cellSize);
       }
+    }
+
+    // Draw dotted grid lines
+    this.gridGraphics.lineStyle(2, GRID_LINE, 0.6);
+
+    // Vertical lines
+    for (let col = 0; col <= cols; col++) {
+      const x = this.offsetX + col * cellSize;
+      const startY = this.offsetY;
+      const endY = this.offsetY + rows * cellSize;
+
+      // Draw dashed line
+      let y = startY;
+      while (y < endY) {
+        const dashLength = Math.min(6, endY - y);
+        this.gridGraphics.lineBetween(x, y, x, y + dashLength);
+        y += 10;
+      }
+    }
+
+    // Horizontal lines
+    for (let row = 0; row <= rows; row++) {
+      const y = this.offsetY + row * cellSize;
+      const startX = this.offsetX;
+      const endX = this.offsetX + cols * cellSize;
+
+      let x = startX;
+      while (x < endX) {
+        const dashLength = Math.min(6, endX - x);
+        this.gridGraphics.lineBetween(x, y, x + dashLength, y);
+        x += 10;
+      }
+    }
+  }
+
+  // Draw flower decoration on occupied cells
+  drawFlowerAt(row: number, col: number): void {
+    const { cellSize } = GAME_CONFIG.grid;
+    const centerX = this.offsetX + col * cellSize + cellSize / 2;
+    const centerY = this.offsetY + row * cellSize + cellSize / 2;
+    const color = FLOWER_COLORS[Math.floor(Math.random() * FLOWER_COLORS.length)];
+
+    this.flowerGraphics.clear();
+
+    // Center circle
+    this.flowerGraphics.fillStyle(color, 0.9);
+    this.flowerGraphics.fillCircle(centerX, centerY, 4);
+
+    // 5 petals
+    for (let i = 0; i < 5; i++) {
+      const angle = (i * Math.PI * 2) / 5 - Math.PI / 2;
+      const petalX = centerX + Math.cos(angle) * 8;
+      const petalY = centerY + Math.sin(angle) * 8;
+      this.flowerGraphics.fillStyle(color, 0.7);
+      this.flowerGraphics.fillCircle(petalX, petalY, 3);
     }
   }
 
@@ -120,6 +234,7 @@ export class GridManager {
   occupyCell(row: number, col: number, plantId: string): boolean {
     if (!this.isCellEmpty(row, col)) return false;
     this.grid[row][col] = plantId;
+    this.drawFlowerAt(row, col); // Add flower decoration
     return true;
   }
 
@@ -136,15 +251,15 @@ export class GridManager {
   getGridPosition(row: number, col: number): { x: number; y: number } {
     const { cellSize } = GAME_CONFIG.grid;
     return {
-      x: 25 + col * cellSize + cellSize / 2,
-      y: 60 + row * cellSize + cellSize / 2,
+      x: this.offsetX + col * cellSize + cellSize / 2,
+      y: this.offsetY + row * cellSize + cellSize / 2,
     };
   }
 
   getCellFromPixel(x: number, y: number): GridPosition | null {
     const { cellSize } = GAME_CONFIG.grid;
-    const col = Math.floor((x - 25) / cellSize);
-    const row = Math.floor((y - 60) / cellSize);
+    const col = Math.floor((x - this.offsetX) / cellSize);
+    const row = Math.floor((y - this.offsetY) / cellSize);
 
     if (!this.isValidPosition(row, col)) return null;
     return { row, col };
@@ -157,5 +272,21 @@ export class GridManager {
 
   getPlantLayer(): Phaser.GameObjects.Container {
     return this.plantLayer;
+  }
+
+  // Set preview sprite for showing plant ghost on hover
+  setPreviewSprite(sprite: Phaser.GameObjects.Image | null): void {
+    if (this.previewSprite) {
+      this.previewSprite.destroy();
+    }
+    this.previewSprite = sprite;
+    if (this.previewSprite) {
+      this.previewSprite.setVisible(false);
+      this.previewSprite.setAlpha(0.4);
+    }
+  }
+
+  getOffsetY(): number {
+    return this.offsetY;
   }
 }

@@ -119,28 +119,16 @@ export class PlayScene extends Phaser.Scene {
     this.previewSprite = this.add.image(0, 0, plantType);
     this.previewSprite.setAlpha(0.5);
     this.previewSprite.setTint(0x00FF00);
+    this.previewSprite.setVisible(false);
+
+    // Pass preview to GridManager for hover control
+    this.gridManager.setPreviewSprite(this.previewSprite);
   }
 
   private updatePreview(x: number, y: number): void {
-    if (!this.previewSprite || !this.selectedPlant) return;
-
-    const cell = this.gridManager.getCellFromPixel(x, y);
-    const canPlace = cell && this.gridManager.isCellEmpty(cell.row, cell.col);
-
-    if (cell && canPlace) {
-      const pos = this.gridManager.getGridPosition(cell.row, cell.col);
-      this.previewSprite.setPosition(pos.x, pos.y);
-      this.previewSprite.setVisible(true);
-      this.previewSprite.setTint(0x00FF00); // 绿色：可放置
-    } else if (cell) {
-      // 有格子但不可放置（已占用）
-      const pos = this.gridManager.getGridPosition(cell.row, cell.col);
-      this.previewSprite.setPosition(pos.x, pos.y);
-      this.previewSprite.setVisible(true);
-      this.previewSprite.setTint(0xFF0000); // 红色：已占用
-    } else {
-      this.previewSprite.setVisible(false);
-    }
+    // Preview is now controlled by GridManager based on hover
+    // This method kept for compatibility but does nothing
+    // since GridManager handles the preview directly
   }
 
   private tryPlant(x: number, y: number): void {
