@@ -29,15 +29,12 @@ jobs:
           node-version: '22'
       - name: Setup npm registry
         run: npm config set registry https://registry.npmjs.org/
-      - name: Cache npm packages
-        uses: actions/cache@v4
-        with:
-          path: ~/.npm
-          key: npm-${{ runner.os }}-node-${{ hashFiles('package-lock.json') }}
-          restore-keys: |
-            npm-${{ runner.os }}-node-
+        env:
+          npm_config_registry: https://registry.npmjs.org/
       - name: Install dependencies
-        run: npm install --registry https://registry.npmjs.org/
+        run: npm install --registry https://registry.npmjs.org/ --legacy-peer-deps
+        env:
+          npm_config_registry: https://registry.npmjs.org/
       - name: Build
         run: npm run build
       - name: Setup Pages
