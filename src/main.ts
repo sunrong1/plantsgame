@@ -1,20 +1,18 @@
 import Phaser from 'phaser';
 import { BootScene } from './scenes/BootScene';
 
-// Dynamic resolution based on actual screen size
-const GAME_WIDTH = window.innerWidth;
-const GAME_HEIGHT = window.innerHeight;
-
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
-  width: GAME_WIDTH,
-  height: GAME_HEIGHT,
+  width: 720,
+  height: 1280,
   parent: 'game-container',
   backgroundColor: '#1a1a2e',
   scene: [BootScene],
   scale: {
     mode: Phaser.Scale.ScaleModes.FIT,
     autoCenter: Phaser.Scale.Center.CENTER_BOTH,
+    min: { width: 360, height: 640 },
+    max: { width: 1440, height: 2560 },
   },
   render: {
     antialias: false,
