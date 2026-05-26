@@ -3,13 +3,13 @@ import { BootScene } from './scenes/BootScene';
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
-  width: window.innerWidth,
-  height: window.innerHeight,
+  width: 720,
+  height: 1280,
   parent: 'game-container',
   backgroundColor: '#87CEEB',
   scene: [BootScene],
   scale: {
-    mode: Phaser.Scale.ScaleModes.RESIZE,
+    mode: Phaser.Scale.ScaleModes.ENVELOP,
     autoCenter: Phaser.Scale.Center.CENTER_BOTH,
   },
   render: {
