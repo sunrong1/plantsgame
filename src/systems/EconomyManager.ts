@@ -6,10 +6,22 @@ export class EconomyManager {
   private scene: Phaser.Scene;
   private sunlight: number;
   private sunlightSprites: Sunlight[] = [];
+  private offsetX: number;
+  private offsetY: number;
+  private cellSize: number;
 
-  constructor(scene: Phaser.Scene) {
+  constructor(scene: Phaser.Scene, offsetX: number = 0, offsetY: number = 150, cellSize: number = 80) {
     this.scene = scene;
     this.sunlight = GAME_CONFIG.initialSunlight;
+    this.offsetX = offsetX;
+    this.offsetY = offsetY;
+    this.cellSize = cellSize;
+  }
+
+  updateGridParams(offsetX: number, offsetY: number, cellSize: number): void {
+    this.offsetX = offsetX;
+    this.offsetY = offsetY;
+    this.cellSize = cellSize;
   }
 
   getSunlight(): number {
@@ -27,8 +39,9 @@ export class EconomyManager {
   }
 
   spawnSkyDrop(): void {
-    const x = 100 + Math.random() * 520;
-    const y = 180 + Math.random() * 350;
+    const gridWidth = GAME_CONFIG.grid.cols * this.cellSize;
+    const x = this.offsetX + 50 + Math.random() * (gridWidth - 100);
+    const y = this.offsetY + 30 + Math.random() * (GAME_CONFIG.grid.rows * this.cellSize - 60);
     this.createSunlight(x, y, GAME_CONFIG.skyDropAmount);
   }
 

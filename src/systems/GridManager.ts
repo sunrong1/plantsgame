@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import type { GridPosition } from '../types';
-import { GAME_CONFIG } from '../config';
+import { GAME_CONFIG, getCellSize, getOffsetX } from '../config';
 
 // STYLE_GUIDE colors
 const CELL_LIGHT = 0xB8F0A8; // Light green #B8F0A8
@@ -23,8 +23,9 @@ export class GridManager {
   private selectedPlantType: string | null = null;
   private cloudTweens: Phaser.Tweens.Tween[] = [];
 
-  // Grid offset - adjusted for larger cells
-  private offsetX = 0;
+  // Dynamic grid config
+  private cellSize: number;
+  private offsetX: number;
   private offsetY = 150; // Below top bar (75) + plant cards area
 
   // Track flower positions for redrawing
@@ -32,6 +33,11 @@ export class GridManager {
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
+
+    // Calculate dynamic grid settings based on screen orientation
+    this.cellSize = getCellSize();
+    this.offsetX = getOffsetX();
+
     this.grid = this.createEmptyGrid();
 
     this.gridGraphics = scene.add.graphics();
@@ -43,6 +49,14 @@ export class GridManager {
     this.plantLayer = scene.add.container(0, 0);
 
     this.setupHoverDetection();
+  }
+
+  public getCellSize(): number {
+    return this.cellSize;
+  }
+
+  public getOffsetX(): number {
+    return this.offsetX;
   }
 
   private createClouds(): void {
@@ -114,7 +128,7 @@ export class GridManager {
 
     this.highlightGraphics.clear();
 
-    const { cellSize } = GAME_CONFIG.grid;
+    const cellSize = this.cellSize;
     const x = this.offsetX + col * cellSize;
     const y = this.offsetY + row * cellSize;
     const isEmpty = this.isCellEmpty(row, col);
@@ -149,7 +163,9 @@ export class GridManager {
   }
 
   private drawGrid(): void {
-    const { cellSize, rows, cols } = GAME_CONFIG.grid;
+    const rows = GAME_CONFIG.grid.rows;
+    const cols = GAME_CONFIG.grid.cols;
+    const cellSize = this.cellSize;
 
     this.gridGraphics.clear();
 
@@ -201,7 +217,7 @@ export class GridManager {
 
   // Draw flower decoration on occupied cells
   drawFlowerAt(row: number, col: number): void {
-    const { cellSize } = GAME_CONFIG.grid;
+    const cellSize = this.cellSize;
     const centerX = this.offsetX + col * cellSize + cellSize / 2;
     const centerY = this.offsetY + row * cellSize + cellSize / 2;
     const color = FLOWER_COLORS[Math.floor(Math.random() * FLOWER_COLORS.length)];
@@ -215,10 +231,10 @@ export class GridManager {
 
   private redrawFlowers(): void {
     this.flowerGraphics.clear();
+    const cellSize = this.cellSize;
 
     for (const cellKey of this.flowerCells) {
       const [row, col] = cellKey.split(',').map(Number);
-      const { cellSize } = GAME_CONFIG.grid;
       const centerX = this.offsetX + col * cellSize + cellSize / 2;
       const centerY = this.offsetY + row * cellSize + cellSize / 2;
       const color = FLOWER_COLORS[Math.floor(Math.random() * FLOWER_COLORS.length)];
@@ -270,7 +286,7 @@ export class GridManager {
   }
 
   getGridPosition(row: number, col: number): { x: number; y: number } {
-    const { cellSize } = GAME_CONFIG.grid;
+    const cellSize = this.cellSize;
     return {
       x: this.offsetX + col * cellSize + cellSize / 2,
       y: this.offsetY + row * cellSize + cellSize / 2,
@@ -278,7 +294,7 @@ export class GridManager {
   }
 
   getCellFromPixel(x: number, y: number): GridPosition | null {
-    const { cellSize } = GAME_CONFIG.grid;
+    const cellSize = this.cellSize;
     const col = Math.floor((x - this.offsetX) / cellSize);
     const row = Math.floor((y - this.offsetY) / cellSize);
 

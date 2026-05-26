@@ -14,17 +14,26 @@ export class WaveManager {
   private onZombieSpawn: (zombie: ZombieEntity) => void;
   private onWaveComplete: (wave: number) => void;
   private onWaveStart: (wave: number) => void;
+  private cellSize: number;
+  private offsetX: number;
+  private offsetY: number;
 
   constructor(
     scene: Phaser.Scene,
     onZombieSpawn: (zombie: ZombieEntity) => void,
     onWaveComplete: (wave: number) => void,
-    onWaveStart?: (wave: number) => void
+    onWaveStart?: (wave: number) => void,
+    cellSize: number = 80,
+    offsetX: number = 0,
+    offsetY: number = 150
   ) {
     this.scene = scene;
     this.onZombieSpawn = onZombieSpawn;
     this.onWaveComplete = onWaveComplete;
     this.onWaveStart = onWaveStart || (() => {});
+    this.cellSize = cellSize;
+    this.offsetX = offsetX;
+    this.offsetY = offsetY;
   }
 
   startWaves(): void {
@@ -68,7 +77,7 @@ export class WaveManager {
     const row = Math.floor(Math.random() * GAME_CONFIG.grid.rows);
 
     const config = ZOMBIE_CONFIGS.find(z => z.id === zombieType)!;
-    const zombie = Zombie.create(this.scene, config, row, this.zombies.length);
+    const zombie = Zombie.create(this.scene, config, row, this.zombies.length, this.cellSize, this.offsetX, this.offsetY);
 
     this.zombies.push(zombie);
     this.onZombieSpawn(zombie);

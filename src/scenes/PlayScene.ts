@@ -32,13 +32,16 @@ export class PlayScene extends Phaser.Scene {
     this.createBackground();
 
     this.gridManager = new GridManager(this);
-    this.economyManager = new EconomyManager(this);
+    this.economyManager = new EconomyManager(this, this.gridManager.getOffsetX(), this.gridManager.getOffsetY(), this.gridManager.getCellSize());
 
     this.waveManager = new WaveManager(
       this,
       (zombie) => this.onZombieSpawn(zombie),
       (wave) => this.onWaveComplete(wave),
-      (wave) => this.onWaveStart(wave)
+      (wave) => this.onWaveStart(wave),
+      this.gridManager.getCellSize(),
+      this.gridManager.getOffsetX(),
+      this.gridManager.getOffsetY()
     );
 
     // 创建入侵方向箭头
@@ -110,14 +113,20 @@ export class PlayScene extends Phaser.Scene {
   }
 
   private createBackground(): void {
+    const cellSize = this.gridManager.getCellSize();
+    const offsetX = this.gridManager.getOffsetX();
+    const offsetY = this.gridManager.getOffsetY();
+    const cols = 9;
+    const rows = 5;
+
     // Sky area - soft blue above the grid
     const sky = this.add.graphics();
     sky.fillStyle(0x87CEEB, 1);
-    sky.fillRect(0, 75, 720, 75); // Full width, from top bar to grid
+    sky.fillRect(0, 75, window.innerWidth, 75);
 
     // Lawn texture - centered on grid area
-    const gridCenterX = (9 * 80) / 2;  // 360
-    const gridCenterY = 150 + (5 * 80) / 2;  // 350
+    const gridCenterX = offsetX + (cols * cellSize) / 2;
+    const gridCenterY = offsetY + (rows * cellSize) / 2;
     this.add.image(gridCenterX, gridCenterY, 'lawn')
       .setScale(2.8)
       .setDepth(-1);
@@ -125,7 +134,7 @@ export class PlayScene extends Phaser.Scene {
     // Decorative grass strip at bottom
     const bottomGrass = this.add.graphics();
     bottomGrass.fillStyle(0x3D6B33, 1);
-    bottomGrass.fillRect(0, 550, 720, 30);
+    bottomGrass.fillRect(0, offsetY + rows * cellSize + 20, window.innerWidth, 30);
   }
 
   public selectPlant(plantType: string): void {
@@ -178,7 +187,7 @@ export class PlayScene extends Phaser.Scene {
       return;
     }
 
-    const plant = Plant.create(this as unknown as Phaser.Scene, this.selectedPlant, cell);
+    const plant = Plant.create(this as unknown as Phaser.Scene, this.selectedPlant, cell, this.gridManager.getCellSize(), this.gridManager.getOffsetX(), this.gridManager.getOffsetY());
     this.plants.set(plant.id, plant);
     this.gridManager.occupyCell(cell.row, cell.col, plant.id);
     this.gridManager.addPlant(plant.sprite, plant.id);
@@ -230,9 +239,10 @@ export class PlayScene extends Phaser.Scene {
     if (!cell) return;
 
     const pos = this.gridManager.getGridPosition(cell.row, cell.col);
+    const cellSize = this.gridManager.getCellSize();
     const feedback = this.add.graphics();
     feedback.lineStyle(3, 0xFF0000, 0.8);
-    feedback.strokeRect(pos.x - 40, pos.y - 40, 80, 80);
+    feedback.strokeRect(pos.x - cellSize / 2, pos.y - cellSize / 2, cellSize, cellSize);
 
     this.tweens.add({
       targets: feedback,
@@ -275,7 +285,7 @@ export class PlayScene extends Phaser.Scene {
 
           if (hasTarget) {
             const pos = this.gridManager.getGridPosition(plant.position.row, plant.position.col);
-            const projectile = Projectile.create(this as unknown as Phaser.Scene, pos.x + 80, pos.y, damage);
+            const projectile = Projectile.create(this as unknown as Phaser.Scene, pos.x + this.gridManager.getCellSize(), pos.y, damage);
             this.projectiles.push(projectile);
             plant.lastActionTime = time;
           }
@@ -285,13 +295,15 @@ export class PlayScene extends Phaser.Scene {
   }
 
   private checkZombiesInRow(row: number, shooterCol: number): boolean {
+    const cellSize = this.gridManager.getCellSize();
+    const offsetX = this.gridManager.getOffsetX();
     for (const zombie of this.zombies.values()) {
       if (Zombie.getRow(zombie) !== row) continue;
       if (zombie.state === 'dead' || zombie.state === 'dying') continue;
 
       // 检查僵尸是否在射手右侧（可以被射手打到）
       const zombieX = Zombie.getCurrentX(zombie);
-      const shooterX = shooterCol * 80 + 40; // 射手中心x
+      const shooterX = offsetX + shooterCol * cellSize + cellSize / 2; // 射手中心x
 
       if (zombieX > shooterX) {
         return true;
@@ -327,7 +339,7 @@ export class PlayScene extends Phaser.Scene {
       } else {
         zombie.state = 'walking';
         zombie.targetPlant = null;
-        Zombie.updatePosition(zombie, delta);
+        Zombie.updatePosition(zombie, delta, this.gridManager.getCellSize());
 
         const newRow = Zombie.getRow(zombie);
         zombie.sprite.setData('row', newRow);
@@ -358,7 +370,7 @@ export class PlayScene extends Phaser.Scene {
       Projectile.update(projectile, delta);
 
       // 计算子弹所在行
-      const projectileRow = Math.floor((projectile.y - 150) / 80);
+      const projectileRow = Math.floor((projectile.y - this.gridManager.getOffsetY()) / this.gridManager.getCellSize());
 
       const hitZombieId = Projectile.checkCollision(
         projectile,
@@ -379,7 +391,7 @@ export class PlayScene extends Phaser.Scene {
         continue;
       }
 
-      if (Projectile.isOffScreen(projectile, GAME_CONFIG.grid.cols * 80 + 80)) {
+      if (Projectile.isOffScreen(projectile, this.gridManager.getOffsetX() + GAME_CONFIG.grid.cols * this.gridManager.getCellSize() + 80)) {
         toRemove.push(projectile);
       }
     }
@@ -515,8 +527,11 @@ export class PlayScene extends Phaser.Scene {
   }
 
   private createInvasionArrow(): void {
+    const cellSize = this.gridManager.getCellSize();
+    const offsetY = this.gridManager.getOffsetY();
+    const rows = 5;
     // Position arrow at left side, aligned with grid rows
-    const gridCenterY = 150 + (5 * 80) / 2;  // 350
+    const gridCenterY = offsetY + (rows * cellSize) / 2;
     const arrow = this.add.image(24, gridCenterY, 'invasion_arrow');
     arrow.setScale(2.5); // Slightly larger to match bigger cells
     arrow.setDepth(0);

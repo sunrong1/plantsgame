@@ -8,13 +8,16 @@ export class Plant {
   static create(
     scene: Phaser.Scene,
     plantType: string,
-    position: GridPosition
+    position: GridPosition,
+    cellSize: number = 80,
+    offsetX: number = 0,
+    offsetY: number = 150
   ): PlantEntity {
     const config = PLANT_CONFIG_MAP.get(plantType)!;
     const id = `plant_${Date.now()}_${Math.random()}`;
 
-    const x = 0 + position.col * 80 + 40;
-    const y = 150 + position.row * 80 + 40;
+    const x = offsetX + position.col * cellSize + cellSize / 2;
+    const y = offsetY + position.row * cellSize + cellSize / 2;
 
     // 使用纹理
     const sprite = scene.add.image(x, y, plantType);

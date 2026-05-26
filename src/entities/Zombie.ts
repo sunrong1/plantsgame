@@ -9,14 +9,17 @@ export class Zombie {
     scene: Phaser.Scene,
     config: ZombieConfig,
     row: number,
-    index?: number
+    index?: number,
+    cellSize: number = 80,
+    offsetX: number = 0,
+    offsetY: number = 150
   ): ZombieEntity {
     const id = index !== undefined
       ? `zombie_${Date.now()}_${index}`
       : `zombie_${Date.now()}_${Math.random()}`;
 
-    const x = 0 + GAME_CONFIG.grid.cols * 80 + 50;
-    const y = 150 + row * 80 + 40;
+    const x = offsetX + GAME_CONFIG.grid.cols * cellSize + 50;
+    const y = offsetY + row * cellSize + cellSize / 2;
 
     // 使用纹理
     const textureKey = config.isFlag ? 'zombie_flag' : 'zombie_normal';
@@ -106,14 +109,14 @@ export class Zombie {
     return zombie.state === 'dying' || zombie.state === 'dead';
   }
 
-  static updatePosition(zombie: ZombieEntity, delta: number): void {
+  static updatePosition(zombie: ZombieEntity, delta: number, cellSize: number = 80): void {
     if (zombie.state !== 'walking') return;
 
     const speed = zombie.config.speed;
     const dx = -speed * (delta / 1000);
 
     zombie.sprite.x += dx;
-    zombie.position.col = Math.max(0, Math.floor(zombie.sprite.x / 80));
+    zombie.position.col = Math.max(0, Math.floor(zombie.sprite.x / cellSize));
   }
 
   static getCurrentX(zombie: ZombieEntity): number {
