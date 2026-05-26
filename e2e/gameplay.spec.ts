@@ -112,3 +112,94 @@ test.describe('Game UI', () => {
     }
   });
 });
+
+test.describe('Screen Adaptation', () => {
+  test('canvas fills entire screen in landscape mode', async ({ page }) => {
+    await page.setViewportSize({ width: 1024, height: 768 });
+    await page.goto('/');
+    await page.waitForSelector('canvas', { timeout: 10000 });
+    await page.waitForTimeout(1000);
+
+    const canvas = page.locator('canvas');
+    const box = await canvas.boundingBox();
+    
+    // Canvas should fill the entire viewport in landscape
+    expect(box?.width).toBe(1024);
+    expect(box?.height).toBe(768);
+  });
+
+  test('canvas fills entire screen in portrait mode', async ({ page }) => {
+    await page.setViewportSize({ width: 768, height: 1024 });
+    await page.goto('/');
+    await page.waitForSelector('canvas', { timeout: 10000 });
+    await page.waitForTimeout(1000);
+
+    const canvas = page.locator('canvas');
+    const box = await canvas.boundingBox();
+    
+    // Canvas should fill the entire viewport in portrait
+    expect(box?.width).toBe(768);
+    expect(box?.height).toBe(1024);
+  });
+
+  test('canvas fills entire screen on desktop', async ({ page }) => {
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await page.goto('/');
+    await page.waitForSelector('canvas', { timeout: 10000 });
+    await page.waitForTimeout(1000);
+
+    const canvas = page.locator('canvas');
+    const box = await canvas.boundingBox();
+    
+    // Canvas should fill the entire viewport on desktop
+    expect(box?.width).toBe(1920);
+    expect(box?.height).toBe(1080);
+  });
+
+  test('no right-side clipping at any viewport size', async ({ page }) => {
+    const viewports = [
+      { width: 1920, height: 1080 },
+      { width: 1024, height: 768 },
+      { width: 768, height: 1024 },
+      { width: 375, height: 667 },
+    ];
+
+    for (const vp of viewports) {
+      await page.setViewportSize({ width: vp.width, height: vp.height });
+      await page.goto('/');
+      await page.waitForSelector('canvas', { timeout: 10000 });
+      await page.waitForTimeout(1000);
+
+      const canvas = page.locator('canvas');
+      const box = await canvas.boundingBox();
+      
+      // Canvas should not overflow or clip on the right side
+      expect(box?.x).toBe(0);
+      expect(box?.width).toBe(vp.width);
+    }
+  });
+
+  test('game runs without errors during gameplay', async ({ page }) => {
+    const errors: string[] = [];
+    page.on('pageerror', err => errors.push(err.message));
+    page.on('console', msg => {
+      if (msg.type() === 'error') errors.push(msg.text());
+    });
+
+    await page.setViewportSize({ width: 1024, height: 768 });
+    await page.goto('/');
+    await page.waitForSelector('canvas', { timeout: 10000 });
+    await page.waitForTimeout(2000);
+
+    // Dismiss tutorial if shown
+    const startButton = page.getByText('开始游戏');
+    if (await startButton.isVisible({ timeout: 500 }).catch(() => false)) {
+      await startButton.click();
+    }
+
+    // Let game run for a few seconds
+    await page.waitForTimeout(5000);
+    
+    expect(errors).toHaveLength(0);
+  });
+});
