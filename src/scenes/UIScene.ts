@@ -27,7 +27,9 @@ export class UIScene extends Phaser.Scene {
     this.createTopBar();
     this.createPlantCards();
     this.createAudioUnlockButton();
-    this.showTutorialOverlay();
+    if (!this.overlayShown) {
+      this.showTutorialOverlay();
+    }
 
     this.time.addEvent({
       delay: 500,
@@ -44,7 +46,7 @@ export class UIScene extends Phaser.Scene {
   private createTopBar(): void {
     const graphics = this.add.graphics();
     graphics.fillStyle(0x333333, 1);
-    graphics.fillRect(0, 0, 720, 75); // Full width now
+    graphics.fillRect(0, 0, window.innerWidth, 75);
 
     const sunIcon = this.add.graphics();
     sunIcon.fillStyle(0xFFFF00, 1);
@@ -56,8 +58,8 @@ export class UIScene extends Phaser.Scene {
       fontFamily: 'Arial',
     });
 
-    // Wave indicator
-    this.waveText = this.add.text(580, 25, 'Wave 0/3', {
+    // Wave indicator - positioned near right edge
+    this.waveText = this.add.text(window.innerWidth - 140, 25, 'Wave 0/3', {
       fontSize: '18px',
       color: '#FF6666',
       fontFamily: 'Arial',
@@ -84,8 +86,8 @@ export class UIScene extends Phaser.Scene {
   }
 
   private createAudioUnlockButton(): void {
-    // 一个小按钮用于解锁音频上下文
-    const btn = this.add.text(640, 72, '🔊', {
+    // 一个小按钮用于解锁音频上下文 - positioned at top right
+    const btn = this.add.text(window.innerWidth - 80, 72, '🔊', {
       fontSize: '16px',
     });
     btn.setDepth(200);
@@ -93,19 +95,29 @@ export class UIScene extends Phaser.Scene {
     btn.on('pointerdown', () => {
       this.audioUnlocked = true;
       btn.setText('🔊');
-      // Speech synthesis doesn't need audio context unlocking like Web Audio API
-      // This just marks the flag to enable speech
     });
   }
 
   private speak(text: string): void {
     if (!this.audioUnlocked) return;
     if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
+      const synth = window.speechSynthesis;
+      // Some browsers require voices to be loaded first
+      if (synth.getVoices().length === 0) {
+        synth.onvoiceschanged = () => {
+          synth.cancel();
+          const utterance = new SpeechSynthesisUtterance(text);
+          utterance.lang = 'en-US';
+          utterance.rate = 0.85;
+          synth.speak(utterance);
+        };
+        return;
+      }
+      synth.cancel();
       const utterance = new SpeechSynthesisUtterance(text);
       utterance.lang = 'en-US';
       utterance.rate = 0.85;
-      window.speechSynthesis.speak(utterance);
+      synth.speak(utterance);
     }
   }
 
@@ -153,22 +165,27 @@ export class UIScene extends Phaser.Scene {
   }
 
   private showTutorialOverlay(): void {
+    const centerX = window.innerWidth / 2;
+    const centerY = window.innerHeight / 2;
+    const panelWidth = 500;
+    const panelHeight = 350;
+
     // 半透明黑色背景
     const overlay = this.add.graphics();
     overlay.fillStyle(0x000000, 0.85);
-    overlay.fillRect(0, 0, 720, 580);
+    overlay.fillRect(0, 0, window.innerWidth, window.innerHeight);
     overlay.setDepth(100);
 
     // 主面板背景
     const panelBg = this.add.graphics();
     panelBg.fillStyle(0x1a472a, 1);
-    panelBg.fillRoundedRect(110, 100, 500, 350, 16);
+    panelBg.fillRoundedRect(centerX - panelWidth / 2, centerY - panelHeight / 2 + 50, panelWidth, panelHeight, 16);
     panelBg.lineStyle(4, 0x4CAF50, 1);
-    panelBg.strokeRoundedRect(110, 100, 500, 350, 16);
+    panelBg.strokeRoundedRect(centerX - panelWidth / 2, centerY - panelHeight / 2 + 50, panelWidth, panelHeight, 16);
     panelBg.setDepth(101);
 
     // 标题
-    const title = this.add.text(360, 130, '🌻 PVZ 像素版 🌻', {
+    const title = this.add.text(centerX, centerY + 30, '🌻 PVZ 像素版 🌻', {
       fontSize: '32px',
       fontFamily: 'Arial',
       color: '#FFD700',
@@ -178,7 +195,7 @@ export class UIScene extends Phaser.Scene {
     title.setDepth(102);
 
     // 操作说明
-    const guideTitle = this.add.text(360, 175, '【操作指南】', {
+    const guideTitle = this.add.text(centerX, centerY + 75, '【操作指南】', {
       fontSize: '18px',
       fontFamily: 'Arial',
       color: '#FFFFFF',
@@ -196,7 +213,7 @@ export class UIScene extends Phaser.Scene {
     ];
 
     instructions.forEach((text, i) => {
-      const item = this.add.text(150, 205 + i * 28, text, {
+      const item = this.add.text(centerX - 200, centerY + 100 + i * 28, text, {
         fontSize: '16px',
         fontFamily: 'Arial',
         color: '#E8F5E9',
@@ -206,7 +223,7 @@ export class UIScene extends Phaser.Scene {
     });
 
     // 植物卡片说明
-    const plantsTitle = this.add.text(360, 330, '【植物图鉴】', {
+    const plantsTitle = this.add.text(centerX, centerY + 230, '【植物图鉴】', {
       fontSize: '18px',
       fontFamily: 'Arial',
       color: '#FFFFFF',
@@ -223,14 +240,14 @@ export class UIScene extends Phaser.Scene {
 
     const plantInfoTexts: Phaser.GameObjects.GameObject[] = [];
     plantInfo.forEach((plant, i) => {
-      const x = 160 + i * 160;
+      const x = centerX - 220 + i * 160;
       const card = this.add.graphics();
       card.fillStyle(0x333333, 1);
-      card.fillRoundedRect(x, 355, 140, 40, 6);
+      card.fillRoundedRect(x, centerY + 255, 140, 40, 6);
       card.setDepth(102);
       plantInfoTexts.push(card);
 
-      const nameText = this.add.text(x + 70, 363, `${plant.icon} ${plant.name}`, {
+      const nameText = this.add.text(x + 70, centerY + 263, `${plant.icon} ${plant.name}`, {
         fontSize: '13px',
         fontFamily: 'Arial',
         color: '#FFFFFF',
@@ -240,7 +257,7 @@ export class UIScene extends Phaser.Scene {
       nameText.setDepth(103);
       plantInfoTexts.push(nameText);
 
-      const descText = this.add.text(x + 70, 378, plant.desc, {
+      const descText = this.add.text(x + 70, centerY + 278, plant.desc, {
         fontSize: '12px',
         fontFamily: 'Arial',
         color: '#AAAAAA',
@@ -253,11 +270,11 @@ export class UIScene extends Phaser.Scene {
     // 开始游戏按钮
     const btnBg = this.add.graphics();
     btnBg.fillStyle(0x4CAF50, 1);
-    btnBg.fillRoundedRect(260, 410, 200, 50, 8);
+    btnBg.fillRoundedRect(centerX - 100, centerY + 310, 200, 50, 8);
     btnBg.setDepth(102);
-    btnBg.setInteractive(new Phaser.Geom.Rectangle(260, 410, 200, 50), Phaser.Geom.Rectangle.Contains);
+    btnBg.setInteractive(new Phaser.Geom.Rectangle(centerX - 100, centerY + 310, 200, 50), Phaser.Geom.Rectangle.Contains);
 
-    const btnText = this.add.text(360, 435, '开始游戏', {
+    const btnText = this.add.text(centerX, centerY + 335, '开始游戏', {
       fontSize: '24px',
       fontFamily: 'Arial',
       color: '#FFFFFF',
@@ -277,13 +294,13 @@ export class UIScene extends Phaser.Scene {
     btnBg.on('pointerover', () => {
       btnBg.clear();
       btnBg.fillStyle(0x66BB6A, 1);
-      btnBg.fillRoundedRect(260, 410, 200, 50, 8);
+      btnBg.fillRoundedRect(centerX - 100, centerY + 310, 200, 50, 8);
     });
 
     btnBg.on('pointerout', () => {
       btnBg.clear();
       btnBg.fillStyle(0x4CAF50, 1);
-      btnBg.fillRoundedRect(260, 410, 200, 50, 8);
+      btnBg.fillRoundedRect(centerX - 100, centerY + 310, 200, 50, 8);
     });
 
     btnBg.on('pointerdown', () => {
