@@ -28,10 +28,12 @@ export class PlayScene extends Phaser.Scene {
   }
 
   create(): void {
+    // Create grid manager first (createBackground uses it)
+    this.gridManager = new GridManager(this);
+
     // Create layered background
     this.createBackground();
 
-    this.gridManager = new GridManager(this);
     this.economyManager = new EconomyManager(this, this.gridManager.getOffsetX(), this.gridManager.getOffsetY(), this.gridManager.getCellSize());
 
     this.waveManager = new WaveManager(
