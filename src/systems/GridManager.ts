@@ -26,7 +26,7 @@ export class GridManager {
   // Dynamic grid config
   private cellSize: number;
   private offsetX: number;
-  private offsetY = 150; // Below top bar (75) + plant cards area
+  private offsetY: number;
 
   // Track flower positions for redrawing
   private flowerCells: Set<string> = new Set();
@@ -37,6 +37,8 @@ export class GridManager {
     // Calculate dynamic grid settings based on screen orientation
     this.cellSize = getCellSize();
     this.offsetX = getOffsetX();
+    // offsetY: top bar is 75, plant cards area is ~80, leaving space for UI
+    this.offsetY = Math.max(150, window.innerHeight * 0.12);
 
     this.grid = this.createEmptyGrid();
 
@@ -57,6 +59,10 @@ export class GridManager {
 
   public getOffsetX(): number {
     return this.offsetX;
+  }
+
+  public getOffsetY(): number {
+    return this.offsetY;
   }
 
   private createClouds(): void {
@@ -321,9 +327,5 @@ export class GridManager {
       this.previewSprite.setVisible(false);
       this.previewSprite.setAlpha(0.4);
     }
-  }
-
-  getOffsetY(): number {
-    return this.offsetY;
   }
 }

@@ -68,11 +68,14 @@ export class UIScene extends Phaser.Scene {
   }
 
   private createPlantCards(): void {
-    const cardStartX = 180;
-    const cardWidth = 80;
-    const cardHeight = 60;
+    // Dynamic card sizing based on screen width
+    const screenWidth = window.innerWidth;
+    const cardWidth = Math.max(60, Math.floor(screenWidth * 0.08));
+    const cardHeight = Math.max(50, Math.floor(cardWidth * 0.75));
+    const cardGap = Math.max(6, Math.floor(cardWidth * 0.12));
+    const totalCardsWidth = cardWidth * 4 + cardGap * 3;
+    const cardStartX = (screenWidth - totalCardsWidth) / 2;
     const cardY = 68;
-    const cardGap = 10;
 
     const plants = ['peashooter', 'sunflower', 'wallnut', 'cherrybomb'];
 
