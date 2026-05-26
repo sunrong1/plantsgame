@@ -9,10 +9,8 @@ const config: Phaser.Types.Core.GameConfig = {
   backgroundColor: '#87CEEB',
   scene: [BootScene],
   scale: {
-    mode: Phaser.Scale.ScaleModes.FIT,
+    mode: Phaser.Scale.ScaleModes.ENVELOP,
     autoCenter: Phaser.Scale.Center.CENTER_BOTH,
-    min: { width: 360, height: 640 },
-    max: { width: 1440, height: 2560 },
   },
   render: {
     antialias: false,
