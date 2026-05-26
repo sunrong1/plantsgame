@@ -38,7 +38,7 @@ export class GridManager {
     this.cellSize = getCellSize();
     this.offsetX = getOffsetX();
     // offsetY: top bar is 75, plant cards area is ~80, leaving space for UI
-    this.offsetY = Math.max(150, window.innerHeight * 0.12);
+    this.offsetY = 150;
 
     this.grid = this.createEmptyGrid();
 
