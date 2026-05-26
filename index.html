@@ -7,10 +7,10 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#87CEEB">
   <title>PVZ 像素版</title>
-  <!-- Google Font: Fredoka One -->
+  <!-- Google Font: Nunito + Fredoka One -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=Nunito:wght@400;700;900&display=swap" rel="stylesheet">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -18,8 +18,8 @@
       width: 100%;
       height: 100%;
       overflow: hidden;
-      background: #87CEEB; /* Sky Blue - STYLE_GUIDE */
-      font-family: 'Fredoka One', sans-serif;
+      background: var(--color-sky, #87CEEB);
+      font-family: 'Nunito', 'Fredoka One', system-ui, sans-serif;
       touch-action: none;
       -webkit-tap-highlight-color: transparent;
       -webkit-touch-callout: none;
@@ -36,12 +36,24 @@
       padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
     }
 
+    #app {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+    }
+
     #game-container {
+      position: absolute;
+      top: 0;
+      left: 0;
       width: 100%;
       height: 100%;
       display: flex;
       justify-content: center;
       align-items: center;
+      z-index: 1;
     }
 
     #game-container canvas {
@@ -49,10 +61,28 @@
       max-width: 100%;
       max-height: 100%;
     }
+
+    /* Vue UI overlay - sits on top of game */
+    #ui-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 10;
+    }
+
+    #ui-overlay > * {
+      pointer-events: auto;
+    }
   </style>
 </head>
 <body>
-  <div id="game-container"></div>
+  <div id="app">
+    <div id="game-container"></div>
+    <div id="ui-overlay"></div>
+  </div>
   <script type="module" src="/src/main.ts"></script>
 </body>
 </html>

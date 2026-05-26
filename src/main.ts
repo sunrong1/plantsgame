@@ -1,6 +1,13 @@
-import Phaser from 'phaser';
+import { createApp } from 'vue';
 import { BootScene } from './scenes/BootScene';
+import App from './ui/App.vue';
+import './ui/styles/variables.css';
 
+// Create Vue app and mount to #ui-overlay
+const app = createApp(App);
+app.mount('#ui-overlay');
+
+// Initialize Phaser game (BootScene starts the scene chain)
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
   width: 720,
@@ -26,5 +33,8 @@ const config: Phaser.Types.Core.GameConfig = {
 };
 
 const game = new Phaser.Game(config);
+
+// Expose game instance for Vue components to access
+(window as any).phaserGame = game;
 
 export default game;

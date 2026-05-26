@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import type { ZombieEntity } from '../types';
 import { GAME_CONFIG, ZOMBIE_CONFIGS } from '../config';
 import { Zombie } from '../entities/Zombie';
+import { GameEvents, dispatchGameEvent } from '../ui/bridge';
 
 export class WaveManager {
   private scene: Phaser.Scene;
@@ -49,6 +50,7 @@ export class WaveManager {
     this.currentWave++;
     this.waveActive = true;
     this.onWaveStart(this.currentWave);
+    dispatchGameEvent(GameEvents.WAVE_STARTED, { wave: this.currentWave, total: GAME_CONFIG.waves.length });
 
     const waveConfig = GAME_CONFIG.waves[this.currentWave - 1];
     this.totalZombiesToSpawn = waveConfig.count;
@@ -108,6 +110,7 @@ export class WaveManager {
     ) {
       this.waveActive = false;
       this.onWaveComplete(this.currentWave);
+      dispatchGameEvent(GameEvents.WAVE_COMPLETED, { wave: this.currentWave, total: GAME_CONFIG.waves.length });
 
       this.scene.time.delayedCall(2000, () => {
         this.startNextWave();

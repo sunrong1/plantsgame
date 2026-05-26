@@ -7,6 +7,7 @@ import { Plant } from '../entities/Plant';
 import { Zombie } from '../entities/Zombie';
 import { Projectile } from '../entities/Projectile';
 import { GAME_CONFIG, PLANT_CONFIG_MAP } from '../config';
+import { GameEvents, dispatchGameEvent } from '../ui/bridge';
 
 export class PlayScene extends Phaser.Scene {
   private gridManager!: GridManager;
@@ -104,10 +105,10 @@ export class PlayScene extends Phaser.Scene {
       this.cancelSelection();
     });
 
-    // 监听来自 UIScene 的植物选择事件
-    this.events.on('plantSelected', (plantType: string) => {
-      this.selectPlant(plantType);
-    });
+    // Listen to plant selection from Vue UI
+    window.addEventListener(GameEvents.PLANT_SELECTED, ((e: CustomEvent) => {
+      this.selectPlant(e.detail);
+    }) as EventListener);
   }
 
   private handleUIClick(x: number, y: number): void {
@@ -487,7 +488,7 @@ export class PlayScene extends Phaser.Scene {
   private checkGameOver(): void {
     if (this.thirdWaveCleared && this.zombies.size === 0) {
       this.gameState = 'won';
-      this.showGameOver('victory');
+      dispatchGameEvent(GameEvents.GAME_WON);
       return;
     }
 
@@ -495,7 +496,7 @@ export class PlayScene extends Phaser.Scene {
       const x = Zombie.getCurrentX(zombie);
       if (x <= 25) {
         this.gameState = 'lost';
-        this.showGameOver('defeat');
+        dispatchGameEvent(GameEvents.GAME_LOST);
         return;
       }
     }

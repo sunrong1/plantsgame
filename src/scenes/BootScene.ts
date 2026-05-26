@@ -1,5 +1,4 @@
 import Phaser from 'phaser';
-import { UIScene } from './UIScene';
 import { PlayScene } from './PlayScene';
 
 export class BootScene extends Phaser.Scene {
@@ -24,7 +23,6 @@ export class BootScene extends Phaser.Scene {
     this.createTextures();
     this.setPixelArtStyle();
     this.scene.add('PlayScene', PlayScene, true);
-    this.scene.add('UIScene', UIScene, true);
     this.scene.start('PlayScene');
   }
 

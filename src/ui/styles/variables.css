@@ -1,0 +1,77 @@
+/* PVZ 游戏设计 Token - 扁平矢量风格 */
+
+:root {
+  /* 主色调 - 天空和草地 */
+  --color-sky: #87CEEB;
+  --color-sky-gradient: linear-gradient(180deg, #87CEEB 0%, #B0E0E6 100%);
+  --color-lawn-light: #B8F0A8;
+  --color-lawn-dark: #8ED87A;
+
+  /* 阳光相关 */
+  --color-sunlight: #FFD700;
+  --color-sunlight-glow: rgba(255, 215, 0, 0.3);
+
+  /* 卡片样式 */
+  --color-card-bg: #2D5A27;
+  --color-card-border: #4A8B3C;
+  --color-card-hover: #3D7A37;
+  --color-card-selected: #4CAF50;
+
+  /* 文字颜色 */
+  --color-text: #FFFFFF;
+  --color-text-secondary: #B8F0A8;
+  --color-text-dark: #1B4D1E;
+
+  /* 状态颜色 */
+  --color-danger: #E53935;
+  --color-warning: #FF9800;
+  --color-success: #4CAF50;
+
+  /* 边框和阴影 */
+  --border-radius: 12px;
+  --border-radius-sm: 8px;
+  --shadow-sm: 0 2px 0 rgba(0, 0, 0, 0.2);
+  --shadow-md: 0 4px 0 rgba(0, 0, 0, 0.2);
+  --shadow-lg: 0 6px 0 rgba(0, 0, 0, 0.25);
+
+  /* 字体 */
+  --font-family: 'Nunito', 'Fredoka One', system-ui, sans-serif;
+  --font-weight-normal: 400;
+  --font-weight-bold: 700;
+  --font-weight-black: 900;
+
+  /* 间距 */
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 16px;
+  --spacing-lg: 24px;
+  --spacing-xl: 32px;
+
+  /* 尺寸 */
+  --topbar-height: 60px;
+  --card-width: 80px;
+  --card-height: 100px;
+  --cell-size: 80px;
+
+  /* 动画 */
+  --transition-fast: 150ms ease-out;
+  --transition-normal: 250ms ease-out;
+  --transition-slow: 400ms ease-out;
+
+  /* Z-index 层级 */
+  --z-game: 1;
+  --z-ui: 10;
+  --z-topbar: 20;
+  --z-cards: 30;
+  --z-overlay: 100;
+}
+
+/* 暗色主题支持 */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-text: #F5F5F5;
+    --color-text-secondary: #A5D6A7;
+    --color-card-bg: #1B3D1A;
+    --color-card-border: #2E7D32;
+  }
+}

@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import type { Sunlight } from '../types';
 import { GAME_CONFIG } from '../config';
+import { GameEvents, dispatchGameEvent } from '../ui/bridge';
 
 export class EconomyManager {
   private scene: Phaser.Scene;
@@ -31,11 +32,13 @@ export class EconomyManager {
   spendSunlight(amount: number): boolean {
     if (this.sunlight < amount) return false;
     this.sunlight -= amount;
+    dispatchGameEvent(GameEvents.SUNLIGHT_CHANGED, { sunlight: this.sunlight });
     return true;
   }
 
   addSunlight(amount: number): void {
     this.sunlight += amount;
+    dispatchGameEvent(GameEvents.SUNLIGHT_CHANGED, { sunlight: this.sunlight });
   }
 
   spawnSkyDrop(): void {
