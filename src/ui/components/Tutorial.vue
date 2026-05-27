@@ -62,6 +62,11 @@ const emit = defineEmits<{
   justify-content: center;
   align-items: center;
   z-index: var(--z-overlay, 100);
+  pointer-events: auto;
+}
+
+.tutorial-content {
+  pointer-events: auto;
 }
 
 .tutorial-content {
