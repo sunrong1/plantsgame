@@ -18,9 +18,8 @@ const showTutorial = ref(true);
 const canvasLeft = ref(0);
 const canvasTop = ref(0);
 const uiScale = ref(1);
-const gameWidth = ref(720);
-const gameHeight = ref(1280);
-const scaleFactor = ref(1);
+const canvasWidth = ref(720);
+const canvasHeight = ref(1280);
 
 // Computed style object for inline styling
 const gameUIStyle = computed(() => ({
@@ -28,8 +27,8 @@ const gameUIStyle = computed(() => ({
   top: `${canvasTop.value}px`,
   transform: `scale(${uiScale.value})`,
   transformOrigin: 'top left',
-  width: `${gameWidth.value / scaleFactor.value}px`,
-  height: `${gameHeight.value / scaleFactor.value}px`,
+  width: `${canvasWidth.value}px`,
+  height: `${canvasHeight.value}px`,
 }));
 
 function updateCanvasPosition() {
@@ -38,8 +37,9 @@ function updateCanvasPosition() {
     const rect = gameCanvas.getBoundingClientRect();
     canvasLeft.value = rect.left;
     canvasTop.value = rect.top;
-    // Scale should be relative to the displayed size vs base size
-    uiScale.value = rect.width / (gameWidth.value / scaleFactor.value);
+    canvasWidth.value = rect.width;
+    canvasHeight.value = rect.height;
+    uiScale.value = 1;
   }
 }
 
@@ -89,12 +89,8 @@ function handleRestart() {
 }
 
 // Listen to game resize events
-function onGameResize(data: { width: number; height: number; scaleFactor?: number }) {
-  gameWidth.value = data.width;
-  gameHeight.value = data.height;
-  if (data.scaleFactor) {
-    scaleFactor.value = data.scaleFactor;
-  }
+function onGameResize(data: { width: number; height: number }) {
+  // Game internally scales, UI just tracks canvas position
   setTimeout(updateCanvasPosition, 50);
 }
 
