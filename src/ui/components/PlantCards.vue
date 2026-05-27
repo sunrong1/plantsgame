@@ -42,12 +42,14 @@ const emit = defineEmits<{
 <style scoped>
 .plant-cards {
   position: absolute;
-  bottom: 20px;
-  left: 50%;
-  transform: translateX(-50%);
+  /* Position at bottom of game area, centered horizontally */
+  bottom: 80px;
+  left: 0;
+  right: 0;
   display: flex;
-  gap: var(--spacing-sm, 8px);
-  padding: var(--spacing-sm, 8px);
+  justify-content: center;
+  gap: var(--spacing-md, 16px);
+  padding: 0 var(--spacing-md, 16px);
 }
 
 .plant-card {

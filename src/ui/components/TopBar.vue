@@ -31,7 +31,7 @@ defineProps<{
   justify-content: space-between;
   align-items: center;
   padding: 0 var(--spacing-md, 16px);
-  background: linear-gradient(180deg, rgba(0,0,0,0.3) 0%, transparent 100%);
+  background: linear-gradient(180deg, rgba(0,0,0,0.4) 0%, transparent 100%);
 }
 
 .sunlight-display {

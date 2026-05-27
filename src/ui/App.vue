@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue';
+import { ref, onMounted, onUnmounted, computed } from 'vue';
 import TopBar from './components/TopBar.vue';
 import PlantCards from './components/PlantCards.vue';
 import GameOverlay from './components/GameOverlay.vue';
@@ -14,17 +14,28 @@ const selectedPlant = ref<string | null>(null);
 const gameState = ref<'playing' | 'won' | 'lost'>('playing');
 const showTutorial = ref(true);
 
-// UI scale factor
+// Position and scale state
+const canvasLeft = ref(0);
+const canvasTop = ref(0);
 const uiScale = ref(1);
 
-function updateUIScale() {
+// Computed style object for inline styling
+const gameUIStyle = computed(() => ({
+  left: `${canvasLeft.value}px`,
+  top: `${canvasTop.value}px`,
+  transform: `scale(${uiScale.value})`,
+  transformOrigin: 'top left',
+  width: '720px',
+  height: '1280px',
+}));
+
+function updateCanvasPosition() {
   const gameCanvas = document.querySelector('#game-container canvas') as HTMLCanvasElement;
   if (gameCanvas) {
     const rect = gameCanvas.getBoundingClientRect();
-    // Scale UI to match the actual rendered game size
-    // Game base is 720x1280
+    canvasLeft.value = rect.left;
+    canvasTop.value = rect.top;
     uiScale.value = rect.width / 720;
-    document.documentElement.style.setProperty('--ui-scale', uiScale.value.toString());
   }
 }
 
@@ -74,13 +85,9 @@ function handleRestart() {
 }
 
 onMounted(() => {
-  // Initial scale
-  updateUIScale();
+  setTimeout(updateCanvasPosition, 100);
+  window.addEventListener('resize', updateCanvasPosition);
 
-  // Listen for resize
-  window.addEventListener('resize', updateUIScale);
-
-  // Also listen for Phaser game ready
   window.addEventListener(GameEvents.SUNLIGHT_CHANGED, ((e: CustomEvent) => handleSunlightChange(e.detail)) as EventListener);
   window.addEventListener(GameEvents.WAVE_STARTED, ((e: CustomEvent) => handleWaveStarted(e.detail)) as EventListener);
   window.addEventListener(GameEvents.WAVE_COMPLETED, ((e: CustomEvent) => handleWaveCompleted(e.detail)) as EventListener);
@@ -89,7 +96,7 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
-  window.removeEventListener('resize', updateUIScale);
+  window.removeEventListener('resize', updateCanvasPosition);
   window.removeEventListener(GameEvents.SUNLIGHT_CHANGED, ((e: CustomEvent) => handleSunlightChange(e.detail)) as EventListener);
   window.removeEventListener(GameEvents.WAVE_STARTED, ((e: CustomEvent) => handleWaveStarted(e.detail)) as EventListener);
   window.removeEventListener(GameEvents.WAVE_COMPLETED, ((e: CustomEvent) => handleWaveCompleted(e.detail)) as EventListener);
@@ -99,7 +106,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="game-ui">
+  <div class="game-ui" :style="gameUIStyle">
     <TopBar
       :sunlight="sunlight"
       :wave="currentWave"
@@ -129,11 +136,10 @@ onUnmounted(() => {
 <style scoped>
 .game-ui {
   position: absolute;
-  top: 0;
-  left: 0;
-  width: 720px;
-  height: 1280px;
-  transform-origin: top left;
-  transform: scale(var(--ui-scale, 1));
+  pointer-events: none;
+}
+
+.game-ui > * {
+  pointer-events: auto;
 }
 </style>
