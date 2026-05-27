@@ -6,7 +6,7 @@ import { WaveManager } from '../systems/WaveManager';
 import { Plant } from '../entities/Plant';
 import { Zombie } from '../entities/Zombie';
 import { Projectile } from '../entities/Projectile';
-import { GAME_CONFIG, PLANT_CONFIG_MAP } from '../config';
+import { GAME_CONFIG, PLANT_CONFIG_MAP, GRID_COLS } from '../config';
 import { GameEvents, dispatchGameEvent } from '../ui/bridge';
 
 export class PlayScene extends Phaser.Scene {
@@ -390,7 +390,7 @@ export class PlayScene extends Phaser.Scene {
         continue;
       }
 
-      if (Projectile.isOffScreen(projectile, this.gridManager.getOffsetX() + GAME_CONFIG.grid.cols * this.gridManager.getCellSize() + 80)) {
+      if (Projectile.isOffScreen(projectile, this.gridManager.getOffsetX() + GRID_COLS * this.gridManager.getCellSize() + 80)) {
         toRemove.push(projectile);
       }
     }

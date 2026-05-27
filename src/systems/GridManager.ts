@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import type { GridPosition } from '../types';
-import { GAME_CONFIG, getCellSize, getOffsetX } from '../config';
+import { GAME_CONFIG, getCellSize, getOffsetX, getOffsetY, GRID_COLS, GRID_ROWS } from '../config';
 
 // STYLE_GUIDE colors
 const CELL_LIGHT = 0xB8F0A8; // Light green #B8F0A8
@@ -34,11 +34,14 @@ export class GridManager {
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
 
-    // Calculate dynamic grid settings based on screen orientation
+    // Get game dimensions from scene
+    const gameWidth = scene.scale.width;
+    const gameHeight = scene.scale.height;
+
+    // Calculate dynamic grid settings based on game dimensions
     this.cellSize = getCellSize();
-    this.offsetX = getOffsetX(GAME_CONFIG.grid.cols);
-    // offsetY: top bar is 75, plant cards area is ~80, leaving space for UI
-    this.offsetY = 150;
+    this.offsetX = getOffsetX(gameWidth);
+    this.offsetY = getOffsetY(gameHeight);
 
     this.grid = this.createEmptyGrid();
 
@@ -163,14 +166,14 @@ export class GridManager {
   }
 
   private createEmptyGrid(): (string | null)[][] {
-    return Array(GAME_CONFIG.grid.rows)
+    return Array(GRID_ROWS)
       .fill(null)
-      .map(() => Array(GAME_CONFIG.grid.cols).fill(null));
+      .map(() => Array(GRID_COLS).fill(null));
   }
 
   private drawGrid(): void {
-    const rows = GAME_CONFIG.grid.rows;
-    const cols = GAME_CONFIG.grid.cols;
+    const rows = GRID_ROWS;
+    const cols = GRID_COLS;
     const cellSize = this.cellSize;
 
     this.gridGraphics.clear();
@@ -263,9 +266,9 @@ export class GridManager {
   isValidPosition(row: number, col: number): boolean {
     return (
       row >= 0 &&
-      row < GAME_CONFIG.grid.rows &&
+      row < GRID_ROWS &&
       col >= 0 &&
-      col < GAME_CONFIG.grid.cols
+      col < GRID_COLS
     );
   }
 

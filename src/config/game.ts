@@ -20,10 +20,18 @@ export function getCellSize(): number {
   return 80;
 }
 
+// Grid configuration with 9 columns and 5 rows
+export const GRID_COLS = 9;
+export const GRID_ROWS = 5;
+
 // Dynamic offsetX - centers the grid within the game width
-export function getOffsetX(cols: number = 9, gameWidth: number = 720): number {
-  // Grid width = cols * cellSize
-  // Center the grid within the game width
-  const gridWidth = cols * getCellSize();
+export function getOffsetX(gameWidth: number = 720): number {
+  const gridWidth = GRID_COLS * getCellSize();
   return (gameWidth - gridWidth) / 2;
+}
+
+// Dynamic offsetY - centers the grid within the game height
+export function getOffsetY(gameHeight: number = 1280): number {
+  const gridHeight = GRID_ROWS * getCellSize();
+  return (gameHeight - gridHeight) / 2;
 }
