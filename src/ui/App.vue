@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed } from 'vue';
+import { ref, onMounted, onUnmounted } from 'vue';
 import TopBar from './components/TopBar.vue';
 import PlantCards from './components/PlantCards.vue';
 import GameOverlay from './components/GameOverlay.vue';
 import Tutorial from './components/Tutorial.vue';
-import { GameEvents, onGameEvent, offGameEvent } from './bridge';
+import { GameEvents } from './bridge';
 
 // Game state from Phaser
 const sunlight = ref(150);
@@ -14,6 +14,20 @@ const selectedPlant = ref<string | null>(null);
 const gameState = ref<'playing' | 'won' | 'lost'>('playing');
 const showTutorial = ref(true);
 
+// UI scale factor
+const uiScale = ref(1);
+
+function updateUIScale() {
+  const gameCanvas = document.querySelector('#game-container canvas') as HTMLCanvasElement;
+  if (gameCanvas) {
+    const rect = gameCanvas.getBoundingClientRect();
+    // Scale UI to match the actual rendered game size
+    // Game base is 720x1280
+    uiScale.value = rect.width / 720;
+    document.documentElement.style.setProperty('--ui-scale', uiScale.value.toString());
+  }
+}
+
 // Plant data
 const plants = [
   { type: 'peashooter', name: '豌豆射手', cost: 100, description: '射击豌豆' },
@@ -22,13 +36,10 @@ const plants = [
   { type: 'cherrybomb', name: '樱桃炸弹', cost: 150, description: '爆炸范围' },
 ];
 
-// Computed
 const canAfford = (cost: number) => sunlight.value >= cost;
 
-// Event handlers
 function onPlantSelect(plantType: string) {
   selectedPlant.value = selectedPlant.value === plantType ? null : plantType;
-  // Send to Phaser via bridge
   window.dispatchEvent(new CustomEvent(GameEvents.PLANT_SELECTED, { detail: plantType }));
 }
 
@@ -62,8 +73,14 @@ function handleRestart() {
   location.reload();
 }
 
-// Listen to Phaser events
 onMounted(() => {
+  // Initial scale
+  updateUIScale();
+
+  // Listen for resize
+  window.addEventListener('resize', updateUIScale);
+
+  // Also listen for Phaser game ready
   window.addEventListener(GameEvents.SUNLIGHT_CHANGED, ((e: CustomEvent) => handleSunlightChange(e.detail)) as EventListener);
   window.addEventListener(GameEvents.WAVE_STARTED, ((e: CustomEvent) => handleWaveStarted(e.detail)) as EventListener);
   window.addEventListener(GameEvents.WAVE_COMPLETED, ((e: CustomEvent) => handleWaveCompleted(e.detail)) as EventListener);
@@ -72,6 +89,7 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+  window.removeEventListener('resize', updateUIScale);
   window.removeEventListener(GameEvents.SUNLIGHT_CHANGED, ((e: CustomEvent) => handleSunlightChange(e.detail)) as EventListener);
   window.removeEventListener(GameEvents.WAVE_STARTED, ((e: CustomEvent) => handleWaveStarted(e.detail)) as EventListener);
   window.removeEventListener(GameEvents.WAVE_COMPLETED, ((e: CustomEvent) => handleWaveCompleted(e.detail)) as EventListener);
@@ -82,14 +100,12 @@ onUnmounted(() => {
 
 <template>
   <div class="game-ui">
-    <!-- Top Bar -->
     <TopBar
       :sunlight="sunlight"
       :wave="currentWave"
       :total-waves="totalWaves"
     />
 
-    <!-- Plant Cards -->
     <PlantCards
       :plants="plants"
       :selected-plant="selectedPlant"
@@ -97,14 +113,12 @@ onUnmounted(() => {
       @select="onPlantSelect"
     />
 
-    <!-- Game Overlay (Victory/Defeat) -->
     <GameOverlay
       v-if="gameState !== 'playing'"
       :state="gameState"
       @restart="handleRestart"
     />
 
-    <!-- Tutorial -->
     <Tutorial
       v-if="showTutorial && gameState === 'playing'"
       @start="onStartGame"
@@ -114,13 +128,12 @@ onUnmounted(() => {
 
 <style scoped>
 .game-ui {
-  width: 100%;
-  height: 100%;
-  position: relative;
-  pointer-events: none;
-}
-
-.game-ui > * {
-  pointer-events: auto;
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 720px;
+  height: 1280px;
+  transform-origin: top left;
+  transform: scale(var(--ui-scale, 1));
 }
 </style>
