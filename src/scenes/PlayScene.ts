@@ -68,6 +68,9 @@ export class PlayScene extends Phaser.Scene {
     this.time.delayedCall(1000, () => {
       this.waveManager.startWaves();
     });
+
+    // Dispatch resize event for Vue UI
+    dispatchGameEvent('game:resize', { width: this.scale.width, height: this.scale.height });
   }
 
   update(time: number, delta: number): void {

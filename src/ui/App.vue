@@ -18,6 +18,8 @@ const showTutorial = ref(true);
 const canvasLeft = ref(0);
 const canvasTop = ref(0);
 const uiScale = ref(1);
+const gameWidth = ref(720);
+const gameHeight = ref(1280);
 
 // Computed style object for inline styling
 const gameUIStyle = computed(() => ({
@@ -25,8 +27,8 @@ const gameUIStyle = computed(() => ({
   top: `${canvasTop.value}px`,
   transform: `scale(${uiScale.value})`,
   transformOrigin: 'top left',
-  width: '720px',
-  height: '1280px',
+  width: `${gameWidth.value}px`,
+  height: `${gameHeight.value}px`,
 }));
 
 function updateCanvasPosition() {
@@ -35,7 +37,7 @@ function updateCanvasPosition() {
     const rect = gameCanvas.getBoundingClientRect();
     canvasLeft.value = rect.left;
     canvasTop.value = rect.top;
-    uiScale.value = rect.width / 720;
+    uiScale.value = rect.width / gameWidth.value;
   }
 }
 
@@ -84,9 +86,19 @@ function handleRestart() {
   location.reload();
 }
 
+// Listen to game resize events
+function onGameResize(data: { width: number; height: number }) {
+  gameWidth.value = data.width;
+  gameHeight.value = data.height;
+  setTimeout(updateCanvasPosition, 50);
+}
+
 onMounted(() => {
   setTimeout(updateCanvasPosition, 100);
   window.addEventListener('resize', updateCanvasPosition);
+
+  // Listen for game resize from Phaser
+  window.addEventListener('game:resize', ((e: CustomEvent) => onGameResize(e.detail)) as EventListener);
 
   window.addEventListener(GameEvents.SUNLIGHT_CHANGED, ((e: CustomEvent) => handleSunlightChange(e.detail)) as EventListener);
   window.addEventListener(GameEvents.WAVE_STARTED, ((e: CustomEvent) => handleWaveStarted(e.detail)) as EventListener);
@@ -97,6 +109,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener('resize', updateCanvasPosition);
+  window.removeEventListener('game:resize', ((e: CustomEvent) => onGameResize(e.detail)) as EventListener);
   window.removeEventListener(GameEvents.SUNLIGHT_CHANGED, ((e: CustomEvent) => handleSunlightChange(e.detail)) as EventListener);
   window.removeEventListener(GameEvents.WAVE_STARTED, ((e: CustomEvent) => handleWaveStarted(e.detail)) as EventListener);
   window.removeEventListener(GameEvents.WAVE_COMPLETED, ((e: CustomEvent) => handleWaveCompleted(e.detail)) as EventListener);
