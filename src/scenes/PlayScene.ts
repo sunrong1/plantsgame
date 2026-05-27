@@ -47,9 +47,6 @@ export class PlayScene extends Phaser.Scene {
       this.gridManager.getOffsetY()
     );
 
-    // 创建入侵方向箭头
-    this.createInvasionArrow();
-
     // 监听场景关闭事件，用于清理
     this.events.on('shutdown', this.shutdown, this);
 
@@ -523,17 +520,6 @@ export class PlayScene extends Phaser.Scene {
     restartBtn.on('pointerdown', () => {
       this.scene.restart();
     });
-  }
-
-  private createInvasionArrow(): void {
-    const cellSize = this.gridManager.getCellSize();
-    const offsetY = this.gridManager.getOffsetY();
-    const rows = 5;
-    // Position arrow at left side, aligned with grid rows
-    const gridCenterY = offsetY + (rows * cellSize) / 2;
-    const arrow = this.add.image(24, gridCenterY, 'invasion_arrow');
-    arrow.setScale(2.5); // Slightly larger to match bigger cells
-    arrow.setDepth(0);
   }
 
   public getSunlight(): number {
