@@ -327,6 +327,7 @@ export class PlayScene extends Phaser.Scene {
         if (time - zombie.lastAttackTime >= zombie.config.attackInterval) {
           Plant.takeDamage(targetPlant, zombie.config.damage);
           zombie.lastAttackTime = time;
+          Zombie.updateHealthBar(zombie);
 
           if (Plant.isDead(targetPlant)) {
             this.removePlant(targetPlant);
@@ -341,6 +342,7 @@ export class PlayScene extends Phaser.Scene {
 
         const newRow = Zombie.getRow(zombie);
         zombie.sprite.setData('row', newRow);
+        Zombie.updateHealthBar(zombie);
       }
     }
   }
