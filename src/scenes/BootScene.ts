@@ -42,29 +42,6 @@ export class BootScene extends Phaser.Scene {
 
     // 草地格子
     this.createGrassTile(textures);
-
-    // 入侵箭头
-    this.createInvasionArrow(textures);
-  }
-
-  private createInvasionArrow(textures: Phaser.Textures.TextureManager): void {
-    const canvas = textures.createCanvas('invasion_arrow', 20, 250);
-    if (!canvas) return;
-    const ctx = canvas.context;
-
-    ctx.fillStyle = '#2F4F4F';
-
-    for (let i = 0; i < 5; i++) {
-      const y = i * 50 + 10;
-      ctx.beginPath();
-      ctx.moveTo(0, y + 15);
-      ctx.lineTo(20, y + 25);
-      ctx.lineTo(0, y + 35);
-      ctx.closePath();
-      ctx.fill();
-    }
-
-    canvas.refresh();
   }
 
   private createGrassTile(textures: Phaser.Textures.TextureManager): void {
