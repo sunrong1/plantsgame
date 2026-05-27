@@ -150,10 +150,16 @@ onUnmounted(() => {
 <style scoped>
 .game-ui {
   position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
   pointer-events: none;
 }
 
-.game-ui > * {
+/* UI elements that should receive events get pointer-events: auto */
+.game-ui > .top-bar,
+.game-ui > .plant-cards {
   pointer-events: auto;
 }
 </style>
