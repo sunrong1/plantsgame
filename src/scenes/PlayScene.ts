@@ -130,13 +130,6 @@ export class PlayScene extends Phaser.Scene {
     sky.fillStyle(0x87CEEB, 1);
     sky.fillRect(0, 75, window.innerWidth, 75);
 
-    // Lawn texture - centered on grid area
-    const gridCenterX = offsetX + (cols * cellSize) / 2;
-    const gridCenterY = offsetY + (rows * cellSize) / 2;
-    this.add.image(gridCenterX, gridCenterY, 'lawn')
-      .setScale(2.8)
-      .setDepth(-1);
-
     // Decorative grass strip at bottom
     const bottomGrass = this.add.graphics();
     bottomGrass.fillStyle(0x3D6B33, 1);
