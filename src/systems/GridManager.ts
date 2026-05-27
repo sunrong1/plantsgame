@@ -111,7 +111,7 @@ export class GridManager {
       if (now - lastHoverTime < hoverThrottle) return;
       lastHoverTime = now;
 
-      if (pointer.y < 150) {
+      if (pointer.y < this.offsetY) {
         this.clearHighlight();
         return;
       }

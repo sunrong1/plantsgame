@@ -80,9 +80,11 @@ export class PlayScene extends Phaser.Scene {
   }
 
   private setupInput(): void {
+    const gridOffsetY = this.gridManager.getOffsetY();
+
     // 鼠标移动时更新预览位置
     this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
-      if (this.selectedPlant && pointer.y >= 60) {
+      if (this.selectedPlant && pointer.y >= gridOffsetY) {
         this.updatePreview(pointer.x, pointer.y);
       }
     });
@@ -96,7 +98,7 @@ export class PlayScene extends Phaser.Scene {
       }
 
       // 游戏区域放置
-      if (pointer.y >= 60 && this.selectedPlant) {
+      if (pointer.y >= gridOffsetY && this.selectedPlant) {
         this.tryPlant(pointer.x, pointer.y);
       }
     });

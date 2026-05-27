@@ -10,12 +10,11 @@ app.mount('#ui-overlay');
 // Determine viewport size
 const viewportWidth = window.innerWidth;
 const viewportHeight = window.innerHeight;
-const isLandscape = viewportWidth > viewportHeight;
 
-// On desktop with landscape viewport, use landscape game dimensions
-// This ensures the game fills the wide desktop monitor properly
-const gameWidth = isLandscape ? 1280 : 720;
-const gameHeight = isLandscape ? 720 : 1280;
+// Always use portrait mode with FIT scaling - game stays 720x1280
+// On desktop/landscape, it will be scaled up proportionally
+const gameWidth = 720;
+const gameHeight = 1280;
 
 // Initialize Phaser game (BootScene starts the scene chain)
 const config: Phaser.Types.Core.GameConfig = {
@@ -26,7 +25,7 @@ const config: Phaser.Types.Core.GameConfig = {
   backgroundColor: '#87CEEB',
   scene: [BootScene],
   scale: {
-    mode: Phaser.Scale.ScaleModes.RESIZE,
+    mode: Phaser.Scale.ScaleModes.FIT,
     autoCenter: Phaser.Scale.Center.CENTER_BOTH,
   },
   render: {
