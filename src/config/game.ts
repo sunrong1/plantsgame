@@ -20,7 +20,10 @@ export function getCellSize(): number {
   return 80;
 }
 
-// Fixed offsetX - game is centered with FIT mode
-export function getOffsetX(): number {
-  return 0;
+// Dynamic offsetX - centers the grid within the game width
+export function getOffsetX(cols: number = 9, gameWidth: number = 720): number {
+  // Grid width = cols * cellSize
+  // Center the grid within the game width
+  const gridWidth = cols * getCellSize();
+  return (gameWidth - gridWidth) / 2;
 }

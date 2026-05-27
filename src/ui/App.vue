@@ -20,6 +20,7 @@ const canvasTop = ref(0);
 const uiScale = ref(1);
 const gameWidth = ref(720);
 const gameHeight = ref(1280);
+const scaleFactor = ref(1);
 
 // Computed style object for inline styling
 const gameUIStyle = computed(() => ({
@@ -27,8 +28,8 @@ const gameUIStyle = computed(() => ({
   top: `${canvasTop.value}px`,
   transform: `scale(${uiScale.value})`,
   transformOrigin: 'top left',
-  width: `${gameWidth.value}px`,
-  height: `${gameHeight.value}px`,
+  width: `${gameWidth.value / scaleFactor.value}px`,
+  height: `${gameHeight.value / scaleFactor.value}px`,
 }));
 
 function updateCanvasPosition() {
@@ -37,7 +38,8 @@ function updateCanvasPosition() {
     const rect = gameCanvas.getBoundingClientRect();
     canvasLeft.value = rect.left;
     canvasTop.value = rect.top;
-    uiScale.value = rect.width / gameWidth.value;
+    // Scale should be relative to the displayed size vs base size
+    uiScale.value = rect.width / (gameWidth.value / scaleFactor.value);
   }
 }
 
@@ -87,9 +89,12 @@ function handleRestart() {
 }
 
 // Listen to game resize events
-function onGameResize(data: { width: number; height: number }) {
+function onGameResize(data: { width: number; height: number; scaleFactor?: number }) {
   gameWidth.value = data.width;
   gameHeight.value = data.height;
+  if (data.scaleFactor) {
+    scaleFactor.value = data.scaleFactor;
+  }
   setTimeout(updateCanvasPosition, 50);
 }
 

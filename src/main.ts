@@ -7,46 +7,25 @@ import './ui/styles/variables.css';
 const app = createApp(App);
 app.mount('#ui-overlay');
 
-// Determine viewport size at runtime
-function getGameConfig() {
-  const viewportWidth = window.innerWidth;
-  const viewportHeight = window.innerHeight;
-  const isDesktop = viewportWidth > 1024;
+// Determine viewport size
+const viewportWidth = window.innerWidth;
+const isDesktop = viewportWidth > 1024;
 
-  // Desktop gets larger canvas for better visibility
-  if (isDesktop) {
-    // Use RESIZE mode to fill the viewport
-    return {
-      phaserWidth: viewportWidth,
-      phaserHeight: viewportHeight,
-      scaleMode: Phaser.Scale.ScaleModes.RESIZE,
-      gameWidth: viewportWidth,
-      gameHeight: viewportHeight,
-    };
-  }
-
-  // Mobile/tablet uses 720x1280 with FIT mode
-  return {
-    phaserWidth: 720,
-    phaserHeight: 1280,
-    scaleMode: Phaser.Scale.ScaleModes.FIT,
-    gameWidth: 720,
-    gameHeight: 1280,
-  };
-}
-
-const gameConfig = getGameConfig();
+// On desktop, render at 2x resolution so game appears bigger
+// Game logic stays at 720x1280, but rendering at 1440x2560
+const gameWidth = isDesktop ? 1440 : 720;
+const gameHeight = isDesktop ? 2560 : 1280;
 
 // Initialize Phaser game (BootScene starts the scene chain)
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
-  width: gameConfig.phaserWidth,
-  height: gameConfig.phaserHeight,
+  width: gameWidth,
+  height: gameHeight,
   parent: 'game-container',
   backgroundColor: '#87CEEB',
   scene: [BootScene],
   scale: {
-    mode: gameConfig.scaleMode,
+    mode: Phaser.Scale.ScaleModes.FIT,
     autoCenter: Phaser.Scale.Center.CENTER_BOTH,
   },
   render: {
@@ -70,7 +49,7 @@ const game = new Phaser.Game(config);
 // Dispatch initial resize event
 setTimeout(() => {
   window.dispatchEvent(new CustomEvent('game:resize', {
-    detail: { width: gameConfig.gameWidth, height: gameConfig.gameHeight }
+    detail: { width: gameWidth, height: gameHeight }
   }));
 }, 100);
 

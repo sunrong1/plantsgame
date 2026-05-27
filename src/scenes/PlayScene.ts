@@ -125,15 +125,15 @@ export class PlayScene extends Phaser.Scene {
     const cols = 9;
     const rows = 5;
 
-    // Sky area - soft blue above the grid
+    // Sky area - soft blue above the grid (inside game area)
     const sky = this.add.graphics();
     sky.fillStyle(0x87CEEB, 1);
-    sky.fillRect(0, 75, window.innerWidth, 75);
+    sky.fillRect(offsetX, 0, cols * cellSize, offsetY);
 
     // Decorative grass strip at bottom
     const bottomGrass = this.add.graphics();
     bottomGrass.fillStyle(0x3D6B33, 1);
-    bottomGrass.fillRect(0, offsetY + rows * cellSize + 20, window.innerWidth, 30);
+    bottomGrass.fillRect(offsetX, offsetY + rows * cellSize, cols * cellSize, 30);
   }
 
   public selectPlant(plantType: string): void {

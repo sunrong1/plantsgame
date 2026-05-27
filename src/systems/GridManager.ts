@@ -36,7 +36,7 @@ export class GridManager {
 
     // Calculate dynamic grid settings based on screen orientation
     this.cellSize = getCellSize();
-    this.offsetX = getOffsetX();
+    this.offsetX = getOffsetX(GAME_CONFIG.grid.cols);
     // offsetY: top bar is 75, plant cards area is ~80, leaving space for UI
     this.offsetY = 150;
 
