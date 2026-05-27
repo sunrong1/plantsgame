@@ -42,19 +42,20 @@ const emit = defineEmits<{
 <style scoped>
 .plant-cards {
   position: absolute;
-  /* Position at bottom of game area, centered horizontally */
-  bottom: 80px;
+  /* Position at top of grid area, just below TopBar */
+  top: 75px;
   left: 0;
   right: 0;
   display: flex;
   justify-content: center;
-  gap: var(--spacing-md, 16px);
+  gap: var(--spacing-sm, 12px);
   padding: 0 var(--spacing-md, 16px);
+  z-index: 10;
 }
 
 .plant-card {
-  width: var(--card-width, 80px);
-  height: var(--card-height, 100px);
+  width: 70px;
+  height: 85px;
   background: var(--color-card-bg, #2D5A27);
   border: 3px solid var(--color-card-border, #4A8B3C);
   border-radius: var(--border-radius, 12px);
@@ -63,7 +64,7 @@ const emit = defineEmits<{
   flex-direction: column;
   align-items: center;
   justify-content: space-between;
-  padding: var(--spacing-sm, 8px);
+  padding: var(--spacing-xs, 6px);
   cursor: pointer;
   transition: transform var(--transition-fast, 150ms ease-out),
               border-color var(--transition-fast, 150ms ease-out),
@@ -71,7 +72,7 @@ const emit = defineEmits<{
 }
 
 .plant-card:hover {
-  transform: translateY(-4px);
+  transform: translateY(-3px);
   border-color: var(--color-card-hover, #3D7A37);
   box-shadow: var(--shadow-lg, 0 6px 0 rgba(0,0,0,0.25));
 }
@@ -80,7 +81,7 @@ const emit = defineEmits<{
   border-color: var(--color-card-selected, #4CAF50);
   box-shadow: 0 0 0 3px rgba(76, 175, 80, 0.4),
              var(--shadow-md, 0 4px 0 rgba(0,0,0,0.2));
-  transform: translateY(-6px);
+  transform: translateY(-4px);
 }
 
 .plant-card.disabled {
@@ -95,12 +96,12 @@ const emit = defineEmits<{
 }
 
 .card-icon {
-  font-size: 32px;
+  font-size: 28px;
   line-height: 1;
 }
 
 .card-name {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: var(--font-weight-bold, 700);
   color: var(--color-text, #FFFFFF);
   text-align: center;
@@ -111,17 +112,17 @@ const emit = defineEmits<{
   align-items: center;
   gap: 2px;
   background: rgba(0,0,0,0.3);
-  padding: 2px 6px;
-  border-radius: 8px;
+  padding: 2px 5px;
+  border-radius: 6px;
 }
 
 .cost-icon {
-  font-size: 12px;
+  font-size: 10px;
   color: var(--color-sunlight, #FFD700);
 }
 
 .cost-value {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: var(--font-weight-bold, 700);
   color: var(--color-text, #FFFFFF);
 }
