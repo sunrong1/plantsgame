@@ -136,13 +136,19 @@ export class PlayScene extends Phaser.Scene {
   }
 
   public selectPlant(plantType: string): void {
+    const config = PLANT_CONFIG_MAP.get(plantType)!;
+
+    // Only allow selection if can afford
+    if (this.economyManager.getSunlight() < config.cost) {
+      return;
+    }
+
     this.selectedPlant = plantType;
 
     if (this.previewSprite) {
       this.previewSprite.destroy();
     }
 
-    const config = PLANT_CONFIG_MAP.get(plantType)!;
     this.previewSprite = this.add.image(0, 0, plantType);
     this.previewSprite.setAlpha(0.5);
     this.previewSprite.setTint(0x00FF00);

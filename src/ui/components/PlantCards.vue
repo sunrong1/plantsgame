@@ -16,9 +16,11 @@ const emit = defineEmits<{
   (e: 'select', plantType: string): void;
 }>();
 
-const onCardClick = (plantType: string) => {
+const onCardClick = (plantType: string, cost: number) => {
+  // Don't select or speak if can't afford
+  if (!canAfford(cost)) return;
   emit('select', plantType);
-  dispatchSpeechLearnEvent(plantType); // NEW: trigger English learning
+  dispatchSpeechLearnEvent(plantType);
 };
 </script>
 
@@ -32,7 +34,7 @@ const onCardClick = (plantType: string) => {
         'selected': selectedPlant === plant.type,
         'disabled': !canAfford(plant.cost)
       }"
-      @click="onCardClick(plant.type)"
+      @click="onCardClick(plant.type, plant.cost)"
     >
       <div class="card-icon">
         <span class="plant-emoji">{{ plant.type === 'peashooter' ? '🌱' : plant.type === 'sunflower' ? '🌻' : plant.type === 'wallnut' ? '🥜' : '💣' }}</span>
