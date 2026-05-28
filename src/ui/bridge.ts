@@ -16,11 +16,18 @@ export const GameEvents = {
   // Plant selected (from Vue to Phaser)
   PLANT_SELECTED: 'game:plant-selected',
   PLANT_DESELECTED: 'game:plant-deselected',
+
+  // Speech learning event
+  SPEECH_LEARN: 'game:speech-learn',
 } as const;
 
 // Helper to dispatch events
 export function dispatchGameEvent(event: string, detail?: any) {
   window.dispatchEvent(new CustomEvent(event, { detail }));
+}
+
+export function dispatchSpeechLearnEvent(key: string) {
+  window.dispatchEvent(new CustomEvent(GameEvents.SPEECH_LEARN, { detail: key }));
 }
 
 // Helper to listen for events (for Vue)
