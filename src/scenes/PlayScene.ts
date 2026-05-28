@@ -338,7 +338,7 @@ export class PlayScene extends Phaser.Scene {
       } else {
         zombie.state = 'walking';
         zombie.targetPlant = null;
-        Zombie.updatePosition(zombie, delta, this.gridManager.getCellSize());
+        Zombie.updatePosition(zombie, delta, this.gridManager.getCellSize(), this.gridManager.getOffsetX());
 
         const newRow = Zombie.getRow(zombie);
         zombie.sprite.setData('row', newRow);

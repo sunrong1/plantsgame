@@ -171,6 +171,8 @@ onUnmounted(() => {
       v-if="showTutorial && gameState === 'playing'"
       @start="onStartGame"
     />
+
+    <div class="version-label">v5.28.1</div>
   </div>
 </template>
 
@@ -188,5 +190,16 @@ onUnmounted(() => {
 .game-ui > .top-bar,
 .game-ui > .plant-cards {
   pointer-events: auto;
+}
+
+.version-label {
+  position: absolute;
+  bottom: 8px;
+  left: 12px;
+  font-size: 14px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.6);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
 }
 </style>

@@ -109,7 +109,7 @@ export class Zombie {
     return zombie.state === 'dying' || zombie.state === 'dead';
   }
 
-  static updatePosition(zombie: ZombieEntity, delta: number, cellSize: number = 80): void {
+  static updatePosition(zombie: ZombieEntity, delta: number, cellSize: number = 80, minX?: number): void {
     if (zombie.state !== 'walking') return;
 
     const speed = zombie.config.speed;
@@ -117,6 +117,11 @@ export class Zombie {
 
     zombie.sprite.x += dx;
     zombie.position.col = Math.max(0, Math.floor(zombie.sprite.x / cellSize));
+
+    // Stop zombie at grid left boundary if minX is specified
+    if (minX !== undefined && zombie.sprite.x < minX) {
+      zombie.sprite.x = minX;
+    }
   }
 
   static getCurrentX(zombie: ZombieEntity): number {
