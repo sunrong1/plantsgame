@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { dispatchSpeechLearnEvent } from '../bridge';
+
 defineProps<{
   plants: Array<{
     type: string;
@@ -13,6 +15,11 @@ defineProps<{
 const emit = defineEmits<{
   (e: 'select', plantType: string): void;
 }>();
+
+const onCardClick = (plantType: string) => {
+  emit('select', plantType);
+  dispatchSpeechLearnEvent(plantType); // NEW: trigger English learning
+};
 </script>
 
 <template>
@@ -25,7 +32,7 @@ const emit = defineEmits<{
         'selected': selectedPlant === plant.type,
         'disabled': !canAfford(plant.cost)
       }"
-      @click="emit('select', plant.type)"
+      @click="onCardClick(plant.type)"
     >
       <div class="card-icon">
         <span class="plant-emoji">{{ plant.type === 'peashooter' ? '🌱' : plant.type === 'sunflower' ? '🌻' : plant.type === 'wallnut' ? '🥜' : '💣' }}</span>
@@ -98,6 +105,11 @@ const emit = defineEmits<{
 .card-icon {
   font-size: 28px;
   line-height: 1;
+  transition: transform 0.15s ease;
+}
+
+.plant-card:active .card-icon {
+  transform: scale(1.15);
 }
 
 .card-name {
