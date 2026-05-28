@@ -17,8 +17,7 @@ const emit = defineEmits<{
 }>();
 
 const onCardClick = (plantType: string, cost: number) => {
-  // Don't select or speak if can't afford
-  if (!canAfford(cost)) return;
+  // Always allow click and speech, affordability handled at placement
   emit('select', plantType);
   dispatchSpeechLearnEvent(plantType);
 };

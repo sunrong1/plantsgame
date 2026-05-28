@@ -172,7 +172,7 @@ onUnmounted(() => {
       @start="onStartGame"
     />
 
-    <div class="version-label">v5.28.8</div>
+    <div class="version-label">v5.28.9</div>
   </div>
 </template>
 
