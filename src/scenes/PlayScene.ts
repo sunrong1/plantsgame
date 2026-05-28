@@ -317,8 +317,11 @@ export class PlayScene extends Phaser.Scene {
       const currentX = Zombie.getCurrentX(zombie);
       const row = Zombie.getRow(zombie);
 
-      const cellCol = Math.floor((currentX - 25) / 50);
-      const targetPlant = this.findPlantAt(row, cellCol - 1);
+      const cellSize = this.gridManager.getCellSize();
+      const offsetX = this.gridManager.getOffsetX();
+      const zombieCol = Math.floor((currentX - offsetX) / cellSize);
+      // Check plant at zombie's current column (not left of it)
+      const targetPlant = this.findPlantAt(row, zombieCol);
 
       if (targetPlant) {
         zombie.state = 'attacking';
@@ -338,7 +341,7 @@ export class PlayScene extends Phaser.Scene {
       } else {
         zombie.state = 'walking';
         zombie.targetPlant = null;
-        Zombie.updatePosition(zombie, delta, this.gridManager.getCellSize(), this.gridManager.getOffsetX());
+        Zombie.updatePosition(zombie, delta, cellSize, offsetX);
 
         const newRow = Zombie.getRow(zombie);
         zombie.sprite.setData('row', newRow);
@@ -489,9 +492,11 @@ export class PlayScene extends Phaser.Scene {
       return;
     }
 
+    const gridLeftEdge = this.gridManager.getOffsetX();
     for (const zombie of this.zombies.values()) {
       const x = Zombie.getCurrentX(zombie);
-      if (x <= 25) {
+      // Game over if zombie reaches the left edge of the grid
+      if (x <= gridLeftEdge) {
         this.gameState = 'lost';
         dispatchGameEvent(GameEvents.GAME_LOST);
         return;
