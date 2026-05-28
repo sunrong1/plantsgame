@@ -49,8 +49,8 @@ const onCardClick = (plantType: string) => {
 <style scoped>
 .plant-cards {
   position: absolute;
-  /* Position at top of grid area, just below TopBar */
-  top: 75px;
+  /* Position at top of screen, well above the grid area */
+  top: 20px;
   left: 0;
   right: 0;
   display: flex;
