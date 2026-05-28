@@ -46,14 +46,13 @@ onUnmounted(() => {
 <style scoped>
 .speech-overlay {
   position: fixed;
-  top: 0;
   left: 0;
   right: 0;
   bottom: 0;
   display: flex;
   justify-content: center;
-  align-items: center;
-  background: rgba(0, 0, 0, 0.3);
+  align-items: flex-end;
+  padding-bottom: 120px;
   z-index: var(--z-speech, 200);
   pointer-events: none;
 }
@@ -62,13 +61,13 @@ onUnmounted(() => {
   background: linear-gradient(135deg, #2D5A27 0%, #4A8B3C 100%);
   border: 4px solid #FFD700;
   border-radius: 20px;
-  padding: 30px 50px;
+  padding: 20px 40px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
 }
 
 .word {
   font-family: 'Fredoka One', 'Nunito', sans-serif;
-  font-size: 72px;
+  font-size: 56px;
   color: #FFFFFF;
   text-shadow: 0 4px 8px rgba(0, 0, 0, 0.5);
   display: block;
