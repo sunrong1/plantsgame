@@ -4,6 +4,8 @@ import TopBar from './components/TopBar.vue';
 import PlantCards from './components/PlantCards.vue';
 import GameOverlay from './components/GameOverlay.vue';
 import Tutorial from './components/Tutorial.vue';
+import SpeechOverlay from './components/SpeechOverlay.vue';
+import { speechService } from '../systems/SpeechService';
 import { GameEvents } from './bridge';
 
 // Game state from Phaser
@@ -13,6 +15,8 @@ const totalWaves = ref(3);
 const selectedPlant = ref<string | null>(null);
 const gameState = ref<'playing' | 'won' | 'lost'>('playing');
 const showTutorial = ref(true);
+const speechVisible = ref(false);
+const speechWord = ref('');
 
 // Position and scale state
 const canvasLeft = ref(0);
@@ -60,6 +64,7 @@ function onPlantSelect(plantType: string) {
 
 function onStartGame() {
   showTutorial.value = false;
+  speechService.enable(); // Enable speech after user interaction
 }
 
 function handleSunlightChange(detail: { sunlight: number }) {
@@ -84,6 +89,15 @@ function handleGameLost() {
   gameState.value = 'lost';
 }
 
+function handleSpeechLearn(detail: string) {
+  const content = speechService.getContent(detail);
+  if (content) {
+    speechWord.value = content.word;
+    speechVisible.value = true;
+    speechService.speak(content);
+  }
+}
+
 function handleRestart() {
   location.reload();
 }
@@ -106,6 +120,9 @@ onMounted(() => {
   window.addEventListener(GameEvents.WAVE_COMPLETED, ((e: CustomEvent) => handleWaveCompleted(e.detail)) as EventListener);
   window.addEventListener(GameEvents.GAME_WON, handleGameWon as EventListener);
   window.addEventListener(GameEvents.GAME_LOST, handleGameLost as EventListener);
+  window.addEventListener(GameEvents.SPEECH_LEARN, ((e: CustomEvent) => {
+    handleSpeechLearn(e.detail);
+  }) as EventListener);
 });
 
 onUnmounted(() => {
@@ -116,6 +133,9 @@ onUnmounted(() => {
   window.removeEventListener(GameEvents.WAVE_COMPLETED, ((e: CustomEvent) => handleWaveCompleted(e.detail)) as EventListener);
   window.removeEventListener(GameEvents.GAME_WON, handleGameWon as EventListener);
   window.removeEventListener(GameEvents.GAME_LOST, handleGameLost as EventListener);
+  window.removeEventListener(GameEvents.SPEECH_LEARN, ((e: CustomEvent) => {
+    handleSpeechLearn(e.detail);
+  }) as EventListener);
 });
 </script>
 
@@ -138,6 +158,13 @@ onUnmounted(() => {
       v-if="gameState !== 'playing'"
       :state="gameState"
       @restart="handleRestart"
+    />
+
+    <SpeechOverlay
+      v-if="speechVisible"
+      :visible="speechVisible"
+      :word="speechWord"
+      @done="speechVisible = false"
     />
 
     <Tutorial
