@@ -52,7 +52,7 @@ onUnmounted(() => {
   display: flex;
   justify-content: center;
   align-items: flex-end;
-  padding-bottom: 200px;
+  padding-bottom: 280px;
   z-index: var(--z-speech, 200);
   pointer-events: none;
 }

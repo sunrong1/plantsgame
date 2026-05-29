@@ -37,6 +37,8 @@ export const LEARNING_DATA: Record<string, LearningContent> = {
 export class SpeechService {
   private static instance: SpeechService | null = null;
   private _enabled: boolean = false;
+  private _voices: SpeechSynthesisVoice[] = [];
+  private _voicesLoaded: boolean = false;
 
   static getInstance(): SpeechService {
     if (!SpeechService.instance) {
@@ -47,6 +49,22 @@ export class SpeechService {
 
   enable(): void {
     this._enabled = true;
+    this.loadVoices();
+  }
+
+  private loadVoices(): void {
+    // Get available voices
+    const voices = speechSynthesis.getVoices();
+    if (voices.length > 0) {
+      this._voices = voices;
+      this._voicesLoaded = true;
+    }
+
+    // Mobile Safari requires listening for voiceschanged event
+    speechSynthesis.onvoiceschanged = () => {
+      this._voices = speechSynthesis.getVoices();
+      this._voicesLoaded = true;
+    };
   }
 
   isSpeaking(): boolean {
@@ -54,7 +72,8 @@ export class SpeechService {
   }
 
   private selectBestVoice(): SpeechSynthesisVoice | null {
-    const voices = speechSynthesis.getVoices();
+    // Use cached voices if loaded, otherwise try to get them now
+    const voices = this._voicesLoaded ? this._voices : speechSynthesis.getVoices();
     if (voices.length === 0) return null;
 
     // Priority order for natural children's voice:
@@ -78,12 +97,15 @@ export class SpeechService {
       if (voice) return voice;
     }
 
-    // Fallback to any en-US voice
-    return voices.find((v) => v.lang === 'en-US') || null;
+    // Fallback to any en-US voice, then any English voice
+    return voices.find((v) => v.lang === 'en-US') || voices.find((v) => v.lang.startsWith('en')) || null;
   }
 
   speak(content: LearningContent): void {
     if (!this._enabled) return;
+
+    // Cancel any ongoing speech
+    speechSynthesis.cancel();
 
     // First speak the word with emphasis
     const wordUtterance = new SpeechSynthesisUtterance(content.word);
@@ -106,19 +128,17 @@ export class SpeechService {
       }, 300);
     };
 
-    speechSynthesis.cancel();
     speechSynthesis.speak(wordUtterance);
   }
 
   speakWord(word: string): void {
     if (!this._enabled) return;
+    speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(word);
     utterance.rate = 0.85;
     utterance.pitch = 1.05;
     utterance.volume = 1.0;
     utterance.voice = this.selectBestVoice();
-
-    speechSynthesis.cancel();
     speechSynthesis.speak(utterance);
   }
 
