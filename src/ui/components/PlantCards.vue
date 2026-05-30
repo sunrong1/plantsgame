@@ -2,6 +2,9 @@
 import { dispatchSpeechLearnEvent } from '../bridge';
 
 defineProps<{
+  sunlight: number;
+  wave: number;
+  totalWaves: number;
   plants: Array<{
     type: string;
     name: string;
@@ -17,72 +20,133 @@ const emit = defineEmits<{
 }>();
 
 const onCardClick = (plantType: string, cost: number) => {
-  // Always allow click and speech, affordability handled at placement
   emit('select', plantType);
   dispatchSpeechLearnEvent(plantType);
 };
 </script>
 
 <template>
-  <div class="plant-cards">
-    <div
-      v-for="plant in plants"
-      :key="plant.type"
-      class="plant-card"
-      :class="{
-        'selected': selectedPlant === plant.type,
-        'disabled': !canAfford(plant.cost)
-      }"
-      @click="onCardClick(plant.type, plant.cost)"
-    >
-      <div class="card-icon">
-        <span class="plant-emoji">{{ plant.type === 'peashooter' ? '🌱' : plant.type === 'sunflower' ? '🌻' : plant.type === 'wallnut' ? '🥜' : '💣' }}</span>
-      </div>
-      <div class="card-name">{{ plant.name }}</div>
-      <div class="card-cost">
-        <span class="cost-icon">☀</span>
-        <span class="cost-value">{{ plant.cost }}</span>
+  <div class="resource-bar">
+    <!-- Sunlight Display -->
+    <div class="resource-item sunlight-item">
+      <span class="sun-icon">☀</span>
+      <span class="sun-value">{{ sunlight }}</span>
+    </div>
+
+    <!-- Wave Display -->
+    <div class="resource-item wave-item">
+      <span class="wave-label">波</span>
+      <span class="wave-value">{{ wave }}/{{ totalWaves }}</span>
+    </div>
+
+    <!-- Plant Cards -->
+    <div class="plant-cards">
+      <div
+        v-for="plant in plants"
+        :key="plant.type"
+        class="plant-card"
+        :class="{
+          'selected': selectedPlant === plant.type,
+          'disabled': !canAfford(plant.cost)
+        }"
+        @click="onCardClick(plant.type, plant.cost)"
+      >
+        <div class="card-icon">
+          <span class="plant-emoji">{{ plant.type === 'peashooter' ? '🌱' : plant.type === 'sunflower' ? '🌻' : plant.type === 'wallnut' ? '🥜' : '💣' }}</span>
+        </div>
+        <div class="card-name">{{ plant.name }}</div>
+        <div class="card-cost">
+          <span class="cost-icon">☀</span>
+          <span class="cost-value">{{ plant.cost }}</span>
+        </div>
       </div>
     </div>
   </div>
 </template>
 
 <style scoped>
+.resource-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 8px 16px;
+  background: linear-gradient(180deg, rgba(0,0,0,0.5) 0%, rgba(0,0,0,0.2) 100%);
+  border-radius: 12px;
+}
+
+.resource-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--color-card-bg, #2D5A27);
+  padding: 8px 14px;
+  border-radius: 10px;
+  border: 2px solid var(--color-card-border, #4A8B3C);
+  box-shadow: 0 3px 0 rgba(0,0,0,0.2);
+}
+
+.sunlight-item {
+  min-width: 70px;
+}
+
+.sun-icon {
+  font-size: 20px;
+  color: var(--color-sunlight, #FFD700);
+  text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+}
+
+.sun-value {
+  font-size: 18px;
+  font-weight: 700;
+  color: #FFFFFF;
+}
+
+.wave-item {
+  min-width: 60px;
+}
+
+.wave-label {
+  font-size: 12px;
+  color: var(--color-text-secondary, #B8F0A8);
+}
+
+.wave-value {
+  font-size: 16px;
+  font-weight: 700;
+  color: #FFFFFF;
+}
+
 .plant-cards {
   display: flex;
-  justify-content: center;
-  gap: var(--spacing-sm, 12px);
-  padding: 0 var(--spacing-md, 16px);
+  gap: 10px;
 }
 
 .plant-card {
-  width: 70px;
-  height: 85px;
+  width: 65px;
+  height: 80px;
   background: var(--color-card-bg, #2D5A27);
   border: 3px solid var(--color-card-border, #4A8B3C);
-  border-radius: var(--border-radius, 12px);
-  box-shadow: var(--shadow-md, 0 4px 0 rgba(0,0,0,0.2));
+  border-radius: 12px;
+  box-shadow: 0 4px 0 rgba(0,0,0,0.2);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: space-between;
-  padding: var(--spacing-xs, 6px);
+  padding: 6px;
   cursor: pointer;
-  transition: transform var(--transition-fast, 150ms ease-out),
-              border-color var(--transition-fast, 150ms ease-out),
-              box-shadow var(--transition-fast, 150ms ease-out);
+  transition: transform 150ms ease-out, border-color 150ms ease-out, box-shadow 150ms ease-out;
 }
 
 .plant-card:hover {
   transform: translateY(-3px);
   border-color: var(--color-card-hover, #3D7A37);
-  box-shadow: var(--shadow-lg, 0 6px 0 rgba(0,0,0,0.25));
+  box-shadow: 0 6px 0 rgba(0,0,0,0.25);
 }
 
 .plant-card.selected {
   border-color: var(--color-card-selected, #4CAF50);
-  box-shadow: 0 0 0 3px rgba(76, 175, 80, 0.4),
-             var(--shadow-md, 0 4px 0 rgba(0,0,0,0.2));
+  box-shadow: 0 0 0 3px rgba(76, 175, 80, 0.4), 0 4px 0 rgba(0,0,0,0.2);
   transform: translateY(-4px);
 }
 
@@ -94,11 +158,11 @@ const onCardClick = (plantType: string, cost: number) => {
 .plant-card.disabled:hover {
   transform: none;
   border-color: var(--color-card-border, #4A8B3C);
-  box-shadow: var(--shadow-md, 0 4px 0 rgba(0,0,0,0.2));
+  box-shadow: 0 4px 0 rgba(0,0,0,0.2);
 }
 
 .card-icon {
-  font-size: 28px;
+  font-size: 26px;
   line-height: 1;
   transition: transform 0.15s ease;
 }
@@ -108,9 +172,9 @@ const onCardClick = (plantType: string, cost: number) => {
 }
 
 .card-name {
-  font-size: 10px;
-  font-weight: var(--font-weight-bold, 700);
-  color: var(--color-text, #FFFFFF);
+  font-size: 9px;
+  font-weight: 700;
+  color: #FFFFFF;
   text-align: center;
 }
 
@@ -124,13 +188,13 @@ const onCardClick = (plantType: string, cost: number) => {
 }
 
 .cost-icon {
-  font-size: 10px;
+  font-size: 9px;
   color: var(--color-sunlight, #FFD700);
 }
 
 .cost-value {
-  font-size: 11px;
-  font-weight: var(--font-weight-bold, 700);
-  color: var(--color-text, #FFFFFF);
+  font-size: 10px;
+  font-weight: 700;
+  color: #FFFFFF;
 }
 </style>

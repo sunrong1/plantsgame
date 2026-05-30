@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed } from 'vue';
-import TopBar from './components/TopBar.vue';
 import PlantCards from './components/PlantCards.vue';
 import GameOverlay from './components/GameOverlay.vue';
 import Tutorial from './components/Tutorial.vue';
@@ -39,11 +38,12 @@ const gameUIStyle = computed(() => ({
   height: `${canvasHeight.value}px`,
 }));
 
-// Layout computed values
-const plantCardsStyle = computed(() => ({
-  top: `${gridOffsetY.value - 85}px`, // Just above grid
+// Layout computed values - position resource bar above grid
+const resourceBarStyle = computed(() => ({
+  top: `${gridOffsetY.value - 90}px`, // Just above grid with some margin
 }));
 
+// Speech overlay below grid
 const speechOverlayStyle = computed(() => ({
   top: `${gridOffsetY.value + gridHeight.value + 10}px`, // Just below grid
 }));
@@ -162,18 +162,16 @@ onUnmounted(() => {
 
 <template>
   <div class="game-ui" :style="gameUIStyle">
-    <TopBar
+    <!-- Resource bar: sunlight + wave + plant cards, positioned above grid -->
+    <PlantCards
       :sunlight="sunlight"
       :wave="currentWave"
       :total-waves="totalWaves"
-    />
-
-    <PlantCards
       :plants="plants"
       :selected-plant="selectedPlant"
       :can-afford="canAfford"
-      class="plant-cards-aligned"
-      :style="plantCardsStyle"
+      class="resource-bar-aligned"
+      :style="resourceBarStyle"
       @select="onPlantSelect"
     />
 
@@ -197,7 +195,7 @@ onUnmounted(() => {
       @start="onStartGame"
     />
 
-    <div class="version-label">v5.30.2</div>
+    <div class="version-label">v5.30.3</div>
   </div>
 </template>
 
@@ -212,19 +210,16 @@ onUnmounted(() => {
 }
 
 /* UI elements that should receive events get pointer-events: auto */
-.game-ui > .top-bar,
-.game-ui > .plant-cards-aligned {
+.game-ui > .resource-bar-aligned {
   pointer-events: auto;
 }
 
-.plant-cards-aligned {
+.resource-bar-aligned {
   position: absolute;
   left: 0;
   right: 0;
   display: flex;
   justify-content: center;
-  gap: var(--spacing-sm, 12px);
-  padding: 0 var(--spacing-md, 16px);
   z-index: 10;
 }
 

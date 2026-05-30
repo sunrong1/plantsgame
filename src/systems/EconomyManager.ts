@@ -56,40 +56,43 @@ export class EconomyManager {
     const id = `sun_${Date.now()}_${Math.random()}`;
     const createdAt = Date.now();
 
-    // 绘制阳光
+    // 绘制阳光 - 更大的触摸区域
     const graphics = this.scene.add.graphics();
     // 外圈光芒
     graphics.fillStyle(0xFFD700, 1);
-    graphics.fillCircle(20, 20, 20);
+    graphics.fillCircle(25, 25, 25);
     // 内圈主体
     graphics.fillStyle(0xFFFF00, 1);
-    graphics.fillCircle(20, 20, 15);
+    graphics.fillCircle(25, 25, 18);
     // 中心高光
-    graphics.fillStyle(0xFFFFFF, 0.5);
-    graphics.fillCircle(20, 20, 5);
+    graphics.fillStyle(0xFFFFFF, 0.6);
+    graphics.fillCircle(25, 25, 6);
 
-    // 触摸区域
+    // 触摸区域 - 增大到60px
     const container = this.scene.add.container(x, y, [graphics]);
-    container.setSize(50, 50);
-    container.setInteractive({ useHandCursor: true });
+    container.setSize(60, 60);
+    container.setInteractive({ useHandCursor: true, pixelPerfect: false });
     container.setData('isSunlight', true);
 
     // 添加下落动画
     container.setAlpha(0);
+    container.setScale(0.5);
     this.scene.tweens.add({
       targets: container,
       alpha: 1,
+      scale: 1,
       y: y + 20,
-      duration: 500,
-      ease: 'Bounce.easeOut'
+      duration: 600,
+      ease: 'Back.easeOut'
     });
 
-    // 触摸时有放大反馈
+    // 触摸时有放大反馈 + 轻微上浮
     container.on('pointerover', () => {
       this.scene.tweens.add({
         targets: container,
-        scale: 1.2,
-        duration: 100
+        scale: 1.3,
+        duration: 150,
+        ease: 'Power2'
       });
     });
 
@@ -97,12 +100,25 @@ export class EconomyManager {
       this.scene.tweens.add({
         targets: container,
         scale: 1,
-        duration: 100
+        duration: 150,
+        ease: 'Power2'
       });
     });
 
+    // 点击收集 - 带视觉反馈
     container.on('pointerdown', () => {
-      this.collectSunlight(id);
+      // 收集动画：快速放大后消失
+      this.scene.tweens.add({
+        targets: container,
+        scale: 1.5,
+        alpha: 0,
+        y: container.y - 30,
+        duration: 300,
+        ease: 'Power2',
+        onComplete: () => {
+          this.collectSunlight(id);
+        }
+      });
     });
 
     this.sunlightSprites.push({
