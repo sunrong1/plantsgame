@@ -68,6 +68,12 @@ export class PlayScene extends Phaser.Scene {
 
     // Dispatch resize event for Vue UI
     dispatchGameEvent('game:resize', { width: this.scale.width, height: this.scale.height });
+
+    // Dispatch grid info for UI positioning
+    dispatchGameEvent('game:grid-info', {
+      offsetY: this.gridManager.getOffsetY(),
+      gridHeight: GAME_CONFIG.grid.rows * this.gridManager.getCellSize()
+    });
   }
 
   update(time: number, delta: number): void {

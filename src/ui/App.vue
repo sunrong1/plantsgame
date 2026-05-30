@@ -25,6 +25,10 @@ const uiScale = ref(1);
 const canvasWidth = ref(720);
 const canvasHeight = ref(1280);
 
+// Grid info from game (set by Phaser)
+const gridOffsetY = ref(150); // Default fallback
+const gridHeight = ref(400);  // 5 rows * 80px
+
 // Computed style object for inline styling
 const gameUIStyle = computed(() => ({
   left: `${canvasLeft.value}px`,
@@ -33,6 +37,15 @@ const gameUIStyle = computed(() => ({
   transformOrigin: 'top left',
   width: `${canvasWidth.value}px`,
   height: `${canvasHeight.value}px`,
+}));
+
+// Layout computed values
+const plantCardsStyle = computed(() => ({
+  top: `${gridOffsetY.value - 85}px`, // Just above grid
+}));
+
+const speechOverlayStyle = computed(() => ({
+  top: `${gridOffsetY.value + gridHeight.value + 10}px`, // Just below grid
 }));
 
 function updateCanvasPosition() {
@@ -108,12 +121,19 @@ function onGameResize(data: { width: number; height: number }) {
   setTimeout(updateCanvasPosition, 50);
 }
 
+// Listen for grid info from Phaser
+function onGridInfo(data: { offsetY: number; gridHeight: number }) {
+  gridOffsetY.value = data.offsetY;
+  gridHeight.value = data.gridHeight;
+}
+
 onMounted(() => {
   setTimeout(updateCanvasPosition, 100);
   window.addEventListener('resize', updateCanvasPosition);
 
   // Listen for game resize from Phaser
   window.addEventListener('game:resize', ((e: CustomEvent) => onGameResize(e.detail)) as EventListener);
+  window.addEventListener('game:grid-info', ((e: CustomEvent) => onGridInfo(e.detail)) as EventListener);
 
   window.addEventListener(GameEvents.SUNLIGHT_CHANGED, ((e: CustomEvent) => handleSunlightChange(e.detail)) as EventListener);
   window.addEventListener(GameEvents.WAVE_STARTED, ((e: CustomEvent) => handleWaveStarted(e.detail)) as EventListener);
@@ -128,6 +148,7 @@ onMounted(() => {
 onUnmounted(() => {
   window.removeEventListener('resize', updateCanvasPosition);
   window.removeEventListener('game:resize', ((e: CustomEvent) => onGameResize(e.detail)) as EventListener);
+  window.removeEventListener('game:grid-info', ((e: CustomEvent) => onGridInfo(e.detail)) as EventListener);
   window.removeEventListener(GameEvents.SUNLIGHT_CHANGED, ((e: CustomEvent) => handleSunlightChange(e.detail)) as EventListener);
   window.removeEventListener(GameEvents.WAVE_STARTED, ((e: CustomEvent) => handleWaveStarted(e.detail)) as EventListener);
   window.removeEventListener(GameEvents.WAVE_COMPLETED, ((e: CustomEvent) => handleWaveCompleted(e.detail)) as EventListener);
@@ -151,6 +172,8 @@ onUnmounted(() => {
       :plants="plants"
       :selected-plant="selectedPlant"
       :can-afford="canAfford"
+      class="plant-cards-aligned"
+      :style="plantCardsStyle"
       @select="onPlantSelect"
     />
 
@@ -164,6 +187,8 @@ onUnmounted(() => {
       v-if="speechVisible"
       :visible="speechVisible"
       :word="speechWord"
+      class="speech-overlay-aligned"
+      :style="speechOverlayStyle"
       @done="speechVisible = false"
     />
 
@@ -172,7 +197,7 @@ onUnmounted(() => {
       @start="onStartGame"
     />
 
-    <div class="version-label">v5.30.1</div>
+    <div class="version-label">v5.30.2</div>
   </div>
 </template>
 
@@ -188,8 +213,29 @@ onUnmounted(() => {
 
 /* UI elements that should receive events get pointer-events: auto */
 .game-ui > .top-bar,
-.game-ui > .plant-cards {
+.game-ui > .plant-cards-aligned {
   pointer-events: auto;
+}
+
+.plant-cards-aligned {
+  position: absolute;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  gap: var(--spacing-sm, 12px);
+  padding: 0 var(--spacing-md, 16px);
+  z-index: 10;
+}
+
+.speech-overlay-aligned {
+  position: absolute;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  z-index: 10;
+  pointer-events: none;
 }
 
 .version-label {

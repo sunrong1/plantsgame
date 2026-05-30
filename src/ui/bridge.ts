@@ -19,6 +19,9 @@ export const GameEvents = {
 
   // Speech learning event
   SPEECH_LEARN: 'game:speech-learn',
+
+  // Grid info (from Phaser to Vue)
+  GRID_INFO: 'game:grid-info',
 } as const;
 
 // Helper to dispatch events

@@ -45,16 +45,9 @@ onUnmounted(() => {
 
 <style scoped>
 .speech-overlay {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
   display: flex;
   justify-content: center;
-  align-items: flex-end;
-  padding-bottom: 280px;
-  z-index: var(--z-speech, 200);
-  pointer-events: none;
+  width: 100%;
 }
 
 .speech-bubble {

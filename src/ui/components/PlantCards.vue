@@ -49,16 +49,10 @@ const onCardClick = (plantType: string, cost: number) => {
 
 <style scoped>
 .plant-cards {
-  position: absolute;
-  /* Position at top of screen, well above the grid area */
-  top: 20px;
-  left: 0;
-  right: 0;
   display: flex;
   justify-content: center;
   gap: var(--spacing-sm, 12px);
   padding: 0 var(--spacing-md, 16px);
-  z-index: 10;
 }
 
 .plant-card {
