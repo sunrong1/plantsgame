@@ -78,6 +78,7 @@ function onPlantSelect(plantType: string) {
 function onStartGame() {
   showTutorial.value = false;
   speechService.enable(); // Enable speech after user interaction
+  speechService.preheat(); // Unlock Android audio session in this user gesture
 }
 
 function handleSunlightChange(detail: { sunlight: number }) {
@@ -195,7 +196,7 @@ onUnmounted(() => {
       @start="onStartGame"
     />
 
-    <div class="version-label">v5.30.4</div>
+    <div class="version-label">v5.30.5</div>
   </div>
 </template>
 

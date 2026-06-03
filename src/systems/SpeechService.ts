@@ -39,6 +39,7 @@ export class SpeechService {
   private _enabled: boolean = false;
   private _voices: SpeechSynthesisVoice[] = [];
   private _voicesLoaded: boolean = false;
+  private _preheated: boolean = false;
 
   static getInstance(): SpeechService {
     if (!SpeechService.instance) {
@@ -50,6 +51,23 @@ export class SpeechService {
   enable(): void {
     this._enabled = true;
     this.loadVoices();
+  }
+
+  preheat(): void {
+    if (this._preheated || !this._enabled) return;
+    if (typeof speechSynthesis === 'undefined') return;
+
+    // Android Chrome requires a user-gesture utterance to unlock
+    // the audio session. Subsequent speaks would silently fail otherwise.
+    const warmup = new SpeechSynthesisUtterance(' ');
+    warmup.volume = 0;
+    warmup.onend = () => { this._preheated = true; };
+    warmup.onerror = () => { this._preheated = true; };
+    try {
+      speechSynthesis.speak(warmup);
+    } catch {
+      this._preheated = true;
+    }
   }
 
   private loadVoices(): void {
@@ -104,8 +122,11 @@ export class SpeechService {
   speak(content: LearningContent): void {
     if (!this._enabled) return;
 
-    // Cancel any ongoing speech
-    speechSynthesis.cancel();
+    // Only cancel if something is already playing; canceling when idle
+    // can break Android's freshly-unlocked audio session.
+    if (speechSynthesis.speaking) {
+      speechSynthesis.cancel();
+    }
 
     // First speak the word with emphasis
     const wordUtterance = new SpeechSynthesisUtterance(content.word);
@@ -113,6 +134,11 @@ export class SpeechService {
     wordUtterance.pitch = 1.05;
     wordUtterance.volume = 1.0;
     wordUtterance.voice = this.selectBestVoice();
+    wordUtterance.onerror = (e) => {
+      if (e.error !== 'canceled') {
+        console.warn('Speech word error:', e.error);
+      }
+    };
 
     // Then speak the sentence after a short pause
     const sentenceUtterance = new SpeechSynthesisUtterance(content.sentence);
@@ -120,6 +146,11 @@ export class SpeechService {
     sentenceUtterance.pitch = 1.0;
     sentenceUtterance.volume = 1.0;
     sentenceUtterance.voice = this.selectBestVoice();
+    sentenceUtterance.onerror = (e) => {
+      if (e.error !== 'canceled') {
+        console.warn('Speech sentence error:', e.error);
+      }
+    };
 
     // Chain: word -> pause -> sentence
     wordUtterance.onend = () => {
@@ -133,12 +164,19 @@ export class SpeechService {
 
   speakWord(word: string): void {
     if (!this._enabled) return;
-    speechSynthesis.cancel();
+    if (speechSynthesis.speaking) {
+      speechSynthesis.cancel();
+    }
     const utterance = new SpeechSynthesisUtterance(word);
     utterance.rate = 0.85;
     utterance.pitch = 1.05;
     utterance.volume = 1.0;
     utterance.voice = this.selectBestVoice();
+    utterance.onerror = (e) => {
+      if (e.error !== 'canceled') {
+        console.warn('Speech word error:', e.error);
+      }
+    };
     speechSynthesis.speak(utterance);
   }
 
