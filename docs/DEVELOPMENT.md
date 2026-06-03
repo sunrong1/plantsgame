@@ -14,8 +14,9 @@
 ┌─────────────────────────────────────────────┐
 │              Vue 3 App (HTML/CSS)           │
 │  ┌──────────┐ ┌──────────┐ ┌────────────┐   │
-│  │ TopBar   │ │ Plant    │ │SpeechOverlay│  │
-│  │(阳光/波次)│ │ Cards    │ │ (单词显示) │   │
+│  │  Plant   │ │ Speech   │ │  Game      │   │
+│  │  Cards   │ │ Overlay  │ │  Overlay   │   │
+│  │(资源+卡片)│ │(单词显示)│ │(胜利/失败) │   │
 │  └──────────┘ └──────────┘ └────────────┘   │
 └────────────────────┬────────────────────────┘
                      │ CustomEvent
@@ -33,7 +34,50 @@
 - Phaser 擅长游戏渲染（精灵、动画、物理）
 - 可以用现代 CSS 实现精美 UI，同时保留游戏性能
 
-### 1.2 事件桥接机制
+### 1.2 移动端缩放
+
+`src/main.ts` 使用 `Phaser.Scale.FIT` 模式：
+
+```typescript
+scale: {
+  mode: Phaser.Scale.ScaleModes.FIT,
+  autoCenter: Phaser.Scale.Center.CENTER_BOTH,
+}
+```
+
+- 游戏内部坐标固定 720×1280
+- Phaser 在 CSS 层做 letterbox 等比缩放，canvas 显示尺寸自动适配视口
+- `scene.scale.width/height` 始终是 720×1280 → `GridManager` 计算的 `offsetX/offsetY` 正确
+- 早先使用的 `RESIZE` 模式会让 `scale.width/height` 跟随视口，导致窄屏手机 `offsetX` 变为负数，左半部分网格被裁切
+
+### 1.3 Android 音频预热
+
+Android Chrome 的 Web Speech API 必须**在用户手势的事件栈中**调用 `speak()` 才能激活音频会话。`SpeechService.preheat()` 解决了这个限制：
+
+```typescript
+// src/ui/App.vue
+function onStartGame() {
+  showTutorial.value = false;
+  speechService.enable();
+  speechService.preheat();  // 在"开始"按钮点击的事件栈中激活音频
+}
+```
+
+```typescript
+// src/systems/SpeechService.ts
+preheat(): void {
+  if (this._preheated || !this._enabled) return;
+  const warmup = new SpeechSynthesisUtterance(' ');
+  warmup.volume = 0;
+  warmup.onend = () => { this._preheated = true; };
+  warmup.onerror = () => { this._preheated = true; };
+  speechSynthesis.speak(warmup);
+}
+```
+
+`speak()` 和 `speakWord()` 中 `cancel()` 也加了守卫，仅在 `speechSynthesis.speaking === true` 时调用，避免误关闭刚激活的会话。
+
+### 1.4 事件桥接机制
 
 Vue 和 Phaser 之间通过 `CustomEvent` 和 `window` 对象通信。
 
@@ -45,6 +89,8 @@ export const GameEvents = {
   SUNLIGHT_CHANGED: 'game:sunlight-changed', // Phaser → Vue
   GAME_WON: 'game:won',                     // Phaser → Vue
   GAME_LOST: 'game:lost',                   // Phaser → Vue
+  GRID_INFO: 'game:grid-info',             // Phaser → Vue (gridOffsetY, gridHeight)
+  RESIZE: 'game:resize',                   // Phaser → Vue (canvas size)
 };
 
 // Vue 发送事件
@@ -92,9 +138,9 @@ src/
     ├── App.vue               # 根组件
     ├── bridge.ts             # 事件桥接
     ├── main.ts               # Vue 入口
+    ├── styles/               # CSS 变量与动画
     └── components/           # Vue 组件
-        ├── TopBar.vue        # 顶部：阳光、波次
-        ├── PlantCards.vue    # 植物选择卡片
+        ├── PlantCards.vue    # 资源栏 + 植物卡片（已合并 TopBar）
         ├── SpeechOverlay.vue # 单词显示弹窗
         ├── Tutorial.vue       # 新手引导
         └── GameOverlay.vue    # 游戏结束画面
@@ -150,7 +196,7 @@ export class Zombie {
 | GridManager | 管理5×9网格，单元格状态，植物布局 |
 | WaveManager | 管理僵尸波次生成，定时器 |
 | EconomyManager | 管理阳光生成、消耗、掉落 |
-| SpeechService | 管理Web Speech API，播放语音 |
+| SpeechService | 管理Web Speech API，播放英语单词+句子；`preheat()` 用于解锁 Android 音频会话 |
 
 ### 3.4 场景层 (scenes/)
 
@@ -223,6 +269,25 @@ npm test
 npx tsc --noEmit
 ```
 
+### 4.4 Android 真机测试
+
+视觉缩放可在 Chrome DevTools 设备模式中验证，但**音频行为只能在真机复现**。
+
+```bash
+# 启动 dev server 并绑定所有网卡，让同 WiFi 的 Android 手机访问
+npm run dev -- --host 0.0.0.0
+# 输出: ➜  Network: http://10.0.0.X:5173/
+```
+
+手机 Chrome 访问该地址，逐项验证：
+- 5×9 网格完整可见
+- 植物卡片和单词弹窗不重叠地图
+- 点击"开始"按钮 → 点击植物卡片 → 应能听到英语单词
+
+**测试责任划分**：
+- Claude 可验证：类型检查、桌面浏览器布局、DevTools 设备模拟视觉
+- 用户验证：真机音频播放、触摸精度、视觉无裁切
+
 ---
 
 ## 5. 设计决策记录
@@ -245,13 +310,23 @@ npx tsc --noEmit
 - 更大的触摸目标，更适合儿童
 - 与 AI 生成的 512x512 素材更匹配
 
+### 5.4 为什么用 FIT 而不是 RESIZE 缩放？
+
+- `FIT`：保持 720×1280 内部坐标，CSS 做 letterbox 等比缩放 → `GridManager` 计算的网格偏移正确
+- `RESIZE`：Phaser 把画布拉伸到父容器，`scale.width/height` 变成视口尺寸 → 在窄屏手机上 `offsetX` 变负，网格被裁
+
+### 5.5 为什么 SpeechService 需要 preheat？
+
+- Android Chrome 必须有**用户手势栈内**的首次 `speak()` 才能激活音频会话
+- 用户点植物卡片时已经离开"开始"按钮的事件栈 → 直接 speak 会静默失败
+- `preheat()` 在"开始"按钮点击时创建静音 utterance 激活会话，后续 speak 正常工作
+
 ---
 
 ## 6. 待解决问题
 
 - [ ] 横屏模式下的布局适配
-- [ ] 移动端触摸事件的精确度
-- [ ] 游戏音效系统
+- [ ] 游戏音效系统（豌豆射击、僵尸啃咬、爆炸等）
 
 ---
 

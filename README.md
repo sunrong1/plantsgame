@@ -48,7 +48,21 @@
 ### 技术架构
 - **Vue 3 + Phaser 3 混合架构** - UI 层用 Vue，游戏层用 Phaser
 - **事件桥接** - CustomEvent 实现 Vue 和 Phaser 通信
-- **响应式设计** - 支持平板横屏/竖屏
+- **Phaser FIT 缩放** - 固定 720×1280 内部坐标，手机端通过 letterbox 自动缩放
+- **Web Speech API** - 首次用户手势预热（preheat）解决 Android Chrome 音频会话锁定
+
+### 移动端适配
+
+游戏对 Android Chrome 做了专门优化：
+- **缩放**：使用 `Phaser.Scale.FIT` 模式，720×1280 内部坐标，CSS 层 letterbox 等比缩放
+- **音频**：在 Tutorial "开始" 按钮点击时调用 `speechService.preheat()`，在用户手势栈内创建静音 utterance 激活 Android 音频会话
+- **触摸**：60px 阳光触摸区域，植物卡片和网格距离紧凑
+
+```bash
+# 启动 dev server，手机通过局域网访问
+npm run dev -- --host 0.0.0.0
+# 访问 http://<本机局域网 IP>:5173
+```
 
 ## 快速开始
 
@@ -112,8 +126,7 @@ src/
     ├── App.vue               # 主应用组件
     ├── bridge.ts             # Vue-Phaser 事件桥接
     └── components/           # Vue 组件
-        ├── TopBar.vue        # 顶部资源栏
-        ├── PlantCards.vue    # 植物卡片选择栏
+        ├── PlantCards.vue    # 资源栏 + 植物卡片（已合并 TopBar）
         ├── SpeechOverlay.vue # 单词显示弹窗
         ├── Tutorial.vue      # 教程引导
         └── GameOverlay.vue   # 游戏结束画面
@@ -178,6 +191,10 @@ src/
 
 | 版本 | 日期 | 变更 |
 |------|------|------|
+| v5.30.5 | 2026-06-03 | 修复 Android 音频：用户手势预热 + onerror 处理 |
+| v5.30.4 | 2026-06-03 | 修复手机地图显示：Phaser scale 改为 FIT 模式 |
+| v5.30.3 | 2026-06-03 | 资源栏合并到 PlantCards，优化阳光触摸体验 |
+| v5.30.0 | 2026-06-01 | 重新设计布局：植物卡片上方、单词弹窗下方 |
 | v5.29.1 | 2026-05-30 | 优化移动端语音，加厚弹窗位置 |
 | v5.28.9 | 2026-05-28 | 修复植物卡片和语音问题 |
 | v5.28.3 | 2026-05-28 | 可爱版僵尸图片 |
