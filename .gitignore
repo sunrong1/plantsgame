@@ -36,3 +36,8 @@ lerna-debug.log*
 
 # TypeScript cache
 *.tsbuildinfo
+
+# Playwright
+test-results/
+playwright-report/
+playwright/.cache/

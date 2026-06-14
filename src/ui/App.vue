@@ -4,6 +4,7 @@ import PlantCards from './components/PlantCards.vue';
 import GameOverlay from './components/GameOverlay.vue';
 import Tutorial from './components/Tutorial.vue';
 import SpeechOverlay from './components/SpeechOverlay.vue';
+import RotatePrompt from './components/RotatePrompt.vue';
 import { speechService } from '../systems/SpeechService';
 import { GameEvents } from './bridge';
 
@@ -38,14 +39,14 @@ const gameUIStyle = computed(() => ({
   height: `${canvasHeight.value}px`,
 }));
 
-// Layout computed values - position resource bar above grid
+// Layout computed values - position resource bar above grid, scaled with canvas
 const resourceBarStyle = computed(() => ({
-  top: `${gridOffsetY.value - 90}px`, // Just above grid with some margin
+  top: `${(gridOffsetY.value - 90) * uiScale.value}px`, // Just above grid with some margin
 }));
 
 // Speech overlay below grid
 const speechOverlayStyle = computed(() => ({
-  top: `${gridOffsetY.value + gridHeight.value + 10}px`, // Just below grid
+  top: `${(gridOffsetY.value + gridHeight.value + 10) * uiScale.value}px`, // Just below grid
 }));
 
 function updateCanvasPosition() {
@@ -56,7 +57,9 @@ function updateCanvasPosition() {
     canvasTop.value = rect.top;
     canvasWidth.value = rect.width;
     canvasHeight.value = rect.height;
-    uiScale.value = 1;
+    // Scale UI elements to match the canvas display size so layout tracks
+    // the Phaser FIT letterbox rather than fighting it.
+    uiScale.value = rect.width / 720;
   }
 }
 
@@ -195,6 +198,8 @@ onUnmounted(() => {
       v-if="showTutorial && gameState === 'playing'"
       @start="onStartGame"
     />
+
+    <RotatePrompt />
 
     <div class="version-label">v5.30.5</div>
   </div>

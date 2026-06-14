@@ -12,10 +12,30 @@ export default defineConfig({
     trace: 'on-first-retry',
     baseURL: 'http://localhost:5173',
   },
+  expect: {
+    toHaveScreenshot: {
+      maxDiffPixelRatio: 0.02,
+    },
+  },
   projects: [
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
+    },
+    {
+      name: 'huawei-mate-50',
+      testMatch: /cross-device\/.*\.spec\.ts/,
+      use: { viewport: { width: 393, height: 851 }, isMobile: true, hasTouch: true },
+    },
+    {
+      name: 'huawei-tablet',
+      testMatch: /cross-device\/.*\.spec\.ts/,
+      use: { viewport: { width: 768, height: 1024 }, isMobile: true, hasTouch: true },
+    },
+    {
+      name: 'desktop-hd',
+      testMatch: /cross-device\/.*\.spec\.ts/,
+      use: { viewport: { width: 1920, height: 1080 } },
     },
   ],
   webServer: {

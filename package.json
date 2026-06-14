@@ -13,7 +13,11 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
-    "test:e2e:headed": "playwright test --headed"
+    "test:e2e:headed": "playwright test --headed",
+    "test:cross-device": "playwright test e2e/cross-device/",
+    "test:cross-device:medium": "playwright test e2e/cross-device/ --grep @medium",
+    "test:cross-device:slow": "playwright test e2e/cross-device/ --grep @slow",
+    "test:cross-device:update-snapshots": "playwright test e2e/cross-device/ --grep @slow --update-snapshots"
   },
   "dependencies": {
     "@vitejs/plugin-vue": "^6.0.7",

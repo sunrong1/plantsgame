@@ -89,8 +89,15 @@ npm run dev
 ### 运行测试
 
 ```bash
-npm test
+npm test                            # 单元测试（vitest，~700ms）
+npm run test:cross-device           # 跨设备集成 + 视觉回归（playwright，~5min）
+npm run test:cross-device:medium    # 只跑 @medium 功能测试
+npm run test:cross-device:slow      # 只跑 @slow 视觉回归
+npm run test:cross-device:update-snapshots  # 刷新视觉基线
+npm run test:e2e:ui                 # Playwright UI 调试模式
 ```
+
+详细测试分级、基线刷新方法见 `docs/TESTING.md`。
 
 ### 构建生产版本
 
