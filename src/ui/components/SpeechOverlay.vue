@@ -1,6 +1,6 @@
 <template>
   <Transition name="fade">
-    <div v-if="visible" class="speech-overlay">
+    <div v-if="visible" class="speech-overlay" data-testid="speech-overlay">
       <div class="speech-bubble">
         <span class="word" :class="{ animate: visible }">{{ word }}</span>
       </div>

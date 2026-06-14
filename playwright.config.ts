@@ -28,6 +28,11 @@ export default defineConfig({
       use: { viewport: { width: 393, height: 851 }, isMobile: true, hasTouch: true },
     },
     {
+      name: 'huawei-mate-50-landscape',
+      testMatch: /cross-device\/.*\.spec\.ts/,
+      use: { viewport: { width: 851, height: 393 }, isMobile: true, hasTouch: true },
+    },
+    {
       name: 'huawei-tablet',
       testMatch: /cross-device\/.*\.spec\.ts/,
       use: { viewport: { width: 768, height: 1024 }, isMobile: true, hasTouch: true },

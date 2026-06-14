@@ -26,7 +26,7 @@ const onCardClick = (plantType: string, cost: number) => {
 </script>
 
 <template>
-  <div class="resource-bar">
+  <div class="resource-bar" data-testid="resource-bar">
     <!-- Sunlight Display -->
     <div class="resource-item sunlight-item">
       <span class="sun-icon">☀</span>

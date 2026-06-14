@@ -33,23 +33,24 @@ const gridOffsetY = ref(150); // Default fallback
 const gridHeight = ref(400);  // 5 rows * 80px
 
 // Computed style object for inline styling
+// .game-ui uses internal 720x1280 coordinates; the transform scales it to match the canvas
 const gameUIStyle = computed(() => ({
   left: `${canvasLeft.value}px`,
   top: `${canvasTop.value}px`,
   transform: `scale(${uiScale.value})`,
   transformOrigin: 'top left',
-  width: `${canvasWidth.value}px`,
-  height: `${canvasHeight.value}px`,
+  width: `720px`,
+  height: `1280px`,
 }));
 
-// Layout computed values - position resource bar above grid, scaled with canvas
+// Layout computed values - positioned in internal 720x1280 space; transform handles scaling
 const resourceBarStyle = computed(() => ({
-  top: `${(gridOffsetY.value - 90) * uiScale.value}px`, // Just above grid with some margin
+  top: `${gridOffsetY.value - 100}px`, // Above grid with 10px buffer (bar height ~96px)
 }));
 
 // Speech overlay below grid
 const speechOverlayStyle = computed(() => ({
-  top: `${(gridOffsetY.value + gridHeight.value + 10) * uiScale.value}px`, // Just below grid
+  top: `${gridOffsetY.value + gridHeight.value + 10}px`, // Just below grid
 }));
 
 function updateCanvasPosition() {
@@ -230,7 +231,7 @@ onUnmounted(() => {
 
     <RotatePrompt />
 
-    <div class="version-label">v5.31.0</div>
+    <div class="version-label">v5.32.0</div>
   </div>
 </template>
 
