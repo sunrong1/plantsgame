@@ -45,7 +45,7 @@ const gameUIStyle = computed(() => ({
 
 // Layout computed values - positioned in internal 720x1280 space; transform handles scaling
 const resourceBarStyle = computed(() => ({
-  top: `${gridOffsetY.value - 100}px`, // Above grid with 10px buffer (bar height ~96px)
+  top: `${gridOffsetY.value - 120}px`, // Above grid with 24px buffer (bar height ~96px) - leaves breathing room on FHD+ portrait
 }));
 
 // Speech overlay below grid
@@ -231,7 +231,7 @@ onUnmounted(() => {
 
     <RotatePrompt />
 
-    <div class="version-label">v5.32.0</div>
+    <div class="version-label">v5.32.1</div>
   </div>
 </template>
 

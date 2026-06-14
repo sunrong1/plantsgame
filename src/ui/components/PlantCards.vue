@@ -76,6 +76,7 @@ const onCardClick = (plantType: string, cost: number) => {
   background: linear-gradient(180deg, rgba(0,0,0,0.5) 0%, rgba(0,0,0,0.2) 100%);
   border-radius: 12px;
   pointer-events: auto;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
 }
 
 .resource-item {
