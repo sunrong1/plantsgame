@@ -4,9 +4,9 @@ export const PLANT_CONFIGS: PlantConfig[] = [
   {
     id: 'peashooter',
     name: '豌豆射手',
-    cost: 100,
+    cost: 80,
     hp: 100,
-    damage: 20,
+    damage: 30,
     attackInterval: 1500,
     animationFrames: 3,
   },
@@ -15,8 +15,8 @@ export const PLANT_CONFIGS: PlantConfig[] = [
     name: '向日葵',
     cost: 50,
     hp: 100,
-    produceInterval: 5000,
-    produceAmount: { base: 25, variance: 10 },
+    produceInterval: 4000,
+    produceAmount: { base: 30, variance: 10 },
     animationFrames: 4,
   },
   {

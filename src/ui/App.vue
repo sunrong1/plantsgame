@@ -5,11 +5,13 @@ import GameOverlay from './components/GameOverlay.vue';
 import Tutorial from './components/Tutorial.vue';
 import SpeechOverlay from './components/SpeechOverlay.vue';
 import RotatePrompt from './components/RotatePrompt.vue';
+import PauseButton from './components/PauseButton.vue';
+import PauseOverlay from './components/PauseOverlay.vue';
 import { speechService } from '../systems/SpeechService';
 import { GameEvents } from './bridge';
 
 // Game state from Phaser
-const sunlight = ref(150);
+const sunlight = ref(100);
 const currentWave = ref(0);
 const totalWaves = ref(3);
 const selectedPlant = ref<string | null>(null);
@@ -17,6 +19,7 @@ const gameState = ref<'playing' | 'won' | 'lost'>('playing');
 const showTutorial = ref(true);
 const speechVisible = ref(false);
 const speechWord = ref('');
+const isPaused = ref(false);
 
 // Position and scale state
 const canvasLeft = ref(0);
@@ -119,6 +122,15 @@ function handleRestart() {
   location.reload();
 }
 
+function handlePauseChanged(detail: { paused: boolean }) {
+  isPaused.value = detail.paused;
+}
+
+function onPauseButtonClick() {
+  // Toggle is dispatched via the button's @click handler (see PauseButton.vue).
+  // The PAUSE_CHANGED listener will flip isPaused.
+}
+
 // Listen to game resize events
 function onGameResize(data: { width: number; height: number }) {
   // Game internally scales, UI just tracks canvas position
@@ -147,6 +159,7 @@ onMounted(() => {
   window.addEventListener(GameEvents.SPEECH_LEARN, ((e: CustomEvent) => {
     handleSpeechLearn(e.detail);
   }) as EventListener);
+  window.addEventListener(GameEvents.PAUSE_CHANGED, ((e: CustomEvent) => handlePauseChanged(e.detail)) as EventListener);
 });
 
 onUnmounted(() => {
@@ -161,6 +174,7 @@ onUnmounted(() => {
   window.removeEventListener(GameEvents.SPEECH_LEARN, ((e: CustomEvent) => {
     handleSpeechLearn(e.detail);
   }) as EventListener);
+  window.removeEventListener(GameEvents.PAUSE_CHANGED, ((e: CustomEvent) => handlePauseChanged(e.detail)) as EventListener);
 });
 </script>
 
@@ -177,6 +191,21 @@ onUnmounted(() => {
       class="resource-bar-aligned"
       :style="resourceBarStyle"
       @select="onPlantSelect"
+    >
+      <template #actions>
+        <PauseButton
+          v-if="gameState === 'playing' && !showTutorial"
+          :paused="isPaused"
+          class="pause-button-slot"
+          @toggle="onPauseButtonClick"
+        />
+      </template>
+    </PlantCards>
+
+    <PauseOverlay
+      v-if="isPaused && gameState === 'playing'"
+      :visible="isPaused"
+      @resume="isPaused = false"
     />
 
     <GameOverlay
@@ -201,7 +230,7 @@ onUnmounted(() => {
 
     <RotatePrompt />
 
-    <div class="version-label">v5.30.5</div>
+    <div class="version-label">v5.31.0</div>
   </div>
 </template>
 

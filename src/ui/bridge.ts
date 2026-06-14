@@ -22,6 +22,10 @@ export const GameEvents = {
 
   // Grid info (from Phaser to Vue)
   GRID_INFO: 'game:grid-info',
+
+  // Pause toggle (bidirectional: button → scene, scene → UI)
+  PAUSE_TOGGLE: 'game:pause-toggle',
+  PAUSE_CHANGED: 'game:pause-changed',
 } as const;
 
 // Helper to dispatch events

@@ -23,7 +23,6 @@ export class BootScene extends Phaser.Scene {
     this.createTextures();
     this.setPixelArtStyle();
     this.scene.add('PlayScene', PlayScene, true);
-    this.scene.start('PlayScene');
   }
 
   private setPixelArtStyle(): void {

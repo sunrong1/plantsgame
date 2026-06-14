@@ -61,6 +61,8 @@ const onCardClick = (plantType: string, cost: number) => {
         </div>
       </div>
     </div>
+
+    <slot name="actions" />
   </div>
 </template>
 
@@ -73,6 +75,7 @@ const onCardClick = (plantType: string, cost: number) => {
   padding: 8px 16px;
   background: linear-gradient(180deg, rgba(0,0,0,0.5) 0%, rgba(0,0,0,0.2) 100%);
   border-radius: 12px;
+  pointer-events: auto;
 }
 
 .resource-item {

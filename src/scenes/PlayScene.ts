@@ -23,6 +23,8 @@ export class PlayScene extends Phaser.Scene {
 
   private gameState: 'playing' | 'won' | 'lost' = 'playing';
   private thirdWaveCleared: boolean = false;
+  private isPaused: boolean = false;
+  private escListener: ((e: KeyboardEvent) => void) | null = null;
 
   constructor() {
     super({ key: 'PlayScene' });
@@ -109,14 +111,24 @@ export class PlayScene extends Phaser.Scene {
       }
     });
 
-    this.input.keyboard?.on('keydown-ESC', () => {
-      this.cancelSelection();
-    });
+    // Listen for ESC on document so it works both during play and when the
+    // scene is paused (Phaser's scene.pause() disables its own keyboard input)
+    this.escListener = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        this.togglePause();
+      }
+    };
+    document.addEventListener('keydown', this.escListener);
 
     // Listen to plant selection from Vue UI
     window.addEventListener(GameEvents.PLANT_SELECTED, ((e: CustomEvent) => {
       this.selectPlant(e.detail);
     }) as EventListener);
+
+    // Listen to pause toggle from Vue UI (button click)
+    window.addEventListener(GameEvents.PAUSE_TOGGLE, () => {
+      this.togglePause();
+    });
   }
 
   private handleUIClick(x: number, y: number): void {
@@ -268,6 +280,19 @@ export class PlayScene extends Phaser.Scene {
       this.previewSprite.destroy();
       this.previewSprite = null;
     }
+  }
+
+  public togglePause(): void {
+    if (this.gameState !== 'playing') return;
+
+    this.isPaused = !this.isPaused;
+    if (this.isPaused) {
+      this.scene.pause();
+      this.game.canvas.style.cursor = 'default';
+    } else {
+      this.scene.resume();
+    }
+    dispatchGameEvent(GameEvents.PAUSE_CHANGED, { paused: this.isPaused });
   }
 
   private updatePlants(time: number): void {
@@ -464,6 +489,10 @@ export class PlayScene extends Phaser.Scene {
   }
 
   shutdown(): void {
+    if (this.escListener) {
+      document.removeEventListener('keydown', this.escListener);
+      this.escListener = null;
+    }
     // 清理所有实体
     for (const zombie of this.zombies.values()) {
       zombie.sprite.destroy();
