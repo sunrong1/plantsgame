@@ -48,9 +48,12 @@ const resourceBarStyle = computed(() => ({
   top: `${gridOffsetY.value - 120}px`, // Above grid with 24px buffer (bar height ~96px) - leaves breathing room on FHD+ portrait
 }));
 
-// Speech overlay below grid
+// Speech overlay below grid + grass strip decoration (internal grid ends at
+// gridHeight + 30). Sit at +60 to clear both and give breathing room on every
+// viewport — was +10 which on tablet (scale 0.8) put the bubble only 8 CSS px
+// below the grid and visually overlapping the grass strip.
 const speechOverlayStyle = computed(() => ({
-  top: `${gridOffsetY.value + gridHeight.value + 10}px`, // Just below grid
+  top: `${gridOffsetY.value + gridHeight.value + 60}px`,
 }));
 
 function updateCanvasPosition() {
@@ -231,7 +234,7 @@ onUnmounted(() => {
 
     <RotatePrompt />
 
-    <div class="version-label">v5.32.1</div>
+    <div class="version-label">v5.32.2</div>
   </div>
 </template>
 
