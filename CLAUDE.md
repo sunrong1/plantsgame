@@ -1,70 +1,74 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+本文件为 Claude Code (claude.ai/code) 在本仓库工作时的指引。
 
-## Project
+## 项目状态：绿字段重做中
 
-PVZ Pixel — a Plants vs. Zombies-style tower defense game for a 6-year-old English learner. Vue 3 handles UI, Phaser 3 handles game canvas. Internal canvas is fixed at 720×1280 (`Phaser.Scale.FIT` in `src/main.ts`); CSS letterboxes for desktop and mobile.
+本仓库于 2026-10-11 通过 BMAD Method 从零重做。**当前没有产品代码。**
 
-## Commands
+旧实现（Vue 3 + Phaser 3 塔防，已发布至 v5.x）已归档在 git tag `legacy-v5.x-final`。
+若需要查阅旧代码（美术资源命名、平衡数值、移动端踩坑记录等）：
 
 ```bash
-npm run dev          # Vite dev server, default http://localhost:5173
-npm run dev -- --host 0.0.0.0  # Bind all interfaces — required for Android phone testing on the same WiFi
-npm run build        # tsc + vite build (type-checks first, fails on TS errors)
-npm test             # vitest run (one-shot)
-npm run test:watch   # vitest watch mode
-npm run test:e2e     # playwright
+git ls-tree -r legacy-v5.x-final --name-only     # 看旧文件清单
+git show legacy-v5.x-final:src/config/plants.ts  # 读单个旧文件
 ```
 
-Node ≥ 18. No linter is configured.
+**除非 PRD/架构阶段明确要求，不要从旧代码复制实现。** 它的作用是参考，不是蓝本。
 
-## Architecture
+## 技术栈：尚未决定
+
+技术栈由 BMAD `[CA]` 架构阶段拍板。届时本节会被替换为实际的栈、命令和约定。
+在此之前不要假设 Vue/Phaser/Vite/Vitest 仍然适用。
+
+## BMAD 工作流
+
+本项目使用 [BMad Method](https://docs.bmad-method.org/)，BMM 模块。
+
+### 规划阶段（产出写入 `_bmad-output/planning-artifacts/`）
+
+| 顺序 | 菜单码 | 技能 | 必做 |
+|---|---|---|---|
+| 1 | CB | `bmad-product-brief` | 可选 |
+| 2 | PRD | `bmad-prd` | **必做** |
+| 3 | CU | `bmad-ux` | 可选（UI 占比大时强烈建议） |
+| 4 | CA | `bmad-architecture` | **必做** |
+| 5 | CE | `bmad-create-epics-and-stories` | **必做** |
+| 6 | SP | `bmad-sprint-planning` | **必做** |
+
+### 交付阶段
+
+| 菜单码 | 技能 | 必做 |
+|---|---|---|
+| BD | `bmad-build` | **必做** |
+| CR | `bmad-code-review` | 可选 |
+| QA | `bmad-qa-generate-e2e-tests` | 可选 |
+| ER | `bmad-retrospective` | 可选 |
+
+随时可用：`[BH]` `bmad-help`（我在哪、下一步做什么）、`[PC]` `bmad-project-context`、
+`[SPC]` `bmad-spec`、`[RS]` `bmad-deep-recon`、`[RV]` `bmad-review`。
+
+用 `/` 前缀调用对应 skill。**每个技能在新开的 context window 里跑** —— BMAD 的规划对话很长，
+上下文污染会拉低后续 story 的质量。
+
+## 语言
+
+BMAD 对话与产出文档一律使用**中文**。
+配置在 `_bmad/custom/config.user.toml`（个人配置，不提交仓库）。
+
+## 目录约定
 
 ```
-Vue 3 (DOM)  ──CustomEvent──▶  Phaser 3 (Canvas)
-   App.vue / components/         scenes/, systems/, entities/
-        │                                │
-        └── bridge.ts (event names) ────┘
+_bmad/              BMAD 方法论本体（安装器管理，已提交）
+_bmad/custom/       个人/团队覆盖配置（*.user.toml 不提交）
+_bmad-output/       BMAD 产出物
+  planning-artifacts/       PRD、架构、epics
+  implementation-artifacts/ sprint 状态、story
+docs/               项目知识库（BMAD 的 project_knowledge 指向这里）
 ```
 
-Vue renders the resource bar, plant cards, speech overlay, tutorial, and game-over screen as DOM elements. Phaser renders the lawn, plants, zombies, and projectiles on a 720×1280 canvas. They communicate via `window.dispatchEvent` / `addEventListener` — see `src/ui/bridge.ts` for the full `GameEvents` enum.
+## 提交约定
 
-State flow example (plant placement):
-```
-PlantCards.vue  ─PLANT_SELECTED──▶  PlayScene.selectPlant()
-                                          ↓
-                                    GridManager.occupyCell()
-EconomyManager.spendSunlight()  ─SUNLIGHT_CHANGED──▶  App.vue.sunlight ref
-```
+遵循 Conventional Commits（`feat:`、`fix:`、`docs:`、`test:`、`refactor:`、`chore:`）。
 
-## Key Files
-
-- `src/main.ts` — Phaser config. The `scale.mode` line is load-bearing for mobile: changing `FIT` to anything else will break the grid math.
-- `src/systems/SpeechService.ts` — Web Speech API. `preheat()` must be called inside a user-gesture event stack to unlock Android Chrome's audio session. `App.vue`'s `onStartGame()` calls it. `speak()` and `speakWord()` only call `cancel()` when `speechSynthesis.speaking === true` to avoid closing the freshly-unlocked session.
-- `src/systems/GridManager.ts` — 5×9 grid math, anchored to 720×1280.
-- `src/scenes/PlayScene.ts` — Main game loop. Dispatches `game:resize` and `game:grid-info` so Vue can position itself.
-- `src/ui/App.vue` — Root Vue component, tracks canvas position, version label.
-- `src/ui/bridge.ts` — `GameEvents` constants and dispatch helpers.
-
-## Mobile Testing
-
-Visual scaling can be verified in Chrome DevTools device mode, but **audio must be tested on a real Android device**. Workflow:
-1. `npm run dev -- --host 0.0.0.0`
-2. Note the printed `Network: http://10.0.0.X:5173/`
-3. Open that URL in Android Chrome on the same WiFi
-4. Tap "开始" (this triggers `speechService.preheat()`)
-5. Tap any plant card — should hear the English word
-
-## Conventions
-
-- Version is bumped in `src/ui/App.vue` (`<div class="version-label">`) on every commit. Format: `vMAJOR.MINOR.PATCH` starting at `v5.x` (the project has been on `5.x` for a while; the package.json `version` is `1.0.0` and is unrelated).
-- Test files live next to source: `src/config/plants.test.ts`, `src/entities/Zombie.test.ts`, etc. Tests use Vitest, run in ~700ms.
-- Config is data-driven — game balance lives in `src/config/` (plants, zombies, waves), not hardcoded in entities.
-- Commit message prefix follows Conventional Commits (`feat:`, `fix:`, `docs:`, `test:`, `refactor:`).
-
-## Things To Not Break
-
-- `Phaser.Scale.ScaleModes.FIT` — switching to `RESIZE` makes `scene.scale.width` track viewport and breaks `GridManager.offsetX` on narrow phones.
-- The preheat → speak sequence in `App.vue` — removing the `preheat()` call makes Android audio silently fail.
-- The `if (speechSynthesis.speaking) { cancel(); }` guard — unconditional `cancel()` cancels the freshly-preheated session.
+不要在规划阶段写产品代码 —— 那是 `[BD]` bmad-build 的职责。

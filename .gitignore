@@ -41,3 +41,5 @@ lerna-debug.log*
 test-results/
 playwright-report/
 playwright/.cache/
+# BMAD 安装器复制的技能（可重装再生，内容与 _bmad/ 重复）
+.claude/skills/
