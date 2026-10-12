@@ -15,12 +15,35 @@ import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
+import eslintConfig from '../../eslint.config.js'
 import vitestConfig from '../../vitest.config'
 
 const root = fileURLToPath(new URL('../../', import.meta.url))
 
-const readJson = (relPath: string): unknown => JSON.parse(readFileSync(`${root}${relPath}`, 'utf8'))
-const readText = (relPath: string) => readFileSync(`${root}${relPath}`, 'utf8')
+// tsconfig 是 JSONC（允许 // 注释），所以不能直接 JSON.parse。
+// 这里只剥掉整行注释 —— 配置文件里的注释都是独占一行的，行内注释不处理。
+const readJson = (relPath: string): unknown =>
+  JSON.parse(
+    readFileSync(`${root}${relPath}`, 'utf8')
+      .split('\n')
+      .filter((line) => !/^\s*\/\//.test(line))
+      .join('\n'),
+  )
+
+/** flat config 里单个 config 块的形状（只取这里用到的字段）。 */
+interface EslintBlock {
+  files?: string | string[]
+  rules?: Record<string, unknown>
+}
+
+/** 从 flat config 数组里找出命中 files 匹配的规则块（合并多块，同名后者覆盖前者）。 */
+const rulesFor = (fileGlob: string): Record<string, unknown> => {
+  const blocks = (eslintConfig as unknown as EslintBlock[]).filter(
+    (block) =>
+      !block.files || (Array.isArray(block.files) ? block.files : [block.files]).includes(fileGlob),
+  )
+  return Object.assign({}, ...blocks.map((block) => block.rules ?? {}))
+}
 
 describe('core/ 边界的工具链强制', () => {
   it('tsconfig.core.json 的 lib 不含 DOM，且 types 为空数组', () => {
@@ -58,12 +81,92 @@ describe('core/ 边界的工具链强制', () => {
     expect(lib).toContain('DOM')
   })
 
-  it('eslint 对 src/core 配了 no-restricted-imports', () => {
-    const eslintConfig = readText('eslint.config.js')
+  // ⚠️ 这里必须 import 真实配置求值，不能对 eslint.config.js 做子串匹配。
+  // 早期版本用的是 toMatch(/files:\s*\[\s*'src\/core/) + 两条 toContain —— 那是三个互相独立的
+  // 字符串检查，可以由三个不同的 config 块分别满足。以下都是「测试全绿但防线已废」的真实回归：
+  //   · 把规则的 files 挪到别的目录（别的块仍匹配那个正则）
+  //   · 后面追加一个 rules: { 'no-restricted-imports': 'off' } 的块
+  //   · 把 'error' 降成 'warn'（且 eslint . 没有 --max-warnings，不会让 lint 失败）
+  it('eslint 对 src/core 配了 no-restricted-imports，且严重级别是 error', () => {
+    const rule = rulesFor('src/core/**/*.{ts,vue}')['no-restricted-imports']
 
-    expect(eslintConfig).toMatch(/files:\s*\[\s*'src\/core/)
-    expect(eslintConfig).toContain('no-restricted-imports')
-    expect(eslintConfig).toContain('no-restricted-globals')
+    expect(rule, 'src/core 上没有 no-restricted-imports 规则').toBeDefined()
+    expect(Array.isArray(rule) ? rule[0] : rule).toBe('error')
+  })
+
+  it('eslint 对 src/core 配了 no-restricted-globals，且严重级别是 error', () => {
+    const rule = rulesFor('src/core/**/*.{ts,vue}')['no-restricted-globals']
+
+    expect(rule, 'src/core 上没有 no-restricted-globals 规则').toBeDefined()
+    expect(Array.isArray(rule) ? rule[0] : rule).toBe('error')
+  })
+
+  it('core/ 禁掉 DOM 全局：window / document / localStorage / speechSynthesis 都在名单里', () => {
+    // 光断言「规则存在」不够 —— 把某个名字从名单里删掉，规则照样在，防线已经开口子。
+    const rule = rulesFor('src/core/**/*.{ts,vue}')['no-restricted-globals']
+    // ESLint 把每个受限全局写成 ['error', {name:'window'}, {name:'document'}, …]
+    // —— 名单是尾部展开的元素数组，不是嵌套在 rule[1] 里的数组。
+    const entries = (Array.isArray(rule) ? rule.slice(1) : []) as { name: string }[]
+
+    const guarded = entries.map((entry) => entry.name)
+    expect(guarded).toEqual(
+      expect.arrayContaining(['window', 'document', 'localStorage', 'speechSynthesis']),
+    )
+  })
+
+  it('core/ 禁掉 vue 与向上依赖（app/ services/ components/）', () => {
+    const rule = rulesFor('src/core/**/*.{ts,vue}')['no-restricted-imports']
+    interface Options {
+      paths?: { name?: string }[]
+      patterns?: (string | { group: string[] })[]
+    }
+    const options = (Array.isArray(rule) ? rule[1] : undefined) as Options | undefined
+
+    expect(options?.paths?.map((p) => p.name)).toContain('vue')
+
+    // 项目没有 @/ 别名，patterns 必须覆盖相对导入的上跳形态，否则规则永不触发。
+    const patterns = (options?.patterns ?? []).flatMap((p: string | { group: string[] }) =>
+      typeof p === 'string' ? [p] : p.group,
+    )
+    expect(patterns.some((p: string) => p.includes('../app/'))).toBe(true)
+    expect(patterns.some((p: string) => p.includes('../services/'))).toBe(true)
+    expect(patterns.some((p: string) => p.includes('../components/'))).toBe(true)
+  })
+})
+
+describe('SFC 组件解析', () => {
+  it('vitest 配置挂了 vue plugin（否则组件测试直接 transform 失败）', () => {
+    // vitest.config.ts 不继承 vite.config.ts，plugin 必须显式挂 —— 见该文件注释。
+    const plugins = (vitestConfig as { plugins?: unknown[] }).plugins ?? []
+
+    expect(
+      plugins.length,
+      'vitest.config.ts 没有 plugins —— import .vue 会 transform 失败，报错看起来像工具链坏了',
+    ).toBeGreaterThan(0)
+  })
+
+  it('eslint 全局启用了 vue/no-undef-components（防「漏 import 组件 → 白屏」）', () => {
+    // Debug Log #4：<script setup> 漏 import 时 vue-tsc / build / test / lint 全绿，页面却是纯白。
+    const rule = rulesFor('**/*.vue')['vue/no-undef-components']
+
+    expect(rule, '没开 vue/no-undef-components，白屏那一类 bug 无自动守卫').toBeDefined()
+    expect(Array.isArray(rule) ? rule[0] : rule).toBe('error')
+  })
+})
+
+describe('tsconfig 项目覆盖', () => {
+  it('tests/ 被某个 tsconfig 覆盖（守卫测试自己也要被类型检查）', () => {
+    const root_ = readJson('tsconfig.json') as { references: { path: string }[] }
+    const test = readJson('tsconfig.test.json') as {
+      include: string[]
+      references: { path: string }[]
+    }
+
+    expect(test.include).toContain('tests/**/*.ts')
+    // 测试会 import src/core/ 的被测对象，缺这条 reference 会报 TS6307
+    expect(test.references).toContainEqual({ path: './tsconfig.core.json' })
+    // 且必须挂在 solution 上，否则 vue-tsc -b 根本不会走到它
+    expect(root_.references).toContainEqual({ path: './tsconfig.test.json' })
   })
 })
 

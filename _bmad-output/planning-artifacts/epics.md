@@ -622,9 +622,16 @@ So that 我先确认「这东西真的能在他的设备上跑起来」，再谈
 **And** `src/core/` 内不存在任何 `.test.ts` —— 测试全部在 `tests/`
 
 **And** **五个** npm scripts 齐备：`dev` / `build` / `test` / `validate:content` / `balance-sim`
-**And** `build` 即 Vite 默认的 `vite build`，产出到 `dist/` —— 本 story 必须**实际建立它**，
+**And** `build` 产出到 `dist/` —— 本 story 必须**实际建立它**，
       因为 Story 1.14（验证调试 UI 不进生产包）与 Story 1.17（部署到 HTTPS 静态托管）
       都依赖生产构建；缺了它会在 Story 1.14 当场卡住（`[IR]` MEDIUM-6）
+**And** 🔥 `build` 必须把类型检查接进去，即 `vue-tsc -b --force && vite build`，
+      不能写成裸的 `vite build` —— Vite 8（Rolldown）的构建管线是 transpile-only，
+      不做类型检查；照字面写 `vite build` 的话上面那条 AC-2（写 `window.localStorage` 产生编译错误）
+      直接不成立。实测已确认：在 `src/core/` 写 DOM 后跑 `vite build` 仍退出码 0。
+      另注：`vue-tsc -b` 不能写成 `vue-tsc --noEmit` —— solution 风格的根 tsconfig 下那样是空转，
+      一个文件都不检查。只有 build 模式 `-b` 才会顺着 references 逐个检查子项目
+      （`[CR]` 2026-10-12 于 Story 1.1 修正本条原文）
 **And** `npm run build` 此刻能跑通（产物为空壳应用亦可）
 **And** `npm run test` 此刻通过（零测试）
 

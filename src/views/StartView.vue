@@ -10,7 +10,6 @@
  *   - 不实现音频解锁 / TTS —— 属 Story 1.2，且须走 app/effects-runner.ts
  *   - 不含任何战斗规则计算 —— 架构硬约束 2（此文件零计算）
  */
-import { ref } from 'vue'
 
 /**
  * 「开始游戏」的空实现。
@@ -18,12 +17,13 @@ import { ref } from 'vue'
  * TODO(Story 1.2): 在此同步完成 audioCtx.resume() + TTS preheat + BGM buffer，
  * 三者之间不得 await（架构决策 4 / 硬约束 8）。
  * 落地时音效必须经由 app/effects-runner.ts，组件内不得自行播音效。
+ *
+ * Story 1.2 会同时引入真实的「开始中」状态（按钮禁用防重复点击），
+ * 届时连同 :disabled 与 .start-button:disabled 样式一并实现 ——
+ * 本 story 不预置一个永远为 false 的占位 ref，那只会让这两处读起来像已实现。
  */
-const starting = ref(false)
-
 function onStart(): void {
   // TODO(Story 1.2): 音频解锁 + TTS preheat —— 同步完成，三者间不得 await
-  starting.value = false
 }
 </script>
 
@@ -36,7 +36,6 @@ function onStart(): void {
     <button
       class="start-button touch-target"
       type="button"
-      :disabled="starting"
       @click="onStart"
     >
       开始游戏
@@ -72,8 +71,9 @@ function onStart(): void {
 
 /*
  * AC-1：这是页面上最大、最易点的目标。
- * min-height 用 --touch-min（48px）打底，实际给到 ~88px，
- * 因为目标设备是家长单手拿着的平板，不是鼠标。
+ * min-height/min-width 用 --touch-min（48px）打底，再按视口宽度放大 ——
+ * 目标设备是家长单手拿着的竖屏平板（800×1280 量级），不是鼠标，
+ * 所以按 vw 给到 368×176px 这个量级，远超 48px 的下限。
  */
 .start-button {
   min-height: max(var(--touch-min), 22vw);
@@ -89,14 +89,11 @@ function onStart(): void {
   transition: transform var(--dur-fast) ease-out;
 }
 
-/* 按下反馈必须 ≤100ms（FR78 / NFR5）—— --dur-fast = 120ms，
-   transform 不触发重排，实机上更早出现视觉变化 */
-.start-button:active:not(:disabled) {
+/* 按下反馈必须 ≤100ms（FR78 / NFR5）。保证它的是 base.css 里的
+   touch-action: manipulation —— 那个是即时的，去掉浏览器 300ms tap delay。
+   这里的 transition 控的是缩放动画的爬升时长（--dur-fast = 120ms），
+   不是「按下到视觉变化」的延迟，两者不是同一件事。 */
+.start-button:active {
   transform: scale(0.97);
-}
-
-.start-button:disabled {
-  cursor: default;
-  opacity: 0.6;
 }
 </style>
