@@ -26,7 +26,24 @@
   //
   // 注意不能通过 reference 引入 tsconfig.node.json —— 被引用的项目不允许 noEmit（TS6310）。
   // 所以这里直接 own 这两个文件，而不是复用 node 项目。
-  "include": ["tests/**/*.ts", "vitest.config.ts", "eslint.config.js"],
+  //
+  // ⚠️ src/services/ 与 src/app/ 是 Story 1.2 加进来的（实测阻断 TS6307）：
+  // 服务层的单元测试要 import 这些源文件，而 composite 项目要求「所有文件必须被列出」。
+  //
+  // 为什么不改成 reference 指向 tsconfig.app.json：那条路实测报
+  // TS6310（Referenced project 'tsconfig.app.json' may not disable emit）——
+  // app 项目是 noEmit: true，被引用的项目不允许关闭 emit。
+  //
+  // ⚠️ 副作用（不要「顺手修复」）：改完之后这两个目录会同时属于
+  // tsconfig.app.json 与 tsconfig.test.json 两个 composite 项目。重叠是允许的
+  // （两者都 noEmit），把它改回单归属会立刻撞回 TS6307。
+  "include": [
+    "tests/**/*.ts",
+    "vitest.config.ts",
+    "eslint.config.js",
+    "src/services/**/*.ts",
+    "src/app/**/*.ts"
+  ],
   // 测试会 import src/core/ 的被测对象。缺这条 reference 会报 TS6307。
   "references": [{ "path": "./tsconfig.core.json" }]
 }

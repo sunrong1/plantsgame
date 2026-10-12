@@ -88,4 +88,28 @@ export default tseslint.config(
       ],
     },
   },
+  {
+    // Story 1.2 / AC-10：音频解锁链路禁 await。
+    //
+    // 为什么不扩大到整个 src/services/：Story 1.14 的 save.ts 合理需要 await。
+    // 为什么不覆盖 src/views/StartView.vue：**有意为之**。
+    // 写 `async function onStart() { await unlockAudioSequence() }` 不违反 FR2 ——
+    // FR2 管的是「三步之间」无 await，那里的 await 发生在三步之后。
+    // 但写它是个坏味道。将来若要扩到 views/，那是 Story 1.13+ 的决定。
+    //
+    // 这条规则是 FR2 唯一的**可机器判定**的部分：编译不报错、运行也不报错，
+    // 只有一个写了 await 的人才会知道它坏了。少了守卫，FR2 必然在维护中漂移。
+    files: ['src/services/audio.ts', 'src/services/pronunciation.ts', 'src/app/audio-unlock.ts'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: 'AwaitExpression',
+          message:
+            '音频解锁链路不允许 await：三步必须在用户手势的同一个同步块内完成（架构硬约束 8 / FR2）。' +
+            'resume() 是 Promise —— 用 `void ctx.resume().catch(...)` 同步发起，不要等它完成。',
+        },
+      ],
+    },
+  },
 )

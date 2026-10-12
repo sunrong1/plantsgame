@@ -7,23 +7,28 @@
  * 刻意不做的事（见 Story Dev Notes §10）：
  *   - 不引 vue-router —— 本 story 只有一个视图，view 切换属 Story 1.15
  *   - 不做任何选关 / 单元选择入口 —— FR59 / OUT-OF-SCOPE-5
- *   - 不实现音频解锁 / TTS —— 属 Story 1.2，且须走 app/effects-runner.ts
  *   - 不含任何战斗规则计算 —— 架构硬约束 2（此文件零计算）
+ *   - **不调 playPronunciation** —— 朗读的触发属 Story 1.10，由卡面出现时驱动
  */
 
+// 视图只认识 app/：音频解锁的三步顺序是一条架构约束（FR2），
+// 写在 app/audio-unlock.ts 里肉眼可查，散在这里就退化成一句注释。
+// 直接 import '../services/pronunciation' 是跳过 app/ 的违规导入。
+import { unlockAudioSequence } from '../app/audio-unlock'
+
 /**
- * 「开始游戏」的空实现。
+ * 「开始游戏」：同步完成音频解锁（Web Audio + TTS 预热 + BGM 预解，三步之间无 await）。
  *
- * TODO(Story 1.2): 在此同步完成 audioCtx.resume() + TTS preheat + BGM buffer，
- * 三者之间不得 await（架构决策 4 / 硬约束 8）。
- * 落地时音效必须经由 app/effects-runner.ts，组件内不得自行播音效。
+ * 不写 `async` + `await`：解锁必须在用户手势的同一个同步块里完成。
+ * 解锁本身是「用户手势触发的、一次性、不可重放的资源初始化」，
+ * 是「副作用只走 effects-runner」那条规则的唯一合法例外（它发生在第一局之前）。
  *
- * Story 1.2 会同时引入真实的「开始中」状态（按钮禁用防重复点击），
- * 届时连同 :disabled 与 .start-button:disabled 样式一并实现 ——
- * 本 story 不预置一个永远为 false 的占位 ref，那只会让这两处读起来像已实现。
+ * 刻意**不**引入 `starting` 状态、**不**禁用按钮：Story 1.15 之前 onStart 不切视图，
+ * 按钮变灰之后没有任何东西会把它解开 —— 孩子点了按钮游戏却一动不动，看起来像坏了。
+ * 防重复靠幂等（同一个 AudioContext / 只发一次预热 utterance），不靠禁用。
  */
 function onStart(): void {
-  // TODO(Story 1.2): 音频解锁 + TTS preheat —— 同步完成，三者间不得 await
+  unlockAudioSequence()
 }
 </script>
 

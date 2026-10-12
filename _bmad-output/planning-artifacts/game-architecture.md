@@ -372,33 +372,62 @@ GDD 明确：一局结束**战场状态清空，不跨局保留**；而「第 3 
 | 项 | 定案 |
 |---|---|
 | 格式 | **SVG**（与 GDD「扁平矢量」一致；分辨率无关；单文件约 2-10KB） |
-| 命名 | **文件名 = 词条 id**（`public/assets/words/unit-01/dog.svg`） |
+| 命名 | **文件名 = 词条 id**（`public/assets/words/unit-01/u1-dog.svg`）。**id 带单元前缀**（`u1-dog`、`u2-apple`）—— 录音目录 `audio/voice/` **不按单元分层**，id 不带前缀则不同单元的同名词会撞名，而撞名后果是某个词发错音（对学习类产品是静默的严重错误）。 |
 | 画布 | 正方形，`viewBox` 统一 |
 | 具体尺寸、是否透明底 | **Epic 1 定稿**（但「SVG + 命名 = 词条 id」现在锁定） |
 
-### 7. TTS 音色与降级
+### 7. 朗读通路：预生成录音为主，设备 TTS 为辅
 
-**音色优先级（沿用 legacy 链）：**
+**主通路：预生成录音** —— `public/assets/audio/voice/<词条id>.mp3`
+
+| 项 | 值 |
+|---|---|
+| 生成方式 | 开发期批量调用 MiniMax TTS API |
+| 模型 | `speech-2.8-hd` |
+| 音色 | `English_LovelyGirl`（英式女童声） |
+| 覆盖范围 | **全部单词 + 关键词 + 回应**（全量预生成，非仅长句） |
+| 成本 | 一次性 ≈ ¥5 |
+
+**为什么录音优先于设备 TTS：** 本作核心是英文单词的认读质量，而设备 TTS 是跨设备表现最不可控的一环。架构自己已记录反证：旧项目在华为设备上大概率走了 fallback（`gdd.md:519`）；EMUI + Chrome 上 `speechSynthesis` 可能报 0 voices（Story 1.2 §13）；**Android WebView 完全不支持原生 TTS**（chromium issue 710238）。
+
+设备装了什么语音引擎就用什么音色 —— 发音因此不可复现，而这与架构自述的原则冲突：
+
+> 音色选择以**教材录音**为准绳，而非以设备上有什么为准。（`epics.md` Story 3.4）
+
+预生成录音把发音变成**产品的确定常量**，而非设备的偶然产物。
+
+**辅通路：设备 `speechSynthesis`**
+
+仅在录音文件缺失 / 加载失败时兜底。音色沿用 legacy 链降级：
+
 ```
 Google UK English → Google US English → Microsoft Hazel/Susan
 → Samantha / Karen → 任意 en-US → 任意 en
 ```
 
-英式优先（上海版教材录音多为英式），但**架构上不得假设首选音色存在** —— 旧项目在华为设备上大概率已走 fallback。
+**架构上不得假设任一音色存在。**
 
-**朗读参数（做成可配置常量，Epic 1 现场调）：**
+**朗读参数（辅通路的可配置常量，Epic 1 现场调）：**
 
 | 类别 | 参数 | 来源 |
 |---|---|---|
 | 单词 | `rate 0.85 / pitch 1.05` | 沿用 legacy（针对儿童放缓） |
-| 长句 | `rate 0.9`（起点） | legacy；教材长句的适宜语速是 Epic 1 待验证项 |
+| 长句 | `rate 0.9`（起点） | legacy |
+
+> 主通路的语速由**录音生成时**决定（speed 0.9），运行时不改音频文件。
 
 **降级通路：**
-- 启动时探测 `window.speechSynthesis` 可用性与可用音色数
-- **不可用时自动降级为预置录音**（GDD 降级方案 1；200-400 词量有限可控）
 - 降级须在架构层有固定位置（统一的 `playPronunciation(text)` 接口），**不是临时 if**
+- 主备顺序：**录音 → 设备 TTS → 仅记 WARN**
 
-**硬约束：TTS 播放失败绝不阻断回合流转。** 支柱 1 的唯一入口不可用时，游戏仍须能进行 —— 架构上必须保证这一点，而不是依赖「TTS 一定可用」。
+**硬约束：朗读失败绝不阻断回合流转。** 支柱 1 的唯一入口不可用时，游戏仍须能进行 —— 架构上必须保证这一点，而不是依赖「任何一条通路一定可用」。
+
+#### ⚠️ 两条不可协商的生成约束
+
+1. **一次性全量生成，mp3 提交进 git，永不重新生成。**
+   TTS API 无 `seed` / `temperature` 参数，不保证跨批次音色一致；且已观察到 `speech-01-*` 在 API 枚举中仍被接受、却已从模型列表消失 —— 模型下架或静默换权重会让分批生成的文件前后不一致。变更音色 = 200-400 个词全部重生成。
+2. **生成必须用 `output_format: "hex"`，不得用 `"url"`。**
+   `"url"` 返回的链接 **24 小时过期**，分批生成会在几天后静默拿到损坏文件。
 
 ### 8. PWA 离线化与部署
 
@@ -603,7 +632,8 @@ function playPronunciation(text: string): void {
 | 类型 | 位置 | 说明 |
 |---|---|---|
 | 平衡数值 | `src/core/balance.ts` | GDD 首版数值集中于此。塔伤害/射程/造价、僵尸血量/速度、阳光速率 |
-| TTS 参数 | `src/services/pronunciation.ts` | `rate` / `pitch`，**Epic 1 现场调**的可配置常量 |
+| TTS 参数（辅通路） | `src/services/pronunciation.ts` | `rate` / `pitch`，**Epic 1 现场调**的可配置常量 |
+| 录音生成参数 | `scripts/gen-voice.ts`（Story 1-3） | `model` / `voice_id` / `speed`，**生成期常量**，改了要全量重生成 |
 | 网格规格 | `src/core/grid.ts` | 5 行 × 9 列、僵尸行 = 第 3 行 |
 | 调试开关 | `import.meta.env.DEV` + URL 参数 | 调试面板、网格覆盖层 |
 
@@ -696,7 +726,7 @@ plants-game/
 │   │
 │   ├── services/                ← 浏览器副作用（允许 DOM）
 │   │   ├── audio.ts             AudioContext 解锁、BGM、音效
-│   │   ├── pronunciation.ts     TTS + 预录录音降级
+│   │   ├── pronunciation.ts     预生成录音主路 + 设备 TTS 降级
 │   │   ├── save.ts              localStorage 序列化 / 恢复
 │   │   └── asset-loader.ts      按单元预取图片
 │   │
@@ -771,7 +801,7 @@ plants-game/
 | 函数 / 变量 | camelCase | `resolveTarget()` |
 | 常量 | UPPER_SNAKE_CASE | `ZOMBIE_ROW = 2` |
 | Action type | UPPER_SNAKE 字符串字面量 | `'PLACE_TOWER'` |
-| 词条 id / 素材文件名 | kebab-case，**文件名 = id** | `dog.svg` |
+| 词条 id / 素材文件名 | **带单元前缀**的 kebab-case，**文件名 = id** | `u1-dog.svg` |
 | 日志前缀 | 方括号小写 | `[core]` `[tts]` `[save]` `[content]` |
 
 ### Architectural Boundaries

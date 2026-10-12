@@ -54,23 +54,24 @@ story_location: _bmad-output/implementation-artifacts
 development_status:
   epic-1: in-progress
   1-1-工程脚手架与启动界面: done
-  1-2-音频解锁与-tts-朗读: backlog
-  1-3-战斗内核与-5-条数值断言: backlog
-  1-4-回合状态机与题单: backlog
-  1-5-内容数据层与单元-1-录入: backlog
-  1-6-塔与僵尸美术资产: backlog
-  1-7-单元-1-词图-第一批: backlog
-  1-8-单元-1-词图-第二批: backlog
-  1-9-战场渲染与网格: backlog
-  1-10-三种卡型与答题交互: backlog
-  1-11-建造-阳光与射程可视化: backlog
-  1-12-hud-阳光-心与进度: backlog
-  1-13-音效与-bgm-接入: backlog
-  1-14-存档与断点续学: backlog
-  1-15-关卡流程-通关-失败与推进: backlog
-  1-16-调试工具与会话回放: backlog
-  1-17-目标平板落地-竖屏布局-离线与部署: backlog
-  1-18-单元-1-首次试玩验证-epic-1-的生死线: backlog
+  1-2-音频解锁与-tts-朗读: in-progress
+  1-3-朗读录音批量生成: backlog
+  1-4-战斗内核与-5-条数值断言: backlog
+  1-5-回合状态机与题单: backlog
+  1-6-内容数据层与单元-1-录入: backlog
+  1-7-塔与僵尸美术资产: backlog
+  1-8-单元-1-词图-第一批: backlog
+  1-9-单元-1-词图-第二批: backlog
+  1-10-战场渲染与网格: backlog
+  1-11-三种卡型与答题交互: backlog
+  1-12-建造-阳光与射程可视化: backlog
+  1-13-hud-阳光-心与进度: backlog
+  1-14-音效与-bgm-接入: backlog
+  1-15-存档与断点续学: backlog
+  1-16-关卡流程-通关-失败与推进: backlog
+  1-17-调试工具与会话回放: backlog
+  1-18-目标平板落地-竖屏布局-离线与部署: backlog
+  1-19-单元-1-首次试玩验证-epic-1-的生死线: backlog
   1-retrospective: optional
   epic-2: backlog
   2-1-词图产能验证: backlog
