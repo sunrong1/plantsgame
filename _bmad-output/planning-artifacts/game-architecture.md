@@ -630,7 +630,8 @@ plants-game/
 │   │   ├── hud/                 SunCounter / HeartRow / ProgressBar
 │   │   └── debug/               DebugPanel / ReplayExporter
 │   │
-│   ├── views/                   ← StartView / LevelView / UnitSelectView
+│   ├── views/                   ← StartView / LevelView
+│   │                               ⚠️ 不建 UnitSelectView —— 无选关自由（见下方说明）
 │   └── styles/                  ← 全局样式与动效 token
 │
 ├── scripts/
@@ -649,6 +650,20 @@ plants-game/
 ```
 
 > 命名说明：GDD 中 `balance-sim.py` 与 `balance-scan.py` 两名混用（gdd.md:243 vs :390）。TypeScript 版统一为 **`balance-sim.ts`**。
+
+> **⚠️ `views/` 下没有 `UnitSelectView`，且不应新增。**
+> GDD 明确规定「跨单元线性推进 —— 单一进度线，无多单元并行，**无选关自由**」
+> （gdd.md:366，并列入 Out of Scope gdd.md:579）；epics 的 FR59 / OUT-OF-SCOPE-5
+> 与 Story 1.15 的验收标准亦均要求无选关自由。
+>
+> 本行曾写作 `StartView / LevelView / UnitSelectView`，被 `[IR]` 评审判定为 HIGH-3：
+> **架构正在制造它自己声明要防止的范围偏移。** 理由很直接 —— Story 1.1 要求按本目录结构
+> 建立骨架，实现者照着写出一个 `UnitSelectView.vue` 是完全合理的行为，
+> 而 epics 的 Out-of-Scope 核对表恰恰把「多单元并行 / 选关自由」列为**最易被违反**的项之一。
+>
+> 单元的推进由**存档中的 `progress.currentUnitIndex` 驱动**（见决策 5），
+> 通关后自动进入下一单元，不需要也不应该有选择界面。
+> 若将来确实需要选关，那是范围变更，须先改 GDD 与 epics，而不是先建目录。
 
 ### System Location Mapping
 

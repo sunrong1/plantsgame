@@ -1009,3 +1009,24 @@ Story 2.1 的实际执行结果，而非现在就能定稿。
 
 **建议在 `[SP]` 前至少补做 B1**（删除架构中的 `UnitSelectView`，1 行）——
 否则 `[DS]` 实现 Story 1.1（按架构建目录骨架）时会照着架构建出一个 v1.0 明确不做的视图。
+
+### 第二批修订（B1）—— 已完成 2026-10-12
+
+**B1 —— 移除架构中的 `UnitSelectView`（HIGH-3）。** 在 `[SP]` 前完成，避免 `[DS]` 照架构建出范围外的视图。
+
+| 位置 | 动作 |
+|---|---|
+| `game-architecture.md` 目录结构 | `views/ ← StartView / LevelView / UnitSelectView` → `StartView / LevelView`，并加一行内注释 `⚠️ 不建 UnitSelectView —— 无选关自由` |
+| 目录树后新增说明块 | 记录该视图为何被移除（引用 GDD:366 / :579、epics FR59 / OUT-OF-SCOPE-5 / Story 1.15），说明单元推进由 `progress.currentUnitIndex` 驱动，并写明「若将来确实需要选关，那是范围变更，须先改 GDD 与 epics，而不是先建目录」 |
+| `epics.md` Out-of-Scope 核对表第 5 行 | 增列 **1.1 建目录骨架**，并标注架构侧的 `UnitSelectView` 已移除 |
+
+**为什么值得单独花一条去修：** 这是全部发现中**修改量最小、风险收益比最高**的一条。
+它一行代码都不涉及，却堵住了唯一一条「架构正在主动制造范围偏移」的路径 ——
+而这条路径恰好会在 `[DS]` 实现 Story 1.1 时被触发。
+
+**修复后的边界状态：** Epic 1 的 2 个 CRITICAL 与 3 个 HIGH（CRITICAL-1、CRITICAL-2、
+HIGH-1、HIGH-3，以及 A1–A4 顺带修掉的 L9 笔误）已全部关闭。
+
+**仍开放：** HIGH-2（战斗疲劳路径三份文档矛盾）· HIGH-4（三类运行失败无降级通路）·
+MEDIUM-1…7 · L1–L8、L10–L13。
+其中 HIGH-4 会在 Story 1.10（答题交互渲染）/ 1.14（存档）实现时暴露，建议一并补做 A8/A9。
