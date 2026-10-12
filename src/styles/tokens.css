@@ -1,0 +1,21 @@
+/**
+ * 设计 token —— 本 story 只落 StartView 实际用到的几组。
+ *
+ * 刻意未定稿的部分（留给后续 story，留空并注释，不要随手填一个值 ——
+ * 随手填的值会被后续 story 当成「已定稿」继承，比没有更糟）：
+ *   - 完整色板（--color-bg / --color-tower-* / --color-sun …）→ Story 1.6
+ *   - --text-* 字号阶梯 → Story 1.9 / 1.12
+ *   - --space-grid-gap → Story 1.9 战场网格
+ */
+:root {
+  /* 间距 */
+  --space-panel-pad: 16px;
+
+  /* 触控目标最小边长 —— AC-1 直接引用 */
+  --touch-min: 48px;
+
+  /* 动效时长 —— 架构硬约束 5：时长写在 CSS，不写在 TS */
+  --dur-fast: 120ms;
+  --dur-med: 240ms;
+  --dur-slow: 400ms;
+}

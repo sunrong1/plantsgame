@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <!--
+      maximum-scale=1 禁掉双击缩放：否则 Android 上双击有 300ms 延迟，
+      直接击穿 FR78 的「点击反馈 ≤100ms」预算。
+      viewport-fit=cover 让 env(safe-area-inset-*) 生效（架构决策 10 的安全区预留）。
+    -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#000000" />
+    <title>PVZ Pixel</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,42 @@
+/**
+ * 全局基础样式 —— 只做三件事：铺满、去掉浏览器默认边距、关掉触控干扰。
+ */
+
+@import './tokens.css';
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  /* 竖屏下也要能铺满，禁止因内容高度产生滚动条 */
+  height: 100%;
+}
+
+#app {
+  height: 100%;
+}
+
+body {
+  font-family: system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  /* 视口高度随软键盘/地址栏变化；配合 viewport-fit=cover 用安全区做内边距 */
+  min-height: 100dvh;
+}
+
+/**
+ * 触控目标的基础行为 —— FR78 / NFR5「点击反馈 ≤100ms」。
+ * touch-action: manipulation 去掉 300ms tap delay，
+ * -webkit-tap-highlight-color 去掉 Android 上那块灰蓝色高亮方块。
+ */
+button,
+.touch-target {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  min-height: var(--touch-min);
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
