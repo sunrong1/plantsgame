@@ -11,7 +11,7 @@ platform: '华为 Android 平板浏览器（竖屏）'
 
 # Source Documents
 gdd: '_bmad-output/planning-artifacts/gdds/gdd-plants-game-2026-10-11/gdd.md'
-epics: '_bmad-output/planning-artifacts/gdds/gdd-plants-game-2026-10-11/epics.md'
+epics: '_bmad-output/planning-artifacts/gdds/gdd-plants-game-2026-10-11/epics-draft.md'
 brief: null
 ---
 

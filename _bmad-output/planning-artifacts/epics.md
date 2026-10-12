@@ -1,9 +1,10 @@
 ---
 stepsCompleted: [1, 2, 3, 4]
+status: complete
 inputDocuments:
   - '_bmad-output/planning-artifacts/gdds/gdd-plants-game-2026-10-11/gdd.md'
-  - '_bmad-output/game-architecture.md'
-  - '_bmad-output/planning-artifacts/gdds/gdd-plants-game-2026-10-11/epics.md'
+  - '_bmad-output/planning-artifacts/game-architecture.md'
+  - '_bmad-output/planning-artifacts/gdds/gdd-plants-game-2026-10-11/epics-draft.md'
 ---
 
 # plants-game - Epic Breakdown

@@ -7,7 +7,7 @@
 本仓库于 2026-10-11 通过 BMAD Method 从零重做。**当前没有产品代码。**
 
 进度：`[GDD]` 已定稿（`_bmad-output/planning-artifacts/gdds/gdd-plants-game-2026-10-11/gdd.md`，
-`status: final`，revision 3）。`[GA]` 游戏架构已定稿（`_bmad-output/game-architecture.md`，`status: complete`）。
+`status: final`，revision 3）。`[GA]` 游戏架构已定稿（`_bmad-output/planning-artifacts/game-architecture.md`，`status: complete`）。
 下一步是 `[CE]` 拆 epic 与 story。
 
 旧实现（Vue 3 + Phaser 3 塔防，已发布至 v5.x）已归档在 git tag `legacy-v5.x-final`。
@@ -25,7 +25,7 @@ git show legacy-v5.x-final:src/config/plants.ts  # 读单个旧文件
 
 ## 技术栈
 
-由 `[GA]` 定稿，完整依据见 `_bmad-output/game-architecture.md`。
+由 `[GA]` 定稿，完整依据见 `_bmad-output/planning-artifacts/game-architecture.md`。
 
 | 层 | 选择 | 版本 |
 |---|---|---|
@@ -51,7 +51,7 @@ npm run balance-sim       # 平衡模拟，import 真实 core/
 
 ## 架构硬约束
 
-**这几条是 `[GA]` 定案的，违反即架构错误。实现前先读 `_bmad-output/game-architecture.md`。**
+**这几条是 `[GA]` 定案的，违反即架构错误。实现前先读 `_bmad-output/planning-artifacts/game-architecture.md`。**
 
 1. **`core/` 零 DOM、零 Vue** —— 由 `tsconfig.core.json` 的 `lib` 不含 `DOM` 强制，
    写 `window` / `localStorage` 会编译报错。配套 ESLint `no-restricted-imports`。
