@@ -7,8 +7,8 @@
 本仓库于 2026-10-11 通过 BMAD Method 从零重做。**当前没有产品代码。**
 
 进度：`[GDD]` 已定稿（`_bmad-output/planning-artifacts/gdds/gdd-plants-game-2026-10-11/gdd.md`，
-`status: final`，revision 3）。同目录的 `epics.md` 是草案，验收标准待 `[CE]` 细化。
-下一步是 `[GA]` 游戏架构。
+`status: final`，revision 3）。`[GA]` 游戏架构已定稿（`_bmad-output/game-architecture.md`，`status: complete`）。
+下一步是 `[CE]` 拆 epic 与 story。
 
 旧实现（Vue 3 + Phaser 3 塔防，已发布至 v5.x）已归档在 git tag `legacy-v5.x-final`。
 若需要查阅旧代码（美术资源命名、平衡数值、移动端踩坑记录等）：
@@ -21,11 +21,59 @@ git show legacy-v5.x-final:src/config/plants.ts  # 读单个旧文件
 **除非 GDD/架构阶段明确要求，不要从旧代码复制实现。** 它的作用是参考，不是蓝本。
 
 值得直接继承的旧资产：`SpeechService.preheat()`（Android 音频解锁踩坑的产物）。
+注意旧实现用的是 **Phaser 3，该版本已于 2025-05 停止支持** —— 新项目不用 Phaser。
 
-## 技术栈：尚未决定
+## 技术栈
 
-技术栈由 `[GA]` 游戏架构阶段拍板（`primary_platform: other`，浏览器平板优先）。
-届时本节会被替换为实际的栈、命令和约定。在此之前不要假设 Vue/Phaser/Vite/Vitest 仍然适用。
+由 `[GA]` 定稿，完整依据见 `_bmad-output/game-architecture.md`。
+
+| 层 | 选择 | 版本 |
+|---|---|---|
+| 渲染 | **DOM + CSS，无游戏引擎** | — |
+| UI 框架 | Vue | 3.5.x（3.6 仍是 RC，不采用） |
+| 构建 | Vite | 8.x（Rolldown） |
+| 测试 | Vitest | 5.x（需 Node ≥ 22.12） |
+| 语言 | TypeScript | `strict: true` |
+| 部署 | HTTPS 静态托管 + PWA | — |
+
+**为什么没有游戏引擎：** 本作是**回合制**，无实时循环、无物理、无碰撞、无网络。
+引擎 90% 的能力用不上；DOM 直接白送文字渲染（英文单词的认读质量直接受益）
+与竖屏自适应布局。
+
+## 命令
+
+```bash
+npm run dev               # 开发服务器
+npm run test              # Vitest
+npm run validate:content  # 内容校验，提交前必跑
+npm run balance-sim       # 平衡模拟，import 真实 core/
+```
+
+## 架构硬约束
+
+**这几条是 `[GA]` 定案的，违反即架构错误。实现前先读 `_bmad-output/game-architecture.md`。**
+
+1. **`core/` 零 DOM、零 Vue** —— 由 `tsconfig.core.json` 的 `lib` 不含 `DOM` 强制，
+   写 `window` / `localStorage` 会编译报错。配套 ESLint `no-restricted-imports`。
+2. **组件内不得出现战斗规则计算** —— 只能读 state 或 dispatch action。
+   答案只有一个来源：`core/`。⚠️ 这是 AI 最容易漂移的一条，`[CR]` 须重点检查。
+3. **战斗数值只读 `tower.towerType`，永远不读 `wordId`** —— 否则同一塔型因绑定词
+   不同而表现不同，平衡验证全部失效。
+4. **副作用只在 `app/effects-runner.ts` 执行** —— 组件内禁止 `watch` 后自行播音效。
+5. **动画时长写在 CSS，不写在 TS。**
+6. **进度与对局是两套独立持久化** —— `SaveFile { progress, currentGame }`。
+   战场每局清空，进度只增不减，混在一起会在局末丢掉「21/60」。
+7. **范围塔 = 同行 3 格**（左 1 / 自身 / 右 1），不是半径 2 的圆（5 格严重超模）。
+8. **音频解锁在「开始游戏」点击处理器内同步完成**，三者之间不允许 `await`；
+   `speechSynthesis.cancel()` 只在 `speech === true` 时调用。
+9. **TTS 失败绝不阻断回合流转** —— 必须有预录录音降级通路。
+10. **平衡模拟是 TypeScript，不是 Python** —— 避免两份数值漂移。
+
+## 待 `[CE]` 处理
+
+**词图产能是项目级最大风险**：全年 200-400 词需 200-400 张各不相同的插画
+（旧版本 5 个大版本只积累 9 张）。架构已锁定 SVG 格式与命名规范，但不解决产能本身。
+拆 epic 时不得默认「Epic 2 就是把词图画完」。
 
 ## BMAD 工作流
 
