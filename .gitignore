@@ -43,3 +43,7 @@ playwright-report/
 playwright/.cache/
 # BMAD 安装器复制的技能（可重装再生，内容与 _bmad/ 重复）
 .claude/skills/
+
+# Python 核算工具的字节码缓存（GDD 目录下的 balance-scan.py 会被分析时执行）
+__pycache__/
+*.pyc
