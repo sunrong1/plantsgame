@@ -1,10 +1,17 @@
 /**
- * 战斗层实体类型（Story 1.4）。
- *
- * ⚠️ 本文件**不含** `State` / `Action` —— 那属 Story 1.5。
- * 这里只定义战斗层实体：塔型、塔、僵尸，以及它们的工厂函数与不变量校验。
+ * 战斗层实体类型（Story 1.4）+ 回合层类型（Story 1.5）。
  *
  * 形态：纯类型 + 纯函数，零 DOM、零 Vue（tsconfig.core.json 的 lib 不含 DOM）。
+ *
+ * 📎 **Story 1.5 扩充说明** —— 本文件自 1.5 起在原战斗层实体之上追加
+ * 题单 / 题目 / State / Phase / Action 五个家族，**原有导出一行未改**（子任务 1.5）。
+ * 之所以追加而不是拆新文件：这些类型与 `Tower` / `Zombie` 同处一个可辨识联合里
+ * （`State` 的字段直接是它们的数组），拆开只会让联合的定义横跨两个文件、
+ * 读代码时要在两处拼上下文。
+ *
+ * ⚠️ **`Action` 的联合定义住在本文件，而构造器住在 `actions.ts`**（与子任务 1.2 的
+ * 字面一致）。单向：`actions.ts` 依赖本文件，反向不依赖 —— 于是 reducer 可以
+ * 只从本文件取类型、从 `actions.ts` 取构造器，不产生循环。
  */
 
 // ⚠️ ZOMBIE_HP 从 balance.ts 取（战斗数值的单一事实源，架构 `:634`）。
@@ -176,3 +183,211 @@ export function assertNonEmptyId(id: string): void {
 
 // 📎 `assertGridIndex` 住在 grid.ts（[CR] P17：全 core/ 层唯一的整数校验器），
 // 由 barrel 对外导出。本文件不再重复定义 —— 三份校验器各自演化的教训见 assertGridIndex 注释。
+
+// ════════════════════════════════════════════════════════════════════════
+// 回合层（Story 1.5）：题单 / 题目 / State / Phase / Action
+// ════════════════════════════════════════════════════════════════════════
+
+/** 选项 id。类型别名而非 `string`：与 `TowerType` 的做法一致，让「选项 id」在签名里自解释。 */
+export type OptionId = string
+
+/**
+ * 图片选项（单词卡，架构模式 B）。
+ *
+ * `correct` 是**数据**，不是推导结果 —— 「唯一正确项」是 schema 级约束（FR16），
+ * 由 Story 1.6 的 Zod 校验在内容入口处强制。core/ 运行时**只读不算**：
+ * 在 core 里重算一遍「哪个选项正确」等于把内容层的判定复制成第二份，
+ * 两份判定漂移时没有任何东西会报错。
+ */
+export interface ImageOption {
+  readonly id: OptionId
+  readonly imageSrc: string
+  readonly correct: boolean
+}
+
+/** 文字选项（关键词卡 / 回应卡）。与 {@link ImageOption} 共用同一份判定逻辑（架构模式 B）。 */
+export interface TextOption {
+  readonly id: OptionId
+  readonly text: string
+  readonly correct: boolean
+}
+
+/** 选项并集 —— 三种卡型共用（架构模式 B：「卡型差异只在数据，不在代码」）。 */
+export type Option = ImageOption | TextOption
+
+/**
+ * 卡 —— 三种卡型共用一个形状（架构模式 B）。
+ *
+ * ⚠️ **本 story 的选择：把架构的 `kind` 三分支并集拍平成一个 `kind: CardKind`
+ * + `options: readonly Option[]`**（登记于 Dev Notes §「State 的最终设计」）。
+ * 拍平的理由：架构对卡型差异给出的判据是「差异**只在数据**」—— 拍平形状让三种卡型
+ * 在类型上**完全同构**，`isCorrect()` 也就没有「按卡型分派」的可写空间；
+ * 而保留分支的话，三份近乎相同的 options 类型会诱导后来者写
+ * `if (card.kind === 'word') ... else ...` 的分派逻辑，正是要避免的代码形态。
+ * 「单词卡只配图片选项」由 Story 1.6 的 schema 校验（FR16）守，不靠 core 的类型。
+ */
+export interface Card {
+  /** 仅用于渲染（图片卡 vs 文字卡）与卡型分布统计，**不参与战斗**（FR14）。 */
+  readonly kind: 'word' | 'keyword' | 'response'
+  readonly promptText: string
+  readonly options: readonly Option[]
+}
+
+/**
+ * 题单条目 —— 一个词 + 它的卡 + 它绑定哪种塔。
+ *
+ * ⚠️ `entryId` 带单元前缀（如 `u1-dog`，AR29）：录音目录**不分单元**，
+ * 单元 1 与单元 2 各自都有 `dog` 时，不带前缀会撞名 —— 而撞名的后果是
+ * 「换了单元却播了另一个单元的录音」，界面上完全看不出来。
+ *
+ * ⚠️ `towerType` 与 `wordId` 一起构成塔的来源（FR23）：`reduce` 建造时回查本条目，
+ * 用 `towerType` 定战斗数值、用 `wordId` 定显示名。战斗数值**永远不读 `wordId`**（AC-8）。
+ */
+export interface DeckEntry {
+  readonly entryId: string
+  /** 塔的显示名来源。 */
+  readonly wordId: string
+  /** 该词绑定哪种塔。战斗数值只由它决定。 */
+  readonly towerType: TowerType
+  readonly card: Card
+}
+
+/**
+ * `Phase` 在等答案时携带的那道题 —— 就是题单条目本身。
+ *
+ * 为什么是别名而不是新接口：`awaiting-answer` 阶段必须能拿到
+ * 「塔型 / wordId / 卡」三样都要（答题判 `card`、结算解锁塔卡要 `towerType` 与 `wordId`）。
+ * 若只携带 `Card`，reducer 还得回查 `deck` 找条目，两处都可能取到不同的东西。
+ * 引用题单条目让「正在问的就是它」成为类型层面的事实。
+ */
+export type Question = DeckEntry
+
+/**
+ * 回合阶段 —— `State` 的可辨识联合，判别式是 **`kind`**（架构 `:842-849`）。
+ *
+ * ⚠️ **`Action` 用 `type`，`Phase` 用 `kind`** —— 架构字面如此，不是笔误。
+ * 两者都从 `State` 派生的字段名不冲突（Action 不是 State 的成员）。
+ *
+ * 「回合内的两处无限等待属于 State」：等选卡与等建造都是**不会自己结束**的状态，
+ * 若它们只活在组件里，断点续学（决策 5）恢复后无从判断该等什么，
+ * reducer 也无从拒绝非法 action（AC-2）。
+ *
+ * ⚠️ `awaiting-build` 上的 `unlocked` / `sun` 是 **`State` 侧同名字段的只读镜像**
+ * （架构 `:846-847` 的字面形状不可改）。唯一可写事实源是 `State`；
+ * `assertInvariants()` 断言两者恒等，组件**只读 `State`** ——
+ * 详见本 story Dev Notes §自主设计清单第 2 条。
+ */
+export type Phase =
+  | { readonly kind: 'awaiting-answer'; readonly question: Question }
+  | { readonly kind: 'awaiting-build'; readonly unlocked: readonly string[]; readonly sun: number }
+  /** 真实的一帧状态，不是瞬时值：`END_BUILD` 只切 phase，`RESOLVE_ROUND` 才结算（自主设计 #3）。 */
+  | { readonly kind: 'resolving' }
+  | { readonly kind: 'round-over' }
+  | { readonly kind: 'level-complete' }
+  | { readonly kind: 'level-failed' }
+
+/**
+ * 一局游戏的全部状态（决策 2 的唯一状态、决策 5 的序列化对象）。
+ *
+ * ⚠️ **全部字段 `readonly` 且全部 JSON 可序列化** —— 没有 `Map` / `Set` / `Date` /
+ * 类实例 / `undefined` 成员。`grid` 用字符串键（`cellKey(row,col)`）即为此故：
+ * `Map` 能 JSON 化成 `{}`，一局打下来断点续学时战场全空，而没有任何报错指向它。
+ */
+export interface State {
+  readonly unitNumber: number
+  readonly phase: Phase
+  /** 当前回合号，1 起。 */
+  readonly turn: number
+  /** 剩余心数，落在 `[0, HEARTS]`。 */
+  readonly hearts: number
+  /** 阳光**余额**，唯一可写事实源（塔打死僵尸不产出阳光，AC-9）。 */
+  readonly sun: number
+  /** `cellKey(row,col)` → 塔 id。与 `towers` 双向一致（AC-13）。 */
+  readonly grid: Readonly<Record<string, string>>
+  /** 按建造顺序排列 —— **攻击顺序即此顺序**（自主设计 #7：`reduce` 无随机，结果必须可重放）。 */
+  readonly towers: readonly Tower[]
+  readonly zombies: readonly Zombie[]
+  /** 本局题单的**固定全集**，一局内数组本身永不变动（AC-5）。 */
+  readonly deck: readonly DeckEntry[]
+  /** 本局已答对的 `entryId`。`nextQuestion()` 跳过它们 —— 「已答对不再出现」全靠它表达。 */
+  readonly masteredEntryIds: readonly string[]
+  /** 已解锁塔卡的 `entryId` 列表（自主设计 #10：存 entryId，不存对象）。是数组不是集合 —— FR33 允许反复建同一张卡。 */
+  readonly unlocked: readonly string[]
+}
+
+/**
+ * 回合层 action 联合（架构 `:578` 给定的名字只有 `PLACE_TOWER`；
+ * 其余五个是本 story 的选择，登记于 Dev Notes §自主设计清单第 1 条）。
+ *
+ * 判别式是 `type`（不是 `Phase` 的 `kind`）。
+ *
+ * ⚠️ 六个分支各有具名别名，且 `actions.ts` 的构造器返回**精确的分支类型**而非 `Action`：
+ * 返回联合会让 `answer('x').optionId` 在编译期报错（该属性不保证存在于任一分支），
+ * 于是每个调用方都要先写一遍 `if (a.type === 'ANSWER')` 收窄 —— 而那只在调试时才有意义。
+ * 具名 + 精确返回类型让「构造器的产物是什么」在类型上自明。
+ */
+
+/** 答题。 */
+export interface AnswerAction {
+  readonly type: 'ANSWER'
+  readonly optionId: OptionId
+}
+
+/** 放塔。`cell` 是 `cellKey(row,col)` 字符串，`entryId` 指向题单条目（FR23）。 */
+export interface PlaceTowerAction {
+  readonly type: 'PLACE_TOWER'
+  readonly entryId: string
+  readonly cell: string
+}
+
+/** 结束建造 —— 只切 phase，不结算（自主设计 #3）。 */
+export interface EndBuildAction {
+  readonly type: 'END_BUILD'
+}
+
+/** 执行本回合结算。 */
+export interface ResolveRoundAction {
+  readonly type: 'RESOLVE_ROUND'
+}
+
+/** 推进到下一回合。 */
+export interface ContinueAction {
+  readonly type: 'CONTINUE'
+}
+
+/** 重打本关。**刻意无载荷** —— 重置值一律由 reduce 从 deck 重算（AC-5）。 */
+export interface RestartLevelAction {
+  readonly type: 'RESTART_LEVEL'
+}
+
+export type Action =
+  | AnswerAction
+  | PlaceTowerAction
+  | EndBuildAction
+  | ResolveRoundAction
+  | ContinueAction
+  | RestartLevelAction
+
+/**
+ * 答题判定 —— **全项目唯一的一份实现**（架构模式 B `:861-864`，FR14）。
+ *
+ * 三种卡型共用：卡型差异只在数据，所以判定逻辑不该分派卡型。
+ *
+ * ⚠️ **不校验「恰有一个正确项」** —— 那是 schema 级约束（FR16），由内容校验脚本守。
+ * core 里再算一遍就是第二份判定实现，两份漂移时不会报错。
+ *
+ * ⚠️ `chosenId` 匹配不到任何选项时**抛错**（AC-7：逻辑层只 throw，不静默返回 false）。
+ * 静默 false 会把「组件传错了 id」伪装成「孩子答错了」——
+ * 界面上表现为「怎么点都错」，而真正的错误（渲染时用了临时 id）在日志里一个字都没有。
+ */
+export function isCorrect(card: Card, chosenId: OptionId): boolean {
+  const chosen = card.options.find((option) => option.id === chosenId)
+  if (chosen === undefined) {
+    const known = card.options.map((o) => o.id).join('、')
+    throw new Error(
+      `所选选项 ${JSON.stringify(chosenId)} 不在这张卡 ${card.kind} 的选项里（现有：${known}）。` +
+        '静默当作答错会把「组件传错了 id」伪装成「孩子答错」，界面上表现为「怎么点都错」。',
+    )
+  }
+  return chosen.correct
+}

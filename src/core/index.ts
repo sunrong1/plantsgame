@@ -82,4 +82,41 @@ export {
   createZombie,
 } from './types.js'
 
-export type { CreateTowerInput, CreateZombieInput, Tower, TowerType, Zombie } from './types.js'
+export type {
+  Action,
+  AnswerAction,
+  Card,
+  ContinueAction,
+  CreateTowerInput,
+  CreateZombieInput,
+  DeckEntry,
+  EndBuildAction,
+  ImageOption,
+  Option,
+  OptionId,
+  Phase,
+  PlaceTowerAction,
+  Question,
+  ResolveRoundAction,
+  RestartLevelAction,
+  State,
+  TextOption,
+  Tower,
+  TowerType,
+  Zombie,
+} from './types.js'
+
+export { isCorrect } from './types.js'
+
+// 📎 回合结算编排（Story 1.5 / AC-7）。`turn.ts` 刻意不 import `reducer.ts`：单向依赖。
+export { resolveCombatRound } from './turn.js'
+
+export type { ResolveRoundResult } from './turn.js'
+
+// 📎 回合层（Story 1.5）：构造器与判别式辅助函数。`Action` 联合本身在 types.ts。
+export { actionName, answer, continueRound, endBuild, placeTower, resolveRound, restartLevel } from './actions.js'
+
+// 📎 回合状态机（Story 1.5 / AC-1…AC-13）。唯一的状态变更点（决策 2）。
+export { assertInvariants, createInitialState, nextQuestion, reduce } from './reducer.js'
+
+export type { CreateInitialStateInput } from './reducer.js'

@@ -46,9 +46,21 @@
   // 与 tsconfig.node.json 重叠是允许的（两者都 noEmit），**不要**为了「单一归属」
   // 把这两个文件从这里删掉，删了立刻撞回 TS6307。
   //
-  // 反向约束（勿违反）：脚本**不得** import `src/`。那会让 scripts 里的文件
-  // 同时需要 app/core 项目的产物，仍是 TS6307，且给一个开发期脚本套上
-  // 核心边界的耦合。
+  // ⚠️ 脚本 import `src/core/` 是**允许且已实测可行**的 —— Story 1.5 起
+  // `scripts/balance-sim.ts` 必须 import 真实 `core/`（架构约束 10：平衡模拟是
+  // TypeScript，不是 Python，避免两份数值漂移）。
+  // 原注释「脚本不得 import `src/`，否则仍是 TS6307」是 `[DS]` 2026-10-13 实测推翻的：
+  // 上面 `references` 已指向 `tsconfig.core.json`，而 core 项目**有 emit 产物**
+  // （与 app / node 两个 noEmit 项目不同，被引用项目不允许 noEmit），
+  // 所以 scripts → src/core/ 这条依赖链解析得到，**不报 TS6307**。
+  // 实测方式：往 `balance-sim.ts` 里注入 `const x: number = "s"`，
+  // `npm run typecheck` 立刻报 `scripts/balance-sim.ts(462,7): error TS2322`
+  // —— 既证明它确实被 typecheck 覆盖，也证明 import core/ 没有把它挤出检查范围。
+  //
+  // 仍未验证（不要当成结论用）：脚本 import `src/app` 或 `src/services`
+  // 会怎样。这两个属于 noEmit 的 composite 项目，按上面 src/services 那段注释的
+  // 推理**可能**仍然 TS6307 —— 但没有实测过。Story 1.x 若出现脚本需要读 app 层的
+  // 情况，先实测再改配置，不要凭这条推理直接改结构。
   "include": [
     "tests/**/*.ts",
     "vitest.config.ts",
