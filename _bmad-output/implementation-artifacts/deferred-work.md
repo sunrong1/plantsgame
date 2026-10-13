@@ -274,7 +274,14 @@
   ——
   `src/core/balance.ts`、`gdd.md` 经济段
 
-- **`PLACE_TOWER` 没禁止建在房子格（col 0）与僵尸入场格（col 8）** ——
+- **[已解决 2026-10-14 · `[CR]` Story 1.5] `PLACE_TOWER` 没禁止建在房子格（col 0）与僵尸入场格（col 8）** ——
+  > **已由 `[CR]` 补上两条规则**：`placeTowerIn` 现在拒绝 `col === HOUSE_COL` 与
+  > `col === ZOMBIE_SPAWN_COL`，各配一条变异验证过的守卫。
+  > 补的**理由比原记录更强**：col 8 的危害不是「门槛数字会变」，而是
+  > `inRange` 单边 ⇒ 建在那里的直射塔/减速塔**永远打不到任何东西**，
+  > 孩子花 50 阳光买到一个整局不动的塔，无报错、无红测试。
+  > 下方原文保留作为当时的记录。
+
   AC-12 只列了三条规则（未解锁 / 格子非空 / 阳光不足），本 story 据此实现，没有多加规则。
   `tests/fixtures/level-driver.ts` 的建塔策略**主动排除**了这两列（`BUILDABLE_COLUMNS = [1..7]`），
   所以所有门槛数字都是按「不能建在这两格」测的。
@@ -299,3 +306,58 @@
   立刻给这条加断言 —— 届时它就不再是等价变异体了。
   ——
   `src/core/turn.ts` 的 `shoot()`
+
+---
+
+## Deferred from: code review of story-1-5-回合状态机与题单 (2026-10-14)
+
+- **`Card` 扁平化丢掉了架构模式 B 的判别联合保证** ——
+  `src/core/types.ts:216` 把 `Option` 定义为 `ImageOption | TextOption` 的扁平联合，
+  `Card.options: readonly Option[]` 不按 `kind` 收窄。架构模式 B 规定的是判别联合
+  （`kind: 'word' → options: ImageOption[]`），那种形状下 `{kind:'word', options:[{text:'…'}]}`
+  是**编译错误**。
+  **风险**：`kind: 'word'` 的卡带文本选项可以干净编译，`core/` 内没有任何运行时守卫拦住它，
+  失败要到渲染层才暴露（图片卡渲染出文本选项）。JSDoc 给的理由（保留分支会诱导写
+  `if (card.kind === 'word')` 分派逻辑）是真收益，但代价是把编译期不变量换成了内容层运行时校验。
+  **为什么延后**：已登记为 deviation，由 Story 1.6 的 Zod schema 兜底。
+  **恢复条件**：Story 1.6 录入内容时，把「`kind: 'word'` 的 options 必须是图片」写成 Zod 断言，
+  并给 `src/content/` 的坏数据补一条测试。
+  ——
+  `src/core/types.ts`、`_bmad-output/planning-artifacts/game-architecture.md` 模式 B
+
+- **减速塔在当前数值下被完全支配** ——
+  `npm run balance-sim` 的实测（Story 1.5 / `[CR]` 2026-10-14 复核）：
+  ```
+  直射塔 col 3   造价 50  伤害 50  命中 5 次  击杀 1 只  掉心 3 颗  z1 走过 2 格
+  减速塔 col 3   造价 50  伤害 25  命中 7 次  击杀 0 只  掉心 3 颗  z1 走过 6 格
+  ```
+  同造价、伤害减半、击杀不更多、掉心不减，而轨迹显示**慢塔让 z1 多走了 4 格**。
+  即减速塔目前是纯劣化，AR27 的取舍并不成立。
+  ⚠️ 平衡模拟原本**打印着与自身数据相反的结论**（「减速换来的是 z1 少走的那几格」），
+  紧邻的两条 trace 就是反证 —— 25 × 7 = 175 < 200 的算术摆在输出里没人算。
+  已改为由实测数字推出结论（`dominated` 分支），不再写死叙事。
+  **为什么不在这里改**：数值平衡参数（伤害/造价/减速系数）不在 `[CR]` 的改动权限内。
+  **恢复条件**：Epic 3 战斗数值调优（3-2）时定夺方向 —— 要么给减速塔一个别的、
+  真实存在的优势（多行？溅射？成本更低？），要么承认单元 1 阶段它不该进题单。
+  ——
+  `src/core/balance.ts` 的 `TOWER_STATS.slow`、`scripts/balance-sim.ts` 减速塔段
+
+- **掉心数的夹取会让击杀恒等式误记，且当前无法构造出能触发的守卫** ——
+  `reducer.ts` 的 `applyResolve` 用 `Math.max(0, state.hearts - heartsLost)` 归一化心数，
+  而 `resolveCombatRound` 的文档明确写着 `heartsLost`「**可能大于剩余心数**」。
+  消费者若用差值反推掉心数，少掉的那几颗就会被
+  `kills += 前 − 后 − 掉心` **记成一次击杀** —— 一只抵达房子的僵尸凭空变成一次击杀，
+  与 `decision-log.md`「模拟器不静默丢弃实体」那条教训同形，只是高了一层。
+  **已修**：`tests/fixtures/level-driver.ts` 与 `scripts/balance-sim.ts` 两处
+  都改为直接取 `resolveCombatRound(...).heartsLost`，不再反推。
+  **但守卫写不出来**：`[CR]` 2026-10-14 先用随机种子复现过（6898 回合 4 次命中），
+  那批种子用的是 0..8 列；补上「禁止建在房子格 / 僵尸入场格」之后重扫
+  **20000 个种子、cols 1..7，一次都没触发**（连同回合抵达两只都没有）。
+  ⇒ 这是一条**潜在**缺陷：防御性修复保留，但目前**没有测试能守住它**。
+  写一个永远为绿的守卫比不写更坏，所以当时选择不写并如实登记在此。
+  **恢复条件**：出现能逼出「同回合抵达 ≥2 只」的局面时立刻补断言 ——
+  候选触发点有三处，任一发生即可：① 建塔策略放宽或改用别的塔型组合；
+  ② 引入溅射 / 复活等让僵尸重叠的机制；③ `SLOW_FACTOR` / `SLOW_TURNS` 被调大到
+  僵尸能被明显拖住、被拖住的那只正好让后一只追上。
+  ——
+  `src/core/reducer.ts` 的 `applyResolve`、`tests/fixtures/level-driver.ts`、`scripts/balance-sim.ts`

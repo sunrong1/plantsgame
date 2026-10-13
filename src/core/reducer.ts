@@ -23,7 +23,7 @@
  */
 
 import { HEARTS, ZOMBIE_HP, assertTowerType, costOf, initialSunFor, sunPerCorrectFor } from './balance.js'
-import { ZOMBIE_SPAWN_COL, cellKey, parseCellKey } from './grid.js'
+import { HOUSE_COL, ZOMBIE_SPAWN_COL, cellKey, parseCellKey } from './grid.js'
 import { resolveCombatRound } from './turn.js'
 import {
   assertSlowTurns,
@@ -73,7 +73,12 @@ export function createInitialState(input: CreateInitialStateInput): State {
     grid: {},
     towers: [],
     zombies: [],
-    deck: input.deck,
+    // ⚠️ 题单**复制**一层，不与调用方共用数组引用（`[CR]` 2026-10-14）。
+    //   `State` 里其余集合（`grid` / `towers` / `zombies` / `unlocked`）每次 reduce
+    //   都新分配，`deck` 曾是唯一共享的可变别名：内容层一次 `sort()` / `splice()`
+    //   就会悄悄改变**一局进行中**的存档在考什么，而没有任何东西会报错。
+    //   条目本身是 `readonly` 对象，只复制数组即可。
+    deck: [...input.deck],
     masteredEntryIds: [],
     unlocked: [],
   }
@@ -161,11 +166,21 @@ function applyAnswer(state: State, action: Action): State {
       '还在等孩子答题，此刻不能做别的事 —— 先答题才能拿到建塔的阳光，塔卡也是答对的奖励',
     )
   }
-  const question = state.phase.kind === 'awaiting-answer' ? state.phase.question : undefined
-  if (question === undefined) {
-    // 类型系统已经保证这里必在 awaiting-answer；写不出就意味着上一行的收窄被改坏了。
-    throw new Error('内部错误：applyAnswer 被非 awaiting-answer 阶段调用')
+  // ⚠️ 这是**类型守卫**，不是运行时检查（`[CR]` 2026-10-14 更正）。
+  //   `applyAnswer` 只有 `case 'awaiting-answer'` 一个调用点，而**调用点的收窄不会
+  //   传进函数体** —— 不在这里自己收窄，`state.phase` 就还是那个六变体联合，
+  //   `state.phase.question` 直接编译不过（`npm run build` 实测）。
+  //   此前被当成「恒真的多余判断」删掉过一轮，是错的。
+  //
+  //   改的是**写法**而非有无：原来那句
+  //   `state.phase.kind === 'awaiting-answer' ? state.phase.question : undefined`
+  //   再加随后的 `if (question === undefined) throw`，逼出了 `question` 的
+  //   `undefined` 中间态，让后面每一次 `question.entryId` 都被读成「可能为 undefined」。
+  //   现在直接收窄并解构，下游拿到的就是确定的 `Question`。
+  if (state.phase.kind !== 'awaiting-answer') {
+    throw new Error(`内部错误：applyAnswer 被 ${state.phase.kind} 阶段调用 —— reduce 的阶段分发被改坏了`)
   }
+  const { question } = state.phase
   const correct = isCorrect(question.card, action.optionId)
 
   // ⚠️ 答错的分支**不做任何事**（AC-4）：阳光不变、塔卡不解锁、不进 mastered。
@@ -213,10 +228,37 @@ function placeTowerIn(state: State, entryId: string, cell: string): State {
   const entry = requireEntry(state.deck, entryId)
   // ③ 格子键必须规范且在网格内。`parseCellKey` 抛错消息已写明为什么非规范键危险。
   const { row, col } = parseCellKey(cell)
-  // ④ 该格必须为空（FR30）。
-  if (state.grid[cell] !== undefined) {
+  // ③' **房子格（col 0）与僵尸入场格（col 8）不得建塔**（`[CR]` 2026-10-14 补）。
+  //   col 8 的危害是**确定的**：僵尸恒在 `col <= ZOMBIE_SPAWN_COL` 入场，而 `inRange`
+  //   是单边的（`delta > 0`）⇒ 建在 col 8 的直射塔/减速塔**永远打不到任何东西**。
+  //   孩子花 50 阳光买到一个整局不动的塔，无报错、无红测试，症状只是「塔好像不打人」。
+  //   col 0 的危害是浪费：僵尸走到 col 0 就已离场，塔在它脚下却从未开过火。
+  //   此前 AC-12 只列了三条规则，本 story 据此实现且把这两列记进了 deferred-work；
+  //   现在补上，因为「不能建在一格必然无效的位置」不是取舍，是 bug。
+  if (col === ZOMBIE_SPAWN_COL) {
     throw new Error(
-      `格子 ${cell}（第 ${row + 1} 行第 ${col + 1} 列）已有塔 ${state.grid[cell]}，不能重叠建造 —— ` +
+      `格子 ${cell} 是僵尸入场格（col ${ZOMBIE_SPAWN_COL}）—— 僵尸恒在它或更右侧入场，` +
+        '而射程是单边的（只打自己左边的格子），所以建在这里的塔永远打不到任何东西：' +
+        '孩子花掉全部阳光买到一个整局不动的塔，而界面上没有任何东西指向原因。',
+    )
+  }
+  if (col === HOUSE_COL) {
+    throw new Error(
+      `格子 ${cell} 是房子格（col ${HOUSE_COL}）—— 僵尸走到这一格就已经离场并丢心，` +
+        '塔在它脚下却从未开过火。这是白花阳光，不是取舍。',
+    )
+  }
+  // ④ 该格必须为空（FR30）。
+  // ⚠️ 读的是**规范键** `canonicalCell` 而不是调用方传进来的 `cell`
+  //   （`[CR]` 2026-10-14）：写入用的是 `cellKey(row, col)`，读若用原始串，
+  //   两者仅当 `parseCellKey` 保证规范形时才相等 —— 而那恰恰是周围代码在守的不变量。
+  //   一旦 `parseCellKey` 放行某种非规范拼写，④ 会回答「空」，第二座塔就被写进
+  //   同一个规范键，FR30 静默失效，错误延后到 `assertGridAndTowers` 的
+  //   「格子 X 上有两座塔」才浮现，排查方向被带偏。
+  const canonicalCell = cellKey(row, col)
+  if (state.grid[canonicalCell] !== undefined) {
+    throw new Error(
+      `格子 ${cell}（第 ${row + 1} 行第 ${col + 1} 列）已有塔 ${state.grid[canonicalCell]}，不能重叠建造 —— ` +
         'grid 与 towers 会立刻双向不一致，而那座塔永远打不到僵尸，界面上只是一格空白。',
     )
   }
@@ -241,7 +283,7 @@ function placeTowerIn(state: State, entryId: string, cell: string): State {
     sun: state.sun - cost,
     towers: [...state.towers, tower],
     // 刻意**保留**已解锁塔卡（FR33：同一张卡可反复建多株）⇒ unlocked 是数组不是集合。
-    grid: { ...state.grid, [cellKey(row, col)]: tower.id },
+    grid: { ...state.grid, [canonicalCell]: tower.id },
   }
   return withBuildPhase(next)
 }
@@ -288,7 +330,18 @@ function applyContinue(state: State, action: Action): State {
   if (question === null) {
     // 全部答对 ⇒ 通关。判定放在 CONTINUE 而不是 RESOLVE_ROUND：
     // 「这一回合答对了最后一道题」到「这一局通关」之间还隔着结算（孩子要看塔打完僵尸）。
-    return { ...state, phase: { kind: 'level-complete' } }
+    //
+    // ⚠️ **战场在此清空**（AC-11 / spec 转换表 `:431`「战场清空（本 story 只做 reducer 侧）」）。
+    // 终态里留着塔会让「通关了但还能改局面」成立：`grid` 与 `towers` 仍然配平，
+    // 任何不变量断言都不会报错，而持久化层会把这份局面当成「正在进行中的对局」。
+    // `level-failed` 的清空指派给 `RESTART_LEVEL`，这里是它的对称 —— 两个终态都清。
+    return {
+      ...state,
+      towers: [],
+      grid: {},
+      zombies: [],
+      phase: { kind: 'level-complete' },
+    }
   }
   const turn = state.turn + 1
   const next: State = {
@@ -307,8 +360,11 @@ function applyContinue(state: State, action: Action): State {
 /**
  * 重打本关（只在 `level-failed` 合法）。
  *
- * ⚠️ **题单原样复用**（AC-5）：`deck` 引用不变，只清空 `masteredEntryIds`。
- * 换题单会让「这一局把这个单元学完」的承诺失效，而重打本来就是同一单元的再练。
+ * ⚠️ **题单原样复用**（AC-5）：`deck` 的**内容**不变（条目、顺序、数量都一致），
+ * 只清空 `masteredEntryIds`。换题单会让「这一局把这个单元学完」的承诺失效，
+ * 而重打本来就是同一单元的再练。
+ * ⚠️ 复用的是内容而非**数组引用**：`createInitialState` 会复制一层，
+ * 这样题单就不会与调用方共用可变别名（`[CR]` 2026-10-14）。
  *
  * ⚠️ 战场整体清空（FR51）：进度与对局是两套独立持久化，战场每局清空、进度只增不减。
  * 带着上一局的塔重打 = 换个词不换局面，孩子会以为已经学会了。
@@ -331,7 +387,14 @@ function spawnZombie(turn: number): Zombie {
 
 /** 切到 `awaiting-build`，并把 State 侧的新值同步进 Phase 镜像（自主设计 #2）。 */
 function withBuildPhase(state: State): State {
-  return { ...state, phase: { kind: 'awaiting-build', unlocked: state.unlocked, sun: state.sun } }
+  // ⚠️ `unlocked` 必须**复制**而不是共用引用（`[CR]` 2026-10-14）。共用时
+  //   `phase.unlocked === state.unlocked`，而 `assertPhaseMirror` 是逐元素比对 ——
+  //   同一引用让任何就地修改（`.sort()` / `.splice()`）在结构上**不可能**被它发现，
+  //   两个本该独立的「事实」会一起被改掉。Story 1.12 的建塔 UI 或 effects-runner
+  //   一次就地排序就能同时污染两者，而断言全绿。
+  //   `createInitialState` 里的 `grid` / `towers` / `zombies` 都是新分配的，
+  //   `unlocked` 是 `State` 里唯一共享的可变数组 —— 现在不再是了。
+  return { ...state, phase: { kind: 'awaiting-build', unlocked: [...state.unlocked], sun: state.sun } }
 }
 
 /** 按 entryId 回查题单条目，查不到即抛错（存档 / 脏数据入口）。 */
@@ -414,12 +477,27 @@ function assertGridAndTowers(state: State): void {
 /** `unlocked` / `masteredEntryIds` 都必须是题单的子集，且 unlocked ⊆ mastered。 */
 function assertDeckRelations(state: State): void {
   const entryIds = new Set(state.deck.map((entry) => entry.entryId))
+  // ⚠️ 题单自身的 entryId 必须唯一（`[CR]` 2026-10-14 补）。两条 entry 共用一个 id 时，
+  //   `nextQuestion` 按 id 过滤 ⇒ 那个词**永远不会被考、永远解锁不了**，
+  //   而本函数其余全部断言一路绿灯，症状只是「某个词怎么都不考」，
+  //   且没有任何东西指向出问题的那个内容文件。
+  if (entryIds.size !== state.deck.length) {
+    throw new Error(
+      `题单有 ${state.deck.length} 条但只有 ${entryIds.size} 个不同 entryId —— ` +
+        '同一 entryId 出现多次会让其中一条永远抽不中（nextQuestion 按 id 过滤），' +
+        '那个词会静默地既不被考也不被解锁。',
+    )
+  }
   for (const id of state.unlocked) {
     if (!entryIds.has(id)) {
       throw new Error(`unlocked 含题单之外的 entryId ${id} —— 题单外的塔卡会让「解锁」的含义失去来源`)
     }
     if (!state.masteredEntryIds.includes(id)) {
-      throw new Error(`塔卡 ${id} 已解锁却未答对 —— 解锁的唯一途径是答对，绕过它等于跳过学习`)
+      throw new Error(
+        `塔卡 ${id} 已解锁却未答对 —— 解锁的唯一途径是答对，绕过它等于跳过学习。` +
+          '⚠️ 注意：AC-13 只要求 unlocked ⊆ deck，这条更强的「unlocked ⊆ mastered」是本实现额外加的，' +
+          '它同时是对任何存档 / 内容 JSON 的硬失败 —— 见 Dev Agent Record 的 deviation 清单。',
+      )
     }
   }
   for (const id of state.masteredEntryIds) {

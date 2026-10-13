@@ -22,10 +22,11 @@
  * 刻意不 import `reducer.ts`（单向依赖）。State 层的阶段转换由 reducer.test.ts 守。
  */
 
+import { readFileSync } from 'node:fs'
+
 import { describe, expect, it } from 'vitest'
 
 import {
-  HEARTS,
   HOUSE_COL,
   SLOW_TURNS,
   TOWER_STATS,
@@ -333,7 +334,7 @@ describe('AC-9 —— 僵尸死亡无战利品', () => {
     // 「无战利品」在本层的形态：resolveRound 的返回值里**根本没有阳光字段** ——
     // 塔打死僵尸不能有任何途径改写 sun（AC-9 / FR65：阳光只在答对时增长）。
     const result = resolveCombatRound([t('d1', 'direct', 1)], [z('victim', 2, TOWER_STATS.direct.damage)])
-    expect(result.zombies.length, '血量归零的僵尸必须离场 —— 留在场上会被下一座塔当活靶子白打一回合')
+    expect(result.zombies.length, '血量归零的僵尸必须离场 —— 留在场上会被下一座塔当活靶子白打一回合').toBe(0)
 
     const carried = Object.keys(result).sort()
     expect(
@@ -355,7 +356,7 @@ describe('AC-9 —— 僵尸死亡无战利品', () => {
 
   it('溢出伤害不产生负血量（僵尸的死亡态是 hp = 0，不是 hp = -20）', () => {
     const result = resolveCombatRound([t('a1', 'aoe', 3)], [z('weak', 3, 10)])
-    expect(result.zombies.length, '血量归零的僵尸离场 —— 负血量会让「hp <= 0 即离场」的判定散落到多处')
+    expect(result.zombies.length, '血量归零的僵尸离场 —— 负血量会让「hp <= 0 即离场」的判定散落到多处').toBe(0)
   })
 })
 
@@ -377,7 +378,7 @@ describe('AC-7 —— 纯函数性与边界', () => {
   it('无塔时照常推进（没有塔不是「回合不成立」，而是「没有攻击阶段」）', () => {
     const result = resolveCombatRound([], [z('z1', 6), z('z2', 7)])
     expect(result.zombies.length, '无塔时僵尸一只都不该消失').toBe(2)
-    expect(zombieAfter(result, 'z1').col, '无塔时僵尸仍须推进 —— 跳过推进会让「开局连错就没有塔 ⇒ 掉心」这条门槛链断掉').toBe(6 - 2)
+    expect(zombieAfter(result, 'z1').col, '无塔时僵尸仍须推进 —— 跳过推进会让「开局连错就没有塔 ⇒ 掉心」这条门槛链断掉').toBe(6 - ZOMBIE_MOVE_PER_ROUND)
   })
 
   it('空僵尸场返回零掉心', () => {
@@ -389,7 +390,23 @@ describe('AC-7 —— 纯函数性与边界', () => {
   it('起始心数常量与结算结果无关（编排层不碰心数余额，只报掉了几颗）', () => {
     // 心数余额由 reduce 管（AC-8）。编排层若接受并扣减 hearts 参数，
     // 「掉心」这件事就有了两个可写来源。
-    expect(HEARTS, '起始心数由 balance.ts 唯一定义 —— 本断言锁住编排层不引入第二处心数常量').toBe(3)
+    //
+    // ⚠️ 此前这里是 `expect(HEARTS).toBe(3)`（`[CR]` 2026-10-14）：它把字面量 3
+    //   重复了一遍到测试里，于是 `deferred-work.md` 与 `gdd.md:596` 都记录的
+    //   **首选**修复「起始心数 3 → 4」会让这条以误导性消息变红
+    //   （把人引去 `turn.ts` 找第二处心数常量 —— 那里根本没有）。
+    //   断言想表达的是「编排层不引入第二处心数常量」，那就**直接查 turn.ts 的源码**，
+    //   而不是钉死 `balance.ts` 的取值。
+    const turnSource = readFileSync(new URL('../../src/core/turn.ts', import.meta.url), 'utf8')
+    expect(
+      /\bHEARTS\b/.test(turnSource.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')),
+      '编排层不得引用 HEARTS —— 心数余额只有一个可写来源（reduce / balance.ts）',
+    ).toBe(false)
+    expect(
+      /hearts\s*[:=]/.test(turnSource.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')),
+      '编排层不得持有 hearts 字段 —— 它只报「掉了几颗」，余额归 reduce 管',
+    ).toBe(false)
+
     const result = resolveCombatRound([], [z('z1', 1), z('z2', 1)])
     expect(result.heartsLost, '编排层只报掉了几颗心，不返回余额').toBe(2)
   })

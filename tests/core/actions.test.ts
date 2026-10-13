@@ -90,13 +90,29 @@ describe('AC-2 —— Action 构造器保证 type 字面量不漂移', () => {
     ])
   })
 
-  it('构造器不修改入参（纯函数，无副作用）', () => {
+  it('构造器返回的是新对象，且不与调用方共享可变状态（纯函数，无副作用）', () => {
     // reducer 是纯函数（决策 2），构造器是 reducer 的输入来源。
-    // 构造器就地改调用方持有的引用会让「同一串 Action 重放出同一局」当场失效。
+    // 「同一串 Action 重放出同一局」要求每个 Action 都是**值**。
+    //
+    // ⚠️ 这条此前传的是 `string` 原始值（`[CR]` 2026-10-14）：`before` 只是绑定的
+    //   副本，没有任何 `answer()` 实现能让断言变红 —— 它守的东西是零。
+    //   而且 `OptionId` 是 `string` 的别名，**就地修改在类型上就不可能**，
+    //   所以「不修改入参」这条性质没有可观测的失败路径。
+    //   真正会咬人的是**返回值是否共享状态**：两次调用若返回同一引用，
+    //   组件改一次就会污染后面所有 action，而所有类型检查都拦不住。
     const optionId = 'u1-word-01-o1'
-    const before = optionId
-    answer(optionId)
-    expect(optionId, '构造器不得修改调用方传入的引用 —— 纯函数性由决策 2 保证').toBe(before)
+    const first = answer(optionId)
+    const second = answer(optionId)
+
+    expect(first, '同一入参必须产出内容相等的两个 action —— 「同一串 Action 重放出同一局」的前提').toEqual(second)
+    expect(first, '两次调用必须返回**不同的对象** —— 返回同一引用时，组件改一次就会污染后面所有 action').not.toBe(second)
+
+    // 就地改第一个，第二个必须不受影响。
+    ;(first as { type: string }).type = 'TAMPERED'
+    expect(
+      answer(optionId).type,
+      '就地改一个已返回的 action 不得影响后续调用 —— 返回值必须是调用方独占的',
+    ).toBe('ANSWER')
   })
 })
 
@@ -113,7 +129,7 @@ describe('AC-15 —— actionName 覆盖全部 type（回合日志 action=<T> �
     ]
     for (const a of samples) {
       const name = actionName(a)
-      expect(name.length > 0, `actionName 必须给 ${a.type} 一个非空名字，日志里出现 unknown 等于该类动作从日志消失`)
+      expect(name.length > 0, `actionName 必须给 ${a.type} 一个非空名字，日志里出现 unknown 等于该类动作从日志消失`).toBe(true)
     }
   })
 

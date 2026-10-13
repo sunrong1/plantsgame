@@ -28,6 +28,7 @@ import {
   COLS,
   HEARTS,
   HOUSE_COL,
+  SLOW_FACTOR,
   SLOW_TURNS,
   ZOMBIE_HP,
   ZOMBIE_MOVE_PER_ROUND,
@@ -43,6 +44,7 @@ import {
   endBuild,
   placeTower,
   reduce,
+  resolveCombatRound,
   resolveRound,
 } from '../src/core/index.js'
 import type { Action, DeckEntry, State } from '../src/core/index.js'
@@ -60,7 +62,22 @@ import type { Action, DeckEntry, State } from '../src/core/index.js'
  * col 0 / col 1 两座塔会打在同一目标上，白白浪费前两次购买。
  * 策略改变会改变门槛数字，所以它必须被打印在表头上，而不是藏在代码里。
  */
-const BUILDABLE_COLUMNS: readonly number[] = [1, 2, 3, 4, 5, 6, 7]
+/**
+ * 可建列（0-based）—— **从网格常量派生**，不写死 `[1,2,3,4,5,6,7]`。
+ *
+ * ⚠️ 写死数组会随网格尺寸变化而静默失效（`[CR]` 2026-10-14）：`COLS` 从 9 改成 12
+ *   或 `ZOMBIE_SPAWN_COL` 从 8 改成 10 时，两份驱动会**一起**在错误的战场上
+ *   测出同一个门槛数字，而它们互相同步 ⇒ 没有任何东西会红。
+ *   「门槛 = 4」这个结论必须在真实网格上成立。
+ *
+ * 与 `balance-scan.py` 的 `range(1, cols - 1)` 一致：排除 `HOUSE_COL` 的房子格
+ * 与 `ZOMBIE_SPAWN_COL` 的僵尸入场格 —— 这两格 `placeTowerIn` 现在也会拒绝
+ * （`[CR]` 2026-10-14 补的规则），所以派生出来的集合就是全部合法塔位。
+ */
+const BUILDABLE_COLUMNS: readonly number[] = Array.from(
+  { length: ZOMBIE_SPAWN_COL - 1 },
+  (_, index) => index + 1,
+)
 
 /** 建塔策略：阳光够就买造价最低的已解锁卡，建在 ZOMBIE_ROW 的最低空列。 */
 function greedyBuildPolicy(state: State): readonly Action[] {
@@ -87,14 +104,21 @@ function greedyBuildPolicy(state: State): readonly Action[] {
  * ⚠️ 按**回合号**而不是「第几题」取答案：答错会重复考同一题，
  * 用题序会让「连错 4 题」与「连错 4 回合」在长局里悄悄分叉。
  */
-function answerPolicy(state: State, correctAt: (turn: number) => boolean): Action {
+function answerPolicy(state: State, correct: boolean): Action {
   if (state.phase.kind !== 'awaiting-answer') {
     throw new Error(`答题策略在 ${state.phase.kind} 阶段被调用 —— 驱动脚本的阶段机错了`)
   }
   const card = state.phase.question.card
-  const chosen = correctAt(state.turn)
-    ? (card.options.find((o) => o.correct) ?? { id: '' })
-    : (card.options.find((o) => !o.correct) ?? { id: '' })
+  // ⚠️ 找不到对应选项时**就地抛出**，不许退化成 `{ id: '' }`（`[CR]` 2026-10-14）。
+  //   静默兜底会把「合成题单构造坏了」伪装成「孩子答错」，几帧后在 `isCorrect`
+  //   里以选项 id 的名义炸出来 —— 排查方向会被带到完全错误的地方。
+  const chosen = correct ? card.options.find((o) => o.correct) : card.options.find((o) => !o.correct)
+  if (chosen === undefined) {
+    throw new Error(
+      `题单条目 ${state.phase.question.entryId} 的「${card.kind}」卡没有${correct ? '正确' : '错误'}选项 —— ` +
+        '合成题单构造坏了，不要让它退化成空 id 后再在别处炸出来。',
+    )
+  }
   return answer(chosen.id)
 }
 
@@ -190,37 +214,60 @@ function runLevel(deck: readonly DeckEntry[], correctAt: (turn: number) => boole
   let totalWrong = 0
   let turnsPlayed = 0
 
-  while (turnsPlayed < maxTurns && (state.phase.kind === 'awaiting-answer' || state.phase.kind === 'round-over')) {
+  while (turnsPlayed < maxTurns && state.phase.kind === 'awaiting-answer') {
     const turn = state.turn
+    // ⚠️ `correctAt` 只求值一次（`[CR]` 2026-10-14）：原先每回合调三次
+    //   （totalWrong 一次、日志一次、dispatch 一次），三处结果被假定相等，
+    //   而类型上 `correctAt` 没有任何纯性保证。这个计数是门槛数字的来源。
     const correctThisTurn = correctAt(turn)
     if (!correctThisTurn) {
       totalWrong += 1
     }
-    // 📎 回合日志（架构 `:620-628` 规定格式）：每回合一条，供导出会话。
-    if (verbose) {
-      logTurn(turn, actionName(answerPolicy(state, correctAt)), state)
+    const answerAction = answerPolicy(state, correctThisTurn)
+
+    // 📎 回合日志（架构 `:620-628` 规定格式）。
+    // ⚠️ **每个 action 一行**，不是每回合一行（`[CR]` 2026-10-14）。此前只在回合
+    //   开头打一行 `action=ANSWER` —— 而 `answerPolicy` 恒返回 AnswerAction，
+    //   于是建塔、结算、推进这些真实发生的事**一条都没进日志**，导出的会话
+    //   根本重建不出这一局。而且那一行打的是**动作前**的 state，
+    //   于是日志里 `sun` 连着 6 回合都是 0，看着像 bug。
+    //   现在改成 dispatch 时逐个打，打的是**动作后**的状态 ⇒ 日志自洽可重放。
+    let cursor = state
+    const step = (action: Action): State => {
+      const next = reduce(cursor, action)
+      if (verbose) {
+        logTurn(turn, actionName(action), next)
+      }
+      cursor = next
+      return next
     }
 
-    let withTowers = reduce(state, answerPolicy(state, correctAt))
+    let withTowers = step(answerAction)
     if (shouldBuild) {
       for (const action of greedyBuildPolicy(withTowers)) {
-        withTowers = reduce(withTowers, action)
+        withTowers = step(action)
       }
     }
-    const heartsBefore = withTowers.hearts
-    const resolved = reduce(reduce(withTowers, endBuild()), resolveRound())
+    // ⚠️ 真实掉心数取自 `resolveCombatRound`，**不能**用差值反推
+    //   （`Math.max(0, heartsBefore - resolved.hearts)`）：reducer 把心数夹到 0，
+    //   「本回合掉的心多于剩余心」是合法情况，差值会小于真实掉心数，
+    //   丢掉的那几颗随后被下面的击杀恒等式**记成击杀**
+    //   —— 一只抵达房子的僵尸凭空变成一次击杀（`[CR]` 2026-10-14）。
+    const realHeartsLost = resolveCombatRound(withTowers.towers, withTowers.zombies).heartsLost
+    step(endBuild())
+    const resolved = step(resolveRound())
     turnsPlayed += 1
     rows.push({
       turn,
       correct: correctThisTurn,
       towers: resolved.towers.length,
       zombies: resolved.zombies.length,
-      heartsLost: Math.max(0, heartsBefore - resolved.hearts),
+      heartsLost: realHeartsLost,
       hearts: resolved.hearts,
       sun: resolved.sun,
     })
     if (resolved.phase.kind === 'round-over') {
-      state = reduce(resolved, continueRound())
+      state = step(continueRound())
     } else {
       state = resolved
     }
@@ -299,7 +346,14 @@ for (const towerCol of [1, 3, 5, 7]) {
 // ── 减速塔表现 ───────────────────────────────────────────────────────────
 
 console.log('\n[balance] === 减速塔表现 ===')
-console.log(`[balance] 减速 ${SLOW_TURNS} 回合、期间每回合走 1 格（未减速 ${ZOMBIE_MOVE_PER_ROUND} 格）；伤害 25（直射塔 50）`)
+// ⚠️ 表头一律读 `balance.ts` 的常量与 `damageOf()`，不写死 25 / 50 / 「走 1 格」
+//   （`[CR]` 2026-10-14）：Story 3.2 一调数值，写死的表头会与下方实时数据互相矛盾，
+//   而读者没有任何信号能发现两者不一致。
+const SLOW_MOVE_PER_ROUND = ZOMBIE_MOVE_PER_ROUND * SLOW_FACTOR
+console.log(
+  `[balance] 减速 ${SLOW_TURNS} 回合、期间每回合走 ${SLOW_MOVE_PER_ROUND} 格（未减速 ${ZOMBIE_MOVE_PER_ROUND} 格）；` +
+    `伤害 ${damageOf('slow')}（直射塔 ${damageOf('direct')}）`,
+)
 {
   const direct = simulateTower('direct', 3)
   const slow = simulateTower('slow', 3)
@@ -310,9 +364,26 @@ console.log(`[balance] 减速 ${SLOW_TURNS} 回合、期间每回合走 1 格（
   console.log(`[balance]   首只僵尸 z1 逐回合列号（存活才记录）`)
   console.log(`[balance]     直射塔：${direct.firstZombieTrace.join(' → ') || '第 1 回合即死'}`)
   console.log(`[balance]     减速塔：${slow.firstZombieTrace.join(' → ') || '第 1 回合即死'}`)
+  // ⚠️ 结论由**实测数字**推出，不写死叙事（`[CR]` 2026-10-14）。
+  //   原措辞断言「减速换来的是 z1 少走的那几格」，而紧邻的两条 trace 证明的
+  //   恰恰相反：慢塔让 z1 多走了几格。同造价、伤害减半、掉心相同 ⇒ 当前数值下
+  //   减速塔被完全支配。这是 Epic 3 的输入，**本 story 不改任何数值**
+  //   （硬约束：数值平衡参数不得擅动），已登记进 deferred-work.md。
+  const slowWalked = slow.firstZombieTrace.length
+  const directWalked = direct.firstZombieTrace.length
+  const dominated =
+    costOf('slow', 1) >= costOf('direct', 1) &&
+    damageOf('slow') <= damageOf('direct') &&
+    slow.kills <= direct.kills &&
+    slow.heartsLost >= direct.heartsLost
   console.log(
-    `[balance]   ⇒ 造价直射 ${costOf('direct', 1)} / 减速 ${costOf('slow', 1)}（相同），伤害 ${damageOf('direct')} / ${damageOf('slow')}（减半）。` +
-      '减速换来的是 z1 少走的那几格 —— 两条同时成立才构成取舍；若减速塔既慢又打不疼还一样贵，它就是纯劣化。',
+    `[balance]   ⇒ 造价直射 ${costOf('direct', 1)} / 减速 ${costOf('slow', 1)}，伤害 ${damageOf('direct')} / ${damageOf('slow')}。` +
+      `z1 走过 ${directWalked} 格（直射）/ ${slowWalked} 格（减速）。` +
+      (dominated
+        ? '⚠️ **当前数值下减速塔被完全支配**：同造价、伤害更低、击杀不更多、掉心不减，' +
+            '而轨迹显示它让僵尸多走了几格 —— 减速塔目前是纯劣化，不是取舍。' +
+            '已登记 deferred-work，等 Epic 3 定夺（本 story 不擅改数值）。'
+        : '减速确实换来了 z1 少走的那几格 —— 两条同时成立才构成取舍。'),
   )
 }
 
@@ -401,7 +472,7 @@ function simulateTower(towerType: 'direct' | 'slow' | 'aoe', towerCol: number, m
   let turns = 0
 
   while (turns < maxTurns && state.phase.kind === 'awaiting-answer') {
-    const answered = reduce(state, answerPolicy(state, () => true))
+    const answered = reduce(state, answerPolicy(state, true))
     const entry = answered.deck[0]
     // 阳光攒够造价、且该格还空时才建 —— 与真实玩家的约束完全一致。
     const canBuild =
@@ -412,7 +483,10 @@ function simulateTower(towerType: 'direct' | 'slow' | 'aoe', towerCol: number, m
     const withTowers = canBuild ? reduce(answered, placeTower(entry.entryId, cell)) : answered
 
     const before = withTowers.zombies
-    const heartsBefore = withTowers.hearts
+    // ⚠️ 真实掉心数取自 `resolveCombatRound`，不能用差值反推 ——
+    //   reducer 把心数夹到 0，差值会小于真实掉心数，丢掉的那几颗随后被
+    //   下面的击杀恒等式记成击杀（`[CR]` 2026-10-14）。
+    const lost = resolveCombatRound(withTowers.towers, withTowers.zombies).heartsLost
     const resolved = reduce(reduce(withTowers, endBuild()), resolveRound())
     turns += 1
 
@@ -426,7 +500,6 @@ function simulateTower(towerType: 'direct' | 'slow' | 'aoe', towerCol: number, m
     if (firstZombie !== undefined) {
       firstZombieTrace.push(firstZombie.col)
     }
-    const lost = Math.max(0, heartsBefore - resolved.hearts)
     heartsLost += lost
     // 离场的僵尸 = 被打死的 + 抵达房子的。两个数字都是实测，恒等式不是模型。
     kills += before.length - resolved.zombies.length - lost

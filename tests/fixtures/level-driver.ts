@@ -23,12 +23,27 @@
  * 而塔是本层唯一的消灭手段。造价口径一律走 `costOf()`，不写死 50。
  */
 
-import { ZOMBIE_ROW, answer, cellKey, continueRound, costOf, createInitialState, endBuild, placeTower, reduce, resolveRound } from '../../src/core'
+import { ZOMBIE_ROW, ZOMBIE_SPAWN_COL, answer, cellKey, continueRound, costOf, createInitialState, endBuild, placeTower, reduce, resolveCombatRound, resolveRound } from '../../src/core'
 import type { Action, DeckEntry, State } from '../../src/core'
 import { correctOptionId, wrongOptionId } from './synthetic-deck.js'
 
 /** 可建列（0-based）。排除房子格 0 与僵尸入场格 8 —— 见文件头。 */
-export const BUILDABLE_COLUMNS: readonly number[] = [1, 2, 3, 4, 5, 6, 7]
+/**
+ * 可建列（0-based）—— **从网格常量派生**，不写死 `[1,2,3,4,5,6,7]`。
+ *
+ * ⚠️ 写死数组会随网格尺寸变化而静默失效（`[CR]` 2026-10-14）：`COLS` 从 9 改成 12
+ *   或 `ZOMBIE_SPAWN_COL` 从 8 改成 10 时，两份驱动会**一起**在错误的战场上
+ *   测出同一个门槛数字，而它们互相同步 ⇒ 没有任何东西会红。
+ *   「门槛 = 4」这个结论必须在真实网格上成立。
+ *
+ * 与 `balance-scan.py` 的 `range(1, cols - 1)` 一致：排除 `HOUSE_COL` 的房子格
+ * 与 `ZOMBIE_SPAWN_COL` 的僵尸入场格 —— 这两格 `placeTowerIn` 现在也会拒绝
+ * （`[CR]` 2026-10-14 补的规则），所以派生出来的集合就是全部合法塔位。
+ */
+export const BUILDABLE_COLUMNS: readonly number[] = Array.from(
+  { length: ZOMBIE_SPAWN_COL - 1 },
+  (_, index) => index + 1,
+)
 
 /** 一个回合的轨迹行。字段与 `[CS]` 实测的逐回合表一一对应。 */
 export interface TurnLogEntry {
@@ -80,8 +95,12 @@ export function runLevel(options: RunLevelOptions): LevelRun {
 
   while (turnsPlayed < maxTurns && isRunning(state)) {
     const turn = state.turn
-    const answered = answerCurrent(state, options.correctAt(turn))
-    if (!options.correctAt(turn)) {
+    // ⚠️ `correctAt` 只求值一次（`[CR]` 2026-10-14）：原先 `answerCurrent` 与
+    //   `totalWrong` 各调一次，两次结果被假定相等 —— 而类型上 `correctAt` 没有任何
+    //   纯性保证。这个计数正是「门槛 = 4」的来源，必须来自那一次求值。
+    const correct = options.correctAt(turn)
+    const answered = answerCurrent(state, correct)
+    if (!correct) {
       totalWrong += 1
     }
     let withTowers = answered
@@ -90,14 +109,21 @@ export function runLevel(options: RunLevelOptions): LevelRun {
         withTowers = reduce(withTowers, action)
       }
     }
-    const heartsBefore = withTowers.hearts
+    // ⚠️ 真实掉心数必须取自 `resolveCombatRound`，**不能**用
+    //   `Math.max(0, heartsBefore - resolved.hearts)` 反推：reducer 会把心数夹到 0
+    //   （「本回合掉的心多于剩余心」是合法情况），差值于是小于真实掉心数。
+    //   少掉的那几颗会被下游的「前 − 后 − 掉心 = 击杀」恒等式**记成击杀** ——
+    //   一只抵达房子的僵尸凭空变成一次击杀，而这正是 `decision-log.md`
+    //   「模拟器不静默丢弃实体」那条教训在上一层又犯了一次（`[CR]` 2026-10-14）。
+    //   `resolveCombatRound` 是纯函数，多调一次不改变结果，也不重复任何规则。
+    const realHeartsLost = resolveCombatRound(withTowers.towers, withTowers.zombies).heartsLost
     const resolved = reduce(reduce(withTowers, endBuild()), resolveRound())
     turnsPlayed += 1
     log.push({
       turn,
       towers: resolved.towers.length,
       zombies: resolved.zombies.length,
-      heartsLost: Math.max(0, heartsBefore - resolved.hearts),
+      heartsLost: realHeartsLost,
       hearts: resolved.hearts,
       sun: resolved.sun,
     })
@@ -107,9 +133,17 @@ export function runLevel(options: RunLevelOptions): LevelRun {
   return { state, log, totalWrong, turnsPlayed }
 }
 
-/** 状态是否仍在进行中（既未通关也未失败）。 */
+/**
+ * 状态是否仍在进行中（既未通关也未失败）。
+ *
+ * ⚠️ 只列 `awaiting-answer`（`[CR]` 2026-10-14）：此前还有 `round-over`，
+ *   但 `runLevel` 的循环体尾部必然走到 `CONTINUE`（`round-over` 下它是唯一的合法边）
+ *   或一个终态，`round-over` 活不到下一次条件判断 ⇒ 那个分支不可达。
+ *   留着会让人以为「回合结束阶段会被重新进入并重新答题」，
+ *   而真相是 `CONTINUE` 是强制的那一步。
+ */
 export function isRunning(state: State): boolean {
-  return state.phase.kind === 'awaiting-answer' || state.phase.kind === 'round-over'
+  return state.phase.kind === 'awaiting-answer'
 }
 
 /**

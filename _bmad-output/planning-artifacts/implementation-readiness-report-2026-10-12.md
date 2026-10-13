@@ -31,6 +31,14 @@ filesIncluded:
   - '_bmad-output/planning-artifacts/epics.md'
 ---
 
+> ## ⚠️ 本文件含已作废的数字（2026-10-13 起）
+>
+> 文中「**开局连错 7 题 → 3 心耗尽**」「GDD 实测的『开局连错 7 题才失败』门槛彻底失效」等论据
+> **已作废**：那个 7 出自 `balance-scan.py`，而它有 `dict[col]` 覆盖 bug，每回合静默吞掉一只僵尸。
+> 用修正后的模拟器重测，正确门槛是 **4**。本文件正文保持原样（它是带日期的历史产物，不应被改写），
+> 但**引用其中任何门槛数字前请先看**
+> `gdds/gdd-plants-game-2026-10-11/decision-log.md` 的「第三次模拟器 bug」与 GDD 门槛表。
+
 # Implementation Readiness Assessment Report
 
 **Date:** 2026-10-12

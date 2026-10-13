@@ -19,6 +19,8 @@
  * Story 3.2 / 2.3 会调这些数值，写死会让「调数值」与「改断言」变成两件事。
  */
 
+import { readFileSync } from 'node:fs'
+
 import { describe, expect, it } from 'vitest'
 
 import {
@@ -26,6 +28,7 @@ import {
   HEARTS,
   HOUSE_COL,
   ZOMBIE_HP,
+  ZOMBIE_MOVE_PER_ROUND,
   ZOMBIE_ROW,
   ZOMBIE_SPAWN_COL,
   answer,
@@ -48,6 +51,12 @@ import { correctOptionId, makeSyntheticDeck, wrongOptionId } from '../fixtures/s
 import { answerCurrent, greedyBuildActions, runLevel } from '../fixtures/level-driver.js'
 
 // ── 驱动辅助 ─────────────────────────────────────────────────────────────
+
+/** `src/core/` 的根 —— 「源码里没有随机与时间依赖」那条断言要真的去读它。 */
+const CORE_ROOT_URL = new URL('../../src/core/', import.meta.url)
+
+/** 需要扫的 core 源文件：状态变更的全部实现都在这几个文件里。 */
+const CORE_SOURCE_FILES = ['reducer.ts', 'turn.ts', 'combat.ts', 'grid.ts', 'balance.ts', 'actions.ts']
 
 /** 一局用的题单：10 题（断言 3/4 需要 10 题的规模）。 */
 const DECK = makeSyntheticDeck(10)
@@ -249,6 +258,10 @@ describe('AC-3 / AC-4 —— 答题结算', () => {
       '答对的题不得再次被选中 —— 「已答对不再出现」全靠 masteredEntryIds 表达',
     ).toBe(DECK[1].entryId)
     expect(state.deck, 'deck 数组在一局内不得被替换 —— 重建题单会让存档里的 mastered 与新题单对不上').toBe(deckReference)
+    expect(
+      state.deck,
+      '题单不得与调用方共用数组引用 —— 内容层一次 sort()/splice() 就会悄悄改掉一局进行中的存档在考什么',
+    ).not.toBe(DECK)
   })
 
   it('选了不存在的选项 id 时抛错（不静默当作答错）', () => {
@@ -321,8 +334,22 @@ describe('AC-12 —— 建造的 reducer 侧规则', () => {
   })
 
   it('阳光不足时抛错', () => {
-    // 开局 0 阳光、还没答题 ⇒ 任何塔都建不出来。
-    expect(() => reduce(fresh(), placeTower(DECK[0].entryId, cellKey(ZOMBIE_ROW, 4))), '阳光不足必须抛错 —— 静默忽略会让点击建塔毫无反应').toThrow()
+    // ⚠️ 这条断言必须**真的走到** `state.sun < cost` 那一步。
+    //   开局 `fresh()` 处在 `awaiting-answer` 且 `sun = 0` / `unlocked = []` ——
+    //   拿它去建塔会先被**阶段守卫**拦下，抛的是「还在等孩子答题」，
+    //   跟阳光毫无关系（`[CR]` 2026-10-14 变异验证：关掉阳光守卫后本条仍全绿）。
+    //   真正的走法：答对一题拿到刚好一株塔的钱 → 建掉它 → 阳光归零但仍在建造阶段 →
+    //   这时再建第二株，才会撞上 `state.sun < cost`。
+    const answered = answerCurrent(fresh(), true)
+    const afterFirst = reduce(answered, placeTower(DECK[0].entryId, cellKey(ZOMBIE_ROW, 3)))
+
+    expect(afterFirst.phase.kind, '前提：建完一株后仍处在建造阶段，否则下面撞上的不是阳光守卫').toBe('awaiting-build')
+    expect(afterFirst.sun, '前提：建完一株后阳光归零（单元 1 每答对一题的钱刚好够一株直射塔）').toBe(0)
+
+    expect(
+      () => reduce(afterFirst, placeTower(DECK[0].entryId, cellKey(ZOMBIE_ROW, 4))),
+      '阳光不足必须抛错 —— 静默忽略会让点击建塔毫无反应',
+    ).toThrow(/阳光不足/)
   })
 
   it('未解锁的塔卡不得建造（哪怕阳光够）', () => {
@@ -334,9 +361,20 @@ describe('AC-12 —— 建造的 reducer 侧规则', () => {
     ).toThrow()
   })
 
-  it('题单里没有的 entryId 时抛错', () => {
+  it('题单里没有的 entryId 时抛错（脏存档路径）', () => {
+    // ⚠️ 不能直接拿 `'u1-does-not-exist'` 去建塔 —— 它**没被解锁**，
+    //   会先被①号 `unlocked.includes` 拦下，`requireEntry` 根本没被调用
+    //   （`[CR]` 2026-10-14 变异验证：关掉 `requireEntry` 的 throw 全套件仍绿）。
+    //   `requireEntry` 真正要守的是**脏存档**：断点续学恢复出来的 state 里
+    //   `unlocked` 带着一个当前题单里已经不存在的 entryId（内容改版后旧存档的残留）。
+    //   这种 state 过得了①号，却过不了 `deck.find` —— 那才是它的用武之地。
     const answered = answerCurrent(fresh(), true)
-    expect(() => reduce(answered, placeTower('u1-does-not-exist', cellKey(ZOMBIE_ROW, 4))), '未知 entryId 必须抛错 —— 静默放过会造出一座词与塔型都无从追溯的塔').toThrow()
+    const dirty = { ...answered, unlocked: [...answered.unlocked, 'u1-removed-in-v2'] }
+
+    expect(
+      () => reduce(dirty, placeTower('u1-removed-in-v2', cellKey(ZOMBIE_ROW, 4))),
+      '已解锁但题单里查不到的 entryId 必须抛错 —— 静默放过会造出一座词与塔型都无从追溯的塔，而战斗数值照常生效',
+    ).toThrow(/题单里没有 entryId/)
   })
 
   it('目标格已占用时抛错（FR30）', () => {
@@ -346,6 +384,26 @@ describe('AC-12 —— 建造的 reducer 侧规则', () => {
     built = reduce(built, placeTower(entry.entryId, occupied))
 
     expect(() => reduce(built, placeTower(entry.entryId, occupied)), '同一格不得建两座塔 —— 静默放过会让 grid 与 towers 双向不一致，塔永远打不到').toThrow()
+  })
+
+  it('僵尸入场格不得建塔（射程单边 ⇒ 建在那里的塔永远打不到东西）', () => {
+    const answered = answerCurrent(fresh(), true)
+    expect(answered.sun, '前提：阳光够建一株塔，否则撞上的不是这条规则').toBeGreaterThan(0)
+
+    expect(
+      () => reduce(answered, placeTower(DECK[0].entryId, cellKey(ZOMBIE_ROW, ZOMBIE_SPAWN_COL))),
+      '僵尸入场格不得建塔 —— 射程单边（只打自己左边的格子），建在这里的塔整局一动不动，孩子却白花了全部阳光',
+    ).toThrow(/僵尸入场格/)
+  })
+
+  it('房子格不得建塔（僵尸走到这一格就已离场，塔在它脚下从未开火）', () => {
+    const answered = answerCurrent(fresh(), true)
+    expect(answered.sun, '前提：阳光够建一株塔，否则撞上的不是这条规则').toBeGreaterThan(0)
+
+    expect(
+      () => reduce(answered, placeTower(DECK[0].entryId, cellKey(ZOMBIE_ROW, HOUSE_COL))),
+      '房子格不得建塔 —— 僵尸走到这一格就已经离场并丢心，塔在它脚下却从未开过火',
+    ).toThrow(/房子格/)
   })
 
   it('格子键非法时抛错（不静默当作空格）', () => {
@@ -394,7 +452,7 @@ describe('AC-1 / AC-7 —— 阶段转换表逐条边', () => {
     built = reduce(reduce(built, endBuild()), resolveRound())
 
     expect(built.phase.kind, '结算完成且未掉光心时进入 round-over').toBe('round-over')
-    expect(built.zombies[0].col, 'RESOLVE_ROUND 必须推进僵尸 —— 不推进则掉心链路不存在，关卡永不失败').toBe(ZOMBIE_SPAWN_COL - 2)
+    expect(built.zombies[0].col, 'RESOLVE_ROUND 必须推进僵尸 —— 不推进则掉心链路不存在，关卡永不失败').toBe(ZOMBIE_SPAWN_COL - ZOMBIE_MOVE_PER_ROUND)
     expect(built.zombies[0].hp, '塔在射程内必须开火 —— 不开火则战斗层与回合层脱钩').toBeLessThan(ZOMBIE_HP)
   })
 
@@ -420,6 +478,15 @@ describe('AC-1 / AC-7 —— 阶段转换表逐条边', () => {
     expect(complete.masteredEntryIds.length, '通关时全部题目都应已答对').toBe(DECK.length)
   })
 
+  it('AC-11 —— 进入 level-complete 时战场被清空（两个终态对称）', () => {
+    // 贪心策略确实建出了塔，所以「战场是空的」不是因为压根没建 —— 前提成立。
+    const complete = completeState()
+    expect(complete.phase.kind, '前提：这条断言必须在 level-complete 上跑').toBe('level-complete')
+    expect(complete.towers.length, '通关时塔必须离场 —— 留着会让「通关了但还能改局面」成立，且持久化层会把它当成进行中的对局').toBe(0)
+    expect(Object.keys(complete.grid).length, 'grid 必须与 towers 一起清空 —— 只清一半会让 grid 与 towers 立即双向不一致').toBe(0)
+    expect(complete.zombies.length, '通关时僵尸必须离场 —— 下一回合不再推进它们，留着只是死数据').toBe(0)
+  })
+
   it('AC-11 —— 结算后已建塔仍在场（FR82）', () => {
     const answered = answerCurrent(fresh(), true)
     const entry = currentQuestion(fresh())
@@ -440,7 +507,12 @@ describe('AC-1 / AC-7 —— 阶段转换表逐条边', () => {
     expect(restarted.masteredEntryIds.length, '重打必须清空 mastered —— 否则上一局的进度会带进这一局，孩子永远学不会开局的词').toBe(0)
     expect(restarted.towers.length, '重打必须清空战场（FR51）—— 带着上一局的塔重打等于换词不换局面').toBe(0)
     expect(restarted.zombies.length, '重打后第 1 只僵尸重新入场').toBe(1)
-    expect(restarted.deck, '重打必须原样复用题单（AC-5）—— 换题单会让「这一局学完这个单元」的承诺失效').toBe(failed.deck)
+    expect(
+      restarted.deck,
+      '重打必须原样复用题单**内容**（AC-5）—— 换题单会让「这一局学完这个单元」的承诺失效。' +
+        '注意是内容相等而非同一引用：`createInitialState` 会复制题单数组，' +
+        '以免与调用方共用可变别名（`[CR]` 2026-10-14）',
+    ).toEqual(failed.deck)
     expect(currentQuestion(restarted).entryId, '重打从题单第 1 题开始').toBe(DECK[0].entryId)
   })
 })
@@ -698,10 +770,27 @@ describe('子任务 4.5 —— reduce 是纯函数', () => {
   it('不产生随机与时间依赖（源码里没有 Math.random / Date）', () => {
     // 平衡模拟要「同一策略跑出同一张门槛表」，存档回放要「同一串 action 还原同一局」。
     // 两者都要求 reduce 是纯函数，而随机/时间是纯函数最常见的两个破口。
+    //
+    // ⚠️ 这条**真的去读源码**（`[CR]` 2026-10-14）。此前它断言的是
+    //   `typeof Math.random === 'function'` —— 那是关于 JS 运行时的事实，
+    //   无论 reducer.ts 调不调用 `Math.random` 都恒为真；而紧邻的
+    //   「两次运行必须逐字节相同」只能**概率上**抓到非确定性。
+    //   结果是「reduce 是纯函数」这条约束**零覆盖**。
+    const offenders: string[] = []
+    for (const file of CORE_SOURCE_FILES) {
+      const source = readFileSync(new URL(file, CORE_ROOT_URL), 'utf8')
+      source.split('\n').forEach((line, index) => {
+        // 注释与字符串里提到这些名字不算调用；只查真正的调用形态。
+        const code = line.replace(/\/\/.*$/, '').replace(/\/\*.*?\*\//g, '')
+        if (/\bMath\.random\s*\(/.test(code) || /\bnew\s+Date\s*\(/.test(code) || /\bDate\.now\s*\(/.test(code)) {
+          offenders.push(`${file}:${index + 1}  ${line.trim()}`)
+        }
+      })
+    }
     expect(
-      typeof Math.random,
-      'reduce 若调用了 Math.random，上面那条「两次运行相同」的断言会在概率上偶尔变红 —— 本条提醒它是确定性的前提',
-    ).toBe('function')
+      offenders.join('\n'),
+      'core/ 里出现随机或时间依赖 —— 平衡模拟跑不出可复现的门槛表，存档回放也还原不出同一局',
+    ).toBe('')
   })
 })
 
