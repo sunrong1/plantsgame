@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 /**
  * TTS 朗读服务 —— 教材文字发声的唯一出口（Story 1.2）。
  *
@@ -145,8 +146,15 @@ function fallbackToRecording(text: string): void {
 
 // ── 预生成录音（架构决策 7 主通路）─────────────────────────────────────────
 
-/** 预生成录音的目录。决策 7：音频不按单元分层，文件名 = 词条 id。 */
-export const RECORDING_BASE_PATH = '/assets/audio/voice/'
+/**
+ * 预生成录音的目录。决策 7：音频不按单元分层，文件名 = 词条 id。
+ *
+ * 接 `import.meta.env.BASE_URL` 而不是写死根路径（Story 1.3 / AC-11）：
+ * 应用部署在 `https://sunrong.site/plantsgame/` 子路径下，写死 `/` 会让
+ * 每个录音都 404，主通路静默降级成设备 TTS —— 表现只是「音色偶尔不对」，
+ * 没有任何报错指向它。`BASE_URL` 自带尾斜杠，这里不要再拼一个。
+ */
+export const RECORDING_BASE_PATH = `${import.meta.env.BASE_URL}assets/audio/voice/`
 
 /**
  * 词条 id 的合法形态：带单元前缀的 kebab-case（`u1-dog`、`u2-ice-cream`）。
@@ -155,7 +163,7 @@ export const RECORDING_BASE_PATH = '/assets/audio/voice/'
  * 让 `new Audio()` 打出目录外的路径。这不是理论风险 —— 它是「用户可编辑的数据
  * 直接进入 URL」这个模式自带的风险，校验成本是一次正则。
  */
-const ENTRY_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
+export const ENTRY_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 
 /** 当前正在发声的录音元素。后一次调用要能把它掐掉（重入是常态，见 playPronunciation）。 */
 let activeRecording: HTMLAudioElement | null = null

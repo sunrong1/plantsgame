@@ -6,8 +6,17 @@ export default defineConfig({
   // 结果是 vue plugin 不会自动生效 —— 实测在此配置下 import 任意 .vue 都会 transform 失败，
   // 报错看起来像「工具链坏了」而不是「少了一个 plugin」。组件测试（Story 1.10 起）必须显式挂上。
   plugins: [vue()],
+  // 与 vite.config.ts 的 base 保持一致（Story 1.3 / AC-11）。
+  //
+  // ⚠️ 别在这里用顶层 `base` 或 `define` —— 实测 Vitest 5 两者都**不**改变
+  //   `import.meta.env.BASE_URL`（设了之后它仍是 '/'）。唯一管用的是 test.env。
   test: {
     include: ['tests/**/*.test.ts'],
+    // 不设的后果：BASE_URL 是 '/'，而硬编码的 '/assets/audio/voice/' 恰好与它
+    // 相等 —— 「录音路径有没有跟随 base」这条断言会**永远通过**，守卫形同虚设。
+    env: {
+      BASE_URL: '/plantsgame/',
+    },
     // core/ 测试不需要 DOM；组件测试时再按文件用 @vitest-environment 覆盖。
     // ⚠️ 覆盖成 jsdom / happy-dom 前要先装对应依赖，当前 devDependencies 里两个都没有。
     environment: 'node',

@@ -13,6 +13,17 @@
   ——
   `eslint.config.js`、`tests/scaffold/audio-unlock-guard.test.ts:1005-1010`
 
+- ✅ **已修（Story 1.3 / AC-11，2026-10-13）** —— `vite.config.ts` 加了 `base: '/plantsgame/'`，
+  `RECORDING_BASE_PATH` 改接 `import.meta.env.BASE_URL`，并新增
+  `tests/scaffold/deployment-base.test.ts` 守卫（`vitest.config.ts` 同步设了
+  `test.env.BASE_URL`，否则该守卫会假绿）。**销项，但部署前仍需真机确认一次** ——
+  自动化只能证明路径推导正确，证明不了托管侧的配置。
+  ——
+  `vite.config.ts`、`src/services/pronunciation.ts:149`
+
+<details>
+<summary>原始记录（保留上下文）</summary>
+
 - ⚠️⚠️ **`RECORDING_BASE_PATH` 是绝对根路径 —— 而部署目标**就是** sub-path，这已是确认的 bug 而非假设风险** ——
   项目记录的 Pages 地址是 **`https://sunrong.site/plantsgame/`**（2026-10-13 复核），
   即应用挂在 `/plantsgame/` 前缀下。而 `vite.config.ts` **未设 `base`**（默认 `/`），
@@ -29,6 +40,8 @@
   `import.meta.env.BASE_URL`（注意该文件在 core/ 之外，可以用 `import.meta.env`）。
   ——
   `vite.config.ts`、`src/services/pronunciation.ts:149`
+
+</details>
 
 - **`StartView` 点击 → `unlockAudioSequence()` 这条接线无测试覆盖** ——
   删掉 `onStart` 里那行调用、或删掉模板的 `@click`，95 个测试全绿，
@@ -98,3 +111,33 @@
   **恢复条件**：与上一条同一个 —— 拿到真机音色列表。
   ——
   `src/services/pronunciation.ts:67-74`（`VOICE_PRIORITY`）
+
+## Deferred from: code review of story-1-3-朗读录音批量生成 (2026-10-13)
+
+- `parseEntries` 不在生成侧校验词条 id 的单元前缀 ——
+  只校验 kebab-case，`u2-dog` 缺前缀的词条能进生成流程。
+  **为什么现在不补**：`tests/scripts/generate-voice.test.ts:97` 已在**词表文件层面**
+  守住 `/^u\d+-/`，而 `voice-entries.json` 是本 story 唯一的输入。
+  生成侧再拦一次是纵深防御，收益低于维护两条同义规则的成本。
+  **恢复条件**：词表来源从 `scripts/data/voice-entries.json` 改成别处（Story 1.6 换源时，
+  测试的覆盖面会随来源一起搬家），或将来词表改为多文件混合输入。
+  ——
+  `scripts/generate-voice.ts:147`
+
+- 脚本缺 `--force` 与 `--help` ——
+  改音色/语速后全量重生成目前靠手动 `rm public/assets/audio/voice/*.mp3`；
+  三个 flag（`--dry` / `--only` / 即将有的 `--force`）只能读源码才知道。
+  **为什么现在不补**：AC 未要求，`--dry`/`--only` 已覆盖本 story 的实际用法。
+  **恢复条件**：Story 3.4「音频品质打磨」一旦真的调了音色或语速，
+  手工 `rm` 的操作成本会第一次变成实际摩擦——那时一并加 `--force` 与 `--help`。
+  ——
+  `scripts/generate-voice.ts:445`
+
+- `Failure.code` 是无区分的 `string` ——
+  同一个字段混装网络哨兵（`NETWORK`）、HTTP 状态（`HTTP_500`）、
+  业务码（`1002`）与合成类失败（`EMPTY_AUDIO`）四种性质的值。
+  **为什么现在不补**：当前唯一的消费者是失败清单的字符串拼接，
+  按类型筛选没有现实需求；此时改成 tagged union 会牵动全部构造点而零收益。
+  **恢复条件**：Story 3.4 需要按业务码分类统计（例如「只有音色类失败才换音色」）时。
+  ——
+  `scripts/generate-voice.ts:107`

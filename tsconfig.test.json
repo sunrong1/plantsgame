@@ -37,10 +37,24 @@
   // ⚠️ 副作用（不要「顺手修复」）：改完之后这两个目录会同时属于
   // tsconfig.app.json 与 tsconfig.test.json 两个 composite 项目。重叠是允许的
   // （两者都 noEmit），把它改回单归属会立刻撞回 TS6307。
+  // ⚠️ `scripts/` 与 `vite.config.ts` 是 Story 1.3 加进来的（实测阻断 TS6307）：
+  // 脚本的守卫测试要 import `scripts/generate-voice.ts`，base 守卫测试要
+  // import `vite.config.ts`，而 composite 项目要求「所有文件必须被列出」。
+  //
+  // 为什么不用 reference 指向 tsconfig.node.json：被引用的项目不允许 noEmit
+  // （TS6310），node 项目恰恰是 noEmit —— 与下面 src/services 那段注释同一个理由。
+  // 与 tsconfig.node.json 重叠是允许的（两者都 noEmit），**不要**为了「单一归属」
+  // 把这两个文件从这里删掉，删了立刻撞回 TS6307。
+  //
+  // 反向约束（勿违反）：脚本**不得** import `src/`。那会让 scripts 里的文件
+  // 同时需要 app/core 项目的产物，仍是 TS6307，且给一个开发期脚本套上
+  // 核心边界的耦合。
   "include": [
     "tests/**/*.ts",
     "vitest.config.ts",
+    "vite.config.ts",
     "eslint.config.js",
+    "scripts/**/*.ts",
     "src/services/**/*.ts",
     "src/app/**/*.ts"
   ],
