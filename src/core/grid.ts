@@ -27,8 +27,16 @@ export const ZOMBIE_SPAWN_COL = 8
 /** 房子所在列索引 0 = 界面「第 1 列」（裁决 3）。 */
 export const HOUSE_COL = 0
 
-/** 坐标必须是整数，否则抛错（AC-7：逻辑层只 throw，不静默夹取）。 */
-function assertIndex(value: number, label: string): void {
+/**
+ * 坐标必须是整数，否则抛错（AC-7：逻辑层只 throw，不静默夹取）。
+ *
+ * ⚠️ 这是全 core/ 层**唯一**的整数校验器（[CR] P17 收口，2026-10-13）：
+ * grid.ts、types.ts 的 `assertZombieCol`、combat.ts 全部走这里。
+ * 此前存在三份几乎相同的实现（`assertIndex` / `assertZombieCol` / `assertGridIndex`）
+ * 各带一套错误文案 —— 三份口径各自演化，迟早出现「其中一份放宽了 NaN」的漂移，
+ * 而 Debug Log #5 正是这种口径漂移的教训。
+ */
+export function assertGridIndex(value: number, label: string): void {
   if (!Number.isInteger(value)) {
     throw new Error(`${label} 必须是整数，收到 ${value}（坐标不夹取，非法输入直接抛）`)
   }
@@ -47,8 +55,8 @@ export function isInsideGrid(row: number, col: number): boolean {
  * 没有任何报错指向它。
  */
 export function assertInsideGrid(row: number, col: number): void {
-  assertIndex(row, 'row')
-  assertIndex(col, 'col')
+  assertGridIndex(row, 'row')
+  assertGridIndex(col, 'col')
   if (row < 0 || row >= ROWS) {
     throw new Error(`row ${row} 越界（合法范围 0 ~ ${ROWS - 1}）`)
   }
@@ -98,25 +106,46 @@ export function parseCellKey(key: string): { row: number; col: number } {
   const col = Number(colText)
   // 正则已挡住非整数，剩下的只有「越界」这一种非法性 —— 由 assertInsideGrid 抛。
   assertInsideGrid(row, col)
+  // 规范形态校验（[CR] P6）：正则放行 '02,8'、'-0,3' 这类**非规范整数**写法 ——
+  // 它们能解析成合法坐标，但 cellKey 永远不会产出这种形态。放任不管，
+  // 同一格子就会出现两种键，Story 1.5 的 Store 按规范键索引时非规范键静默失配
+  // ——「塔凭空消失」的另一个入口。用「往返必须逐字符相等」一次性堵死。
+  if (cellKey(row, col) !== key) {
+    throw new Error(
+      `格子键必须规范（无前导零、无 -0）：期望 "${cellKey(row, col)}"，收到 ${JSON.stringify(key)}`,
+    )
+  }
   return { row, col }
 }
 
 /**
- * 僵尸是否已抵达房子。
+ * 僵尸是否已**越过**房子（`col < HOUSE_COL`，即负列号的越界态）。
  *
- * ⚠️ 判据是 `col < HOUSE_COL`（即 `col < 0`），**不是** `col < 1`。
- * 后者是 `balance-scan.py` 的 `nxt < 1`，混用了 1-based 的房子判定（裁决 3）。
- * `HOUSE_COL` 是索引 0，所以「走进房子」与「已经走过房子」是两件事，
- * 本函数回答的是后者。
+ * ⚠️ [CR] D3 改名（2026-10-13 用户裁决）：本函数原名 `hasReachedHouse`，
+ * 名字是「已抵达」、判据却是「已越过」—— `if (hasReachedHouse(z.col)) loseHeart()`
+ * 是字面上最自然的调用，而僵尸站在 col 0 时它返回 false，于是僵尸站上房子不掉心、
+ * 关卡永不失败。旧注释预言了这个 bug 却没改掉引发它的名字。现在两个口径各有各的
+ * 名实相符函数：
+ *   - {@link hasReachedHouse}（`col <= HOUSE_COL`）：**踏上房子格** —— 丢心判定用它
+ *   - 本函数（`col < HOUSE_COL`）：**已越过房子** —— 清场 / 移除判定用它
  *
- * 📎 **接手 Story 1.5 必读的口径分界**：
- * 僵尸从入场列 8 以 2 格/回合前进，`8→6→4→2→0` 落在第 4 回合 —— 那一回合结束时
- * 僵尸**正站在** col 0（房子格上），`hasReachedHouse(0)` 是 false。
- * 因此「踏上房子格」与「越过房子」必须由 `turn.ts` 分开表达：
- * 丢心发生在 `col <= HOUSE_COL`，而本函数守的是 `col < HOUSE_COL` 的越界态。
- * 两者差一步 —— 少写这一步，僵尸就会站在房子上不掉血。
+ * 判据锚点不变：`col < HOUSE_COL`，**不是** `col < 1`（后者是 `balance-scan.py`
+ * 的 `nxt < 1`，混用了 1-based 的房子判定，裁决 3）。
+ */
+export function hasPassedHouse(col: number): boolean {
+  assertGridIndex(col, 'col')
+  return col < HOUSE_COL
+}
+
+/**
+ * 僵尸是否已**抵达**房子（踏上房子格，`col <= HOUSE_COL`）。
+ *
+ * 📎 **接手 Story 1.5 必读**：丢心判定用**这个**函数。
+ * 僵尸轨迹 `8→6→4→2→0` 落在第 4 回合 —— 那一刻它正**站在** col 0，
+ * 本函数返回 true，应当扣心；`hasPassedHouse(0)` 仍是 false（要第 5 回合才越过）。
+ * 两者差一步 —— 用错函数，僵尸就会站在房子上不掉血（旧移交 #3 的陷阱，D3 已拆）。
  */
 export function hasReachedHouse(col: number): boolean {
-  assertIndex(col, 'col')
-  return col < HOUSE_COL
+  assertGridIndex(col, 'col')
+  return col <= HOUSE_COL
 }

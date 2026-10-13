@@ -1,5 +1,5 @@
 # generated: 2026-10-12
-# last_updated: 2026-10-13 (Story 1.4 → review)
+# last_updated: 2026-10-13 (Story 1.4 → done，[CR] 35 条修复全部落地)
 # project: plants-game
 # project_key: NOKEY
 # tracking_system: file-system
@@ -56,7 +56,7 @@ development_status:
   1-1-工程脚手架与启动界面: done
   1-2-音频解锁与-tts-朗读: review
   1-3-朗读录音批量生成: done
-  1-4-战斗内核与-5-条数值断言: review
+  1-4-战斗内核与-5-条数值断言: done
   1-5-回合状态机与题单: backlog
   1-6-内容数据层与单元-1-录入: backlog
   1-7-塔与僵尸美术资产: backlog

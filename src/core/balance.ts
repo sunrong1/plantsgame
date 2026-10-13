@@ -47,15 +47,53 @@ export interface BalanceTier {
  * 留空 ⇒ 抛错 ⇒ 在 Story 2.3 真正落地该档时才需要填。
  *
  * ⇒ **Story 2.3 是往这个数组里追加两条，不是改结构。**
+ *
+ * ⚠️ 逐层 `Object.freeze`（[CR] P16）：类型层的 `readonly` 防不住运行期的 `as` 强转
+ * ——「单一事实源」必须在运行期也不可改写，否则任何代码都能无痕篡改平衡数值，
+ * 而全部平衡断言仍然绿。冻结状态由 balance.test.ts 的 `Object.isFrozen` 用例锁死。
  */
-export const BALANCE_TIERS: readonly BalanceTier[] = [
-  {
-    unitRange: [1, 4],
+export const BALANCE_TIERS: readonly BalanceTier[] = Object.freeze([
+  Object.freeze({
+    unitRange: Object.freeze([1, 4] as const),
     initialSun: 0,
     sunPerCorrect: 50,
-    towerCost: { direct: 50, slow: 50, aoe: 75 },
-  },
-]
+    towerCost: Object.freeze({ direct: 50, slow: 50, aoe: 75 }),
+  }),
+])
+
+/**
+ * 档位表的结构校验（[CR] P22）：空表、倒置区间、重叠区间**一律抛错**。
+ *
+ * 为什么每次查询都校验而不是模块加载时校验一次：3 档的表校验成本可忽略，
+ * 而收益是 Story 2.3 追加畸形档位时**大声失败**，而不是「线性扫描静默取第一条命中」
+ * 把重叠掩盖掉 —— 那正是数值静默漂移的最短路径。
+ *
+ * 旧版测试里「升序且不重叠」的守卫在表只有一条时循环体零次执行（空转守卫，
+ * 当下不可能失败）；本函数把该性质变成运行期强制，测试可以用合成多档 fixture 驱动它。
+ */
+function assertTierTable(tiers: readonly BalanceTier[]): void {
+  if (tiers.length === 0) {
+    throw new Error('档位表不能为空 —— 任何单元都将无处取值')
+  }
+  for (const [i, a] of tiers.entries()) {
+    const [fromA, toA] = a.unitRange
+    if (fromA > toA) {
+      throw new Error(`档位 ${i} 的区间倒置：[${fromA}, ${toA}]，from 必须 <= to`)
+    }
+    for (const [j, b] of tiers.entries()) {
+      if (j <= i) {
+        continue
+      }
+      const [fromB, toB] = b.unitRange
+      if (fromA <= toB && fromB <= toA) {
+        throw new Error(
+          `档位 ${i} [${fromA},${toA}] 与档位 ${j} [${fromB},${toB}] 重叠 —— ` +
+            '线性扫描会静默取先命中的一条，重叠必须大声失败',
+        )
+      }
+    }
+  }
+}
 
 /**
  * 取单元所属档位。
@@ -66,19 +104,23 @@ export const BALANCE_TIERS: readonly BalanceTier[] = [
  *
  * 线性扫描而非算术分区间：只有 3 档，扫描更易读；将来加档位也不用改算法
  * （Dev Notes §5 的取舍）。
+ *
+ * @param tiers 仅供测试用合成 fixture 驱动 `assertTierTable`（[CR] P22）；
+ *              生产调用一律走默认的 `BALANCE_TIERS`。
  */
-export function tierForUnit(unitNumber: number): BalanceTier {
+export function tierForUnit(unitNumber: number, tiers: readonly BalanceTier[] = BALANCE_TIERS): BalanceTier {
   if (!Number.isInteger(unitNumber)) {
     throw new Error(`单元号必须是整数，收到 ${unitNumber}`)
   }
-  for (const tier of BALANCE_TIERS) {
+  assertTierTable(tiers)
+  for (const tier of tiers) {
     const [from, to] = tier.unitRange
     if (unitNumber >= from && unitNumber <= to) {
       return tier
     }
   }
   // 抛错信息里带上「已填哪些档位」—— 接手 Story 2.3 的人不必翻代码就知道要补哪条。
-  const filled = BALANCE_TIERS.map((t) => `${t.unitRange[0]}-${t.unitRange[1]}`).join('、')
+  const filled = tiers.map((t) => `${t.unitRange[0]}-${t.unitRange[1]}`).join('、')
   throw new Error(
     `单元 ${unitNumber} 落在未填档位上。已填档位：${filled}。` +
       '未填档位不回退默认值（AC-3）—— 回退即静默漂移。' +
@@ -96,8 +138,15 @@ export function sunPerCorrectFor(unitNumber: number): number {
   return tierForUnit(unitNumber).sunPerCorrect
 }
 
-/** 某塔型在某单元的造价。造价是**档位**的，不是塔型的 —— FR63 的三档三组数字。 */
+/**
+ * 某塔型在某单元的造价 —— 由**档位 × 塔型**共同决定（FR63 的三档三组数字）。
+ *
+ * ⚠️ [CR] P30：旧 JSDoc 写「造价是档位的，不是塔型的」，与实现 `towerCost[towerType]`
+ * 当场矛盾（同档内 direct 50 / aoe 75 就是按塔型区分的）。Story 2.3 追加档位时
+ * 若照旧注释只填一个数，三塔型造价会被静默压平。
+ */
 export function costOf(towerType: TowerType, unitNumber: number): number {
+  assertTowerType(towerType)
   return tierForUnit(unitNumber).towerCost[towerType]
 }
 
@@ -126,36 +175,59 @@ export interface TowerStats {
    * **不由本字段驱动** —— 本字段对它只保留 GDD 塔型表里的语义值（2 格）。
    */
   readonly range: number
-  /** 仅减速塔有：减速幅度。 */
-  readonly slowFactor?: number
-  /** 仅减速塔有：减速持续回合数。 */
-  readonly slowTurns?: number
+}
+
+/**
+ * 塔型的**运行期白名单**（[CR] P4）。
+ *
+ * `TowerType` 联合类型在编译期就被擦除 —— 存档 / 内容 JSON 里的脏值
+ * （拼错的 `'driect'`）在运行期畅通无阻：`costOf()` 会静默取到 `undefined`
+ * 让阳光扣减传播 NaN，`damageOf()` 会抛不受控的 TypeError。两者都违反
+ * AC-7「只 throw、不静默」。所以字面量联合需要一份运行期镜像，
+ * 这里是**唯一**写出三个字符串字面量的地方，键集合与 `TOWER_STATS` 的一致性有测试锁死。
+ */
+export const TOWER_TYPES: readonly TowerType[] = Object.freeze(['direct', 'slow', 'aoe'])
+
+/** 塔型合法性校验：脏塔型一律抛错（AC-7）。 */
+export function assertTowerType(towerType: TowerType): void {
+  if (!TOWER_TYPES.includes(towerType)) {
+    throw new Error(
+      `未知塔型 ${JSON.stringify(towerType)}，合法值：${TOWER_TYPES.join(' / ')}。` +
+        '塔型只可能来自存档或内容 JSON 的脏值 —— 静默放行会让造价变 undefined、伤害查表炸在远处。',
+    )
+  }
 }
 
 /**
  * 三塔型属性。逐字对应 `gdd.md:226` 的塔型表。
  *
- * ⚠️ `slow` 条目里的 `SLOW_FACTOR` / `SLOW_TURNS` 引用本文件上方的常量，
- * 而不是重写一遍 0.5 与 3 —— 这是「单一事实源」在本文件内部的自我示范。
- * Story 3.2 调减速时只改常量，两处一起动。
+ * ⚠️ [CR] D2（2026-10-13 用户裁决）：`slow` 条目里原有的 `slowFactor` / `slowTurns`
+ * 字段**已删除** —— `stepZombie` 只读全局 `SLOW_FACTOR`、`applySlow` 只认全局
+ * `SLOW_TURNS`，表内字段没有任何运行期消费者，是死数据。两处并存等于双事实源：
+ * Story 3.2 按「单一事实源」注释只改表 → 行为零变化，恰好复刻本文件头布道的
+ * 「一改一漏」。**减速数值的单一事实源是上方的 `SLOW_FACTOR` / `SLOW_TURNS` 常量。**
  *
  * ⚠️ `aoe.range = 2` 取自 GDD 塔型表「射程（格）」列，**与实际伤害覆盖无关**。
  * 范围塔的伤害判定是固定的同行 3 格（架构决策 1），改动它属架构变更，
  * 不属数值调优 —— 理由见 `aoeColumns()` 的注释。
+ *
+ * 逐层 `Object.freeze`：与 `BALANCE_TIERS` 同理（[CR] P16）。
  */
-export const TOWER_STATS: Readonly<Record<TowerType, TowerStats>> = {
-  direct: { damage: 50, range: 3 },
-  slow: { damage: 25, range: 3, slowFactor: SLOW_FACTOR, slowTurns: SLOW_TURNS },
-  aoe: { damage: 60, range: 2 },
-}
+export const TOWER_STATS: Readonly<Record<TowerType, TowerStats>> = Object.freeze({
+  direct: Object.freeze({ damage: 50, range: 3 }),
+  slow: Object.freeze({ damage: 25, range: 3 }),
+  aoe: Object.freeze({ damage: 60, range: 2 }),
+})
 
 /** 某塔型的伤害值。 */
 export function damageOf(towerType: TowerType): number {
+  assertTowerType(towerType)
   return TOWER_STATS[towerType].damage
 }
 
 /** 某塔型的射程。 */
 export function rangeOf(towerType: TowerType): number {
+  assertTowerType(towerType)
   return TOWER_STATS[towerType].range
 }
 

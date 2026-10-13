@@ -1,6 +1,10 @@
 /**
  * core/ 的唯一对外出口（barrel，AR5）。
  *
+ * 📎 业务逻辑自 **Story 1.4** 起填入（此前本文件是防 TS18003 的占位 `export {}`，
+ * 旧注释「业务逻辑属 Story 1.3」的编号是错的，该句已随 barrel 化重写 ——
+ * [CR] P14 补上这个锚点，避免「已改 1.4」的验收记录无处落地）。
+ *
  * 边界（由工具链强制，不是靠自觉）：
  *   - 本层零 DOM —— tsconfig.core.json 的 lib 不含 DOM，写 window 即编译报错
  *   - 本层零 Vue —— ESLint no-restricted-imports 禁止 import 'vue'
@@ -25,8 +29,12 @@ export {
   ROWS,
   ZOMBIE_ROW,
   ZOMBIE_SPAWN_COL,
+  // ⚠️ assertGridIndex 住在 grid.ts（[CR] P17 收口后全层唯一的整数校验器），
+  // 此前 types.ts 定义了它而 barrel 漏导出 —— 「唯一对外出口」不完整（[CR] P19）。
+  assertGridIndex,
   assertInsideGrid,
   cellKey,
+  hasPassedHouse,
   hasReachedHouse,
   isInsideGrid,
   parseCellKey,
@@ -38,8 +46,10 @@ export {
   SLOW_FACTOR,
   SLOW_TURNS,
   TOWER_STATS,
+  TOWER_TYPES,
   ZOMBIE_HP,
   ZOMBIE_MOVE_PER_ROUND,
+  assertTowerType,
   costOf,
   damageFor,
   damageOf,
@@ -54,6 +64,7 @@ export type { BalanceTier, TowerStats } from './balance.js'
 
 export {
   aoeColumns,
+  aoeTargets,
   applyDamage,
   applySlow,
   inRange,

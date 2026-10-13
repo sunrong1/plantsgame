@@ -18,6 +18,15 @@ export default tseslint.config(
   ...tseslint.configs.recommended,
   ...vue.configs['flat/recommended'],
   {
+    // [CR] P31（Story 1.4 审查）：所有文本文件必须以换行结尾。缺了它，
+    // 下一个 story 向文件追加内容时，diff 会把原最后一行也标记为改动
+    // —— 归属错乱、review 噪音，还会掩盖「谁改的这行」。
+    files: ['**/*.{ts,vue,js}'],
+    rules: {
+      'eol-last': ['error', 'always'],
+    },
+  },
+  {
     // .vue 里的 <script lang="ts"> 由 vue-eslint-parser 解析，
     // 再把 script 块交给 TS parser —— 不接这一层，`: void` 这类返回类型标注会直接解析失败。
     files: ['**/*.vue'],

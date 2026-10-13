@@ -10,8 +10,8 @@
 // ⚠️ ZOMBIE_HP 从 balance.ts 取（战斗数值的单一事实源，架构 `:634`）。
 // balance.ts 反过来 import 本文件的 TowerType —— 那是 `import type`，
 // 被 verbatimModuleSyntax 在编译期擦除，所以两者之间**不存在运行期循环**。
-import { SLOW_TURNS, ZOMBIE_HP } from './balance.js'
-import { assertInsideGrid } from './grid.js'
+import { SLOW_TURNS, ZOMBIE_HP, assertTowerType } from './balance.js'
+import { ZOMBIE_SPAWN_COL, assertGridIndex, assertInsideGrid } from './grid.js'
 
 /**
  * 塔的战斗类型（架构模式 C 逐字锚点）。
@@ -90,6 +90,10 @@ export interface CreateZombieInput {
 export function createTower(input: CreateTowerInput): Tower {
   assertNonEmptyId(input.id)
   assertNonEmptyId(input.wordId)
+  // 塔型白名单（[CR] P4）：类型联合在运行期不存在，脏塔型（存档/JSON 拼写错误）
+  // 不拦在这里，就会活到很久之后的 TOWER_STATS 查表才炸（或静默 undefined）——
+  // 报错现场远离错误源头。工厂是唯一能在数据入口处拦截的位置。
+  assertTowerType(input.towerType)
   assertInsideGrid(input.row, input.col)
   return {
     id: input.id,
@@ -112,6 +116,15 @@ export function createTower(input: CreateTowerInput): Tower {
 export function createZombie(input: CreateZombieInput): Zombie {
   assertNonEmptyId(input.id)
   assertZombieCol(input.col)
+  // 列号上界（[CR] P7）：僵尸只从 ZOMBIE_SPAWN_COL 入场。旧注释声称「上界由
+  // ZOMBIE_SPAWN_COL 管」而当时没有任何代码强制 —— col 1000 的僵尸永远在
+  // 全部塔窗口的右侧之外，成为「不死行走模拟器」。现在由工厂强制（唯一强制点）。
+  // 下界刻意**不**设：僵尸必须能走到房子之外（负列号合法，见 assertZombieCol）。
+  if (input.col > ZOMBIE_SPAWN_COL) {
+    throw new Error(
+      `僵尸列号不得超过入场列 ZOMBIE_SPAWN_COL = ${ZOMBIE_SPAWN_COL}，收到 ${input.col}`,
+    )
+  }
   assertZombieHp(input.hp)
   const slowTurnsLeft = input.slowTurnsLeft ?? 0
   assertSlowTurns(slowTurnsLeft)
@@ -136,14 +149,15 @@ export function assertZombieHp(hp: number): void {
 /**
  * 僵尸列号必须是整数。
  *
- * ⚠️ **刻意不设上下界**：僵尸必须能走到房子**之外**（col < 0），
- * `hasReachedHouse` 判的就是负列号；上界由 grid.ts 的 `ZOMBIE_SPAWN_COL` 管，
- * 战斗层不重复那个口径。
+ * ⚠️ **刻意不设下界**：僵尸必须能走到房子**之外**（col < 0），
+ * `hasPassedHouse` 判的就是负列号。上界（`col <= ZOMBIE_SPAWN_COL`）由
+ * `createZombie()` 工厂强制（[CR] P7）—— 工厂是数据入口的唯一强制点，
+ * 本校验器只负责「是整数」这一条，不重复那个口径。
+ *
+ * 整数校验委托给 grid.ts 的 `assertGridIndex`（[CR] P17 收口：全层唯一实现）。
  */
 export function assertZombieCol(col: number): void {
-  if (!Number.isInteger(col)) {
-    throw new Error(`僵尸列号必须是整数，收到 ${col}`)
-  }
+  assertGridIndex(col, '僵尸列号')
 }
 
 /** 减速剩余回合数：必须是 `[0, SLOW_TURNS]` 区间内的整数。恒等式由 applySlow 负责建立。 */
@@ -160,9 +174,5 @@ export function assertNonEmptyId(id: string): void {
   }
 }
 
-/** 网格坐标必须是整数。grid.ts 的边界校验以它为前置。 */
-export function assertGridIndex(value: number, label: string): void {
-  if (!Number.isInteger(value)) {
-    throw new Error(`${label} 必须是整数，收到 ${value}`)
-  }
-}
+// 📎 `assertGridIndex` 住在 grid.ts（[CR] P17：全 core/ 层唯一的整数校验器），
+// 由 barrel 对外导出。本文件不再重复定义 —— 三份校验器各自演化的教训见 assertGridIndex 注释。
