@@ -22,10 +22,7 @@
   </g>
   <rect x="16" y="16" width="480" height="480" rx="36" fill="none"
         stroke="#9aa0a6" stroke-width="8" stroke-dasharray="26 18" />
-  <text x="256" y="238" text-anchor="middle" font-family="system-ui, sans-serif"
-        font-size="40" font-weight="700" fill="#5f6368" letter-spacing="4">PLACEHOLDER</text>
-  <text x="256" y="292" text-anchor="middle" font-family="system-ui, sans-serif"
-        font-size="34" fill="#5f6368">u1-hello</text>
-  <text x="256" y="336" text-anchor="middle" font-family="system-ui, sans-serif"
-        font-size="22" fill="#80868b">Story 1.8 / 1.9 替换</text>
+  <!-- 占位词图：斜纹与虚线框就是它的全部标识。
+       G10 禁止在图上写字（词条 id 印在选项上会把「听音识物」退化成文本匹配），
+       所以标识只以注释形式存在。Story 1.8 / 1.9 逐张替换为正式插画。 -->
 </svg>

@@ -396,16 +396,48 @@ export function stripXmlComments(source: string): string {
  * 不会被画出来。带着它们扫「有没有不透明背景矩形」会把一张合规的图判成不合规 ——
  * 而一个会误报的守卫比没有守卫更糟：它会被当成噪声忽略掉。
  */
-function stripNonRenderedBlocks(source: string): string {
-  return source.replace(
-    /<(defs|mask|clipPath|pattern|symbol)\b[^>]*>[\s\S]*?<\/\s*\1\s*>/gi,
-    ' ',
-  )
+export function stripNonRenderedBlocks(source: string): string {
+  return source
+    // ⚠️ 自闭合形态 `<defs/>` / `<symbol …/>` 也要剥。
+    //   `[CR]` 2026-10-14：这条正则原本只认「成对」标签，而本函数已从私有提升为 `export`，
+    //   并成为 `tests/assets/asset-geometry.test.ts` 的 `allTags()` 地基 ——
+    //   即它现在是**内容完整性守卫**的一部分，对它自己提出的完备性要求更高了。
+    .replace(/<(defs|mask|clipPath|pattern|symbol)\b[^>]*\/>/gi, ' ')
+    .replace(/<(defs|mask|clipPath|pattern|symbol)\b[^>]*>[\s\S]*?<\/\s*\1\s*>/gi, ' ')
 }
 
-/** 取 `<svg …>` 开标签的整段文本（属性都在里面）。 */
+/**
+ * 取 `<svg …>` 开标签的整段文本（属性都在里面）。
+ *
+ * ⚠️ `[DS]` Story 1.8 / P2-4：**必须引号感知，不能用 `[^>]*`。**
+ *   属性值里出现 `>` 就会把开标签**截断** —— 而 `aria-label` / `id` 正是高发区：
+ *   `aria-label="a > b"` 会被截成 `<svg … aria-label="a >`，
+ *   后面真正的 `>` 落在截断之外，于是 `viewBox` / `width` / `height` 全部读成 `null`，
+ *   报出一句**指向错误文件**的「读不到 viewBox」。
+ *
+ *   旧正则之所以没在 Story 1.7 炸出来：四张塔/僵尸图的 `aria-label` 里都没有 `>`。
+ *   词图（30 张，带 entryId 与中文 aria-label）把这个缺口补齐了。
+ *
+ * 扫描规则：进到引号里就一路走到配对的引号，引号外的 `>` 才是标签结束。
+ */
 function svgRootTag(source: string): string | null {
-  return /<svg\b[^>]*>/i.exec(source)?.[0] ?? null
+  const start = /<svg\b/i.exec(source)
+  if (start === null) return null
+
+  let quote: '"' | "'" | null = null
+  for (let i = start.index + '<svg'.length; i < source.length; i += 1) {
+    const ch = source[i]
+    if (quote !== null) {
+      if (ch === quote) quote = null
+      continue
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch
+      continue
+    }
+    if (ch === '>') return source.slice(start.index, i + 1)
+  }
+  return null
 }
 
 /**

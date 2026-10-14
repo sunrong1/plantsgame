@@ -1,31 +1,48 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  占位词图（PLACEHOLDER）—— 由 Story 1.6 生成，Story 1.8 / 1.9 逐张替换为正式插画。
+  词图：three（三）—— Story 1.8 第一批校准批，**数词档**（抽象·计数）。
 
-  ⚠️ 这不是插画，是为了让「词图缺失」这一类内容错误在 Story 1.6 就能真正被抓出来
-     （否则校验器只能恒退 0，重演「跑过了 validate:content 不构成任何证据」）。
-  ⚠️ 随手把它当成「已定稿」继承，比没有图更糟 —— 正式插画有统一的构图规范
-     （docs/art-direction.md 第 3 节，Story 1.7 定稿）。
+  规格（docs/art-direction.md §1）：SVG / viewBox 0 0 512 512 / 512×512 / 透明底
+  构图（§5 词图模板）：主体占画布约 67%、重心居中、3/4 视角、两条落地线齐平
 
-  规格（docs/art-direction.md 第 1 节）：SVG / viewBox 0 0 512 512 / 512×512 / 透明底
+  G10：不得含 text / image / foreignObject —— 答案不许以任何形式印在图上。
+  G8：XML 注释正文里不许出现连续双短横（下面提到 token 名时刻意省掉前导的两条短横）。
+
+  ⚠️ **为什么用「一上二下的三个箱子」，而不是三个球或三只动物。**
+     ① **数量必须一眼可数** —— 1-2-3 这类数词的插画，唯一的任务是让孩子
+        在一眼之内数清楚。散开摆三个更容易数，堆成一堆就数不清了。
+     ② **颜色必须是中性木色** —— 单元 1 里已经有 red / blue / yellow 三个颜色词。
+        若把三个方块画成红黄蓝，这张图会同时激活三个颜色答案，
+        孩子在选「three」时会被颜色带跑。这是**答案串扰**，比画得难看更严重。
+     ③ **形状必须是方的** —— 本批已有 ball（圆）与 dog（曲线有机形），
+        再用方块可以把「具象档」的形状光谱铺开。
 -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512"
-     role="img" aria-label="占位图：u1-three">
-  <!-- 斜纹底纹：正式插画不会有这个纹理，一眼可辨 -->
-  <g stroke="#e4e7eb" stroke-width="14" stroke-linecap="round">
-    <line x1="96" y1="416" x2="96" y2="464" />
-    <line x1="160" y1="352" x2="160" y2="464" />
-    <line x1="224" y1="288" x2="224" y2="464" />
-    <line x1="288" y1="224" x2="288" y2="464" />
-    <line x1="352" y1="160" x2="352" y2="464" />
-    <line x1="416" y1="96" x2="416" y2="464" />
+     role="img" aria-label="三">
+  <g stroke="#6b3f1c" stroke-width="12" stroke-linejoin="round">
+    <!--
+      下层两个箱子。
+      ⚠️ 落地线必须齐平（都在 y=416）。错开一点点就会读成「远处一个近处一个」，
+      透视反而帮倒忙 —— 数词图要的是「并排的三」，不是「有纵深的三」。
+    -->
+    <path d="M 84 258 L 180 312 L 180 416 L 84 362 Z" fill="#c98b4b" />
+    <path d="M 180 312 L 276 258 L 276 362 L 180 416 Z" fill="#a96e33" />
+    <path d="M 180 204 L 276 258 L 180 312 L 84 258 Z" fill="#e8b273" />
+
+    <path d="M 236 258 L 332 312 L 332 416 L 236 362 Z" fill="#c98b4b" />
+    <path d="M 332 312 L 428 258 L 428 362 L 332 416 Z" fill="#a96e33" />
+    <path d="M 332 204 L 428 258 L 332 312 L 236 258 Z" fill="#e8b273" />
+
+    <!--
+      上层那一个。
+      ⚠️ Z 序：它**最后画**。金字塔形的堆叠里，上层箱子在视觉上是「骑在」
+         下层两个之间的凹槽上，所以它的下缘本来就该压住下层的上缘。
+         反过来先画它，下层两个就会盖住它的下角，整堆读成「两摞」。
+      ⚠️ 三个面里顶面最亮、侧面分左右两档明度 —— 只有这样才读得出是立方体；
+         三个面同色就是一个平面的六边形（骰子），数词图不能这么偷懒。
+    -->
+    <path d="M 160 150 L 256 204 L 256 308 L 160 254 Z" fill="#c98b4b" />
+    <path d="M 256 204 L 352 150 L 352 254 L 256 308 Z" fill="#a96e33" />
+    <path d="M 256 96 L 352 150 L 256 204 L 160 150 Z" fill="#e8b273" />
   </g>
-  <rect x="16" y="16" width="480" height="480" rx="36" fill="none"
-        stroke="#9aa0a6" stroke-width="8" stroke-dasharray="26 18" />
-  <text x="256" y="238" text-anchor="middle" font-family="system-ui, sans-serif"
-        font-size="40" font-weight="700" fill="#5f6368" letter-spacing="4">PLACEHOLDER</text>
-  <text x="256" y="292" text-anchor="middle" font-family="system-ui, sans-serif"
-        font-size="34" fill="#5f6368">u1-three</text>
-  <text x="256" y="336" text-anchor="middle" font-family="system-ui, sans-serif"
-        font-size="22" fill="#80868b">Story 1.8 / 1.9 替换</text>
 </svg>

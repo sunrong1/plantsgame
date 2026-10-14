@@ -1,31 +1,114 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  占位词图（PLACEHOLDER）—— 由 Story 1.6 生成，Story 1.8 / 1.9 逐张替换为正式插画。
+  词图：teacher（老师）—— Story 1.8 第一批校准批，**人物档**（具象·人物）。
+  人形是本批公认最难的一张：它没有「长什么样就叫什么」的直觉可抄，
+  而且必须与同单元的 student 区分开 —— 单元 1 里另外还有
+  father / mother / brother / sister / friend 六个词也是人。
 
-  ⚠️ 这不是插画，是为了让「词图缺失」这一类内容错误在 Story 1.6 就能真正被抓出来
-     （否则校验器只能恒退 0，重演「跑过了 validate:content 不构成任何证据」）。
-  ⚠️ 随手把它当成「已定稿」继承，比没有图更糟 —— 正式插画有统一的构图规范
-     （docs/art-direction.md 第 3 节，Story 1.7 定稿）。
+  规格（docs/art-direction.md §1）：SVG / viewBox 0 0 512 512 / 512×512 / 透明底
+  构图（§5 词图模板）：主体占画布约 78%（按高度）、重心居中、3/4 正面站姿
+    （[CR] 2026-10-14 实测订正：人物档高度天然吃满竖向留白，原 66% 与实测对不上，
+      §5 已就人物/曲线档分档，见 art-direction §5.1。）
 
-  规格（docs/art-direction.md 第 1 节）：SVG / viewBox 0 0 512 512 / 512×512 / 透明底
+  G10：不得含 text / image / foreignObject —— 答案不许以任何形式印在图上。
+  G8：XML 注释正文里不许出现连续双短横（下面提到 token 名时刻意省掉前导的两条短横）。
+
+  ⚠️ **为什么用「眼镜 + 书本 + 灰发」三件套当辨识点。**
+     单元 1 有 7 个人物词，光靠「一个人」根本分不开。而这三条在 48px 上都还在：
+     眼镜是两个深色小点、书本是一块横在腰前的浅色矩形、灰发在剪影上是头顶的一撮浅色。
+     若只留「衣服颜色」，48px 下四种衣服会糊成同一个人。
+
+  ⚠️ **三版返工的共同教训（都记在这里，因为都不是画得好不好，而是画法选错）**：
+     ① **两个灰色侧块画在眼睛的高度** —— 栅格化后整颗头读成「戴耳机的人」。
+        头发的体积只能在**头顶和脑后**，眼睛那一圈必须留给脸。
+     ② **人物只占画布约 35%** —— 画布是正方形，站着的人天然窄长，
+        不刻意加宽就会在左右留出大片空白，48px 下人物只剩十几像素高。
+        ⇒ 加宽肩与手臂，并把摊开的书摊到更宽。
+        [CR] 2026-10-14 实测：宽度方向是 242px / 约 47%（不是这里原先写的 55%），
+        而 §5.1 的口径是**最长边**，对这张图落在高度方向上，约 78%。
+     ③ **头发椭圆一路盖到眼睛下方** —— 整颗头读成「戴头巾／头盔的人」。
+        判据只有一条：**头发的下缘必须在眼镜之上**。比第①条更普适。
+     ④ **手臂画得太粗就等于没画** —— 加粗手臂并不会让它更显眼，
+        只会把躯干剪影撑成一个大圆肩，两条胳膊彻底消失。
+        ⇒ 想让肢体显形，靠的是**露出躯干之外的长度**，不是加宽。
 -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512"
-     role="img" aria-label="占位图：u1-teacher">
-  <!-- 斜纹底纹：正式插画不会有这个纹理，一眼可辨 -->
-  <g stroke="#e4e7eb" stroke-width="14" stroke-linecap="round">
-    <line x1="96" y1="416" x2="96" y2="464" />
-    <line x1="160" y1="352" x2="160" y2="464" />
-    <line x1="224" y1="288" x2="224" y2="464" />
-    <line x1="288" y1="224" x2="288" y2="464" />
-    <line x1="352" y1="160" x2="352" y2="464" />
-    <line x1="416" y1="96" x2="416" y2="464" />
+     role="img" aria-label="老师">
+  <g stroke="#3a3f4a" stroke-width="12" stroke-linejoin="round" stroke-linecap="round">
+
+    <!-- 腿与鞋 -->
+    <rect x="198" y="352" width="56" height="92" rx="26" fill="#3f4a5a" />
+    <rect x="258" y="352" width="56" height="92" rx="26" fill="#3f4a5a" />
+    <ellipse cx="226" cy="446" rx="40" ry="19" fill="#2b313b" />
+    <ellipse cx="286" cy="446" rx="40" ry="19" fill="#2b313b" />
+
+    <!-- 上身：肩宽腰窄。梯形剪影是人形最容易认的骨架。 -->
+    <path d="M 160 268 Q 160 230 256 230 Q 352 230 352 268 L 336 358 Q 328 374 256 374
+             Q 184 374 176 358 Z" fill="#4a7fc1" />
+
+    <!-- 脖子 -->
+    <rect x="232" y="180" width="48" height="56" rx="18" fill="#f0c9a4" />
+
+    <!--
+      灰发：只在头顶与脑后，**眼睛那一圈必须留给脸**。
+      ⚠️ 前两版的失败都出在这里：① 两侧各画一个灰块（读成耳机）；
+         ② 头发椭圆一直盖到眼睛下方（读成头巾 / 头盔）。
+         ⇒ 判据只有一条：**头发的下缘必须在眼镜之上**。
+         这里下缘 146，眼镜中心 156（<circle cy="156">）—— 只差 10px。
+        [CR] 2026-10-14 更正：原文写「眼镜中心 152、只差 6px」，152 与图里的 156 对不上，
+        6px 也不对（到瞳孔中心是 4px，到镜框是 10px）。这条判据要传给 Story 1.9，数字不能错。
+    -->
+    <ellipse cx="256" cy="106" rx="62" ry="40" fill="#b3aeb4" />
+    <ellipse cx="256" cy="150" rx="54" ry="60" fill="#f0c9a4" />
+    <!-- 额前一撮刘海 -->
+    <path d="M 206 132 Q 232 106 266 112 Q 296 118 306 138 Q 274 124 238 134 Q 216 140 206 132 Z"
+          fill="#b3aeb4" />
   </g>
-  <rect x="16" y="16" width="480" height="480" rx="36" fill="none"
-        stroke="#9aa0a6" stroke-width="8" stroke-dasharray="26 18" />
-  <text x="256" y="238" text-anchor="middle" font-family="system-ui, sans-serif"
-        font-size="40" font-weight="700" fill="#5f6368" letter-spacing="4">PLACEHOLDER</text>
-  <text x="256" y="292" text-anchor="middle" font-family="system-ui, sans-serif"
-        font-size="34" fill="#5f6368">u1-teacher</text>
-  <text x="256" y="336" text-anchor="middle" font-family="system-ui, sans-serif"
-        font-size="22" fill="#80868b">Story 1.8 / 1.9 替换</text>
+
+  <!--
+    眼镜：整张图里最重要的一个辨识点。
+    ⚠️ 镜片**画成深色实心**而不是空心圆框 —— 空心圆框在 48px 上只剩两个
+    1px 的环，孩子看不到；而深色实心是两个稳定的暗点，一眼就是「戴眼镜的人」。
+  -->
+  <g fill="none" stroke="#2b313b" stroke-width="12">
+    <circle cx="232" cy="156" r="23" />
+    <circle cx="282" cy="156" r="23" />
+  </g>
+  <path d="M 255 156 L 259 156" stroke="#2b313b" stroke-width="12" stroke-linecap="round" />
+  <circle cx="226" cy="150" r="8" fill="#2b313b" />
+  <circle cx="276" cy="150" r="8" fill="#2b313b" />
+
+  <!-- 微笑：一条短的上弯线。画长了会读成小胡子。 -->
+  <path d="M 240 186 Q 257 198 274 186" fill="none" stroke="#8a5a3c" stroke-width="10"
+        stroke-linecap="round" />
+
+  <!--
+    双臂：从肩向外再向前收到手。
+    ⚠️ 第三版：44px 太粗，整条手臂并进躯干，栅格化后是一块蓝色大圆肩，
+       完全读不出「两条胳膊」。这里降到 36px，并把肘部再往外推 ——
+       **手臂必须在躯干剪影之外露出足够的一段**，否则加粗只会把剪影撑胖。
+  -->
+  <g fill="none" stroke="#4a7fc1" stroke-width="36" stroke-linecap="round">
+    <path d="M 176 266 Q 128 314 180 344" />
+    <path d="M 336 266 Q 384 314 332 344" />
+  </g>
+
+  <!--
+    摊开的书：横在腰前的一块浅色。
+    ⚠️ 中缝必须画出来 —— 没有它就是一块白板，「老师」的第二辨识点就没了。
+    ⚠️ 书不能摊得太宽：宽到 166–346 时两只手完全被盖住，书就成了「贴在腰上的一块板」。
+       收到 182–330，手才有地方搭上去。
+  -->
+  <path d="M 250 316 Q 200 300 182 320 L 182 402 Q 200 382 250 396 Z"
+        fill="#f3e6c8" stroke="#3a3f4a" stroke-width="12" stroke-linejoin="round" />
+  <path d="M 262 316 Q 312 300 330 320 L 330 402 Q 312 382 262 396 Z"
+        fill="#f3e6c8" stroke="#3a3f4a" stroke-width="12" stroke-linejoin="round" />
+  <path d="M 256 312 L 256 400" stroke="#3a3f4a" stroke-width="10" stroke-linecap="round" />
+
+  <!--
+    两只手：画在书**之后**，压在书的左右外缘上。
+    ⚠️ Z 序是关键 —— 手画在书之前会被完全盖掉，「拿着书」就退化成「身前一块板」。
+  -->
+  <circle cx="186" cy="358" r="20" fill="#f0c9a4" stroke="#3a3f4a" stroke-width="10" />
+  <circle cx="326" cy="358" r="20" fill="#f0c9a4" stroke="#3a3f4a" stroke-width="10" />
 </svg>

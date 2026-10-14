@@ -50,7 +50,22 @@ echo ""
 echo "═══ 2. 已作废脚本不得作为现行指令 ═══"
 DEAD="balance-scan.py balance-sim.py voice-entries.json"
 BAD=0
-for f in "$GDD" "$ARCH" "CLAUDE.md"; do
+# ⚠️ `[CR]` 2026-10-14：扫描范围原先只有 GDD / 架构 / CLAUDE.md 三份，
+#    于是 `gdds/<slug>/epics-draft.md:159` 那条面向用户的现行指令
+#    「数值调优……每次改动后重跑 `balance-scan.py`」**扫不到** ——
+#    而 `balance-scan.py` 已在本 story 删除，那条指令当场变成悬空的。
+#    一个扫不到的文档等于没有守卫，所以把 `epics-draft.md` 纳入。
+#
+# ⚠️ **`decision-log.md` 是刻意排除的，且这个排除是声明式的，不是遗漏。**
+#    它是**历史日志**，逐条记录「当时做了什么、发现了什么 bug、做了什么决策」，
+#    它的价值恰恰在于保留已经作废的做法 ——「`balance-scan.py` 的僵尸容器是 `dict[col]`」
+#    这句话在日志里是**正确的事实陈述**，不是待执行的指令。
+#    把它纳入扫描会一次性产出 6 条误报，而**会误报的守卫会被当成噪声忽略掉**，
+#    那比没有守卫更糟（同 §3.7 的教训）。
+#    ⇒ 折中：排除该文件，但在下一行 `pass` 里把排除写成**可见**的一行，
+#      这样下一个读脚本的人看到的是一个被声明的决定，而不是一个看不见的洞。
+GDD_DIR="$(dirname "$GDD")"
+for f in "$GDD" "$ARCH" "CLAUDE.md" "$GDD_DIR"/epics-draft.md; do
   [[ -f "$f" ]] || continue
   while IFS= read -r line; do
     ln=$(echo "$line" | sed 's/^ *//')
@@ -67,6 +82,7 @@ for f in "$GDD" "$ARCH" "CLAUDE.md"; do
   done < "$f"
 done
 [[ $BAD -eq 0 ]] && pass "文档里提到的已作废脚本都有历史标注"
+echo "  ℹ️ 已声明的排除：decision-log.md（历史日志，条目是事实记录而非现行指令；纳入会产 6 条误报）"
 
 echo ""
 echo "═══ 3. 文档声明的词条数 ↔ 真实数据源 ═══"
