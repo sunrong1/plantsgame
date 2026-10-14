@@ -4,7 +4,11 @@
 
 ## 项目状态
 
-本仓库于 2026-10-11 通过 BMAD Method 从零重做。**当前没有产品代码。**
+本仓库于 2026-10-11 通过 BMAD Method 从零重做。
+
+**产品代码已有**：Epic 1 的 Story 1-1 ~ 1-6 已完成并合入 main
+（工程脚手架、音频解锁与 TTS、朗读录音、战斗内核、回合状态机、内容数据层）。
+旧实现（Vue 3 + Phaser 3 塔防）已归档在 git tag `legacy-v5.x-final`，**仅作参考，不是蓝本**。
 
 进度：`[GDD]` 已定稿（`_bmad-output/planning-artifacts/gdds/gdd-plants-game-2026-10-11/gdd.md`，
 `status: final`，**revision 4** —— rev 4 由 `[IR]` 修订：补战斗疲劳处置路径（原承诺无 story 承接）
