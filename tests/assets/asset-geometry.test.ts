@@ -43,6 +43,11 @@ import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
+// ⚠️ 走 barrel `../../src/core/index.js` + `.js` 后缀 —— 与
+// `scripts/validate-content.ts` 同一形态（`verbatimModuleSyntax` +
+// `moduleResolution: bundler` 的既定写法）。项目没有 `@/` 别名。
+import { TOWER_TYPES as CORE_TOWER_TYPES } from '../../src/core/index.js'
+
 import {
   assetPresenceProblems,
   loadUnitFiles,
@@ -80,7 +85,19 @@ const TOWER_COLOR_TOKEN: Record<string, string> = {
   slow: 'color-tower-slow',
   aoe: 'color-tower-aoe',
 }
-const TOWER_TYPES = ['direct', 'slow', 'aoe'] as const
+/**
+ * 🔥 **塔型集合的单一事实源是 `src/core/balance.ts` 的 `TOWER_TYPES`。**
+ *
+ * ⚠️ `[CR]` 2026-10-14：本文件原来写死 `['direct','slow','aoe']`，而
+ * `scripts/validate-content.ts` import 了真实来源 —— **两处**。
+ * core 新增第四种塔型时：脚本立刻要求新 svg，而由本常量派生的
+ * **G2 / G3 / G4 / G5 / §3.4 / §3.5 / §3.6 / G8 / G9 共 9 组**
+ * 会同时对它失明。AC-14.1 明文要求「直接 import，不要另写一份」。
+ *
+ * ⚠️ `TOWER_COLOR_TOKEN` 仍然是本文件独有的映射（core 里没有「塔型→token 名」
+ * 这层信息），它的键必须覆盖全部 `TOWER_TYPES` —— 由下面那条断言钉住。
+ */
+const TOWER_TYPES = CORE_TOWER_TYPES
 const ALL_ASSETS = [
   ...TOWER_TYPES.map((t) => join(towersDir, `${t}.svg`)),
   join(zombiesDir, 'zombie.svg'),
@@ -128,21 +145,36 @@ interface Element {
   attrs: Record<string, string>
 }
 
+/**
+ * 解析一个标签的属性体（`m[2]` 那段）。
+ *
+ * ⚠️ `[CR]` 2026-10-14：**必须同时认单引号与双引号。**
+ * 旧实现只认 `"..."`，而 Inkscape / Illustrator / 多数 SVG 导出器发的是单引号 ——
+ * 实测 `<ellipse cx='256' cy='300' rx='90' ry='120'/>` 会得到 `attrs = {}`，
+ * 于是 G5 的结构签名退化成 `ellipse:cx=,cy=,rx=,ry=`（几何全丢），
+ * §3.4 的外接盒塌成 0，§3.6 的线宽扫描看到 0 个宽度而**空过**。
+ *
+ * `scripts/validate-content.ts` 的 `attrOf` 早就同时认两种引号 ——
+ * **同一个项目里两个解析器只修了一半**，这正是漂移的来源。
+ */
+function readAttrs(body: string): Record<string, string> {
+  const attrs: Record<string, string> = {}
+  const attrRe = /([a-zA-Z-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g
+  for (let a = attrRe.exec(body); a !== null; a = attrRe.exec(body)) {
+    const name = (a[1] ?? '').toLowerCase()
+    if (name === '') continue
+    attrs[name] = (a[3] ?? a[2] ?? '').trim()
+  }
+  return attrs
+}
+
 /** 剥掉注释后，取出全部绘制元素。`<path>` 等不可解析图元也会被取出来（由调用方拒收）。 */
 function drawElements(source: string): Element[] {
   const stripped = stripXmlComments(source)
   const out: Element[] = []
   const re = /<(path|circle|ellipse|rect|polygon|polyline|line)\b([^>]*)>/gi
   for (let m = re.exec(stripped); m !== null; m = re.exec(stripped)) {
-    const attrs: Record<string, string> = {}
-    const body = m[2] ?? ''
-    const attrRe = /([a-zA-Z-]+)\s*=\s*"([^"]*)"/g
-    for (let a = attrRe.exec(body); a !== null; a = attrRe.exec(body)) {
-      const name = (a[1] ?? '').toLowerCase()
-      if (name === '') continue
-      attrs[name] = (a[2] ?? '').trim()
-    }
-    out.push({ tag: (m[1] ?? '').toLowerCase(), attrs })
+    out.push({ tag: (m[1] ?? '').toLowerCase(), attrs: readAttrs(m[2] ?? '') })
   }
   return out
 }
@@ -258,19 +290,97 @@ export function subjectBox(source: string): Box | null {
 
 // ── G3 / G4：颜色 ──────────────────────────────────────────────────────────
 
-/** 文件里**实际用作填充/描边**的颜色值（只取 `fill=` / `stroke=` 的属性值）。 */
-function usedColors(source: string): string[] {
-  const stripped = stripXmlComments(source)
-  const out: string[] = []
-  const re = /(?:fill|stroke)\s*=\s*"([^"]*)"/gi
-  for (let m = re.exec(stripped); m !== null; m = re.exec(stripped)) out.push((m[1] ?? '').trim())
-  return out
-}
-
 /** 文件里出现的所有 hex 色值字面量（用于「不许出现 token 之外的 hex」）。 */
 function hexLiterals(source: string): string[] {
   const stripped = stripXmlComments(source)
   return [...new Set((stripped.match(/#[0-9a-fA-F]{3,8}\b/g) ?? []).map((h) => h.toLowerCase()))]
+}
+
+/**
+ * 🎯 **主体填充色** —— AC-4 要守的是「主体是那个颜色」，不是「那个颜色在场」。
+ *
+ * ⚠️ `[CR]` 2026-10-14：G3 原来是 `toContain(expected)`，把
+ * `<g fill="塔色" stroke="描边">` 对调成 `<g fill="描边" stroke="塔色">`
+ * （塔身渲染成白色）之后**全绿** —— 因为两个 hex 都在文件里、都合法。
+ *
+ * ⇒ 改成**按面积取最大**：主体就是画面上占地方最多的那块。
+ * `<g>` 上的 `fill` 会向下继承给没有自己 `fill` 的子图元，
+ * 因此逐个图元解析「自己的 fill，没有就沿用祖先 `<g>` 的 fill」。
+ *
+ * ⚠️ 面积算不出来（图元缺属性）时该图元**不参与**竞选，
+ * 而不是按 0 面积算 —— 后者会让「解析失败」冒充「面积最小」。
+ */
+function dominantFillColor(source: string): string | null {
+  const stripped = stripXmlComments(source)
+  let best: { color: string; area: number } | null = null
+
+  // 逐个 `<g>` 开标签推进一条继承栈，扫描到哪个图元就用当时的栈顶 fill。
+  const re = /<(\/?)(g|rect|circle|ellipse|polygon|polyline|line)\b([^>]*)>/gi
+  const stack: Array<string | null> = [null]
+  for (let m = re.exec(stripped); m !== null; m = re.exec(stripped)) {
+    const closing = m[1] === '/'
+    const tag = (m[2] ?? '').toLowerCase()
+    const body = m[3] ?? ''
+    const own = readAttrs(body).fill
+    const inherited = stack[stack.length - 1] ?? null
+
+    if (tag === 'g') {
+      if (closing) {
+        if (stack.length > 1) stack.pop()
+        continue
+      }
+      // `fill="none"` 不往下传颜色（SVG 语义如此），否则子图元会被算成一个 0 面积的 none
+      const next = own === undefined ? null : own.trim().toLowerCase()
+      stack.push(next === 'none' ? null : next)
+      continue
+    }
+
+    const fill = (own ?? inherited)?.trim().toLowerCase() ?? null
+    if (fill === null || fill === 'none') continue
+    const area = elementArea(tag, readAttrs(body))
+    if (area === null) continue
+    if (best === null || area > best.area) best = { color: fill, area }
+  }
+  return best?.color ?? null
+}
+
+/** 图元的签名面积（`line` / `polyline` 没有面积，返回 null）。 */
+function elementArea(tag: string, attrs: Record<string, string>): number | null {
+  const n = (k: string): number | null => {
+    const raw = attrs[k]
+    if (raw === undefined) return null
+    const v = Number.parseFloat(raw.replace(/(?:px|%)$/i, '').trim())
+    return Number.isFinite(v) ? v : null
+  }
+  switch (tag) {
+    case 'rect': {
+      const w = n('width')
+      const h = n('height')
+      return w === null || h === null ? null : w * h
+    }
+    case 'circle': {
+      const r = n('r')
+      return r === null ? null : Math.PI * r * r
+    }
+    case 'ellipse': {
+      const rx = n('rx')
+      // SVG 缺 ry 时取 rx —— 不这么算会把一张正常的椭圆算成 0 面积
+      const ry = n('ry') ?? rx
+      if (rx === null || ry === null) return null
+      return Math.PI * rx * ry
+    }
+    case 'polygon': {
+      const pts = nums(attrs['points'])
+      if (pts.length < 6) return null
+      const xs = pts.filter((_, i) => i % 2 === 0)
+      const ys = pts.filter((_, i) => i % 2 === 1)
+      const w = Math.max(...xs) - Math.min(...xs)
+      const h = Math.max(...ys) - Math.min(...ys)
+      return w * h
+    }
+    default:
+      return null
+  }
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -467,25 +577,47 @@ describe('G5 —— 三塔去掉颜色后仍可分（AC-5 / §4 第 5 条）', (
 // ══════════════════════════════════════════════════════════════════════════
 
 describe('G3 —— 主体填充色 === tokens.css 的字面 hex（AC-4）', () => {
+  it('TOWER_COLOR_TOKEN 覆盖 core 里的每一个塔型 —— 否则下面那些断言会静默跳过新塔型', () => {
+    const missing = TOWER_TYPES.filter((t) => TOWER_COLOR_TOKEN[t] === undefined)
+
+    expect(
+      missing,
+      `core 的 TOWER_TYPES 新增了 ${missing.join('、')}，但本文件没有对应的 token 名映射 —— ` +
+        'G3 / G4 会拿 undefined 去 tokens.css 里找，报出「tokens.css 里没有 --undefined」，' +
+        '看不出根因是映射表没跟上。',
+    ).toEqual([])
+  })
+
   it.each(TOWER_TYPES.map((t) => [t, TOWER_COLOR_TOKEN[t] as string] as const))(
-    '%s.svg 的填充色里有 --%s',
+    '%s.svg 的**主体**填充色就是 --%s',
     (tier, tokenName) => {
       const expected = token(tokenName).toLowerCase()
+      const source = readAsset(join(towersDir, `${tier}.svg`))
 
       expect(
-        usedColors(readAsset(join(towersDir, `${tier}.svg`))).map((c) => c.toLowerCase()),
-        `${tier}.svg 里没有出现 ${expected} —— 塔色必须与 tokens.css 逐字一致` +
-          '（SVG 经 <img> 加载拿不到 CSS 变量，一致性只能靠这条断言守）',
-      ).toContain(expected)
+        dominantFillColor(source),
+        `${tier}.svg 里画面上最大的一块是 ${dominantFillColor(source)}，不是 ${expected} —— ` +
+          '塔色必须与 tokens.css 逐字一致（SVG 经 <img> 加载拿不到 CSS 变量，' +
+          '一致性只能靠这条断言守）。⚠️ 断言的是**主体**，不是「这个色值在文件里出现过」：' +
+          '把塔身与描边对调，两种颜色都还在文件里，但塔已经不是那个颜色了。',
+      ).toBe(expected)
     },
   )
 
-  it('zombie.svg 的填充色里有 --color-zombie', () => {
+  it('zombie.svg 的主体填充色是 --color-zombie', () => {
     const expected = token('color-zombie').toLowerCase()
 
-    expect(usedColors(readAsset(join(zombiesDir, 'zombie.svg'))).map((c) => c.toLowerCase())).toContain(
-      expected,
-    )
+    expect(dominantFillColor(readAsset(join(zombiesDir, 'zombie.svg')))).toBe(expected)
+  })
+
+  it('三塔的主体填充色两两不等 —— 否则三塔在同色盲条件下无差别', () => {
+    const bodies = TOWER_TYPES.map((t) => dominantFillColor(readAsset(join(towersDir, `${t}.svg`))))
+
+    expect(
+      new Set(bodies).size,
+      `三塔主体填充色是 ${bodies.join(' / ')} —— 有重复。` +
+        'G5 只保证「去色后剪影可分」，若三塔底色又相同，灰度之外也没有第二重区分。',
+    ).toBe(TOWER_TYPES.length)
   })
 })
 

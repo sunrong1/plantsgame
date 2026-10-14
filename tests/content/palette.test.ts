@@ -323,3 +323,63 @@ describe('AC-23 —— 其余元素与反馈色两两可辨', () => {
     )
   })
 })
+
+// ══════════════════════════════════════════════════════════════════════════
+// AC-11 —— `--color-asset-stroke` 的两条判据（Story 1.7 裁决 1）
+// ══════════════════════════════════════════════════════════════════════════
+//
+// ⚠️ **为什么这两条必须在这里，而不是只写在 `docs/art-direction.md` 里：**
+//
+// Story 1.7 的裁决 1 判掉「描边 vs 草地 ≥ 3:1」这条判据，**全部理由**是
+// 「判据 2/3 才是兜底机制本身，描边与塔身同色时剪影边界消失」。
+// 而 `[CR]` 2026-10-14 实测发现：**判据 2/3 一条守卫都没有** ——
+// 把 `--color-asset-stroke` 改成 `#336699` 并同步改 4 个 SVG 的字面 hex，
+// 全部测试仍全绿、`validate:content` exit 0，而三条对比度从
+// 9.68 / 9.39 / 9.20 / 7.87 掉到 1.61 / 1.57 / 1.53 / 1.31。
+//
+// **用来正当化「放弃一条规则」的那条规则，自己可以悄悄消失** —— 这是本项目
+// 反复吃亏的形态（memory：「守卫断言允许了它要防的违规」）。补上。
+
+describe('AC-11 —— 描边色的两条判据（裁决 1 的兜底机制本身）', () => {
+  /** 判据 2/3 的门槛。取 3 是 AC-11 的原值；这里留 1.0 余量以吸收实算误差。 */
+  const STROKE_MIN_CONTRAST = 3
+
+  const STROKE_AGAINST = ['color-tower-shooter', 'color-tower-slow', 'color-tower-aoe', 'color-zombie']
+
+  it.each(STROKE_AGAINST)('描边 vs --%s ≥ 3:1 —— 描边糊进主体时剪影边界消失，AC-5 的兜底当场作废', (name) => {
+    const stroke = token('color-asset-stroke')
+    const ratio = contrast(stroke, token(name))
+
+    expect(
+      ratio,
+      `--color-asset-stroke（${stroke}）对 --${name}（${token(name)}）只有 ${ratio.toFixed(2)}:1，` +
+        `低于 ${STROKE_MIN_CONTRAST}:1。⚠️ 这正是 Story 1.7 裁决 1 用来放弃「判据 1」的` +
+        '全部理由 ——「判据 2/3 才是兜底机制本身」。改了描边色就必须同步改 4 个 SVG 的' +
+        '字面 hex，否则 G3/G4 会红；但**那些断言只管色值同源，管不了对比度**。',
+    ).toBeGreaterThanOrEqual(STROKE_MIN_CONTRAST)
+  })
+
+  it('描边对草地的对比度记为「判据不成立」，不是「忘了查」', () => {
+    // ⚠️ AC-11 判据 1 的**前提**是描边与草地相邻，而本项目描边画在轮廓内侧，
+    // 永远不挨着草地（外缘由塔身对草地 3.86:1 守着）。前提不成立 ⇒ 判据不适用。
+    // 这条断言守的是「有人明确知道它不适用」，而不是「它达标」。
+    const ratio = contrast(token('color-asset-stroke'), token('color-bg'))
+
+    expect(
+      ratio,
+      `描边对草地是 ${ratio.toFixed(2)}:1 —— 若将来把描边挪到轮廓**外侧**，` +
+        '判据 1 立刻恢复成立性，必须重算并把 3:1 补回。' +
+        '在那之前 docs/art-direction.md §2 记的是「判据不成立」，不是「已达标」。',
+    ).toBeLessThan(3)
+  })
+
+  it('描边是浅色 —— 三塔底色都在 L 0.058–0.064，深色描边必然糊进塔身', () => {
+    const strokeL = luminance(token('color-asset-stroke'))
+
+    expect(
+      strokeL,
+      `描边的相对亮度是 ${strokeL.toFixed(3)} —— AC-11 实算过，描边要同时离草地与三塔都够远，` +
+        '只能落在浅色区（L ≈ 0.7+）。**不要为了「看起来自然」把描边调暗**，那会直接废掉判据 2。',
+    ).toBeGreaterThan(0.5)
+  })
+})

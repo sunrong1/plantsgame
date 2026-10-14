@@ -447,8 +447,13 @@ function isOpaqueFill(fill: string | null): boolean {
   if (v.startsWith('#')) {
     const h = v.slice(1)
     if (/^[0-9a-f]{8}$/.test(h)) return h.slice(6) === 'ff' // #rrggbbaa
-    if (/^[0-9a-f]{3}$/.test(h) || /^[0-9a-f]{4}$/.test(h)) return h[3] === 'f' // #rgba
-    return true // #rgb / #rrggbb
+    // ⚠️ **3 位与 4 位必须分开判。** `[CR]` 2026-10-14：旧代码把
+    // `#rgb`（3 位）与 `#rgba`（4 位）合在一行取 `h[3]`，而 3 位 hex
+    // 根本没有第 4 个字符 —— `h[3]` 是 `undefined`，`undefined === 'f'`
+    // 恒为 `false`，于是 `fill="#fff"` 被判成半透明放行。
+    // `#fff` 是写 SVG 最常见的写法，这条分支漏掉的正是最可能的那一种。
+    if (/^[0-9a-f]{4}$/.test(h)) return h[3] === 'f' // #rgba
+    return true // #rgb / #rrggbb —— 没有 alpha 通道，就是不透明
   }
   const fn = /^rgba?\(([^)]*)\)$/.exec(v)
   if (fn?.[1] !== undefined) {
@@ -464,24 +469,122 @@ export interface SvgGeometry {
   viewBox: string | null
   width: string | null
   height: string | null
-  /** 是否存在铺满整张画布的不透明 `<rect>`（即「不透明背景」）。 */
+  /** 是否存在覆盖整张画布的不透明图元（即「不透明背景」）。 */
   hasOpaqueCanvas: boolean
 }
 
-/** 剥注释 → 剥不渲染容器 → 取根标签属性 + 扫背景矩形。 */
+/**
+ * 这个图元的外接盒是否**覆盖整张画布**。
+ *
+ * ⚠️ `[CR]` 2026-10-14：旧判据是 `x===0 && y===0 && w===512 && h===512`
+ * ——只认**一种写法**。实测 `width="100%"`、出血 `x="-2" w="516"`、
+ * `<polygon points="0,0 512,0 512,512 0,512">` 全部放行，而它们都是不透明底。
+ * ⇒ 改成「**盖住整张画布就算**」，判据从「长得像某个样本」变成「达到目的」。
+ *
+ * 只做**轴对齐的矩形类**判定（rect / ellipse / circle / polygon 的轴对齐外包）。
+ * 判不出来的形状（`<path>` 的弧线、任意路径）由调用方另行处理 ——
+ * **宁可放过也不能误报**：一个会误报的守卫会被当成噪声忽略掉。
+ */
+function coversCanvas(el: { tag: string; attrs: Record<string, string> }): boolean {
+  const a = el.attrs
+  const num = (k: string): number | null => {
+    const raw = a[k]
+    if (raw === undefined) return null
+    const m = /^(-?\d+(?:\.\d+)?)\s*(px|%)?$/i.exec(raw.trim())
+    if (m?.[1] === undefined) return null
+    const n = Number(m[1])
+    if (!Number.isFinite(n)) return null
+    return (m[2] ?? '').toLowerCase() === '%' ? (n / 100) * SVG_EDGE : n
+  }
+
+  let minX: number | null
+  let minY: number | null
+  let maxX: number | null
+  let maxY: number | null
+
+  switch (el.tag) {
+    case 'rect': {
+      // ⚠️ `x` / `y` 缺省是 0（SVG 规范），所以 `?? 0` 在这里是**规范**而非兜底。
+      const x = num('x') ?? 0
+      const y = num('y') ?? 0
+      const w = num('width')
+      const h = num('height')
+      if (w === null || h === null) return false
+      minX = x
+      minY = y
+      maxX = x + w
+      maxY = y + h
+      break
+    }
+    case 'ellipse':
+    case 'circle': {
+      const cx = num('cx')
+      const cy = num('cy')
+      // ⚠️ ellipse 缺 `ry` 时 SVG 规定取 `rx`；circle 的 r 两轴共用。
+      const r = num('r')
+      const rx = el.tag === 'circle' ? r : num('rx')
+      const ry = el.tag === 'circle' ? r : (num('ry') ?? num('rx'))
+      if (cx === null || cy === null || rx === null || ry === null) return false
+      minX = cx - rx
+      minY = cy - ry
+      maxX = cx + rx
+      maxY = cy + ry
+      break
+    }
+    case 'polygon': {
+      // 只认**轴对齐的四点**这一种可精确判定的满画布写法
+      //（`0,0 512,0 512,512 0,512` 及其等价排列）。
+      const pts = (a['points'] ?? '')
+        .trim()
+        .split(/[\s,]+/)
+        .map(Number)
+      if (pts.length < 6 || pts.some((n) => !Number.isFinite(n))) return false
+      const xs = pts.filter((_, i) => i % 2 === 0)
+      const ys = pts.filter((_, i) => i % 2 === 1)
+      minX = Math.min(...xs)
+      maxX = Math.max(...xs)
+      minY = Math.min(...ys)
+      maxY = Math.max(...ys)
+      break
+    }
+    default:
+      return false
+  }
+
+  return minX !== null && minY !== null && maxX !== null && maxY !== null
+    && minX <= 0
+    && minY <= 0
+    && maxX >= SVG_EDGE
+    && maxY >= SVG_EDGE
+}
+
+/** 取出一个元素上的全部绘制图元（已剥注释、已剥不渲染容器）。 */
+function drawableElements(source: string): Array<{ tag: string; attrs: Record<string, string> }> {
+  const out: Array<{ tag: string; attrs: Record<string, string> }> = []
+  const re = /<(rect|ellipse|circle|polygon|path|image)\b([^>]*)>/gi
+  for (let m = re.exec(source); m !== null; m = re.exec(source)) {
+    const attrs: Record<string, string> = {}
+    const attrRe = /([a-zA-Z-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g
+    for (let a = attrRe.exec(m[2] ?? ''); a !== null; a = attrRe.exec(m[2] ?? '')) {
+      const name = (a[1] ?? '').toLowerCase()
+      if (name === '') continue
+      attrs[name] = (a[3] ?? a[2] ?? '').trim()
+    }
+    out.push({ tag: (m[1] ?? '').toLowerCase(), attrs })
+  }
+  return out
+}
+
+/** 剥注释 → 剥不渲染容器 → 取根标签属性 + 扫满画布不透明图元。 */
 export function readSvgGeometry(rawSource: string): SvgGeometry {
   const source = stripXmlComments(rawSource)
   const tag = svgRootTag(source)
   const rendered = stripNonRenderedBlocks(source)
 
   let hasOpaqueCanvas = false
-  for (const rect of rendered.match(/<rect\b[^>]*>/gi) ?? []) {
-    const x = numAttr(rect, 'x') ?? 0
-    const y = numAttr(rect, 'y') ?? 0
-    const w = numAttr(rect, 'width')
-    const h = numAttr(rect, 'height')
-    if (w !== SVG_EDGE || h !== SVG_EDGE || x !== 0 || y !== 0) continue
-    if (isOpaqueFill(attrOf(rect, 'fill'))) {
+  for (const el of drawableElements(rendered)) {
+    if (!coversCanvas(el)) continue
+    if (isOpaqueFill(attrOfFrom(el.attrs, 'fill'))) {
       hasOpaqueCanvas = true
       break
     }
@@ -493,6 +596,11 @@ export function readSvgGeometry(rawSource: string): SvgGeometry {
     height: tag === null ? null : attrOf(tag, 'height'),
     hasOpaqueCanvas,
   }
+}
+
+/** 从已解析的属性表取值 —— 与 `attrOf` 同一套语义（含 `(?:^|\s)` 锚点）。 */
+function attrOfFrom(attrs: Record<string, string>, name: string): string | null {
+  return attrs[name] ?? null
 }
 
 /** 几何问题定位用的可选上下文（词图有单元/词条，塔与僵尸没有）。 */
