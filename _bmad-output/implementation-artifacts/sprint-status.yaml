@@ -1,5 +1,5 @@
 # generated: 2026-10-12
-# last_updated: 2026-10-14 (Story 1.6 → done：[CR] 三层审查全部落地 —— 5 条 decision_needed 已裁决（退役 u1-s-what-is-this 使单元 1 由 38 条降至 37；u1-beautiful 的同义干扰项换成 u1-panda；色板加余量并登记 sun 例外；validate:content 接进 prebuild/pretest），19 条 patch 已改，其中 5 条经变异坐实是假绿并补上守卫；6 项 AC-32 命令全绿，547 条测试通过)
+# last_updated: 2026-10-14 ([CC] 纠两条漂移，均 Minor 且已落地。① game-architecture.md:490-491「塔与僵尸是像素画…扁平矢量/像素风二选一」与同文件 :374（SVG 扁平矢量）及 GDD :496/609/618 三处冲突 —— 改为扁平矢量，结论 aspect-ratio 1/1 不变，仅文档，零代码。② 用户裁决 docs/art-direction.md §3 构图规范适用范围：**§3.2–3.7 只约束塔与僵尸 4 张，词图只受 §3.1**（理由：词图 200-400 张 × 20 分钟是产能红线；30 张占位图用 <text> 也不在 6 图元内，今天上 §3.7 立刻全红；且不能写没有守卫的规矩）。新增 tests/assets 的 G9 四条断言 + 变异 M12/M13/M14，实测三条全部改坏即红，还原 md5 一致（604 条总通过，vue-tsc 与 validate:content 干净）。⚠️ M13 自己踩了两次假变异才生效（replace 命中注释里的 viewBox 而非真实属性），全过程记在 sprint-change-proposal-2026-10-14.md §6.3。未改任何 SVG、词图、战斗数值、epics.md。此前：Story 1.7 → review)
 # project: plants-game
 # project_key: NOKEY
 # tracking_system: file-system
@@ -59,7 +59,7 @@ development_status:
   1-4-战斗内核与-5-条数值断言: done
   1-5-回合状态机与题单: done
   1-6-内容数据层与单元-1-录入: done
-  1-7-塔与僵尸美术资产: backlog
+  1-7-塔与僵尸美术资产: review
   1-8-单元-1-词图-第一批: backlog
   1-9-单元-1-词图-第二批: backlog
   1-10-战场渲染与网格: backlog

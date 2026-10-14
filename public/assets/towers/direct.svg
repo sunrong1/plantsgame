@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  直射塔（direct）—— Story 1.7。
+
+  规格（docs/art-direction.md 第 1 节 / 第 3 节）：SVG / viewBox 0 0 512 512 / 512×512 / 透明底
+  构图（§3）：3/4 侧、**面朝右**、描边 16px、主体占画布约 70%（竖直方向）
+  色板：#09428c = tokens.css 的 color-tower-shooter（字面副本，见 §4 第 2 条）
+         ⚠️ 塔型叫 `direct`，色板 token 叫 `tower-shooter` —— 两者不同名，别顺着改。
+         ⚠️ token 名在这里刻意**不写前导的两个短横**：XML 注释正文里不允许出现连续的
+            双短横，写上去整份文件就不是合法 XML，浏览器按 image/xml 解析时会直接报
+            parse error，图**一片都渲染不出来**，而所有几何/颜色守卫照样全绿
+            （本 story 真的踩过一次，见 asset-geometry.test.ts 的 G8）。
+
+  规格就写在上面这段注释里。几何守卫必须先剥注释再匹配属性，
+  否则这张文件会因为这几行字而**恒绿**（AC-15 / 变异清单 M8）。
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512"
+     role="img" aria-label="直射塔">
+  <!--
+    剪影分工（§4 第 5 条）：**direct 是三塔里唯一「高瘦 + 右指」的**。
+    「右指」由横躺的炮管兑现，「高瘦」由竖直的茎兑现 —— 去掉颜色之后，
+    它是三张图里唯一有一根横向长条的，靠这个就能认出来。
+  -->
+  <g fill="#09428c" stroke="#ffffff" stroke-width="16" stroke-linejoin="round" stroke-linecap="round">
+    <!-- 泥土基座：三塔共用同一形状，保证跨塔一致（§3.6） -->
+    <rect x="176" y="378" width="160" height="56" rx="18" />
+    <!-- 竖直的茎 -->
+    <rect x="214" y="126" width="76" height="252" rx="20" />
+    <!-- 炮管：朝右伸出，是 direct 的辨识签名 -->
+    <polygon points="226,132 330,112 372,150 372,192 330,230 226,210" />
+    <!-- 顶端圆钮：把竖直轮廓收圆，避免出现纯直线柱 -->
+    <circle cx="252" cy="104" r="26" />
+  </g>
+
+  <!-- 细节：不描边。炮膛口同样不描边，否则 48px 下会糊成一坨 -->
+  <g fill="#ffffff">
+    <polygon points="336,146 366,146 366,196 336,196" />
+  </g>
+</svg>

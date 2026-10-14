@@ -78,6 +78,24 @@ export const PROBLEM_CATEGORY = {
   duplicateOptionText: 'duplicate-option-text',
   /** 选项指向本单元不存在的词条。 */
   danglingOption: 'dangling-option',
+  /**
+   * Story 1.7 / AC-14.1：塔或僵尸的 SVG 缺失。
+   *
+   * 为什么要单独一类：它与「词图缺失」是两件事 —— 词图按**词条**增减（一个单元 15-30 张，
+   * 随内容录入变化），塔/僵尸图按**塔型**增减且**总量恒为 4 张**（FR70）。
+   * 混在一类里会让「多了 1 张塔图」这种错误看起来像内容录入的正常波动。
+   */
+  assetMissing: 'asset-missing',
+  /**
+   * Story 1.7 / AC-14.1：资产目录里有**预期之外**的 SVG。
+   *
+   * 🎯 这条是 FR70「美术成本不由词汇产生」的**唯一可机器判定形式**。
+   * 只查「三个塔图都在」的话，哪天有人按词复制塔图，那条断言照样全绿
+   * —— 而那正是旧项目「词就是塔名」的历史包袱在新架构里的复发。
+   */
+  assetUnexpected: 'asset-unexpected',
+  /** Story 1.7 / AC-14.2：SVG 几何规格不合规（`viewBox` / 尺寸 / 透明底）。 */
+  svgGeometry: 'svg-geometry',
   /** 其余结构性错误（类型不对、多余字段等）。 */
   schema: 'schema',
 } as const

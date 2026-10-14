@@ -1,5 +1,5 @@
 /**
- * 内容校验（Story 1.6 / AC-10 ~ AC-14.1）。
+ * 内容校验（Story 1.6 / AC-10 ~ AC-14.1；Story 1.7 追加 AC-14.1/AC-14.2 两类资产检查）。
  *
  * ── 守什么 ────────────────────────────────────────────────────────────────
  * 五类内容错误，逐条抓出且能定位到具体词条（AC-11）：
@@ -9,6 +9,10 @@
  *   4. 卡型与选项形态不符      ← Zod
  *   5. 卡面 TTS 文本为空        ← Zod
  * 外加：entryId 全局唯一、选项指向不存在的词条、同卡选项 id 重复。
+ *
+ * **Story 1.7 追加两类：**
+ *   6. 塔/僵尸 SVG 缺失**或多余**（AC-14.1）—— 「多余」那一侧是 FR70 的唯一可判定形式
+ *   7. SVG 几何规格：`viewBox` / 输出尺寸 / 透明底（AC-14.2）—— 塔、僵尸、**以及 30 张词图**
  *
  * ── 为什么这么写（AC-14.1：纯逻辑与副作用分离）────────────────────────────
  * `validateContent()` 是纯函数：给它**已加载的单元数据**与注入的 `fileExists`，
@@ -20,13 +24,19 @@
  *     （`--only --dry` 首版用例退出码同样是 1，只是含义变成了「没匹配到任何词条」）。
  *   · 结构化结果才能断言「报的是哪一类错误、定位到哪个词条」。
  *
- * 词图根目录**参数化**（AC-14.1）：测试用临时目录喂假文件系统，
+ * 词图根目录与资产根目录**均参数化**（AC-14.1）：测试用临时目录喂假文件系统，
  * 纯函数里不许硬编码 `public/assets/words/`。
+ *
+ * ⚠️ **`deps` 的新字段一律必填，没有默认值** —— 新字段若可选，
+ *   某个测试忘传就会得到「资产检查整段没跑」的全绿，而那份绿什么都没证明。
+ *   这正是 `docs/art-direction.md:12-27` 登记的那类假绿的另一种形态。
  *
  * ── 期望值来源与出处 ──────────────────────────────────────────────────────
  * · 五类错误：story AC-11 表格；FR16：`game-architecture.md:869`
  * · 日志级别与前缀：架构 `:605-617`（ERROR 级 + `[content]` 前缀）
  * · 词图路径规范：架构 `:370-377` + `docs/art-direction.md` 第 1 节
+ * · SVG 几何规格：Story 1.7 AC-3 / `docs/art-direction.md` 第 1 节
+ * · 塔/僵尸路径规范：架构 `:755-757` + Story 1.7 AC-1/AC-2
  * · 分层写法沿用 `scripts/generate-voice.ts`（Story 1.3 确立，67 条用例验证过）
  */
 
@@ -40,6 +50,13 @@ import {
   UnitSchema,
   type ProblemCategory,
 } from '../src/content/schema'
+// ⚠️ 脚本 import `src/core/` 是**允许且已实测可行**的（`tsconfig.test.json` 文件头实测记录：
+//   注入 `const x: number = "s"` 会立刻报 TS2322，既证明被 typecheck 覆盖也证明 import core/
+//   没有把它挤出检查范围）。`scripts/balance-sim.ts:49` 就是这个形态。
+//   ⚠️ 这与 `src/content/schema.ts` 里**必须**用字面量重复的情形恰好相反 ——
+//   内容校验不能依赖战斗层模块加载成功，但**校验脚本**本来就与它同处一个校验世界。
+//   走 barrel、带 `.js` 后缀（项目无 `@/` 别名，`verbatimModuleSyntax` 下既定形态）。
+import { TOWER_TYPES } from '../src/core/index.js'
 
 // ── 常量 ────────────────────────────────────────────────────────────────────
 
@@ -54,6 +71,48 @@ const WORD_IMAGE_ROOT = join(PROJECT_ROOT, 'public/assets/words')
 
 /** 词图 URL 前缀。`imageSrc` 必须与它 + `unit-NN/` + `<entryId>.svg` 逐字一致。 */
 const WORD_IMAGE_URL_PREFIX = '/assets/words'
+
+/** 塔/僵尸/词图的共同根目录（Story 1.7 / AC-14.1）。 */
+const ASSET_ROOT = join(PROJECT_ROOT, 'public/assets')
+
+/** 塔图与僵尸图的子目录名（架构 `:755-757` 的目录树字面）。 */
+export const TOWER_ASSET_DIR = 'towers'
+export const ZOMBIE_ASSET_DIR = 'zombies'
+
+/**
+ * 僵尸资产文件名（Story 1.7 / AC-2）。
+ *
+ * ⚠️ 规划文档从未定义过「僵尸 id」—— 架构只写了 `zombies/<僵尸id>.svg`。
+ *   本 story 裁决取 `zombie`：它是**通用敌人**（FR71「一套通用敌人，一次只出现一个」），
+ *   文件名里不该出现任何暗示它会分化的词。
+ *   将来若要第二种僵尸，改为 `zombie-<type>.svg` 并同步改 `expectedZombieAssetNames()`。
+ */
+export const ZOMBIE_ASSET_NAME = 'zombie.svg'
+
+/** 塔/僵尸的 URL 前缀。Story 1.10 拼 `<img src>` 时照此拼（迁移说明见 story §八）。 */
+export const TOWER_ASSET_URL_PREFIX = '/assets/towers'
+export const ZOMBIE_ASSET_URL = `/assets/${ZOMBIE_ASSET_DIR}/${ZOMBIE_ASSET_NAME}`
+
+/** 塔型的规范 URL。文件名 = `towerType` 字面量，**不带 `u1-` 单元前缀**（FR70：按塔型制作）。 */
+export function expectedTowerAssetUrl(towerType: string): string {
+  return `${TOWER_ASSET_URL_PREFIX}/${towerType}.svg`
+}
+
+/** 塔图应有的文件名集合。**由 `TOWER_TYPES` 推出**，不在此处硬编码三个字符串。 */
+export function expectedTowerAssetNames(): readonly string[] {
+  return TOWER_TYPES.map((t) => `${t}.svg`)
+}
+
+/** 僵尸图应有的文件名集合。 */
+export function expectedZombieAssetNames(): readonly string[] {
+  return [ZOMBIE_ASSET_NAME]
+}
+
+/** SVG 画布边长（Story 1.7 / AC-3；`docs/art-direction.md` 第 1 节，两类资产共用）。 */
+export const SVG_EDGE = 512
+
+/** SVG 规范 `viewBox`（AC-3）。⚠️ 数值来自 Story 1.6 对架构「统一数值」的定稿，不是本 story 自选。 */
+export const SVG_VIEW_BOX = `0 0 ${SVG_EDGE} ${SVG_EDGE}`
 
 /** 单元目录名：`unit-01`（两位补零）。与 `unit-01.json` 的文件名同构。 */
 function unitDirName(unitNumber: number): string {
@@ -95,7 +154,11 @@ export interface ValidationResult {
 export interface ValidateDeps {
   /** 词图根目录。测试指向临时目录。 */
   wordImageRoot: string
+  /** 塔/僵尸/词图的共同根目录（Story 1.7 / AC-14.1）。测试指向临时目录。 */
+  assetRoot: string
   fileExists: (path: string) => boolean
+  /** 读文件内容。**返回 `null` = 读不到**，此时几何检查会显式报错而不是静默跳过。 */
+  readFile: (path: string) => string | null
   /** 列出某单元目录下的文件名（用于「实际找到了什么」）。返回空数组 = 目录不存在。 */
   listFiles: (dir: string) => string[]
 }
@@ -268,7 +331,14 @@ function wordImageProblems(raw: unknown, deps: ValidateDeps): ContentProblem[] {
     }
 
     const expectedPath = join(deps.wordImageRoot, unitDirName(unitNumber), `${optionId}.svg`)
-    if (deps.fileExists(expectedPath)) continue
+    if (deps.fileExists(expectedPath)) {
+      // 🎯 Story 1.7 / AC-14.2：**存在不等于合规**。
+      //   这一段此前整段缺失，而 `docs/art-direction.md:12-27` 已把它如实登记成
+      //   「无人守着的规格」——把某张占位图的 viewBox 改成 `0 0 100 100`
+      //   或贴进一块不透明底，validate:content 仍 exit 0、全部测试仍全绿。
+      problems.push(...readGeometryProblems(expectedPath, deps, { unitNumber, entryId, optionId }))
+      continue
+    }
     const dir = join(deps.wordImageRoot, unitDirName(unitNumber))
     const found = deps.listFiles(dir).filter((name) => name.endsWith('.svg')).sort()
     problems.push({
@@ -297,6 +367,281 @@ function wordImageProblems(raw: unknown, deps: ValidateDeps): ContentProblem[] {
         '多半是改过 entryId 之后忘了清理的残留（AC-11 第 1 类）',
     })
   }
+
+  return problems
+}
+
+// ── SVG 几何规格（Story 1.7 / AC-14.2、AC-15）────────────────────────────────
+
+/**
+ * 🔥 剥掉 XML 注释 —— **任何 SVG 正则匹配的前置条件，不是可选优化**。
+ *
+ * 现有占位图 `public/assets/words/unit-01/u1-dog.svg` 的文件头注释里**逐字写着**
+ * 「规格（docs/art-direction.md 第 1 节）：SVG / viewBox 0 0 512 512 / 512×512 / 透明底」。
+ * ⇒ 不剥注释就匹配 `viewBox`，**所有守卫在所有文件上恒绿**。
+ *   那不是「守卫不严」，是**守卫恒等于真** —— 比没有守卫更坏，
+ *   因为它会让下一个人以为这条规格有人守着。
+ *
+ * 换成空格而不是空串：注释紧贴属性时（`viewBox="..."<!-- x -->width="512"`）
+ * 空串会把两侧粘成一个 token。
+ */
+export function stripXmlComments(source: string): string {
+  return source.replace(/<!--[\s\S]*?-->/g, ' ')
+}
+
+/**
+ * 剥掉**不渲染**的容器块。
+ *
+ * `<defs>` / `<mask>` / `<clipPath>` / `<pattern>` / `<symbol>` 里的 `<rect>`
+ * 不会被画出来。带着它们扫「有没有不透明背景矩形」会把一张合规的图判成不合规 ——
+ * 而一个会误报的守卫比没有守卫更糟：它会被当成噪声忽略掉。
+ */
+function stripNonRenderedBlocks(source: string): string {
+  return source.replace(
+    /<(defs|mask|clipPath|pattern|symbol)\b[^>]*>[\s\S]*?<\/\s*\1\s*>/gi,
+    ' ',
+  )
+}
+
+/** 取 `<svg …>` 开标签的整段文本（属性都在里面）。 */
+function svgRootTag(source: string): string | null {
+  return /<svg\b[^>]*>/i.exec(source)?.[0] ?? null
+}
+
+/**
+ * 取开标签上的某个属性值。
+ *
+ * ⚠️ **必须用 `(?:^|\s)` 而不是 `\b` 前缀。** `\bwidth` 会命中 `stroke-width` ——
+ *   `-` 与 `w` 之间存在词边界，于是「线宽 16」会被当成「输出宽度 16」，
+ *   `width` 断言于是读到 16 而不是 512。属性之间以空白分隔，前缀锚到空白才准确。
+ */
+function attrOf(tag: string, name: string): string | null {
+  const m = new RegExp(`(?:^|\\s)${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`, 'i').exec(tag)
+  const value = m?.[1] ?? m?.[2]
+  return value === undefined ? null : value.trim()
+}
+
+/** 属性值的数值形式。`"0"` / `"512px"` / `"512"` → `0` / `512` / `512`；其它 → null。 */
+function numAttr(tag: string, name: string): number | null {
+  const raw = attrOf(tag, name)
+  if (raw === null) return null
+  const m = /^(-?\d+(?:\.\d+)?)\s*(?:px)?$/i.exec(raw)
+  return m?.[1] === undefined ? null : Number(m[1])
+}
+
+/**
+ * 这个 `fill` 是不是**不透明**。
+ *
+ * 放行：`none` / `transparent` / 半透明（`rgba(…,0.3)` / 8 位 hex 带 alpha）。
+ * 判为不透明：3/6 位 hex、`rgb()`、`rgba()` 且 alpha = 1、颜色关键字、**以及 `currentColor`**。
+ *
+ * ⚠️ `currentColor` 判为不透明是**保守取舍**：它继承自 CSS，静态无法判定，
+ *   多数情况（继承黑色）是实心的。若判为放行，一张贴了 `fill="currentColor"` 的
+ *   全画布矩形会漏网；判为实心最多让作者改成 `fill="none"` —— 报错方向对，成本也低。
+ */
+function isOpaqueFill(fill: string | null): boolean {
+  if (fill === null) return true // 未写 fill = 默认黑色 = 不透明
+  const v = fill.trim().toLowerCase()
+  if (v === 'none' || v === 'transparent') return false
+  if (v === 'currentcolor') return true
+  if (v.startsWith('#')) {
+    const h = v.slice(1)
+    if (/^[0-9a-f]{8}$/.test(h)) return h.slice(6) === 'ff' // #rrggbbaa
+    if (/^[0-9a-f]{3}$/.test(h) || /^[0-9a-f]{4}$/.test(h)) return h[3] === 'f' // #rgba
+    return true // #rgb / #rrggbb
+  }
+  const fn = /^rgba?\(([^)]*)\)$/.exec(v)
+  if (fn?.[1] !== undefined) {
+    const parts = fn[1].split(/[\s,/]+/).filter((s) => s !== '')
+    const alpha = parts.length >= 4 ? Number(parts[3]) : 1
+    return !(parts.length >= 4 && Number.isFinite(alpha) && alpha < 1)
+  }
+  return true // 其余（颜色关键字等）按不透明处理
+}
+
+/** 从一段已剥注释的 SVG 里读出几何规格。 */
+export interface SvgGeometry {
+  viewBox: string | null
+  width: string | null
+  height: string | null
+  /** 是否存在铺满整张画布的不透明 `<rect>`（即「不透明背景」）。 */
+  hasOpaqueCanvas: boolean
+}
+
+/** 剥注释 → 剥不渲染容器 → 取根标签属性 + 扫背景矩形。 */
+export function readSvgGeometry(rawSource: string): SvgGeometry {
+  const source = stripXmlComments(rawSource)
+  const tag = svgRootTag(source)
+  const rendered = stripNonRenderedBlocks(source)
+
+  let hasOpaqueCanvas = false
+  for (const rect of rendered.match(/<rect\b[^>]*>/gi) ?? []) {
+    const x = numAttr(rect, 'x') ?? 0
+    const y = numAttr(rect, 'y') ?? 0
+    const w = numAttr(rect, 'width')
+    const h = numAttr(rect, 'height')
+    if (w !== SVG_EDGE || h !== SVG_EDGE || x !== 0 || y !== 0) continue
+    if (isOpaqueFill(attrOf(rect, 'fill'))) {
+      hasOpaqueCanvas = true
+      break
+    }
+  }
+
+  return {
+    viewBox: tag === null ? null : attrOf(tag, 'viewBox'),
+    width: tag === null ? null : attrOf(tag, 'width'),
+    height: tag === null ? null : attrOf(tag, 'height'),
+    hasOpaqueCanvas,
+  }
+}
+
+/** 几何问题定位用的可选上下文（词图有单元/词条，塔与僵尸没有）。 */
+interface GeometryContext {
+  unitNumber?: number | null
+  entryId?: string | null
+  optionId?: string | null
+}
+
+/**
+ * 读一个 SVG 并检查三条几何规格，返回结构化问题。
+ *
+ * ⚠️ **读不到文件时报错，不静默跳过。** 「跳过」与「通过」在退出码上无从区分，
+ *   那正是本项目反复吃亏的形态（`docs/art-direction.md:20-23`）。
+ */
+function readGeometryProblems(
+  path: string,
+  deps: ValidateDeps,
+  ctx: GeometryContext = {},
+): ContentProblem[] {
+  const at = {
+    unitNumber: ctx.unitNumber ?? null,
+    entryId: ctx.entryId ?? null,
+    optionId: ctx.optionId ?? null,
+  }
+  const source = deps.readFile(path)
+  if (source === null) {
+    return [
+      {
+        category: PROBLEM_CATEGORY.svgGeometry,
+        ...at,
+        message:
+          `无法读取 ${path}，几何规格无从校验 —— 「读不到」与「合规」在退出码上无法区分，` +
+          '所以这里报错而不是跳过',
+      },
+    ]
+  }
+
+  const problems: ContentProblem[] = []
+  const geo = readSvgGeometry(source)
+  const base = `${path}`
+
+  if (geo.viewBox === null) {
+    problems.push({
+      category: PROBLEM_CATEGORY.svgGeometry,
+      ...at,
+      message: `${base} 读不到 viewBox（根 <svg> 标签上）—— 规范值是 "${SVG_VIEW_BOX}"`,
+    })
+  } else if (geo.viewBox !== SVG_VIEW_BOX) {
+    problems.push({
+      category: PROBLEM_CATEGORY.svgGeometry,
+      ...at,
+      message:
+        `${base} 的 viewBox 是 "${geo.viewBox}"，规范值是 "${SVG_VIEW_BOX}" —— ` +
+        '非正方形画布在 aspect-ratio: 1/1 的格子里会被拉伸，词图与塔/僵尸共用同一规格',
+    })
+  }
+
+  for (const axis of ['width', 'height'] as const) {
+    const actual = geo[axis]
+    if (actual === null) {
+      problems.push({
+        category: PROBLEM_CATEGORY.svgGeometry,
+        ...at,
+        message: `${base} 读不到 ${axis} 属性 —— 规范值是 ${SVG_EDGE}，且必须与 viewBox 一致`,
+      })
+    } else if (numAttr(` ${axis}="${actual}"`, axis) !== SVG_EDGE) {
+      problems.push({
+        category: PROBLEM_CATEGORY.svgGeometry,
+        ...at,
+        message:
+          `${base} 的 ${axis} 是 ${actual}，规范值是 ${SVG_EDGE} —— ` +
+          '不一致时浏览器按 CSS 拉伸，图会糊',
+      })
+    }
+  }
+
+  if (geo.hasOpaqueCanvas) {
+    problems.push({
+      category: PROBLEM_CATEGORY.svgGeometry,
+      ...at,
+      message:
+        `${base} 有一块铺满整张画布的不透明 <rect> —— 规范是透明底：` +
+        '卡片本身已有底色（答对/答错的反馈色就画在选项格上），图再自带背景会把它吃掉',
+    })
+  }
+
+  return problems
+}
+
+// ── 塔 / 僵尸资产（Story 1.7 / AC-14.1）──────────────────────────────────────
+
+/** 查一个目录：期望集合 vs 实际 `.svg` 集合，双向报差异。 */
+function assetDirProblems(
+  deps: ValidateDeps,
+  dirName: string,
+  expected: readonly string[],
+  what: string,
+): ContentProblem[] {
+  const dir = join(deps.assetRoot, dirName)
+  const actual = new Set(
+    deps
+      .listFiles(dir)
+      .filter((name) => name.endsWith('.svg'))
+      .map((name) => name),
+  )
+
+  const problems: ContentProblem[] = []
+  for (const name of [...expected].sort()) {
+    if (actual.has(name)) continue
+    problems.push({
+      category: PROBLEM_CATEGORY.assetMissing,
+      unitNumber: null,
+      entryId: null,
+      optionId: null,
+      message: `${what}缺失：期望 ${join(dir, name)} —— 文件名必须与规范逐字一致`,
+    })
+  }
+  // 🎯 反向检查是 FR70「资产数 = 塔型数，不随词数增长」的**唯一可判定形式**。
+  //   只查「三个都在」的话，哪天有人按词复制塔图，那条断言照样全绿。
+  for (const name of [...actual].sort()) {
+    if (expected.includes(name)) continue
+    problems.push({
+      category: PROBLEM_CATEGORY.assetUnexpected,
+      unitNumber: null,
+      entryId: null,
+      optionId: null,
+      message:
+        `${what}目录里多出 ${join(dir, name)} —— ${what}按塔型制作，数量恒定` +
+        `（当前应为 ${[...expected].sort().join('、')}）。多出来的文件孩子永远看不到，` +
+        '而「词图齐了」的错觉会持续下去',
+    })
+  }
+  return problems
+}
+
+/** 塔图与僵尸图的存在性 + 「不多不少」，外加各自的几何规格。 */
+export function assetPresenceProblems(deps: ValidateDeps): ContentProblem[] {
+  const problems: ContentProblem[] = []
+
+  problems.push(...assetDirProblems(deps, TOWER_ASSET_DIR, expectedTowerAssetNames(), '塔图'))
+  problems.push(...assetDirProblems(deps, ZOMBIE_ASSET_DIR, expectedZombieAssetNames(), '僵尸图'))
+
+  for (const towerType of TOWER_TYPES) {
+    const path = join(deps.assetRoot, TOWER_ASSET_DIR, `${towerType}.svg`)
+    if (deps.fileExists(path)) problems.push(...readGeometryProblems(path, deps))
+  }
+  const zombiePath = join(deps.assetRoot, ZOMBIE_ASSET_DIR, ZOMBIE_ASSET_NAME)
+  if (deps.fileExists(zombiePath)) problems.push(...readGeometryProblems(zombiePath, deps))
 
   return problems
 }
@@ -366,6 +711,8 @@ export function validateContent(
   }
 
   problems.push(...globalEntryIdProblems(units))
+  // 塔/僵尸资产与单元内容无关，一局只校验一次（放在循环外）。
+  problems.push(...assetPresenceProblems(deps))
 
   return {
     ok: problems.length === 0,
@@ -413,31 +760,42 @@ export function loadUnitFiles(unitsDir: string = UNITS_DIR): readonly { file: st
  *   这是词图尚未录入（Epic 2）期间唯一的词图目录入口，它坏掉时没有任何症状，
  *   直到那时才一次性爆发。
  */
-export function parseCli(argv: readonly string[]): { wordImageRoot: string } {
-  const cli = { wordImageRoot: WORD_IMAGE_ROOT }
+export function parseCli(argv: readonly string[]): { wordImageRoot: string; assetRoot: string } {
+  const cli = { wordImageRoot: WORD_IMAGE_ROOT, assetRoot: ASSET_ROOT }
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i]
-    if (arg === '--word-image-root') {
+    if (arg === '--word-image-root' || arg === '--asset-root') {
       const value = argv[i + 1]
       if (value === undefined || value.trim() === '' || value.startsWith('--')) {
-        throw new Error('[content] --word-image-root 需要一个目录参数')
+        throw new Error(`[content] ${arg} 需要一个目录参数`)
       }
-      cli.wordImageRoot = value
+      if (arg === '--word-image-root') {
+        cli.wordImageRoot = value
+      } else {
+        cli.assetRoot = value
+      }
       i += 1
       continue
     }
-    throw new Error(`[content] 未知参数：${arg}（支持 --word-image-root <目录>）`)
+    throw new Error(
+      `[content] 未知参数：${arg}（支持 --word-image-root <目录> 与 --asset-root <目录>）`,
+    )
   }
   return cli
 }
 
 /** 报错行。**逐条独立可读**，绝不把多条问题压成一行（AC-13）。导出供测试断言格式。 */
 export function formatProblem(problem: ContentProblem): string {
+  // ⚠️ Story 1.7：塔/僵尸资产**不属于任何单元**（`unitNumber` 恒为 null）。
+  // 沿用旧的「单元 ?」写法会在终端上打出一句没人看得懂的报错 ——
+  // 「单元 ?」既不是真值也不可定位。资产问题的真正定位信息在 `message` 里的
+  // 文件相对路径上，前缀只会把它挤到行尾看不见的地方。
   const where =
-    problem.entryId === null
-      ? `单元 ${problem.unitNumber ?? '?'}`
-      : `单元 ${problem.unitNumber ?? '?'} 词条 ${problem.entryId}`
-  return `[content] ERROR [${problem.category}] ${where}${problem.optionId === null ? '' : ` 选项 ${problem.optionId}`} —— ${problem.message}`
+    problem.unitNumber === null
+      ? ''
+      : `单元 ${problem.unitNumber}${problem.entryId === null ? '' : ` 词条 ${problem.entryId}`}`
+  const option = problem.optionId === null ? '' : ` 选项 ${problem.optionId}`
+  return `[content] ERROR [${problem.category}] ${where}${option}${where === '' && option === '' ? '' : ' '}—— ${problem.message}`
 }
 
 /**
@@ -452,7 +810,10 @@ export interface MainDeps {
   load?: (unitsDir: string) => readonly { file: string; raw: unknown }[]
   /** 词图根目录，覆盖 CLI 参数。 */
   wordImageRoot?: string
+  /** 塔/僵尸/词图的共同根目录，覆盖 CLI 参数（Story 1.7）。 */
+  assetRoot?: string
   fileExists?: (path: string) => boolean
+  readFile?: (path: string) => string | null
   listFiles?: (dir: string) => string[]
 }
 
@@ -464,7 +825,7 @@ export function main(
   argv: readonly string[] = process.argv.slice(2),
   deps: MainDeps = {},
 ): number {
-  let cli: { wordImageRoot: string }
+  let cli: { wordImageRoot: string; assetRoot: string }
   try {
     cli = parseCli(argv)
   } catch (err) {
@@ -490,7 +851,10 @@ export function main(
     units.map((u) => u.raw),
     {
       wordImageRoot: deps.wordImageRoot ?? cli.wordImageRoot,
+      assetRoot: deps.assetRoot ?? cli.assetRoot,
       fileExists,
+      readFile:
+        deps.readFile ?? ((path: string) => (existsSync(path) ? readFileSync(path, 'utf8') : null)),
       listFiles: deps.listFiles ?? ((dir: string) => (fileExists(dir) ? readdirSync(dir) : [])),
     },
   )
@@ -499,9 +863,16 @@ export function main(
     for (const problem of result.problems) {
       console.error(formatProblem(problem))
     }
+    // ⚠️ 括号里是**内容统计**，不是问题分布。资产类问题（塔/僵尸）一个单元都不属于，
+    //   混在「N 处问题（单元 x 个 / 词条 y 条）」里会让人以为是那 37 条词条坏了 ——
+    //   而实际上一条词条都没坏，坏的只是磁盘上缺几张图。分开报。
+    const assetCount = result.problems.filter(
+      (p) => p.category === PROBLEM_CATEGORY.assetMissing || p.category === PROBLEM_CATEGORY.assetUnexpected,
+    ).length
+    const assetNote = assetCount > 0 ? `，其中资产 ${assetCount} 处（与单元内容无关）` : ''
     console.error(
       `[content] 校验失败：${result.problems.length} 处问题（单元 ${result.stats.unitCount} 个 / ` +
-        `词条 ${result.stats.entryCount} 条）。修复后重跑 —— 「跑过了 validate:content」` +
+        `词条 ${result.stats.entryCount} 条${assetNote}）。修复后重跑 —— 「跑过了 validate:content」` +
         '只有退出码 0 才算证据。',
     )
     return 1

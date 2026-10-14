@@ -68,14 +68,69 @@ function unitCopy(): typeof realUnit {
   return JSON.parse(JSON.stringify(realUnit)) as typeof realUnit
 }
 
-/** 词图的假文件系统：只记「哪些文件存在」。 */
-function fakeImages(existing: readonly string[], rootDir = '/fake/words'): ValidateDeps {
+/**
+ * 一份**几何合规**的 SVG 正文（`viewBox 512` / `512×512` / 无铺满底）。
+ *
+ * Story 1.7 起校验器不只问「文件在不在」，还打开它读几何（AC-14.2）。
+ * 假文件系统若只会「声称文件存在」而 `readFile` 一律返回 null，
+ * 每条负例会额外冒出一条「无法读取」的噪音，且**绿色的那批也会变红** ——
+ * 于是「负例抓到了」变得不可信（坏在别处）。
+ */
+function compliantSvg(label: string): string {
+  return [
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">',
+    `  <circle cx="256" cy="256" r="120" fill="#123456" data-label="${label}" />`,
+    '</svg>',
+  ].join('\n')
+}
+
+/**
+ * 词图的假文件系统：**存在性 + 内容**（Story 1.7 后两者都参与校验）。
+ *
+ * `contents` 用来注入「存在但几何不合规」的词图 —— 缺图只是缺图，
+ * 读不出几何规格是另一类错误，两者必须能被分别断言。
+ */
+function fakeImages(
+  existing: readonly string[],
+  rootDir = '/fake/words',
+  contents: Readonly<Record<string, string>> = {},
+): ValidateDeps {
   const set = new Set(existing)
   return {
     wordImageRoot: rootDir,
-    fileExists: (path) => set.has(path),
+    assetRoot: '/fake/assets',
+    fileExists: (path) => set.has(path) || path in contents,
+    readFile: (path) => contents[path] ?? (set.has(path) ? compliantSvg(path) : null),
+    listFiles: (dir) => {
+      const seen = new Set<string>()
+      for (const p of [...set, ...Object.keys(contents)]) {
+        if (p.startsWith(`${dir}/`)) seen.add(p.slice(dir.length + 1))
+      }
+      return [...seen]
+    },
+  }
+}
+
+/** 塔/僵尸资产在假文件系统里的位置（三个塔 + 一个僵尸，全齐且几何合规）。 */
+const FAKE_ASSET_FILES = [
+  '/fake/assets/towers/direct.svg',
+  '/fake/assets/towers/slow.svg',
+  '/fake/assets/towers/aoe.svg',
+  '/fake/assets/zombies/zombie.svg',
+]
+
+/** `greenDeps()` 用的依赖：词图齐全 **且** 塔/僵尸资产齐全。 */
+function greenAssetDeps(base: ValidateDeps): ValidateDeps {
+  const contents: Record<string, string> = {}
+  for (const path of FAKE_ASSET_FILES) contents[path] = compliantSvg(path)
+  return {
+    ...base,
+    assetRoot: '/fake/assets',
+    readFile: (path) => contents[path] ?? base.readFile(path),
     listFiles: (dir) =>
-      [...set].filter((p) => p.startsWith(`${dir}/`)).map((p) => p.slice(dir.length + 1)),
+      dir.startsWith('/fake/assets')
+        ? FAKE_ASSET_FILES.filter((p) => p.startsWith(`${dir}/`)).map((p) => p.slice(dir.length + 1))
+        : base.listFiles(dir),
   }
 }
 
@@ -90,9 +145,11 @@ function allReferencedImages(unit = realUnit): string[] {
   return [...paths].sort()
 }
 
-/** 一套「全绿」的依赖：词图齐全。 */
+/** 一套「全绿」的依赖：词图齐全 **且** 塔/僵尸资产齐全。 */
 function greenDeps(unit = realUnit): ValidateDeps {
-  return fakeImages(allReferencedImages(unit).map((name) => `/fake/words/unit-01/${name}`))
+  return greenAssetDeps(
+    fakeImages(allReferencedImages(unit).map((name) => `/fake/words/unit-01/${name}`)),
+  )
 }
 
 /** 跑一次校验，返回结果与 CLI 退出码（退出码经 `main`，依赖注入假数据）。 */
@@ -112,7 +169,9 @@ function run(units: readonly unknown[], deps: ValidateDeps): {
     exitCode = main([], {
       load: () => units.map((raw, i) => ({ file: `unit-0${i + 1}.json`, raw })),
       wordImageRoot: deps.wordImageRoot,
+      assetRoot: deps.assetRoot,
       fileExists: deps.fileExists,
+      readFile: deps.readFile,
       listFiles: deps.listFiles,
     })
   } finally {
@@ -159,16 +218,26 @@ describe('AC-14 / AC-19 —— 真实内容当前通过校验', () => {
     })
   })
 
-  it('跑真实文件系统（不注入）也是绿的 —— 30 张占位词图确实在磁盘上', () => {
+  it('跑真实文件系统（不注入）词图也是绿的 —— 30 张占位词图确实在磁盘上且几何合规', () => {
     const units = loadUnitFiles(join(root, 'src/content/units'))
     const result = validateContent(units.map((u) => u.raw), {
       wordImageRoot: join(root, 'public/assets/words'),
+      assetRoot: join(root, 'public/assets'),
       fileExists: existsSync,
+      readFile: (path) => (existsSync(path) ? readFileSync(path, 'utf8') : null),
       listFiles: (dir) => (existsSync(dir) ? readdirSync(dir) : []),
     })
+    // ⚠️ 这里**只断言词图侧**（`word-image` / `svg-geometry` 且带词条定位）。
+    // 塔/僵尸资产在真实磁盘上的断言由 `tests/assets/asset-geometry.test.ts` 的
+    // G1/G2 承担 —— 放在这里断言「真实磁盘全绿」的话，在图还没画的窗口里
+    // 它会因为**资产缺失**变红，而那条红与「词图有没有问题」无关，
+    // 反而会让人去改词图。把两类断言混在一处，报错就指不到真正坏的地方。
+    const wordImageProblems = result.problems.filter(
+      (p) => p.category === 'word-image' || (p.category === 'svg-geometry' && p.entryId !== null),
+    )
 
     expect(
-      result.problems.map((p) => formatProblem(p)),
+      wordImageProblems.map((p) => formatProblem(p)),
       '真实磁盘上的内容/词图有问题',
     ).toEqual([])
   })

@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  减速塔（slow）—— Story 1.7。
+
+  规格（docs/art-direction.md 第 1 节 / 第 3 节）：SVG / viewBox 0 0 512 512 / 512×512 / 透明底
+  构图（§3）：3/4 侧、**面朝右**、描边 16px、主体占画布约 66%（横向）
+  色板：#6a1b9a = tokens.css 的 color-tower-slow（字面副本，见 §4 第 2 条）
+         ⚠️ 不写前导双短横：XML 注释正文里不允许出现连续双短横，见 G8。
+
+  规格就写在上面这段注释里。几何守卫必须先剥注释再匹配属性，
+  否则这张文件会因为这几行字而**恒绿**（AC-15 / 变异清单 M8）。
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512"
+     role="img" aria-label="减速塔">
+  <!--
+    剪影分工（§4 第 5 条）：**slow 是三塔里唯一「一把大伞」的**。
+    伞盖是一个又宽又扁的连续弧面，底下是一根细杆 —— 去掉颜色之后，
+    它是三张图里唯一顶部是一条**平滑长弧**、两侧下垂的。
+    （direct 顶部是圆钮 + 右指炮管，aoe 顶部是三个分开的圆瓣。）
+  -->
+  <g fill="#6a1b9a" stroke="#ffffff" stroke-width="16" stroke-linejoin="round" stroke-linecap="round">
+    <!-- 泥土基座：三塔共用同一形状（§3.6 跨塔一致性） -->
+    <rect x="176" y="378" width="160" height="56" rx="18" />
+    <!-- 短粗的柄 -->
+    <rect x="230" y="248" width="52" height="130" rx="18" />
+    <!-- 伞盖：又宽又扁的连续弧面 —— 这就是 slow 的辨识签名 -->
+    <ellipse cx="256" cy="186" rx="170" ry="54" />
+  </g>
+
+  <!--
+    细节：不描边。
+    ⚠️ **这里刻意不画「伞盖下垂的两条腿」** —— 试过，读起来是一张桌子，
+    而孩子要认的是「一个慢吞吞的东西」。伞沿的波浪改用同色的三个小圆弧，
+    靠明度差（不引入第四个色值，G4 会红）。
+  -->
+  <g fill="#6a1b9a">
+    <ellipse cx="150" cy="228" rx="26" ry="18" />
+    <ellipse cx="256" cy="236" rx="30" ry="20" />
+    <ellipse cx="362" cy="228" rx="26" ry="18" />
+  </g>
+  <g fill="#ffffff">
+    <ellipse cx="206" cy="166" rx="46" ry="16" />
+  </g>
+</svg>
