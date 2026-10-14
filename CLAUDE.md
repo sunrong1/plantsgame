@@ -151,3 +151,70 @@ docs/               项目知识库（BMAD 的 project_knowledge 指向这里）
 遵循 Conventional Commits（`feat:`、`fix:`、`docs:`、`test:`、`refactor:`、`chore:`）。
 
 不要在规划阶段写产品代码 —— 那是 `[DS]` gds-dev-story 的职责。
+
+---
+
+## 📌 常驻速查（省 token 专用）
+
+> 下面这些内容**每次新 session 都必须知道**，写在这里就不用重复读原始文件。
+> 原始文件只在需要修改结构时才读。
+
+### Epic 清单
+
+```
+Epic 1  工程基础设施 + 单元 1 内容（1-1 ~ 1-19）
+  已 done: 1-1 工程脚手架 / 1-2 音频解锁+TTS / 1-3 朗读录音 / 1-4 战斗内核 / 1-5 回合状态机
+  剩余:     1-6 内容数据层 → 1-19 首次试玩验证（生死线）
+Epic 2  内容产能与难度阶梯（2-1 ~ 2-9）
+Epic 3  打磨与验收（3-1 ~ 3-8）
+```
+
+**epic / story 完整定义见 `_bmad-output/planning-artifacts/epics.md`，
+只在需要新增或拆分 story 时才读，日常不要读。**
+
+### 状态速查
+
+```
+当前 sprint: Epic 1 进行中
+下一个该做的 story: 从 sprint-status.yaml 里找第一个 backlog
+状态机: backlog → (CS) → ready-for-dev → (DS) → review → (CR) → done
+```
+
+**`sprint-status.yaml` 是唯一状态源，每次开工先读它，不要凭记忆判断进度。**
+
+### 文件位置
+
+```
+规划产物:   _bmad-output/planning-artifacts/
+            ├── gdd.md                        游戏设计文档
+            ├── game-architecture.md          架构决策
+            ├── epics.md                      Epic/Story 定义（少读）
+            └── gdds/<slug>/                  GDD 配套（decision-log 等）
+实现产物:   _bmad-output/implementation-artifacts/
+            ├── sprint-status.yaml            状态机
+            └── <story-key>.md                单个 story 的上下文
+```
+
+### 工具使用纪律（省 token）
+
+```
+改文件用 Edit / Write，不要用 python3 -c 或 sed -i
+  · Edit 只传 diff，参数体积比 Bash 改文件小一个数量级
+  · Bash 只用于：跑测试、看 git 状态、查文件列表
+
+读文件用 Read，不要 cat / head / tail
+  · Read 走工具协议，可以被 review 看到
+  · cat 的输出也会进上下文，但没有 Read 的缓存复用
+
+同一个文件不要反复读
+  · 上面「常驻速查」已经覆盖了高频查询
+  · 真要读原文，读一次就够，别读 36 次
+```
+
+### 数值平衡参数（禁止擅自改）
+
+```
+心数上限、阳光递增公式、僵尸血量/速度、关卡阈值
+这些是产品决策，改动前必须问人。
+其他历史教训见 gdds/<slug>/decision-log.md，不要重新推导。
+```
