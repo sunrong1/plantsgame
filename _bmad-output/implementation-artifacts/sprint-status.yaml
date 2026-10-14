@@ -1,5 +1,5 @@
 # generated: 2026-10-12
-# last_updated: 2026-10-14 (Story 1.5 → done：三层 [CR] 完成，4 条决策落地 + 22 条 patch 修复)
+# last_updated: 2026-10-14 (Story 1.6 → ready-for-dev：[CS] 生成上下文文件，32 条 AC + 12 项变异验证；两处用户裁决：词图走占位 SVG + 严格校验、色板归属 Story 1.6)
 # project: plants-game
 # project_key: NOKEY
 # tracking_system: file-system
@@ -58,7 +58,7 @@ development_status:
   1-3-朗读录音批量生成: done
   1-4-战斗内核与-5-条数值断言: done
   1-5-回合状态机与题单: done
-  1-6-内容数据层与单元-1-录入: backlog
+  1-6-内容数据层与单元-1-录入: ready-for-dev
   1-7-塔与僵尸美术资产: backlog
   1-8-单元-1-词图-第一批: backlog
   1-9-单元-1-词图-第二批: backlog
