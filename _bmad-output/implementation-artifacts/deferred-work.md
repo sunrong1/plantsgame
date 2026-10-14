@@ -408,15 +408,24 @@
 
 ## Deferred from: code review of story-1-6-内容数据层与单元-1-录入 (2026-10-14)
 
-- **占位词图把答案写成可见文字** —— `public/assets/words/unit-01/*.svg:22-24`
-  每张占位图把自己的 `entryId` 当 `<text>` 画出来。`word` 卡的学习动作是「听音→识物」，
-  四个选项只差这一个 ID 串，卡片退化成文本匹配题 —— 正是它本该绕开的技能。
-  `docs/art-direction.md:47-53` 已登记为占位，替换 defer 到 Story 1.8/1.9。
-  **风险点**：Story 1.19 首次试玩是 Epic 1 的生死线，若占位图拖到那时仍未替换，
-  试玩结论会被「答案直接印在选项上」污染。
-  **恢复条件**：Story 1.8 词图第一批落地后，重新确认 SVG 不含任何 `<text>`。
+- ✅ **已闭合**（Story 1.8 / 2026-10-14）—— **占位词图把答案写成可见文字**
+  原症状：每张占位图把自己的 `entryId` 当 `<text>` 画出来（30 张 × 3 = **90 个 `<text>`**）。
+  `word` 卡的学习动作是「听音→识物」，四个选项只差这一个 ID 串，卡片退化成文本匹配题 ——
+  正是它本该绕开的技能。原计划 defer 到 Story 1.8/1.9 逐张替换。
+  **闭合方式**：不等替换，**先把字从图上剥掉**。判据从「替换了才算」改成
+  「任何时候都不许有」—— 因为 Story 1.19 首次试玩是 Epic 1 的生死线，
+  占位图只要还在文件里带着字，试玩结论就会被「答案直接印在选项上」污染，
+  **而那是可以靠等替换来赌的**，赌输的代价是一次作废的生死线验证。
+  1. `docs/art-direction.md` §1 新增「词图不得含 `<text>` / `<image>` / `<foreignObject>`」（裁决 2）。
+  2. `tests/assets/asset-geometry.test.ts` 新增 **G10**，判据用 P2-2 新增的 `allTags()` 全量扫描器
+     —— 旧的 `drawElements()` 压根不认识 `<text>`，用它写这条会得到一个**恒绿**的守卫。
+  3. **守卫先于图**：G10 写完那一刻在 30 张占位图上恰好红 30 条，红完才改图。
+  4. 25 张占位图剥掉 `<text>`，说明文字挪进 XML 注释（对角线灰纹 + 虚线框仍一眼可辨是占位图）。
+     **`<text>` 从 90 降到 0**（改完 5 张正式插画后）。
+  **证据**：变异 M19（三个标签各塞一个逐个拦 + 注释里的 `<text>` 不算违例）；
+  `grep -o "<text" public/assets/words/unit-01/*.svg | wc -l` 真实输出。
   ——
-  `public/assets/words/unit-01/*.svg`、`docs/art-direction.md`
+  `public/assets/words/unit-01/*.svg`、`docs/art-direction.md`、`tests/assets/asset-geometry.test.ts`
 
 - **`validate-content` 每单元跑两次 `UnitSchema.safeParse`** —— `scripts/validate-content.ts:331,163`
   一次为取 parsed，一次为取 problems。冗余但无害，当前 575 行内容下开销可忽略。
@@ -430,8 +439,31 @@
   ——
   `scripts/validate-content.ts`
 
-- **词图文件与 `tokens.css` 均缺文件尾换行** —— `public/assets/words/unit-01/*.svg`、`src/styles/tokens.css`
-  纯格式，无功能影响。
+- **词图文件与 `tokens.css` 均缺文件尾换行** —— `src/styles/tokens.css`
+  ⚠️ `[CR]` 2026-10-14 订正：本条原写「词图文件**与** tokens.css **均**缺」，
+  但 30 张词图里 28 张**一直是有**尾换行的（已逐一核对 baseline 与当前磁盘），
+  措辞不准确 —— 实为：`u1-three.svg` / `u1-happy.svg` 在本 story **丢了**尾换行（已补回），
+  真正还缺的是 `tokens.css`。纯格式，无功能影响。
   **恢复条件**：接入 formatter 时一并解决。
   ——
-  `public/assets/words/unit-01/*.svg`、`src/styles/tokens.css`
+  `src/styles/tokens.css`
+
+## Deferred from: code review of 1-8-单元-1-词图-第一批 (2026-10-14)
+
+- **`svgRootTag()` 对「无引号属性值里含引号字符」返回 `null`** —— `scripts/validate-content.ts`
+  XML 允许 `aria-label=dog's toy` 这种写法。新的引号感知扫描器会把**属性值之外**的孤立引号
+  也当作引号区开头，于是永远匹配不到 `</svg>` 前的那段开标签，返回 `null` ——
+  于是 `viewBox`/`width`/`height` 读成 `null`，`validate:content` 对一个**合规文件**
+  报「读不到 viewBox」。等于在同类输入上把「截断 bug」换成了「引号 bug」。
+  **恢复条件**：真出现「从工具导出且属性未加引号」的资产时再修。
+  （Edge Case Hunter 对该函数做了单双引号 / 混合引号 / `>` 前置 / 未闭合引号的正反向探测，
+  **未复现**该路径，故仅登记不作为缺陷处理。）
+
+- **`u1-dog` 的「远侧耳朵」在 48px 下约只剩 1.9px** —— `public/assets/words/unit-01/u1-dog.svg`
+  耳朵 `cx=344 rx=46`（x ≈ 298–390）画在头 `cx=300 rx=70`（x = 230–370）**之前**，
+  露出来的只有 x ∈ (370, 390] 这一小截，折算到 48px 约 1.9px。
+  而本批每条美术决策都以「48px 下还认不认得出」论证，它也是返工后**明确保留下来的三样之一**，
+  会被当成范本带进 Story 1.9 的 25 张。
+  **恢复条件**：**与 §5 构图模板一并复核**（Story 1.9 开工前），
+  届时一并问「这种 2px 级的细节是该留作质感，还是该砍掉」——
+  这不是缺陷，是一条尚未定过的美术判据。
