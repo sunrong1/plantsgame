@@ -168,6 +168,19 @@ describe('tsconfig 项目覆盖', () => {
     // 且必须挂在 solution 上，否则 vue-tsc -b 根本不会走到它
     expect(root_.references).toContainEqual({ path: './tsconfig.test.json' })
   })
+
+  it('src/content/ 被 test 项目列出（Story 1.6 / AC-30）', () => {
+    const test = readJson('tsconfig.test.json') as { include: string[] }
+
+    // composite 项目要求「所有文件必须被列出」。少了这一行，内容层测试与
+    // validate-content.ts 在 vitest 加载时报 TS6307 —— 而报错发生在
+    // 「加载测试文件」阶段，看起来像工具链坏了，不像内容层配置漏了。
+    expect(
+      test.include,
+      'tsconfig.test.json 的 include 少了 src/content/**/*.ts —— ' +
+        'tests/content/*.test.ts 与 scripts/validate-content.ts import 它时会报 TS6307',
+    ).toContain('src/content/**/*.ts')
+  })
 })
 
 describe('npm scripts 与 build 的类型检查', () => {

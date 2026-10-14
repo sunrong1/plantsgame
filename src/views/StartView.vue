@@ -70,7 +70,9 @@ function onStart(): void {
 .game-title {
   margin: 0;
   font-size: clamp(2.5rem, 12vw, 5rem);
-  /* 色板属 Story 1.6，此处先用系统文字色，不预设品牌配色 */
+  /* 色板已定稿（docs/art-direction.md §2 / tokens.css），但**文字的字号与字重阶梯**
+     归 Story 1.9 / 1.12。颜色先用系统文字色：--color-* 里目前没有「正文文字色」这一档，
+     补它等于替 Story 1.9 做决定。 */
   color: CanvasText;
 }
 
@@ -88,7 +90,8 @@ function onStart(): void {
   border-radius: 12px;
   font-size: clamp(1.25rem, 5vw, 2rem);
   font-weight: 700;
-  /* 色板属 Story 1.6：暂用系统控件色，不预设品牌配色 */
+  /* 按钮底色归 Story 1.7 的「应用化」：色板 §2 定的是**棋盘与棋子**的颜色，
+     启动页属于应用外壳，它的品牌配色要连同构图一起看（见 art-direction §3）。 */
   background-color: ButtonFace;
   color: ButtonText;
   transition: transform var(--dur-fast) ease-out;

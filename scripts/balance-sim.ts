@@ -162,7 +162,9 @@ function buildSyntheticDeck(n: number, unitNumber = 1, forceTowerType?: (typeof 
     const options = [0, 1, 2, 3].map((k) => {
       const id = `${entryId}-o${k + 1}`
       return kind === 'word'
-        ? { id, imageSrc: `/assets/word/${entryId}.svg`, correct: k === 0 }
+        // ⚠️ 这个路径**不会**被读到（合成题单只喂战斗层，不渲染），
+        // 但仍按 AC-22 的规范写，免得留下一个「看起来像路径规范、其实是错的」字符串。
+        ? { id, imageSrc: `/assets/words/unit-01/${entryId}.svg`, correct: k === 0 }
         : { id, text: `选项 ${k + 1}`, correct: k === 0 }
     })
     entries.push({

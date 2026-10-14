@@ -61,6 +61,30 @@
   // 会怎样。这两个属于 noEmit 的 composite 项目，按上面 src/services 那段注释的
   // 推理**可能**仍然 TS6307 —— 但没有实测过。Story 1.x 若出现脚本需要读 app 层的
   // 情况，先实测再改配置，不要凭这条推理直接改结构。
+  //
+  // ⚠️ `src/content/**/*.ts` 是 Story 1.6 加进来的（实测阻断 TS6307）：
+  // 内容层的测试与 `scripts/validate-content.ts` 都要 import `src/content/schema.ts`
+  // 与 `src/content/index.ts`，而 composite 项目要求「所有文件必须被列出」。
+  // 少了这一行，`npm run test` 会在加载 `tests/content/*.test.ts` 时报
+  // TS6307（File ... is not listed within the file list of project）。
+  //
+  // 为什么不改成 reference 指向 tsconfig.app.json：与上面 src/services 那段同理由 ——
+  // app 项目是 noEmit，被引用的项目不允许关闭 emit（TS6310）。
+  // 与 app 项目重叠是允许的（两者都 noEmit），**不要**为了「单一归属」删掉这一行。
+  //
+  // ⚠️ 有意的归属结果：`src/content/` 同时落在 tsconfig.app.json
+  // （`include: ["src/**/*.ts"]`，已自动覆盖它）与本项目里。落在 **app 项目**
+  // （有 DOM、`noEmit`）而不是 core 的零 DOM 项目，是**有意的** ——
+  // 内容层是数据录入与校验，不需要 core 那套严苛的零 DOM 约束，
+  // 且它要 import `../core/balance.js` 的塔型常量，由 core 项目的 reference 解析。
+  // ⚠️ 代价（要知道）：ESLint 的 `no-restricted-globals` 只配了 `src/core/**`，
+  //   所以在 `src/content/` 里写 `window` / `localStorage` 没有任何工具会拦。
+  //   那不是疏漏，是「内容层不碰 DOM」的约定由 review 守，不由 lint 守。
+  //
+  // 实测方式（与上面 scripts 那段同一手法）：往 `src/content/schema.ts` 里注入
+  // `const x: number = "s"`，`npm run typecheck` 立刻报
+  // `src/content/schema.ts(n,m): error TS2322` —— 既证明它确实被 typecheck 覆盖，
+  // 也证明 import src/content/ 没有把它挤出检查范围。
   "include": [
     "tests/**/*.ts",
     "vitest.config.ts",
@@ -68,7 +92,8 @@
     "eslint.config.js",
     "scripts/**/*.ts",
     "src/services/**/*.ts",
-    "src/app/**/*.ts"
+    "src/app/**/*.ts",
+    "src/content/**/*.ts"
   ],
   // 测试会 import src/core/ 的被测对象。缺这条 reference 会报 TS6307。
   "references": [{ "path": "./tsconfig.core.json" }]

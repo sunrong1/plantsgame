@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  占位词图（PLACEHOLDER）—— 由 Story 1.6 生成，Story 1.8 / 1.9 逐张替换为正式插画。
+
+  ⚠️ 这不是插画，是为了让「词图缺失」这一类内容错误在 Story 1.6 就能真正被抓出来
+     （否则校验器只能恒退 0，重演「跑过了 validate:content 不构成任何证据」）。
+  ⚠️ 随手把它当成「已定稿」继承，比没有图更糟 —— 正式插画有统一的构图规范
+     （docs/art-direction.md 第 3 节，Story 1.7 定稿）。
+
+  规格（docs/art-direction.md 第 1 节）：SVG / viewBox 0 0 512 512 / 512×512 / 透明底
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512"
+     role="img" aria-label="占位图：u1-father">
+  <!-- 斜纹底纹：正式插画不会有这个纹理，一眼可辨 -->
+  <g stroke="#e4e7eb" stroke-width="14" stroke-linecap="round">
+    <line x1="96" y1="416" x2="96" y2="464" />
+    <line x1="160" y1="352" x2="160" y2="464" />
+    <line x1="224" y1="288" x2="224" y2="464" />
+    <line x1="288" y1="224" x2="288" y2="464" />
+    <line x1="352" y1="160" x2="352" y2="464" />
+    <line x1="416" y1="96" x2="416" y2="464" />
+  </g>
+  <rect x="16" y="16" width="480" height="480" rx="36" fill="none"
+        stroke="#9aa0a6" stroke-width="8" stroke-dasharray="26 18" />
+  <text x="256" y="238" text-anchor="middle" font-family="system-ui, sans-serif"
+        font-size="40" font-weight="700" fill="#5f6368" letter-spacing="4">PLACEHOLDER</text>
+  <text x="256" y="292" text-anchor="middle" font-family="system-ui, sans-serif"
+        font-size="34" fill="#5f6368">u1-father</text>
+  <text x="256" y="336" text-anchor="middle" font-family="system-ui, sans-serif"
+        font-size="22" fill="#80868b">Story 1.8 / 1.9 替换</text>
+</svg>

@@ -98,6 +98,39 @@ export default tseslint.config(
     },
   },
   {
+    // Story 1.6 / AC-30 的副作用：`src/content/` 落在 tsconfig.app.json（有 DOM）里，
+    // 所以上面那条「零 DOM 红线」对它**不生效** —— 在内容层写 `window.localStorage`
+    // 不会有任何工具报错。这是内容层唯一的边界守卫。
+    //
+    // 为什么内容层也不该碰 DOM：它是**数据录入与校验**层，启动时跑一次就结束了，
+    // 不参与渲染也不参与回合流程（架构 `:568-571`）。它一旦持有 DOM 引用，
+    // 单元 JSON 的校验就会与浏览器环境绑死 —— 测试环境是 `node`（无 DOM），
+    // 到那时这条边界早已被破坏且没有任何报警。
+    files: ['src/content/**/*.{ts,vue}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: 'vue',
+              message:
+                'content/ 是纯数据层，零 Vue 依赖（架构 NFR7 的同一条边界）。' +
+                '渲染是 components/ 与 views/ 的职责。',
+            },
+          ],
+        },
+      ],
+      'no-restricted-globals': [
+        'error',
+        { name: 'window', message: 'content/ 不碰 DOM：它只做内容录入与校验' },
+        { name: 'document', message: 'content/ 不碰 DOM：它只做内容录入与校验' },
+        { name: 'localStorage', message: '存档是 services/save.ts 的职责' },
+        { name: 'speechSynthesis', message: 'TTS 是 services/pronunciation.ts 的职责' },
+      ],
+    },
+  },
+  {
     // Story 1.2 / AC-10：音频解锁链路禁 await。
     //
     // 为什么不扩大到整个 src/services/：Story 1.14 的 save.ts 合理需要 await。

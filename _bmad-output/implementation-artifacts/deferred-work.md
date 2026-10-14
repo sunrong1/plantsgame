@@ -114,15 +114,17 @@
 
 ## Deferred from: code review of story-1-3-朗读录音批量生成 (2026-10-13)
 
-- `parseEntries` 不在生成侧校验词条 id 的单元前缀 ——
-  只校验 kebab-case，`u2-dog` 缺前缀的词条能进生成流程。
-  **为什么现在不补**：`tests/scripts/generate-voice.test.ts:97` 已在**词表文件层面**
-  守住 `/^u\d+-/`，而 `voice-entries.json` 是本 story 唯一的输入。
-  生成侧再拦一次是纵深防御，收益低于维护两条同义规则的成本。
-  **恢复条件**：词表来源从 `scripts/data/voice-entries.json` 改成别处（Story 1.6 换源时，
-  测试的覆盖面会随来源一起搬家），或将来词表改为多文件混合输入。
+- ✅ **已由 Story 1.6（2026-10-14）闭合** —— `parseEntries` 不在生成侧校验词条 id 的单元前缀 ——
+  原本的 `scripts/data/voice-entries.json` 已**退役**，词表改从 `src/content/` 取
+  （`generate-voice.ts` 的 `entriesFromContent(UNITS)`），
+  单元前缀由 `UnitSchema` 的 `ENTRY_ID_PATTERN` 在内容层守。
+  覆盖面随来源一起搬了家：`tests/scripts/generate-voice.test.ts` 里
+  「每条 id 都合法 / 都带前缀 / 不重复」三条断言现在直接打真实内容层；
+  并补了「内容层规则 ⊇ 运行时规则」「跨单元同名 id 被 `entriesFromContent` 拒绝」两条新守卫。
+  `VALID_ENTRY_ID` 那份正则副本随之删除（不再有第二份规则需要等值断言）——
+  留下它才是新的漂移种子。
   ——
-  `scripts/generate-voice.ts:147`
+  `scripts/generate-voice.ts`（`entriesFromContent`）、`tests/scripts/generate-voice.test.ts`
 
 - 脚本缺 `--force` 与 `--help` ——
   改音色/语速后全量重生成目前靠手动 `rm public/assets/audio/voice/*.mp3`；
@@ -311,7 +313,7 @@
 
 ## Deferred from: code review of story-1-5-回合状态机与题单 (2026-10-14)
 
-- **`Card` 扁平化丢掉了架构模式 B 的判别联合保证** ——
+- ✅ **已由 Story 1.6（2026-10-14）闭合** —— **`Card` 扁平化丢掉了架构模式 B 的判别联合保证** ——
   `src/core/types.ts:216` 把 `Option` 定义为 `ImageOption | TextOption` 的扁平联合，
   `Card.options: readonly Option[]` 不按 `kind` 收窄。架构模式 B 规定的是判别联合
   （`kind: 'word' → options: ImageOption[]`），那种形状下 `{kind:'word', options:[{text:'…'}]}`
@@ -319,11 +321,15 @@
   **风险**：`kind: 'word'` 的卡带文本选项可以干净编译，`core/` 内没有任何运行时守卫拦住它，
   失败要到渲染层才暴露（图片卡渲染出文本选项）。JSDoc 给的理由（保留分支会诱导写
   `if (card.kind === 'word')` 分派逻辑）是真收益，但代价是把编译期不变量换成了内容层运行时校验。
-  **为什么延后**：已登记为 deviation，由 Story 1.6 的 Zod schema 兜底。
-  **恢复条件**：Story 1.6 录入内容时，把「`kind: 'word'` 的 options 必须是图片」写成 Zod 断言，
-  并给 `src/content/` 的坏数据补一条测试。
+  **已兑现的兜底**：`src/content/schema.ts` 的 `CardSchema.superRefine` 逐个选项判形态，
+  报错定位到 `options[i]` 并带上卡型；正反两条都有测试
+  （`tests/content/schema.test.ts` 的「单词卡配文字选项被拒（M3 的守卫）」
+  与「真实存在的词条可以作选项（正向对照，防这条规则写反）」），
+  变异 M3 已实测把该分支删掉会变红。
+  ⚠️ **剩下的口子**：`core/` 内部自己造的卡（测试 fixture、`balance-sim` 的合成题单）
+  仍不受这道闸约束 —— 它们不经内容层。Story 1.7 起渲染层消费真实内容后，这条才算真正封死。
   ——
-  `src/core/types.ts`、`_bmad-output/planning-artifacts/game-architecture.md` 模式 B
+  `src/content/schema.ts`、`tests/content/schema.test.ts`、`src/core/types.ts`
 
 - **减速塔在当前数值下被完全支配** ——
   `npm run balance-sim` 的实测（Story 1.5 / `[CR]` 2026-10-14 复核）：
@@ -361,3 +367,41 @@
   僵尸能被明显拖住、被拖住的那只正好让后一只追上。
   ——
   `src/core/reducer.ts` 的 `applyResolve`、`tests/fixtures/level-driver.ts`、`scripts/balance-sim.ts`
+
+---
+
+## Deferred from: story-1-6-内容数据层与单元-1-录入 (2026-10-14)
+
+- **38 条词表撑不起「三型成规模」，关键词卡只有 1 张** ——
+  AC-17 要求三种卡型都「成规模存在」，实测**只能**做到：单词 30、回应 7、**关键词 1**。
+  原因是词池本身：38 条里只有「I have a ball for my dog.」这一句里含有池内词汇，
+  其余句子（问候语、致谢）不含任何池内单词 —— 「听句取词」无词可取。
+  做到 1 张已是当前录音池的上限（录音不可重生成，见下条）。
+  **为什么不在这里解决**：要么补录录音（违不可逆约束 1），要么等 Story 2.x 扩词池。
+  **恢复条件**：Epic 2 扩词池时，优先补「含池内词的句子」，并把本条改成回归守卫。
+  ——
+  `src/content/units/unit-01.json`、`docs/art-direction.md`
+
+- **`AC-18` 与「每条录音都必须有卡面」在 `u1-s-good-morning` 上正面冲突** ——
+  AC-18 要求短语「Good morning」不单独成卡；但架构约束要求每条 `entryId` 都有卡面，
+  且卡面文本必须等于录音内容（录音**永不重生成**）。
+  本 story 的处置：给它一张**回应卡**，题面就是「Good morning!」（GDD `:185` 的表格本就这么列），
+  同时确保它在其余 6 张回应卡里以**选项**出现（全部是干扰项，正确答案另有其卡）——
+  AC-18 的后半句（作为回应出现）由此满足。
+  **为什么登记**：这是裁决，不是无争议的实现；`[CR]` 可能有别的读法。
+  **恢复条件**：`[CR]` 若判「必须换实现」，改法是让该条目不再有卡面 —— 但那会破坏
+  「每条录音都有卡面」这条更强的不变量，届时要连带重估。
+  ——
+  `src/content/units/unit-01.json`、`tests/content/unit-01.test.ts`（AC-18 那条断言带完整解释）
+
+- **内容层的 DOM/Vue 边界只靠 ESLint，没有类型层兜底** ——
+  `src/content/` 落在 `tsconfig.app.json`（有 DOM lib），而 `tsconfig.core.json` 的
+  「零 DOM」硬约束**管不到它**。也就是说往内容层写一个 `window` / `localStorage`，
+  `tsc` 不会报错，只有 ESLint 的 `no-restricted-globals` 会拦。
+  若哪天有人改了 eslint 配置或漏掉某个文件，这条边界就是**静默**消失的
+  （`tests/content/content-boundary.test.ts` 求值 eslint 配置来守，但守的是「规则存在」，
+  不是「规则被改动过」）。
+  **恢复条件**：想更硬时，可给内容层单独一个 `tsconfig` 项目（lib 不含 DOM）并让它被
+  test 项目 `reference`（注意 TS6310：被引用的项目不能 `noEmit`）。
+  ——
+  `tsconfig.app.json`、`eslint.config.js`、`tests/content/content-boundary.test.ts`

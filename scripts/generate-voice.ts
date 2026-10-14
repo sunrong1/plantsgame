@@ -1,7 +1,7 @@
 /**
- * 朗读录音批量生成（Story 1.3 / 架构决策 7 硬约束 1）。
+ * 朗读录音批量生成（Story 1.3 / 架构决策 7 硬约束 1；Story 1.6 起改从内容层取词表）。
  *
- * 把 `scripts/data/voice-entries.json` 里的每条卡面题面合成为统一音色的 mp3，
+ * 把 `src/content/` 里每条词条的**卡面题面**合成为统一音色的 mp3，
  * 落到 `public/assets/audio/voice/<词条id>.mp3`，**提交进 git**。
  *
  * ── 为什么直接调 HTTP API，而不是包一层 mmx CLI ──────────────────────────
@@ -14,16 +14,29 @@
  * 沿用 `scripts/balance-sim.ts` 既有注释：原生方案不支持 enum，会给整个
  * `src/core/` 施加一条与本架构无关的书写约束。
  *
- * ── 为什么不 import `src/` ────────────────────────────────────────────
- * `tsconfig.node.json` 的 include 不含 `scripts/`，composite 项目要求
- * 「所有 import 的文件必须被列出」，import `src/services/pronunciation.ts`
- * 会直接报 TS6307。因此 `VALID_ENTRY_ID` 是 `ENTRY_ID_PATTERN` 的一份**有意**
- * 的副本，由 `tests/scripts/generate-voice.test.ts` 断言两份逐字一致来兜底。
+ * ── 词表为什么从 `src/content/` 取（Story 1.6 改）──────────────────────
+ * 原本这里有一份独立的 `scripts/data/voice-entries.json`。它与 `src/content/` 的
+ * 单元文件是**同一份词表的两个事实源** —— 而两份事实源就是漂移的种子
+ * （同架构决策 10：「平衡模拟是 TypeScript，避免两份数值漂移」）。
+ * 那个文件自己的 `note` 字段也写着「Story 1.6 录入后须同步」，靠人记着的同步迟早会漏。
+ * 现在：内容层是唯一事实源，`UnitSchema` 在 import 时就校验过，
+ * 录音要朗读的文本**就是**孩子会看到的卡面 —— 两者不可能各说各话。
+ *
+ * ⚠️ 旧注释曾说「import `src/` 会撞 TS6307」：那是 Story 1.3 时的实况
+ *   （`tsconfig.node.json` 不含 `scripts/`，本文件不在任何项目里）。
+ *   现在 `scripts/` 与 `src/content/` 下的所有 `.ts` **同时**列在 `tsconfig.test.json`
+ *   的 include 里（Story 1.6 / AC-30 加的），实测不再报 TS6307 ——
+ *   改回「不 import」之前请先跑一次 `npm run typecheck` 看这个前提是否还成立。
  */
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+
+// 内容层：词表的唯一事实源（Story 1.6 起，理由见文件头）。
+// ⚠️ 这行 import **顺带**完成了一件事：import 本模块就会跑一遍 `UnitSchema` 校验，
+//   内容坏了就在**发第一个请求之前**抛出来，而不是烧掉半程 API 费用才发现。
+import { UNITS } from '../src/content/index'
 
 // ── 常量（架构 Configuration：本文件的参数归属）──────────────────────────
 //
@@ -83,8 +96,8 @@ function writeManifestFile(manifest: VoiceManifest): void {
   renameSync(tmp, MANIFEST_FILE)
 }
 
-/** 词表路径。相对本文件解析，不依赖 cwd —— `npm run` 的 cwd 是仓库根。 */
-const ENTRIES_FILE = new URL('data/voice-entries.json', import.meta.url)
+// ⚠️ 旧的 `ENTRIES_FILE = data/voice-entries.json` 已在 Story 1.6 删除 ——
+//   词表改从 `src/content/` 取（见文件头与 `entriesFromContent`）。
 
 /** 单条词条的尝试次数上限（含第一次）。4xx 不重试，所以不会真的走到 3 次。 */
 const MAX_ATTEMPTS = 3
@@ -116,9 +129,6 @@ const RATE_LIMIT_CODE = 1002
 
 // ── 纯逻辑（可测，副作用一律留在 main）──────────────────────────────────
 
-/** 词条 id 的合法形态。`ENTRY_ID_PATTERN` 的副本，见文件头「为什么不 import src/」。 */
-export const VALID_ENTRY_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
-
 export interface VoiceEntry {
   id: string
   text: string
@@ -131,53 +141,56 @@ export interface Failure {
   msg: string
 }
 
-export function isValidEntryId(id: string): boolean {
-  return VALID_ENTRY_ID.test(id)
+/**
+ * 内容层里本脚本真正需要的两项。
+ *
+ * 故意写成**结构化窄类型**而不是直接收 `Unit`：测试能用两行的最小 fixture 驱动它，
+ * 不必为了测「两个单元撞名」而手搓一份合法的完整单元（合法 fixture 本身要 4 条词条起步）。
+ */
+export interface ContentUnitLike {
+  readonly unitNumber: number
+  readonly entries: readonly {
+    readonly entryId: string
+    readonly card: { readonly promptText: string }
+  }[]
 }
 
 /**
- * 解析并校验词表。
+ * 把内容层摊平成「id + 被朗读文本」。
  *
- * 校验放在**生成侧**而不是运行时：id 写错时运行时不报错，只是 `new Audio()`
- * 静默 404 并降级到设备 TTS —— 一个永远不会自己浮出水面的错误。
+ * 校验分工（Story 1.6 改）：
+ * · **id 形态、单元内重复、空卡面** —— 由 `UnitSchema` 在 import `src/content/` 时守，
+ *   本函数拿到的数据已经过闸，不再重复一份规则（两份规则就是两份漂移的种子）。
+ * · **跨单元重复** —— `UnitSchema` 看不到（它一次只校验一个单元），而录音目录
+ *   `audio/voice/` 是**平铺的、不按单元分层**，两个单元的同名 id 会互相覆盖 mp3。
+ *   所以这一条留在生成侧守：它在花费 API 费用之前就会抛出来。
  */
-export function parseEntries(raw: string): VoiceEntry[] {
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(raw)
-  } catch (err) {
-    throw new Error(`[voice] 词表不是合法 JSON：${err instanceof Error ? err.message : String(err)}`)
-  }
-
-  const list =
-    parsed !== null && typeof parsed === 'object' && 'entries' in parsed
-      ? (parsed as { entries: unknown }).entries
-      : null
-  if (!Array.isArray(list)) {
-    throw new Error('[voice] 词表缺少 entries 数组')
-  }
-  if (list.length === 0) {
-    throw new Error('[voice] 词表是空的 —— 没有任何录音可生成')
-  }
-
-  const seen = new Set<string>()
+export function entriesFromContent(units: readonly ContentUnitLike[]): VoiceEntry[] {
+  const seen = new Map<string, number>()
   const entries: VoiceEntry[] = []
-  for (const item of list) {
-    if (item === null || typeof item !== 'object') {
-      throw new Error(`[voice] 词表条目不是对象：${JSON.stringify(item)}`)
+
+  for (const unit of units) {
+    for (const entry of unit.entries) {
+      const owner = seen.get(entry.entryId)
+      if (owner !== undefined) {
+        throw new Error(
+          `[voice] 词条 id 跨单元重复：${entry.entryId} 同时出现在单元 ${owner} 与单元 ` +
+            `${unit.unitNumber} —— 录音目录不按单元分层，两处同名会互相覆盖 mp3`,
+        )
+      }
+      if (entry.card.promptText.trim() === '') {
+        throw new Error(
+          `[voice] 词条 ${entry.entryId} 的卡面文本为空 —— 会合成一段静默的 mp3` +
+            '（被朗读的是卡面题面，不是选项）',
+        )
+      }
+      seen.set(entry.entryId, unit.unitNumber)
+      entries.push({ id: entry.entryId, text: entry.card.promptText })
     }
-    const { id, text } = item as { id?: unknown; text?: unknown }
-    if (typeof id !== 'string' || !isValidEntryId(id)) {
-      throw new Error(`[voice] 词条 id 非法：${String(id)}（须匹配 kebab-case）`)
-    }
-    if (typeof text !== 'string' || text.trim() === '') {
-      throw new Error(`[voice] 词条 ${id} 缺少 text（被朗读的是卡面题面，不是选项）`)
-    }
-    if (seen.has(id)) {
-      throw new Error(`[voice] 词表里有重复 id：${id}（会互相覆盖录音）`)
-    }
-    seen.add(id)
-    entries.push({ id, text })
+  }
+
+  if (entries.length === 0) {
+    throw new Error('[voice] 内容层里没有词条 —— 没有任何录音可生成')
   }
   return entries
 }
@@ -743,7 +756,7 @@ export async function main(argv: string[], env: NodeJS.ProcessEnv = process.env)
 
   let entries: VoiceEntry[]
   try {
-    entries = parseEntries(readFileSync(ENTRIES_FILE, 'utf8'))
+    entries = entriesFromContent(UNITS)
   } catch (err) {
     console.error(err instanceof Error ? err.message : String(err))
     return 1

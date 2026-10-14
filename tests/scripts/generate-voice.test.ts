@@ -18,20 +18,20 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { ENTRY_ID_PATTERN } from '../../src/services/pronunciation'
+import { ENTRY_ID_PATTERN as RUNTIME_ENTRY_ID_PATTERN } from '../../src/services/pronunciation'
+import { UNITS } from '../../src/content'
+import { ENTRY_ID_PATTERN as CONTENT_ENTRY_ID_PATTERN } from '../../src/content/schema'
 import {
   REQUEST_INTERVAL_MS,
-  VALID_ENTRY_ID,
   buildRequestBody,
   currentFingerprint,
   decideSkip,
+  entriesFromContent,
   estimateCost,
   fingerprintDiff,
   fingerprintMatches,
-  isValidEntryId,
   looksLikeMp3,
   main,
-  parseEntries,
   parseManifest,
   parseRetryAfter,
   readApiKey,
@@ -44,9 +44,11 @@ import {
 
 const REPO_ROOT = new URL('../../', import.meta.url)
 
-/** 读仓库里的真实词表文件。 */
-const readVoiceEntriesJson = (): string =>
-  readFileSync(new URL('scripts/data/voice-entries.json', REPO_ROOT), 'utf8')
+/**
+ * 真实词表 = 内容层（Story 1.6 起 `voice-entries.json` 已退役）。
+ * 下面的「词表」断言全部改在这里取，不再读第二份文件。
+ */
+const contentEntries = (): VoiceEntry[] => entriesFromContent(UNITS)
 
 /** 一套**不碰磁盘、不碰网络**的 runBatch 依赖；每个用例只覆写自己关心的那几项。 */
 const makeDeps = (over: Partial<RunDeps> = {}): RunDeps => ({
@@ -96,21 +98,42 @@ afterEach(() => {
 })
 
 describe('词表 id 与运行时契约的对齐（AC-2）', () => {
-  it('本文件复制的正则与 pronunciation.ts 的 ENTRY_ID_PATTERN 逐字一致', () => {
-    // 两份正则是**有意**的重复（脚本不被 src/ 的 tsconfig 覆盖，import 会撞 TS6307），
-    // 重复的全部风险就是两边漂移 —— 这条用例就是那份重复的兜底。
+  it('内容层的 id 规则是运行时规则的严格超集（不是逐字相同的同一份）', () => {
+    // ⚠️ 两份正则**故意不一样**，职责也不同，别把它们「统一」成一份：
+    //   · 运行时（pronunciation.ts）：只管「这个 id 会被拼进 URL」⇒ 禁 `/`、`.`、大写，
+    //     对有没有单元前缀**不表态** —— 运行时不该管命名约定。
+    //   · 内容层（schema.ts / AR29）：额外要求 `u<N>-` 前缀。
+    // 因此真正的不变量是**包含关系**而不是相等：内容层放行的 id，运行时必须也认 ——
+    // 否则症状是「录了音、文件名却过不了运行时的路径校验，被静默跳过」。
+    for (const id of ['u1-dog', 'u1-good-afternoon', 'u1-s-how-are-you', 'u1-s-nice-to-meet-you']) {
+      expect(CONTENT_ENTRY_ID_PATTERN.test(id), `${id} 应当是合法的内容层 id`).toBe(true)
+      expect(
+        RUNTIME_ENTRY_ID_PATTERN.test(id),
+        `${id} 内容层放行、运行时却拒绝 ⇒ 它的录音永远不会被读取（静默降级到设备 TTS）`,
+      ).toBe(true)
+    }
+
+    // 反向不成立是**正确的**：运行时不要求前缀，方向反了才是 bug。
     expect(
-      VALID_ENTRY_ID.source,
-      '两份正则漂移了 —— 词表校验与运行时校验从此是两套标准，非法 id 会在录音阶段才暴露',
-    ).toBe(ENTRY_ID_PATTERN.source)
+      RUNTIME_ENTRY_ID_PATTERN.test('dog'),
+      '运行时突然要求单元前缀了 —— 那是内容层/AR29 的职责，运行时的职责只是 URL 安全',
+    ).toBe(true)
+    expect(
+      RUNTIME_ENTRY_ID_PATTERN.test('../config'),
+      '运行时不再挡目录穿越 ⇒ id 会被拼成目录外的路径',
+    ).toBe(false)
+    expect(
+      CONTENT_ENTRY_ID_PATTERN.test('../config'),
+      '内容层不再挡目录穿越 ⇒ 人工录入的一个 ../ 就能打穿 URL',
+    ).toBe(false)
   })
 
-  it('词表文件里每条 id 都合法', () => {
-    const entries = parseEntries(readVoiceEntriesJson())
+  it('内容层每条 id 都合法（能被运行时的规则匹配上）', () => {
+    const entries = contentEntries()
     expect(entries.length, '词表是空的 —— 没有任何录音可生成').toBeGreaterThan(0)
     for (const e of entries) {
       expect(
-        isValidEntryId(e.id),
+        RUNTIME_ENTRY_ID_PATTERN.test(e.id),
         `词条 id 非法：${e.id} —— 运行时会跳过它、于是这个词永远只有设备 TTS 的发音`,
       ).toBe(true)
     }
@@ -119,8 +142,7 @@ describe('词表 id 与运行时契约的对齐（AC-2）', () => {
   it('词表里每条 id 都带单元前缀（u<N>- 开头）', () => {
     // 录音目录 audio/voice/ 是平铺的、不按单元分层。id 不带前缀时，
     // 单元 2 的 `dog` 会覆盖单元 1 的 `u1-dog.mp3` —— 某个词发错音，且没有任何报错。
-    const entries = parseEntries(readVoiceEntriesJson())
-    for (const e of entries) {
+    for (const e of contentEntries()) {
       expect(
         /^u\d+-/.test(e.id),
         `词条 id 缺单元前缀：${e.id} —— 跨单元同名词会撞名覆盖录音`,
@@ -129,18 +151,16 @@ describe('词表 id 与运行时契约的对齐（AC-2）', () => {
   })
 
   it('词表 id 不重复', () => {
-    const entries = parseEntries(readVoiceEntriesJson())
-    const ids = entries.map((e) => e.id)
+    const ids = contentEntries().map((e) => e.id)
     expect(new Set(ids).size, '词表里有重复 id —— 会互相覆盖，生成结果只保留最后一个').toBe(
       ids.length,
     )
   })
 
   it('词表同时覆盖三种卡型（AC-2 移交 1.6 的对齐要求）', () => {
-    const entries = parseEntries(readVoiceEntriesJson())
-    const texts = entries.map((e) => e.text)
-    const words = entries.filter((e) => !e.text.endsWith('?') && !e.text.includes(' '))
-    const sentences = entries.filter((e) => e.text.includes(' '))
+    const texts = contentEntries().map((e) => e.text)
+    const words = texts.filter((t) => !t.endsWith('?') && !t.includes(' '))
+    const sentences = texts.filter((t) => t.includes(' '))
     expect(words.length, '没有单词卡题面 —— 三型链路少一型').toBeGreaterThan(0)
     expect(sentences.length, '没有长句题面 —— 关键词卡无法试听').toBeGreaterThan(0)
     expect(
@@ -149,24 +169,36 @@ describe('词表 id 与运行时契约的对齐（AC-2）', () => {
     ).toBe(true)
   })
 
-  it('parseEntries 对非法 id 抛错，且错误信息里带出该 id', () => {
-    const raw = JSON.stringify({ entries: [{ id: 'U1_Dog', text: 'dog' }] })
-    expect(() => parseEntries(raw)).toThrow(/U1_Dog/)
+  it('entriesFromContent 对跨单元同名的 id 抛错（deferred-work 117-125 的正面回击）', () => {
+    // 这正是当年被延后的那条：单元内唯一由 Zod 守，但**跨单元**同名只有生成侧看得见，
+    // 而录音目录是平铺的 —— 撞名就是某个词发错音，且没有任何报错。
+    const units = [
+      { unitNumber: 1, entries: [{ entryId: 'u1-dog', card: { promptText: 'dog' } }] },
+      { unitNumber: 2, entries: [{ entryId: 'u1-dog', card: { promptText: 'dog' } }] },
+    ]
+    expect(
+      () => entriesFromContent(units),
+      '跨单元同名 id 被放行 ⇒ 两个 mp3 抢同一个文件名，一个孩子的词发成另一个',
+    ).toThrow(/u1-dog/)
   })
 
-  it('parseEntries 对缺 text 的条目抛错', () => {
-    const raw = JSON.stringify({ entries: [{ id: 'u1-dog' }] })
-    expect(() => parseEntries(raw), '缺 text 会生成一段 undefined 的朗读').toThrow()
+  it('entriesFromContent 对空卡面抛错（会合成一段静默的 mp3）', () => {
+    const units = [{ unitNumber: 1, entries: [{ entryId: 'u1-dog', card: { promptText: '  ' } }] }]
+    expect(() => entriesFromContent(units)).toThrow(/u1-dog/)
   })
 
-  it('parseEntries 对重复 id 抛错', () => {
-    const raw = JSON.stringify({
-      entries: [
-        { id: 'u1-dog', text: 'dog' },
-        { id: 'u1-dog', text: 'dog' },
-      ],
-    })
-    expect(() => parseEntries(raw), '重复 id 会互相覆盖录音').toThrow()
+  it('entriesFromContent 对空内容抛错（不是「安静地生成 0 条」而是报错）', () => {
+    expect(() => entriesFromContent([])).toThrow()
+  })
+
+  it('entriesFromContent 的输出与内容层的卡面逐字一致（录的就是孩子看到的那句）', () => {
+    const byId = new Map(UNITS.flatMap((u) => u.entries.map((e) => [e.entryId, e.card.promptText])))
+    for (const e of contentEntries()) {
+      expect(
+        e.text,
+        `${e.id} 录的文本与卡面不一致 ⇒ 孩子看到的字与听到的声音对不上`,
+      ).toBe(byId.get(e.id))
+    }
   })
 })
 
@@ -212,7 +244,7 @@ describe('--dry 路径零网络请求（AC-5）', () => {
         throw new Error('测试中不应发起网络请求')
       }) as unknown as typeof fetch,
     })
-    const entries = parseEntries(readVoiceEntriesJson())
+    const entries = contentEntries()
 
     const result = await runBatch(entries, deps)
 
@@ -230,7 +262,7 @@ describe('--dry 路径零网络请求（AC-5）', () => {
         if (m?.[1]) totalPrinted = Number(m[1])
       },
     })
-    const entries = parseEntries(readVoiceEntriesJson())
+    const entries = contentEntries()
 
     await runBatch(entries, deps)
 
@@ -491,7 +523,7 @@ describe('重试上限与失败清单（AC-7）', () => {
   it('默认请求间隔保证单元 1 的量级落在 60 RPM 之内', () => {
     // 官方 HD 系列限 60 RPM。间隔为 0 时单元 1 实测就在第 24 条撞墙（见上一条用例）。
     // Epic 2 词量翻十倍时**必须**再调大 —— 这条断言会在那时立刻变红提醒。
-    const entries = parseEntries(readVoiceEntriesJson())
+    const entries = contentEntries()
     expect(
       REQUEST_INTERVAL_MS,
       '请求间隔为 0 —— 单元 1 的量级就会撞上 60 RPM（Epic 2 需调成 ~1100ms 以上）',

@@ -1,0 +1,575 @@
+{
+  "unitNumber": 1,
+  "entries": [
+    {
+      "entryId": "u1-hello",
+      "wordId": "u1-hello",
+      "towerType": "direct",
+      "card": {
+        "kind": "word",
+        "promptText": "Hello",
+        "options": [
+          { "id": "u1-hello", "imageSrc": "/assets/words/unit-01/u1-hello.svg", "correct": true },
+          { "id": "u1-goodbye", "imageSrc": "/assets/words/unit-01/u1-goodbye.svg", "correct": false },
+          { "id": "u1-teacher", "imageSrc": "/assets/words/unit-01/u1-teacher.svg", "correct": false },
+          { "id": "u1-friend", "imageSrc": "/assets/words/unit-01/u1-friend.svg", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u1-goodbye",
+      "wordId": "u1-goodbye",
+      "towerType": "slow",
+      "card": {
+        "kind": "word",
+        "promptText": "Goodbye",
+        "options": [
+          { "id": "u1-goodbye", "imageSrc": "/assets/words/unit-01/u1-goodbye.svg", "correct": true },
+          { "id": "u1-hello", "imageSrc": "/assets/words/unit-01/u1-hello.svg", "correct": false },
+          { "id": "u1-friend", "imageSrc": "/assets/words/unit-01/u1-friend.svg", "correct": false },
+          { "id": "u1-teacher", "imageSrc": "/assets/words/unit-01/u1-teacher.svg", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u1-teacher",
+      "wordId": "u1-teacher",
+      "towerType": "aoe",
+      "card": {
+        "kind": "word",
+        "promptText": "teacher",
+        "options": [
+          { "id": "u1-teacher", "imageSrc": "/assets/words/unit-01/u1-teacher.svg", "correct": true },
+          { "id": "u1-student", "imageSrc": "/assets/words/unit-01/u1-student.svg", "correct": false },
+          { "id": "u1-father", "imageSrc": "/assets/words/unit-01/u1-father.svg", "correct": false },
+          { "id": "u1-mother", "imageSrc": "/assets/words/unit-01/u1-mother.svg", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u1-student",
+      "wordId": "u1-student",
+      "towerType": "direct",
+      "card": {
+        "kind": "word",
+        "promptText": "student",
+        "options": [
+          { "id": "u1-student", "imageSrc": "/assets/words/unit-01/u1-student.svg", "correct": true },
+          { "id": "u1-teacher", "imageSrc": "/assets/words/unit-01/u1-teacher.svg", "correct": false },
+          { "id": "u1-friend", "imageSrc": "/assets/words/unit-01/u1-friend.svg", "correct": false },
+          { "id": "u1-brother", "imageSrc": "/assets/words/unit-01/u1-brother.svg", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u1-friend",
+      "wordId": "u1-friend",
+      "towerType": "slow",
+      "card": {
+        "kind": "word",
+        "promptText": "friend",
+        "options": [
+          { "id": "u1-friend", "imageSrc": "/assets/words/unit-01/u1-friend.svg", "correct": true },
+          { "id": "u1-teacher", "imageSrc": "/assets/words/unit-01/u1-teacher.svg", "correct": false },
+          { "id": "u1-sister", "imageSrc": "/assets/words/unit-01/u1-sister.svg", "correct": false },
+          { "id": "u1-student", "imageSrc": "/assets/words/unit-01/u1-student.svg", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u1-father",
+      "wordId": "u1-father",
+      "towerType": "aoe",
+      "card": {
+        "kind": "word",
+        "promptText": "father",
+        "options": [
+          { "id": "u1-father", "imageSrc": "/assets/words/unit-01/u1-father.svg", "correct": true },
+          { "id": "u1-mother", "imageSrc": "/assets/words/unit-01/u1-mother.svg", "correct": false },
+          { "id": "u1-brother", "imageSrc": "/assets/words/unit-01/u1-brother.svg", "correct": false },
+          { "id": "u1-teacher", "imageSrc": "/assets/words/unit-01/u1-teacher.svg", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u1-mother",
+      "wordId": "u1-mother",
+      "towerType": "direct",
+      "card": {
+        "kind": "word",
+        "promptText": "mother",
+        "options": [
+          { "id": "u1-mother", "imageSrc": "/assets/words/unit-01/u1-mother.svg", "correct": true },
+          { "id": "u1-father", "imageSrc": "/assets/words/unit-01/u1-father.svg", "correct": false },
+          { "id": "u1-sister", "imageSrc": "/assets/words/unit-01/u1-sister.svg", "correct": false },
+          { "id": "u1-teacher", "imageSrc": "/assets/words/unit-01/u1-teacher.svg", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u1-brother",
+      "wordId": "u1-brother",
+      "towerType": "slow",
+      "card": {
+        "kind": "word",
+        "promptText": "brother",
+        "options": [
+          { "id": "u1-brother", "imageSrc": "/assets/words/unit-01/u1-brother.svg", "correct": true },
+          { "id": "u1-sister", "imageSrc": "/assets/words/unit-01/u1-sister.svg", "correct": false },
+          { "id": "u1-father", "imageSrc": "/assets/words/unit-01/u1-father.svg", "correct": false },
+          { "id": "u1-student", "imageSrc": "/assets/words/unit-01/u1-student.svg", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u1-sister",
+      "wordId": "u1-sister",
+      "towerType": "aoe",
+      "card": {
+        "kind": "word",
+        "promptText": "sister",
+        "options": [
+          { "id": "u1-sister", "imageSrc": "/assets/words/unit-01/u1-sister.svg", "correct": true },
+          { "id": "u1-brother", "imageSrc": "/assets/words/unit-01/u1-brother.svg", "correct": false },
+          { "id": "u1-mother", "imageSrc": "/assets/words/unit-01/u1-mother.svg", "correct": false },
+          { "id": "u1-friend", "imageSrc": "/assets/words/unit-01/u1-friend.svg", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u1-cat",
+      "wordId": "u1-cat",
+      "towerType": "direct",
+      "card": {
+        "kind": "word",
+        "promptText": "cat",
+        "options": [
+          { "id": "u1-cat", "imageSrc": "/assets/words/unit-01/u1-cat.svg", "correct": true },
+          { "id": "u1-dog", "imageSrc": "/assets/words/unit-01/u1-dog.svg", "correct": false },
+          { "id": "u1-rabbit", "imageSrc": "/assets/words/unit-01/u1-rabbit.svg", "correct": false },
+          { "id": "u1-bird", "imageSrc": "/assets/words/unit-01/u1-bird.svg", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u1-dog",
+      "wordId": "u1-dog",
+      "towerType": "slow",
+      "card": {
+        "kind": "word",
+        "promptText": "dog",
+        "options": [
+          { "id": "u1-dog", "imageSrc": "/assets/words/unit-01/u1-dog.svg", "correct": true },
+          { "id": "u1-cat", "imageSrc": "/assets/words/unit-01/u1-cat.svg", "correct": false },
+          { "id": "u1-rabbit", "imageSrc": "/assets/words/unit-01/u1-rabbit.svg", "correct": false },
+          { "id": "u1-panda", "imageSrc": "/assets/words/unit-01/u1-panda.svg", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u1-rabbit",
+      "wordId": "u1-rabbit",
+      "towerType": "aoe",
+      "card": {
+        "kind": "word",
+        "promptText": "rabbit",
+        "options": [
+          { "id": "u1-rabbit", "imageSrc": "/assets/words/unit-01/u1-rabbit.svg", "correct": true },
+          { "id": "u1-cat", "imageSrc": "/assets/words/unit-01/u1-cat.svg", "correct": false },
+          { "id": "u1-panda", "imageSrc": "/assets/words/unit-01/u1-panda.svg", "correct": false },
+          { "id": "u1-bird", "imageSrc": "/assets/words/unit-01/u1-bird.svg", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u1-panda",
+      "wordId": "u1-panda",
+      "towerType": "direct",
+      "card": {
+        "kind": "word",
+        "promptText": "panda",
+        "options": [
+          { "id": "u1-panda", "imageSrc": "/assets/words/unit-01/u1-panda.svg", "correct": true },
+          { "id": "u1-rabbit", "imageSrc": "/assets/words/unit-01/u1-rabbit.svg", "correct": false },
+          { "id": "u1-dog", "imageSrc": "/assets/words/unit-01/u1-dog.svg", "correct": false },
+          { "id": "u1-cat", "imageSrc": "/assets/words/unit-01/u1-cat.svg", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u1-bird",
+      "wordId": "u1-bird",
+      "towerType": "slow",
+      "card": {
+        "kind": "word",
+        "promptText": "bird",
+        "options": [
+          { "id": "u1-bird", "imageSrc": "/assets/words/unit-01/u1-bird.svg", "correct": true },
+          { "id": "u1-fish", "imageSrc": "/assets/words/unit-01/u1-fish.svg", "correct": false },
+          { "id": "u1-cat", "imageSrc": "/assets/words/unit-01/u1-cat.svg", "correct": false },
+          { "id": "u1-rabbit", "imageSrc": "/assets/words/unit-01/u1-rabbit.svg", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u1-fish",
+      "wordId": "u1-fish",
+      "towerType": "aoe",
+      "card": {
+        "kind": "word",
+        "promptText": "fish",
+        "options": [
+          { "id": "u1-fish", "imageSrc": "/assets/words/unit-01/u1-fish.svg", "correct": true },
+          { "id": "u1-bird", "imageSrc": "/assets/words/unit-01/u1-bird.svg", "correct": false },
+          { "id": "u1-cat", "imageSrc": "/assets/words/unit-01/u1-cat.svg", "correct": false },
+          { "id": "u1-rabbit", "imageSrc": "/assets/words/unit-01/u1-rabbit.svg", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u1-ball",
+      "wordId": "u1-ball",
+      "towerType": "direct",
+      "card": {
+        "kind": "word",
+        "promptText": "ball",
+        "options": [
+          { "id": "u1-ball", "imageSrc": "/assets/words/unit-01/u1-ball.svg", "correct": true },
+          { "id": "u1-book", "imageSrc": "/assets/words/unit-01/u1-book.svg", "correct": false },
+          { "id": "u1-pen", "imageSrc": "/assets/words/unit-01/u1-pen.svg", "correct": false },
+          { "id": "u1-bag", "imageSrc": "/assets/words/unit-01/u1-bag.svg", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u1-book",
+      "wordId": "u1-book",
+      "towerType": "slow",
+      "card": {
+        "kind": "word",
+        "promptText": "book",
+        "options": [
+          { "id": "u1-book", "imageSrc": "/assets/words/unit-01/u1-book.svg", "correct": true },
+          { "id": "u1-ball", "imageSrc": "/assets/words/unit-01/u1-ball.svg", "correct": false },
+          { "id": "u1-pen", "imageSrc": "/assets/words/unit-01/u1-pen.svg", "correct": false },
+          { "id": "u1-desk", "imageSrc": "/assets/words/unit-01/u1-desk.svg", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u1-pen",
+      "wordId": "u1-pen",
+      "towerType": "aoe",
+      "card": {
+        "kind": "word",
+        "promptText": "pen",
+        "options": [
+          { "id": "u1-pen", "imageSrc": "/assets/words/unit-01/u1-pen.svg", "correct": true },
+          { "id": "u1-pencil", "imageSrc": "/assets/words/unit-01/u1-pencil.svg", "correct": false },
+          { "id": "u1-book", "imageSrc": "/assets/words/unit-01/u1-book.svg", "correct": false },
+          { "id": "u1-bag", "imageSrc": "/assets/words/unit-01/u1-bag.svg", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u1-pencil",
+      "wordId": "u1-pencil",
+      "towerType": "direct",
+      "card": {
+        "kind": "word",
+        "promptText": "pencil",
+        "options": [
+          { "id": "u1-pencil", "imageSrc": "/assets/words/unit-01/u1-pencil.svg", "correct": true },
+          { "id": "u1-pen", "imageSrc": "/assets/words/unit-01/u1-pen.svg", "correct": false },
+          { "id": "u1-book", "imageSrc": "/assets/words/unit-01/u1-book.svg", "correct": false },
+          { "id": "u1-desk", "imageSrc": "/assets/words/unit-01/u1-desk.svg", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u1-bag",
+      "wordId": "u1-bag",
+      "towerType": "slow",
+      "card": {
+        "kind": "word",
+        "promptText": "bag",
+        "options": [
+          { "id": "u1-bag", "imageSrc": "/assets/words/unit-01/u1-bag.svg", "correct": true },
+          { "id": "u1-ball", "imageSrc": "/assets/words/unit-01/u1-ball.svg", "correct": false },
+          { "id": "u1-desk", "imageSrc": "/assets/words/unit-01/u1-desk.svg", "correct": false },
+          { "id": "u1-chair", "imageSrc": "/assets/words/unit-01/u1-chair.svg", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u1-desk",
+      "wordId": "u1-desk",
+      "towerType": "aoe",
+      "card": {
+        "kind": "word",
+        "promptText": "desk",
+        "options": [
+          { "id": "u1-desk", "imageSrc": "/assets/words/unit-01/u1-desk.svg", "correct": true },
+          { "id": "u1-chair", "imageSrc": "/assets/words/unit-01/u1-chair.svg", "correct": false },
+          { "id": "u1-book", "imageSrc": "/assets/words/unit-01/u1-book.svg", "correct": false },
+          { "id": "u1-bag", "imageSrc": "/assets/words/unit-01/u1-bag.svg", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u1-chair",
+      "wordId": "u1-chair",
+      "towerType": "direct",
+      "card": {
+        "kind": "word",
+        "promptText": "chair",
+        "options": [
+          { "id": "u1-chair", "imageSrc": "/assets/words/unit-01/u1-chair.svg", "correct": true },
+          { "id": "u1-desk", "imageSrc": "/assets/words/unit-01/u1-desk.svg", "correct": false },
+          { "id": "u1-bag", "imageSrc": "/assets/words/unit-01/u1-bag.svg", "correct": false },
+          { "id": "u1-pen", "imageSrc": "/assets/words/unit-01/u1-pen.svg", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u1-red",
+      "wordId": "u1-red",
+      "towerType": "slow",
+      "card": {
+        "kind": "word",
+        "promptText": "red",
+        "options": [
+          { "id": "u1-red", "imageSrc": "/assets/words/unit-01/u1-red.svg", "correct": true },
+          { "id": "u1-blue", "imageSrc": "/assets/words/unit-01/u1-blue.svg", "correct": false },
+          { "id": "u1-yellow", "imageSrc": "/assets/words/unit-01/u1-yellow.svg", "correct": false },
+          { "id": "u1-beautiful", "imageSrc": "/assets/words/unit-01/u1-beautiful.svg", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u1-blue",
+      "wordId": "u1-blue",
+      "towerType": "aoe",
+      "card": {
+        "kind": "word",
+        "promptText": "blue",
+        "options": [
+          { "id": "u1-blue", "imageSrc": "/assets/words/unit-01/u1-blue.svg", "correct": true },
+          { "id": "u1-red", "imageSrc": "/assets/words/unit-01/u1-red.svg", "correct": false },
+          { "id": "u1-yellow", "imageSrc": "/assets/words/unit-01/u1-yellow.svg", "correct": false },
+          { "id": "u1-happy", "imageSrc": "/assets/words/unit-01/u1-happy.svg", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u1-yellow",
+      "wordId": "u1-yellow",
+      "towerType": "direct",
+      "card": {
+        "kind": "word",
+        "promptText": "yellow",
+        "options": [
+          { "id": "u1-yellow", "imageSrc": "/assets/words/unit-01/u1-yellow.svg", "correct": true },
+          { "id": "u1-red", "imageSrc": "/assets/words/unit-01/u1-red.svg", "correct": false },
+          { "id": "u1-blue", "imageSrc": "/assets/words/unit-01/u1-blue.svg", "correct": false },
+          { "id": "u1-beautiful", "imageSrc": "/assets/words/unit-01/u1-beautiful.svg", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u1-one",
+      "wordId": "u1-one",
+      "towerType": "slow",
+      "card": {
+        "kind": "word",
+        "promptText": "one",
+        "options": [
+          { "id": "u1-one", "imageSrc": "/assets/words/unit-01/u1-one.svg", "correct": true },
+          { "id": "u1-two", "imageSrc": "/assets/words/unit-01/u1-two.svg", "correct": false },
+          { "id": "u1-three", "imageSrc": "/assets/words/unit-01/u1-three.svg", "correct": false },
+          { "id": "u1-pen", "imageSrc": "/assets/words/unit-01/u1-pen.svg", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u1-two",
+      "wordId": "u1-two",
+      "towerType": "aoe",
+      "card": {
+        "kind": "word",
+        "promptText": "two",
+        "options": [
+          { "id": "u1-two", "imageSrc": "/assets/words/unit-01/u1-two.svg", "correct": true },
+          { "id": "u1-one", "imageSrc": "/assets/words/unit-01/u1-one.svg", "correct": false },
+          { "id": "u1-three", "imageSrc": "/assets/words/unit-01/u1-three.svg", "correct": false },
+          { "id": "u1-pencil", "imageSrc": "/assets/words/unit-01/u1-pencil.svg", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u1-three",
+      "wordId": "u1-three",
+      "towerType": "direct",
+      "card": {
+        "kind": "word",
+        "promptText": "three",
+        "options": [
+          { "id": "u1-three", "imageSrc": "/assets/words/unit-01/u1-three.svg", "correct": true },
+          { "id": "u1-one", "imageSrc": "/assets/words/unit-01/u1-one.svg", "correct": false },
+          { "id": "u1-two", "imageSrc": "/assets/words/unit-01/u1-two.svg", "correct": false },
+          { "id": "u1-book", "imageSrc": "/assets/words/unit-01/u1-book.svg", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u1-beautiful",
+      "wordId": "u1-beautiful",
+      "towerType": "slow",
+      "card": {
+        "kind": "word",
+        "promptText": "beautiful",
+        "options": [
+          { "id": "u1-beautiful", "imageSrc": "/assets/words/unit-01/u1-beautiful.svg", "correct": true },
+          { "id": "u1-happy", "imageSrc": "/assets/words/unit-01/u1-happy.svg", "correct": false },
+          { "id": "u1-red", "imageSrc": "/assets/words/unit-01/u1-red.svg", "correct": false },
+          { "id": "u1-blue", "imageSrc": "/assets/words/unit-01/u1-blue.svg", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u1-happy",
+      "wordId": "u1-happy",
+      "towerType": "aoe",
+      "card": {
+        "kind": "word",
+        "promptText": "happy",
+        "options": [
+          { "id": "u1-happy", "imageSrc": "/assets/words/unit-01/u1-happy.svg", "correct": true },
+          { "id": "u1-beautiful", "imageSrc": "/assets/words/unit-01/u1-beautiful.svg", "correct": false },
+          { "id": "u1-yellow", "imageSrc": "/assets/words/unit-01/u1-yellow.svg", "correct": false },
+          { "id": "u1-blue", "imageSrc": "/assets/words/unit-01/u1-blue.svg", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u1-s-i-have-a-ball-for-my-dog",
+      "wordId": "u1-s-i-have-a-ball-for-my-dog",
+      "towerType": "direct",
+      "card": {
+        "kind": "keyword",
+        "promptText": "I have a ball for my dog.",
+        "options": [
+          { "id": "u1-ball", "text": "ball", "correct": true },
+          { "id": "u1-pen", "text": "pen", "correct": false },
+          { "id": "u1-book", "text": "book", "correct": false },
+          { "id": "u1-chair", "text": "chair", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u1-s-how-are-you",
+      "wordId": "u1-s-how-are-you",
+      "towerType": "slow",
+      "card": {
+        "kind": "response",
+        "promptText": "How are you?",
+        "options": [
+          { "id": "u1-s-i-am-fine", "text": "I am fine, thank you.", "correct": true },
+          { "id": "u1-s-good-morning", "text": "Good morning!", "correct": false },
+          { "id": "u1-s-good-afternoon", "text": "Good afternoon!", "correct": false },
+          { "id": "u1-s-thank-you", "text": "Thank you!", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u1-s-what-is-this",
+      "wordId": "u1-s-what-is-this",
+      "towerType": "aoe",
+      "card": {
+        "kind": "response",
+        "promptText": "What is this?",
+        "options": [
+          { "id": "u1-s-i-have-a-ball-for-my-dog", "text": "I have a ball for my dog.", "correct": true },
+          { "id": "u1-s-i-am-fine", "text": "I am fine, thank you.", "correct": false },
+          { "id": "u1-s-good-morning", "text": "Good morning!", "correct": false },
+          { "id": "u1-s-good-afternoon", "text": "Good afternoon!", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u1-s-i-am-fine",
+      "wordId": "u1-s-i-am-fine",
+      "towerType": "direct",
+      "card": {
+        "kind": "response",
+        "promptText": "I am fine, thank you.",
+        "options": [
+          { "id": "u1-goodbye", "text": "Goodbye", "correct": true },
+          { "id": "u1-s-thank-you", "text": "Thank you!", "correct": false },
+          { "id": "u1-hello", "text": "Hello", "correct": false },
+          { "id": "u1-s-good-morning", "text": "Good morning!", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u1-s-good-morning",
+      "wordId": "u1-s-good-morning",
+      "towerType": "slow",
+      "card": {
+        "kind": "response",
+        "promptText": "Good morning!",
+        "options": [
+          { "id": "u1-hello", "text": "Hello", "correct": true },
+          { "id": "u1-goodbye", "text": "Goodbye", "correct": false },
+          { "id": "u1-s-good-afternoon", "text": "Good afternoon!", "correct": false },
+          { "id": "u1-s-nice-to-meet-you", "text": "Nice to meet you.", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u1-s-good-afternoon",
+      "wordId": "u1-s-good-afternoon",
+      "towerType": "aoe",
+      "card": {
+        "kind": "response",
+        "promptText": "Good afternoon!",
+        "options": [
+          { "id": "u1-hello", "text": "Hello", "correct": true },
+          { "id": "u1-goodbye", "text": "Goodbye", "correct": false },
+          { "id": "u1-s-good-morning", "text": "Good morning!", "correct": false },
+          { "id": "u1-s-nice-to-meet-you", "text": "Nice to meet you.", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u1-s-nice-to-meet-you",
+      "wordId": "u1-s-nice-to-meet-you",
+      "towerType": "direct",
+      "card": {
+        "kind": "response",
+        "promptText": "Nice to meet you.",
+        "options": [
+          { "id": "u1-goodbye", "text": "Goodbye", "correct": true },
+          { "id": "u1-s-good-morning", "text": "Good morning!", "correct": false },
+          { "id": "u1-s-good-afternoon", "text": "Good afternoon!", "correct": false },
+          { "id": "u1-hello", "text": "Hello", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u1-s-thank-you",
+      "wordId": "u1-s-thank-you",
+      "towerType": "slow",
+      "card": {
+        "kind": "response",
+        "promptText": "Thank you!",
+        "options": [
+          { "id": "u1-goodbye", "text": "Goodbye", "correct": true },
+          { "id": "u1-hello", "text": "Hello", "correct": false },
+          { "id": "u1-s-i-am-fine", "text": "I am fine, thank you.", "correct": false },
+          { "id": "u1-s-good-morning", "text": "Good morning!", "correct": false }
+        ]
+      }
+    }
+  ]
+}

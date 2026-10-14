@@ -78,7 +78,9 @@ function makeCard(entryId: string, kind: Card['kind']): Card {
     const correct = i === 0
     options.push(
       kind === 'word'
-        ? { id, imageSrc: `/assets/word/${entryId}.svg`, correct }
+        // ⚠️ 这个路径**不会**被读到（合成题单只喂战斗层，不渲染），
+        // 但仍按 AC-22 的规范写，免得留下一个「看起来像路径规范、其实是错的」字符串。
+        ? { id, imageSrc: `/assets/words/unit-01/${entryId}.svg`, correct }
         : { id, text: `选项 ${i + 1}`, correct },
     )
   }
