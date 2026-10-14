@@ -639,7 +639,7 @@ function playPronunciation(text: string): void {
 
 **⚠️ 平衡模拟的单一事实源：模拟重写为 TypeScript。**
 
-GDD 目录中现存的 `balance-scan.py` 是 **Python**，而平衡数值将存在于 **TypeScript**。两处各存一份数值，迟早一改一漏 —— **这正是决策日志记录的「三次手算错误」的同一个根因，只是换了位置。**
+GDD 目录里曾有一个 Python 的 `balance-scan.py` 早期估算脚本。它**已删除**：平衡数值只存在于 TypeScript 的 `scripts/balance-sim.ts`（import 真实 `src/core/`）。**绝不允许再并存第二份数值来源** —— 决策日志记录的「三次手算错误」正是那个根因，换个位置也会重演。
 
 **定案：模拟脚本重写为 TypeScript，直接 `import` 真实的 `core/` reducer。**
 
@@ -760,7 +760,7 @@ plants-game/
 └── _bmad-output/                ← BMAD 产出物
 ```
 
-> 命名说明：GDD 中 `balance-sim.py` 与 `balance-scan.py` 两名混用（gdd.md:243 vs :390）。TypeScript 版统一为 **`balance-sim.ts`**。
+> 命名说明（`[CR] 2026-10-14` 更正）：GDD 早期把平衡脚本混称为 `balance-sim.py` / `balance-scan.py` 两个名字，引用行号已随文档修订失效。**现行唯一名称为 `balance-sim.ts`**，命令 `npm run balance-sim`。
 
 > **⚠️ `views/` 下没有 `UnitSelectView`，且不应新增。**
 > GDD 明确规定「跨单元线性推进 —— 单一进度线，无多单元并行，**无选关自由**」

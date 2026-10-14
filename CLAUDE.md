@@ -154,7 +154,8 @@ _bmad/              BMAD 方法论本体（安装器管理，已提交）
 _bmad/custom/       个人/团队覆盖配置（*.user.toml 不提交）
 _bmad-output/       BMAD 产出物
   planning-artifacts/
-    gdds/<slug>/    GDD 及其配套（decision-log、epics 草案、balance-scan.py）
+    gdds/<slug>/    GDD 及其配套（decision-log、epics 草案）
+                    注：旧 balance-scan.py 已删除，平衡模拟统一用 npm run balance-sim（scripts/balance-sim.ts）
   implementation-artifacts/ sprint 状态、story
 docs/               项目知识库（BMAD 的 project_knowledge 指向这里）
 ```
