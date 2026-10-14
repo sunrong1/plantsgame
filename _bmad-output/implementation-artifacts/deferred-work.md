@@ -405,3 +405,33 @@
   test 项目 `reference`（注意 TS6310：被引用的项目不能 `noEmit`）。
   ——
   `tsconfig.app.json`、`eslint.config.js`、`tests/content/content-boundary.test.ts`
+
+## Deferred from: code review of story-1-6-内容数据层与单元-1-录入 (2026-10-14)
+
+- **占位词图把答案写成可见文字** —— `public/assets/words/unit-01/*.svg:22-24`
+  每张占位图把自己的 `entryId` 当 `<text>` 画出来。`word` 卡的学习动作是「听音→识物」，
+  四个选项只差这一个 ID 串，卡片退化成文本匹配题 —— 正是它本该绕开的技能。
+  `docs/art-direction.md:47-53` 已登记为占位，替换 defer 到 Story 1.8/1.9。
+  **风险点**：Story 1.19 首次试玩是 Epic 1 的生死线，若占位图拖到那时仍未替换，
+  试玩结论会被「答案直接印在选项上」污染。
+  **恢复条件**：Story 1.8 词图第一批落地后，重新确认 SVG 不含任何 `<text>`。
+  ——
+  `public/assets/words/unit-01/*.svg`、`docs/art-direction.md`
+
+- **`validate-content` 每单元跑两次 `UnitSchema.safeParse`** —— `scripts/validate-content.ts:331,163`
+  一次为取 parsed，一次为取 problems。冗余但无害，当前 575 行内容下开销可忽略。
+  **恢复条件**：若单元文件增长到解析耗时可见，再合并为单次。
+  ——
+  `scripts/validate-content.ts`
+
+- **`cardCount` 直接赋值 `entryCount`** —— `scripts/validate-content.ts`
+  两个统计量永远不可能不一致，因此永远测不出「card 数写错」。
+  **恢复条件**：若将来引入「一 entry 多卡」的模型，这行必须先拆开。
+  ——
+  `scripts/validate-content.ts`
+
+- **词图文件与 `tokens.css` 均缺文件尾换行** —— `public/assets/words/unit-01/*.svg`、`src/styles/tokens.css`
+  纯格式，无功能影响。
+  **恢复条件**：接入 formatter 时一并解决。
+  ——
+  `public/assets/words/unit-01/*.svg`、`src/styles/tokens.css`

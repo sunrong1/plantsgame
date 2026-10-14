@@ -882,7 +882,9 @@ describe('溯源 manifest（[CR] P6）', () => {
       fingerprint: currentFingerprint(),
       entries: { 'u1-dog': { text: 'dog', sha256: 'sha-default', bytes: 23 } },
     }
-    expect(decideSkip('u1-dog', true, () => 'sha-default', '/x', manifest).reason).toBe('verified')
+    expect(decideSkip('u1-dog', true, () => 'sha-default', '/x', manifest, 'dog').reason).toBe(
+      'verified',
+    )
   })
 
   it('哈希对不上就重新生成，不跳过', () => {
@@ -891,17 +893,65 @@ describe('溯源 manifest（[CR] P6）', () => {
       fingerprint: currentFingerprint(),
       entries: { 'u1-dog': { text: 'dog', sha256: 'sha-expected', bytes: 23 } },
     }
-    const d = decideSkip('u1-dog', true, () => 'sha-actual', '/x', manifest)
+    const d = decideSkip('u1-dog', true, () => 'sha-actual', '/x', manifest, 'dog')
     expect(d.reason).toBe('corrupt')
     expect(d.skip, '内容不符却跳过 —— 一个播不出声的 mp3 被永久认定完成').toBe(false)
   })
 
   it('磁盘上没有就重新生成', () => {
-    expect(decideSkip('u1-dog', false, () => '', '/x', null).skip).toBe(false)
+    expect(decideSkip('u1-dog', false, () => '', '/x', null, 'dog').skip).toBe(false)
   })
 
   it('无 manifest 时仍跳过已有文件（首次运行不烧配额）', () => {
-    expect(decideSkip('u1-dog', true, () => '', '/x', null).reason).toBe('unrecorded')
+    expect(decideSkip('u1-dog', true, () => '', '/x', null, 'dog').reason).toBe('unrecorded')
+  })
+
+  it('卡面文本与录音溯源记录不一致 ⇒ 重新录音，不跳过', () => {
+    // ⚠️ [CR] 2026-10-14 补的洞：原先 `decideSkip` 根本不接收文本，
+    //   只比 sha256。于是把 `promptText` 从 "dog" 改成 "Dog!" 之后，
+    //   mp3 一个字节没动、哈希照样对得上 ⇒ `verified` ⇒ 跳过，
+    //   录音从此与卡面永久对不上，且**没有任何测试会红**。
+    //   （「文件存在 ≠ 文件正确」的下一层：字节对得上，也要看字节对应的是哪个文本。）
+    const manifest = {
+      fingerprint: currentFingerprint(),
+      entries: { 'u1-dog': { text: 'dog', sha256: 'sha-default', bytes: 23 } },
+    }
+    const d = decideSkip('u1-dog', true, () => 'sha-default', '/x', manifest, 'Dog!')
+
+    expect(d.reason, '卡面改了就该报 text-mismatch，而不是 verified').toBe('text-mismatch')
+    expect(d.skip, '卡面与录音对不上却跳过 ⇒ 孩子看到的字与听到的声音永远不一致').toBe(false)
+  })
+
+  it('文本不一致时报 text-mismatch 而不是 corrupt（别把人引去查半截文件）', () => {
+    // 文本变了哈希必然也变，但报「corrupt」会让人以为 mp3 损坏了去重传，
+    // 而真正要做的是改回卡面或重录。
+    const manifest = {
+      fingerprint: currentFingerprint(),
+      entries: { 'u1-dog': { text: 'dog', sha256: 'sha-expected', bytes: 23 } },
+    }
+    expect(decideSkip('u1-dog', true, () => 'sha-expected', '/x', manifest, 'dog.').reason).toBe(
+      'text-mismatch',
+    )
+  })
+
+  it('真实磁盘上的 37 条录音：卡面文本与 manifest 记录逐条一致（否则新判定会要求全量重录）', () => {
+    // 新判定会让「manifest 文本 ≠ 卡面文本」的条目要求重录。确认今天没有这种条目 ——
+    // 否则一上线就把 37 条已生成的录音全部标记为待重录，白烧配额。
+    const recorded = JSON.parse(
+      readFileSync(new URL('public/assets/audio/voice/manifest.json', REPO_ROOT), 'utf8'),
+    ) as VoiceManifest
+    const unit = JSON.parse(
+      readFileSync(new URL('src/content/units/unit-01.json', REPO_ROOT), 'utf8'),
+    ) as { entries: { entryId: string; card: { promptText: string } }[] }
+
+    const drifted = unit.entries
+      .filter((e) => recorded.entries[e.entryId]?.text !== e.card.promptText)
+      .map((e) => e.entryId)
+
+    expect(
+      drifted,
+      `这些词条的卡面与录音溯源不一致，新判定会要求重录：${drifted.join('、')}`,
+    ).toEqual([])
   })
 
   it('跑完把 manifest 落盘，含新生成条目的哈希', async () => {

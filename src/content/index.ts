@@ -43,16 +43,33 @@ const RAW_UNITS: readonly { file: string; raw: unknown }[] = [{ file: 'unit-01.j
  * 实际是把「教材内容是坏的」变成「孩子玩到的是一份错内容」——
  * 而报错现场离录入错误可能已经隔了几天。
  */
+/**
+ * 校验**一个**单元文件，失败即抛。
+ *
+ * ⚠️ 导出来是为了让 AC-28「失败即 throw，禁止 catch 降级」**可测**：
+ * 以前这段逻辑内嵌在 `parseUnits()` 的 `map` 回调里，而 `RAW_UNITS` 是模块私有的，
+ * 任何测试都喂不进坏数据 —— 也就是说这条架构红线**一条测试都守不住**。
+ * （`[CR]` 2026-10-14 变异坐实：把失败分支换成 `console.warn` + 返回空单元，
+ *   183 条内容层测试全绿。）
+ *
+ * 拆出来不改变运行时行为：`parseUnits()` 仍然在模块顶层调用它，
+ * 错误仍然在 import 时就炸出来。
+ *
+ * @param raw 单元原始 JSON（未解析）
+ * @param file 文件名，只用于报错信息定位
+ */
+export function parseUnit(raw: unknown, file: string): Unit {
+  const parsed = UnitSchema.safeParse(raw)
+  if (parsed.success) return parsed.data
+  throw new Error(
+    `[content] ${file} 校验失败，拒绝进入游戏 —— ` +
+      '内容有问题就必须在这里炸出来，不能带病开局。\n' +
+      z.prettifyError(parsed.error),
+  )
+}
+
 function parseUnits(): readonly Unit[] {
-  return RAW_UNITS.map(({ file, raw }) => {
-    const parsed = UnitSchema.safeParse(raw)
-    if (parsed.success) return parsed.data
-    throw new Error(
-      `[content] ${file} 校验失败，拒绝进入游戏 —— ` +
-        '内容有问题就必须在这里炸出来，不能带病开局。\n' +
-        z.prettifyError(parsed.error),
-    )
-  })
+  return RAW_UNITS.map(({ file, raw }) => parseUnit(raw, file))
 }
 
 /** 全部单元，已通过启动时校验。 */

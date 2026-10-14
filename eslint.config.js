@@ -119,6 +119,23 @@ export default tseslint.config(
                 '渲染是 components/ 与 views/ 的职责。',
             },
           ],
+          // ⚠️ [CR] 2026-10-14 补上：原先这条边界**只被测试宣称、不被任何工具守**。
+          //   变异的做法是给 `schema.ts` 加 `import { TOWER_TYPES } from '../core/balance'`
+          //   （塔型枚举改成引用 core）—— 全部 93 条内容层测试仍全绿，因为
+          //   `content-boundary.test.ts` 只断言了「规则存在且含 vue」，而 core 从来不在禁列里。
+          //
+          //   为什么必须禁（不只是风格问题）：`parseUnits()` 在启动时跑，一旦内容层
+          //   依赖战斗层模块加载成功，一个**内容错误**（坏 JSON）会先撞上一条与它无关的
+          //   import 失败，报错现场离错误源头很远。塔型字面量重复 + 等值断言
+          //   （见 `schema.ts` 的 TOWER_TYPESSchema 注释）是刻意的分工，不是遗漏。
+          patterns: [
+            {
+              group: ['**/core/**', '**/core/*'],
+              message:
+                'content/ 不得 import core/：内容校验不能依赖战斗层模块加载成功，' +
+                '否则一个坏 JSON 会先报成 import 失败。塔型用字面量重复 + 等值断言。',
+            },
+          ],
         },
       ],
       'no-restricted-globals': [

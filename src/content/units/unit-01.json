@@ -430,7 +430,7 @@
         "promptText": "beautiful",
         "options": [
           { "id": "u1-beautiful", "imageSrc": "/assets/words/unit-01/u1-beautiful.svg", "correct": true },
-          { "id": "u1-happy", "imageSrc": "/assets/words/unit-01/u1-happy.svg", "correct": false },
+          { "id": "u1-panda", "imageSrc": "/assets/words/unit-01/u1-panda.svg", "correct": false },
           { "id": "u1-red", "imageSrc": "/assets/words/unit-01/u1-red.svg", "correct": false },
           { "id": "u1-blue", "imageSrc": "/assets/words/unit-01/u1-blue.svg", "correct": false }
         ]
@@ -482,21 +482,6 @@
       }
     },
     {
-      "entryId": "u1-s-what-is-this",
-      "wordId": "u1-s-what-is-this",
-      "towerType": "aoe",
-      "card": {
-        "kind": "response",
-        "promptText": "What is this?",
-        "options": [
-          { "id": "u1-s-i-have-a-ball-for-my-dog", "text": "I have a ball for my dog.", "correct": true },
-          { "id": "u1-s-i-am-fine", "text": "I am fine, thank you.", "correct": false },
-          { "id": "u1-s-good-morning", "text": "Good morning!", "correct": false },
-          { "id": "u1-s-good-afternoon", "text": "Good afternoon!", "correct": false }
-        ]
-      }
-    },
-    {
       "entryId": "u1-s-i-am-fine",
       "wordId": "u1-s-i-am-fine",
       "towerType": "direct",
@@ -504,8 +489,8 @@
         "kind": "response",
         "promptText": "I am fine, thank you.",
         "options": [
-          { "id": "u1-goodbye", "text": "Goodbye", "correct": true },
-          { "id": "u1-s-thank-you", "text": "Thank you!", "correct": false },
+          { "id": "u1-s-thank-you", "text": "Thank you!", "correct": true },
+          { "id": "u1-goodbye", "text": "Goodbye", "correct": false },
           { "id": "u1-hello", "text": "Hello", "correct": false },
           { "id": "u1-s-good-morning", "text": "Good morning!", "correct": false }
         ]

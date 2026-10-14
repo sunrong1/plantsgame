@@ -17,7 +17,8 @@
  * · **每条 `expect` 带中文失败消息**，写「为什么这条错了 → 会导致什么」。
  */
 
-import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -28,6 +29,7 @@ import {
   formatProblem,
   loadUnitFiles,
   main,
+  parseCli,
   validateContent,
   type ValidateDeps,
 } from '../../scripts/validate-content'
@@ -457,9 +459,44 @@ describe('AC-8 —— entryId 全局唯一', () => {
 
 describe('AC-12 —— 校验覆盖全部单元文件', () => {
   it('loadUnitFiles 读目录下的全部 unit-*.json（新增单元无需改脚本）', () => {
-    const files = loadUnitFiles(join(root, 'src/content/units')).map((u) => u.file)
+    // ⚠️ [CR] 2026-10-14：原先断言写的是 `toEqual(['unit-01.json'])` —— 方向反了。
+    //   AC-12 要守的是「新增单元**不需要改任何脚本**」，而那条断言恰恰要求
+    //   目录里永远只有 unit-01.json：有人正确地录入了 unit-02.json，它就红。
+    //   现在改成「loader 读到的 === 磁盘上的」，两边同源，加文件必红、漏读也红。
+    const dir = join(root, 'src/content/units')
+    const onDisk = readdirSync(dir)
+      .filter((name) => name.endsWith('.json'))
+      .sort()
+    const loaded = loadUnitFiles(dir).map((u) => u.file).sort()
 
-    expect(files).toEqual(['unit-01.json'])
+    expect(loaded, 'loader 漏读了磁盘上存在的单元文件 ⇒ 新增的单元不会被校验').toEqual(onDisk)
+    // 防「目录恰好为空 ⇒ 两条空数组恒等」这种永远为真的形态。
+    expect(onDisk.length, 'units/ 下一个 JSON 都没有 ⇒ 上面那条断言恒真').toBeGreaterThan(0)
+  })
+
+  it('真正的坏 JSON 会让 loadUnitFiles 抛出，且报错带文件名', () => {
+    // ⚠️ [CR] 2026-10-14：原先这条路径**从未被执行过**。上一条测试用
+    //   `{ load: () => [{ file, raw: undefined }] }` 把 loadUnitFiles 整个替掉了，
+    //   测的是「main 拿到 undefined 时会不会退 1」，而 `JSON.parse` 那段
+    //   catch（scripts/validate-content.ts:362）从没有一条测试走进过。
+    //   真把 unit-02.json 写坏一个逗号，下面的测试正是那个场景。
+    const dir = mkdtempSync(join(tmpdir(), 'validate-content-'))
+    try {
+      const badFile = join(dir, 'unit-02.json')
+      writeFileSync(badFile, '{ "unitNumber": 2, "entries": [ }', 'utf8')
+
+      let message = ''
+      try {
+        loadUnitFiles(dir)
+      } catch (error) {
+        message = error instanceof Error ? error.message : String(error)
+      }
+
+      expect(message, '坏 JSON 没抛错 ⇒ 校验会拿 undefined 当内容继续跑').toContain('unit-02.json')
+      expect(message, '报错里没有解析器的具体原因 ⇒ 录入者无从下手').toContain('JSON')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 
   it('单元文件不是合法 JSON 时报出文件名与原因，且退 1', () => {
@@ -492,5 +529,150 @@ describe('AC-12 —— 校验覆盖全部单元文件', () => {
 
     expect(exitCode, '一个单元都没有却退 0 —— 那正是本 story 要消灭的假绿').toBe(1)
     expect(lines.join('\n')).toContain('没有任何单元 JSON')
+  })
+})
+
+// ── CLI 参数 ────────────────────────────────────────────────────────────────
+//
+// ⚠️ [CR] 2026-10-14：这一整块原先**不存在**。`parseCli` 是模块私有的，
+//   而测试里每次调 `main` 都传 `[]`，于是 `--word-image-root` 这条通路零覆盖 ——
+//   参数名拼错、忘了 `i += 1`、少了缺参检查，全都不会有任何测试变红。
+//   这是词图尚未录入（Epic 2）期间唯一的词图目录入口：它坏掉时无任何症状，
+//   要等 Epic 2 真正往那个目录里放图时才会一次性爆发。
+
+describe('CLI —— --word-image-root', () => {
+  it('不给参数时用默认词图目录（public/assets/words）', () => {
+    expect(parseCli([]).wordImageRoot.replace(/\\/g, '/')).toMatch(/public\/assets\/words$/)
+  })
+
+  it('--word-image-root <目录> 覆盖默认值', () => {
+    expect(parseCli(['--word-image-root', '/tmp/my-words']).wordImageRoot).toBe('/tmp/my-words')
+  })
+
+  it('参数值被吃掉，不会再被当成下一个参数解析（守 `i += 1`）', () => {
+    // 若漏了 `i += 1`，下一轮会把 '--word-image-root' 当成 arg 走到「未知参数」分支。
+    expect(parseCli(['--word-image-root', '/tmp/a', '--word-image-root', '/tmp/b']).wordImageRoot).toBe(
+      '/tmp/b',
+    )
+  })
+
+  it.each([
+    { argv: ['--word-image-root'], why: '完全没给值' },
+    { argv: ['--word-image-root', '   '], why: '给了空白串 —— 会被当成真实路径，词图检查全落空' },
+    { argv: ['--word-image-root', '--别的参数'], why: '下一个是别的 flag' },
+  ])('$why 时报错（"$argv"）', ({ argv }) => {
+    expect(() => parseCli(argv), '缺参竟然没报错 ⇒ 词图目录会静默变成 undefined/下一个参数').toThrow(
+      /--word-image-root 需要一个目录参数/,
+    )
+  })
+
+  it('未知参数报错，且把参数名与支持项一起打出来', () => {
+    let message = ''
+    try {
+      parseCli(['--word-images-root', '/tmp/x'])
+    } catch (error) {
+      message = error instanceof Error ? error.message : String(error)
+    }
+
+    expect(message, '参数名打错（少个 s）没报错 ⇒ 词图目录静默回落到默认目录').toContain('--word-images-root')
+    expect(message, '报错里没列出支持哪些参数 ⇒ 录入者只能猜').toContain('--word-image-root')
+  })
+
+  it('经 main 端到端生效：把词图目录指到一个空目录 ⇒ 报出词图缺失', () => {
+    // 这条守的是「parseCli 的返回值真的接到了 validateContent」，
+    // 而不只是 parseCli 自己的返回值对 —— 中间隔着 main 里那一行 ?? 三元。
+    const lines: string[] = []
+    const spy = vi.spyOn(console, 'error').mockImplementation((msg?: unknown) => {
+      lines.push(String(msg))
+    })
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    let exitCode: number
+    try {
+      exitCode = main(['--word-image-root', '/tmp/definitely-empty-words'], {
+        load: () => [{ file: 'unit-01.json', raw: unitCopy() }],
+        fileExists: () => false,
+        listFiles: () => [],
+      })
+    } finally {
+      spy.mockRestore()
+      logSpy.mockRestore()
+    }
+
+    expect(exitCode, '词图全缺却退 0').toBe(1)
+    expect(lines.join('\n')).toContain('word-image')
+  })
+})
+
+// ── 宽松遍历路径拼接的安全边界 ──────────────────────────────────────────────
+
+describe('词图检查不会用未校验的 option.id 拼路径', () => {
+  it('option.id 含路径分隔符时，报错里不出现词图根目录之外的文件系统路径', () => {
+    // ⚠️ [CR] 2026-10-14：`imageOptionsOf` 刻意从**原始** JSON 宽松遍历
+    //   （schema 没过也要把问题全报出来），所以这里的 option.id 未经任何形态校验。
+    //   一个 "../../../../etc/passwd" 会被 join 拼成词图根目录之外的绝对路径，
+    //   再原样打进错误信息 —— 报错本身成了路径穿越的输出通道。
+    //   （实际影响有限：内容文件是仓库内的信任数据，且这里只做存在性探测。）
+    //
+    // ⚠️ 这条断言查的是**解析后**落在词图根目录之外的路径（`join` 会把
+    //   `../../../../` 归一化掉，所以 `/fake/words` 反而不会出现在结果里 ——
+    //   第一次写这条断言时正是在这里漏掉了变异：过滤条件用的是 `/fake/words`）。
+    //   查「报错里出现了这个 id」是错的：id 出现在报错里**应该**，
+    //   它正是「哪个选项写错了」的定位信息，屏蔽它会让报错失去价值。
+    const unit = unitCopy()
+    unit.entries[0].card.options[0] = {
+      id: '../../../../etc/passwd',
+      imageSrc: '/assets/words/unit-01/u1-hello.svg',
+      correct: true,
+    }
+    const { problems } = run([unit], greenDeps())
+
+    const leakedFsPaths = problems
+      .map((p) => p.message)
+      .filter((m) => m.includes('/etc/passwd.svg'))
+
+    expect(
+      leakedFsPaths,
+      `报错里打出了词图根目录之外的文件系统路径：\n${leakedFsPaths.join('\n')}`,
+    ).toEqual([])
+  })
+
+  it('malformed id 不再走存在性检查（不拿它去磁盘上 stat）', () => {
+    // 与上一条是同一件事的两面：既不打出来，也不去碰。
+    // 「词图缺失」这条消息里必然含 wordImageRoot —— 它一出现就说明代码拿非法 id 拼了路径。
+    const unit = unitCopy()
+    unit.entries[0].card.options[0] = {
+      id: '../../../../etc/passwd',
+      imageSrc: '/assets/words/unit-01/u1-hello.svg',
+      correct: true,
+    }
+    const { problems } = run([unit], greenDeps())
+
+    expect(
+      problems.filter((p) => p.message.includes('词图缺失')),
+      '拿非法 option.id 去磁盘上找文件了 —— 存在性探测本身就是一个可达性原语',
+    ).toEqual([])
+  })
+
+  it('形态不合法的 option.id 报「id 本身不合法」，而不是拿它编一个「规范路径」出来', () => {
+    // 上一步的守卫不能只是「跳过」—— 那样这条非法 id 就彻底静默了。
+    // 也不能像第一版那样报「规范路径应为 /assets/words/unit-01/../../../etc/passwd.svg」：
+    // 那个「应为」是用垃圾拼出来的，会把录入者引向一个根本不对的方向。
+    const unit = unitCopy()
+    unit.entries[0].card.options[0] = {
+      id: '../../../../etc/passwd',
+      imageSrc: '/assets/word/u1-hello.svg',
+      correct: true,
+    }
+    const { problems, exitCode } = run([unit], greenDeps())
+
+    expect(
+      problems.some((p) => p.message.includes('不是合法的词条 id')),
+      '非法 id 没有任何报错 ⇒ 它变成了一条完全静默的通过',
+    ).toBe(true)
+    expect(
+      problems.some((p) => p.message.includes('规范路径应为')),
+      '为非法 id 编造了「规范路径」⇒ 录入者会去改一个本来就不该存在的 URL',
+    ).toBe(false)
+    expect(exitCode).toBe(1)
   })
 })

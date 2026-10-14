@@ -19,7 +19,9 @@ import {
   CardSchema,
   ENTRY_ID_PATTERN,
   EntrySchema,
+  ImageOptionSchema,
   OptionSchema,
+  TextOptionSchema,
   TowerBindingSchema,
   UnitSchema,
   type Card,
@@ -30,6 +32,7 @@ import {
   type TowerType,
   type Unit,
 } from '../../src/content/schema'
+import { TOWER_TYPES } from '../../src/core/balance'
 import type {
   Card as CoreCard,
   DeckEntry as CoreDeckEntry,
@@ -309,8 +312,16 @@ describe('选项必须指向本单元真实存在的词条（超出 AC 的额外
 // ── AC-7：塔型白名单 ───────────────────────────────────────────────────────
 
 describe('AC-7 —— 塔绑定指向不存在的塔型', () => {
-  it('三种合法塔型都通过（由 TOWER_TYPES 断言，不写死）', () => {
-    for (const towerType of ['direct', 'slow', 'aoe'] as const) {
+  it('每一种合法塔型都通过（从 core 的 TOWER_TYPES 取，不写死）', () => {
+    // ⚠️ [CR] 2026-10-14：这条断言的**标题**原先写着「由 TOWER_TYPES 断言，不写死」，
+    //   循环里却是字面量 `['direct', 'slow', 'aoe']`。core 加了第四种塔型时，
+    //   这条测试仍然只验三种、照样全绿 —— 标题承诺的那件事一件也没做。
+    //   现在真的从 core 取。（`content-boundary.test.ts` 守的是两侧**集合相等**，
+    //   那条覆盖的是同一个风险；这里要守的是「每一种都能通过校验」，
+    //   即便集合比较将来被放宽，这条也仍然有效。）
+    expect(TOWER_TYPES.length, 'core 侧没有塔型了 ⇒ 下面这个循环恒空').toBeGreaterThan(0)
+
+    for (const towerType of TOWER_TYPES) {
       const result = TowerBindingSchema.safeParse({ wordId: 'u1-dog', towerType })
       expect(result.success, `合法塔型 ${towerType} 被拒 ⇒ 白名单与 core 的 TOWER_TYPES 不一致`).toBe(
         true,
@@ -374,24 +385,40 @@ describe('AC-8 —— entryId 形态与全局唯一', () => {
 // ── AC-9：内容层导出的类型与 core 对齐 ────────────────────────────────────
 
 describe('AC-9 —— 内容层类型与 core 类型对齐', () => {
-  // 下面四个赋值是**编译期断言**：类型对不上时 `npm run typecheck` 直接报 TS2322。
+  // 下面这些赋值是**编译期断言**：类型对不上时 `npm run typecheck` 直接报 TS2322。
   // 它们证明 AC-9 的「不经过任何手写转换函数」——中间插一个转换函数的话，
-  // 这几行的类型就是 `any` 或者需要 as，review 一眼看得见。
-  const contentCard: Card = wordCard() as Card
+  // 这几行的类型就会不匹配，review 一眼看得见。
+  //
+  // ⚠️ [CR] 2026-10-14：它们原先全都写成 `wordCard() as Card` / `{...} as Option`，
+  //   而 **`as` 是向下转型，它把左侧整个关在类型系统之外**：
+  //   `wordCard()` 返回 `unknown`（构造器刻意宽松，好注入非法值），
+  //   `unknown as Card` 无论 `Card` 变成什么形状都编译得过；
+  //   就算 `Card` 整个退化成 `any`，下一行 `const coreCard: CoreCard = contentCard`
+  //   也照样通过（`any` 可赋给任何类型）。也就是说这条「编译期断言」
+  //   **恰好在最需要它的场景 —— 类型被改坏时 —— 完全失灵**。
+  //
+  //   现在改成从 **schema 的输出**取类型（`CardSchema.parse(...)` 的返回类型就是
+  //   `z.infer<typeof CardSchema>`，即 `Card`）：全程不用 `as`，
+  //   任何一侧漂移都会在 typecheck 阶段炸出来。
+  const contentCard: Card = CardSchema.parse(wordCard())
   const coreCard: CoreCard = contentCard
-  const contentOption: Option = { id: 'u1-dog', text: 'dog', correct: true } as Option
+  const contentOption: Option = OptionSchema.parse({ id: 'u1-dog', text: 'dog', correct: true })
   const coreOption: CoreOption = contentOption
-  const contentImage: ImageOption = {
+  const contentImage: ImageOption = ImageOptionSchema.parse({
     id: 'u1-dog',
     imageSrc: '/assets/words/unit-01/u1-dog.svg',
     correct: true,
-  } as ImageOption
+  })
   const coreImage: CoreImageOption = contentImage
-  const contentText: TextOption = { id: 'u1-dog', text: 'dog', correct: true } as TextOption
+  const contentText: TextOption = TextOptionSchema.parse({
+    id: 'u1-dog',
+    text: 'dog',
+    correct: true,
+  })
   const coreText: CoreTextOption = contentText
   const contentTower: TowerType = 'direct'
   const coreTower: CoreTowerType = contentTower
-  const contentDeck: DeckEntry = entry() as DeckEntry
+  const contentDeck: DeckEntry = EntrySchema.parse(entry())
   const coreDeck: CoreDeckEntry = contentDeck
 
   it('六个类型名双向可赋值（Card / Option / ImageOption / TextOption / DeckEntry / TowerType）', () => {
@@ -496,5 +523,197 @@ describe('AC-1 / AC-2 —— 四个概念各有导出且形态正确', () => {
     })
 
     expect(result.success, '单选项卡放行 ⇒ 孩子无需作答，且内容录入的错误没有闸门').toBe(false)
+  })
+})
+
+// ── [CR] 2026-10-14 三层审查新增：四条约束漏洞 ──────────────────────────────
+//
+// 下面每条都是先变异坐实「没有守卫」，再补的 schema 约束。
+// 违反后果都写在 `expect` 的第二参数里 —— 断言失败时那句话就是给人看的。
+
+describe('[CR] entryId / wordId 的单元前缀归属（AR29）', () => {
+  const unitOf = (over: Record<string, unknown>, unitNumber = 1) => ({
+    unitNumber,
+    entries: [
+      {
+        entryId: 'u1-dog',
+        wordId: 'u1-dog',
+        towerType: 'direct',
+        card: responseCard(),
+        ...over,
+      },
+    ],
+  })
+
+  it('entryId 的前缀与所在单元不符时必须报错', () => {
+    const result = UnitSchema.safeParse(unitOf({ entryId: 'u2-cat', wordId: 'u2-cat' }))
+
+    expect(result.success, '前缀错误放行 ⇒ generate-voice 会往扁平 voice/ 目录写出别的单元的录音文件名，Epic 2 加该单元时被静默覆盖').toBe(false)
+    expect(messages(result)).toContain('u2-')
+  })
+
+  it('entryId 与 wordId 的前缀归属各判一次', () => {
+    const mismatchWordId = UnitSchema.safeParse(unitOf({ wordId: 'u2-dog' }))
+    expect(mismatchWordId.success, 'wordId 跨单元放行 ⇒ 塔的显示名与词图来源指向别的单元的词').toBe(false)
+
+    const mismatchBoth = UnitSchema.safeParse(unitOf({ entryId: 'u2-cat', wordId: 'u1-cat' }))
+    expect(mismatchBoth.success, '只有 entryId 被查、wordId 被放过 ⇒ 换了字段名就绕开').toBe(false)
+  })
+
+  it('单元 2 的文件里 u2- 前缀是合法的（别把这条写成「一律不许跨单元」）', () => {
+    const result = UnitSchema.safeParse({
+      unitNumber: 2,
+      entries: [
+        {
+          entryId: 'u2-dog',
+          wordId: 'u2-dog',
+          towerType: 'direct',
+          card: {
+            kind: 'response',
+            promptText: 'How are you?',
+            options: [
+              { id: 'u2-s-i-am-fine', text: 'I am fine, thank you.', correct: true },
+              { id: 'u2-s-good-morning', text: 'Good morning!', correct: false },
+            ],
+          },
+        },
+        {
+          entryId: 'u2-s-i-am-fine',
+          wordId: 'u2-s-i-am-fine',
+          towerType: 'slow',
+          card: {
+            kind: 'response',
+            promptText: 'How are you?',
+            options: [
+              { id: 'u2-s-good-morning', text: 'Good morning!', correct: true },
+              { id: 'u2-cat', text: 'A cat.', correct: false },
+            ],
+          },
+        },
+        {
+          entryId: 'u2-s-good-morning',
+          wordId: 'u2-s-good-morning',
+          towerType: 'aoe',
+          card: {
+            kind: 'response',
+            promptText: 'See you tomorrow.',
+            options: [
+              { id: 'u2-s-i-am-fine', text: 'I am fine, thank you.', correct: true },
+              { id: 'u2-cat', text: 'A cat.', correct: false },
+            ],
+          },
+        },
+        {
+          entryId: 'u2-cat',
+          wordId: 'u2-cat',
+          towerType: 'direct',
+          card: {
+            kind: 'word',
+            promptText: 'cat',
+            options: [
+              { id: 'u2-cat', imageSrc: '/assets/words/unit-02/u2-cat.svg', correct: true },
+              { id: 'u2-s-i-am-fine', imageSrc: '/assets/words/unit-02/u2-s-i-am-fine.svg', correct: false },
+            ],
+          },
+        },
+      ],
+    })
+    expect(result.success, `合法前缀被拒：${messages(result)}`).toBe(true)
+  })
+})
+
+describe('[CR] wordId 不能是任意字符串', () => {
+  for (const bad of ['../../etc/passwd', '🙂', 'u9-zebra', 'Dog']) {
+    it(`拒绝 ${JSON.stringify(bad)}`, () => {
+      const result = UnitSchema.safeParse({
+        unitNumber: 1,
+        entries: [
+          { entryId: 'u1-dog', wordId: bad, towerType: 'direct', card: wordCard() },
+        ],
+      })
+      expect(result.success, `wordId=${bad} 被放行 ⇒ 它一路流到渲染层，成为塔的显示名与词图来源`).toBe(false)
+    })
+  }
+})
+
+describe('[CR] 选项文本不得为纯空白', () => {
+  it('纯空白的 text 被拒（min(1) 挡不住它，长度也是 1）', () => {
+    const result = CardSchema.safeParse(
+      responseCard({
+        options: [
+          { id: 'u1-s-i-am-fine', text: '   ', correct: true },
+          { id: 'u1-s-good-morning', text: 'Good morning!', correct: false },
+        ],
+      }),
+    )
+    expect(result.success, '纯空白 text 放行 ⇒ 界面上是一个空按钮，且 validate:content 也不查文字选项').toBe(false)
+    expect(messages(result)).toContain('纯空白')
+  })
+
+  it('纯空白的 imageSrc 同样被拒', () => {
+    const result = CardSchema.safeParse(
+      wordCard({
+        options: [
+          { id: 'u1-dog', imageSrc: '  ', correct: true },
+          { id: 'u1-cat', imageSrc: '/assets/words/unit-01/u1-cat.svg', correct: false },
+        ],
+      }),
+    )
+    expect(result.success, '纯空白 imageSrc 放行 ⇒ 单词卡渲染出一个没有内容的选项').toBe(false)
+  })
+
+  it('前后带空白的正常文本仍合法（只挡全空白，不做 trim 变换）', () => {
+    const result = CardSchema.safeParse(
+      responseCard({
+        options: [
+          { id: 'u1-s-i-am-fine', text: ' Good morning! ', correct: true },
+          { id: 'u1-s-good-morning', text: 'Good afternoon!', correct: false },
+        ],
+      }),
+    )
+    expect(result.success, '非全空白的带空白文本被拒 ⇒ 录入者正常打的空格被当成错误').toBe(true)
+  })
+})
+
+describe('[CR] 同一张卡里两个选项显示文本相同', () => {
+  it('两个都是 "Yes" 的按钮被拒', () => {
+    const result = CardSchema.safeParse(
+      responseCard({
+        options: [
+          { id: 'u1-dog', text: 'Yes', correct: true },
+          { id: 'u1-cat', text: 'Yes', correct: false },
+        ],
+      }),
+    )
+    expect(result.success, '两个无法区分的按钮放行 ⇒ duplicateOptionId 只比 id，挡不住显示文本重复').toBe(false)
+    expect(messages(result)).toContain('选项内容重复')
+  })
+
+  it('大小写与首尾空白造成的「看起来一样」同样算重复', () => {
+    const result = CardSchema.safeParse(
+      responseCard({
+        options: [
+          { id: 'u1-dog', text: 'Yes', correct: true },
+          { id: 'u1-cat', text: ' yes ', correct: false },
+        ],
+      }),
+    )
+    expect(result.success, '大小写/空白差异没被归一化 ⇒ 界面上仍是两个肉眼相同的按钮').toBe(false)
+  })
+
+  it('图片选项按 imageSrc 判重', () => {
+    const result = CardSchema.safeParse(
+      wordCard({
+        options: [
+          { id: 'u1-dog', imageSrc: '/assets/words/unit-01/u1-dog.svg', correct: true },
+          { id: 'u1-cat', imageSrc: '/assets/words/unit-01/u1-dog.svg', correct: false },
+        ],
+      }),
+    )
+    expect(result.success, '两个选项指向同一张图 ⇒ 界面上是两个一模一样的图片按钮').toBe(false)
+  })
+
+  it('四个不同文本的正常回应卡仍合法（别把这条写成「不许有重复词」）', () => {
+    expect(CardSchema.safeParse(responseCard()).success).toBe(true)
   })
 })

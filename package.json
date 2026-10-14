@@ -7,8 +7,10 @@
   },
   "scripts": {
     "dev": "vite",
+    "prebuild": "npm run validate:content",
     "build": "vue-tsc -b --force && vite build",
     "preview": "vite preview",
+    "pretest": "npm run validate:content",
     "test": "vitest run",
     "typecheck": "vue-tsc -b",
     "lint": "eslint .",

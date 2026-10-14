@@ -2,13 +2,13 @@
  * 单元 1 真实内容的守卫（Story 1.6 / AC-15 ~ AC-18）。
  *
  * ── 守什么 ────────────────────────────────────────────────────────────────
- * 1. **AC-15**：`entryId` 集合与已存在的 38 个 mp3 **完全一致**（一不多一不少）。
+ * 1. **AC-15**：`entryId` 集合与已存在的 37 个 mp3 **完全一致**（一不多一不少）。
  *    这是本 story 最不可逆的一条 —— mp3 一次性全量生成、永不重生成
  *    （架构 `:425-430`）。少录一条，答题时会在该词上静默降级到设备 TTS，
  *    症状只是「音色偶尔和其他词不一样」，没有任何报错。
  * 2. **卡面文本与录音内容一致**：每条 `promptText` 必须等于该词条录音里被朗读的文本
  *    （manifest 里有溯源）。不一致 ⇒ 孩子看到的字与听到的声音对不上。
- * 3. **AC-16 / AC-17**：30 词 + 8 句全部录入，三种卡型成规模存在。
+ * 3. **AC-16 / AC-17**：30 词 + 7 句全部录入，三种卡型成规模存在。
  * 4. **AC-18**：短语不单独成卡，但作为回应卡的选项出现。
  * 5. **AC-9**：内容导出的 deck 能直接喂给 `createInitialState`。
  *
@@ -18,7 +18,7 @@
  *   与磁盘上的文件集合一致」这一条轴 —— 两条轴混在一起，改内容时定位不到是哪条红了。
  * · **两侧都 `sort()` 再比**。词表文件本身不按字典序排（u1-sister / u1-student
  *   就是反的），不排序会报出根本不存在的差异。
- * · **不断言具体条数以外的顺序**。条数本身要断言（38），顺序是录入的自由。
+ * · **不断言具体条数以外的顺序**。条数本身要断言（37），顺序是录入的自由。
  */
 
 import { createHash } from 'node:crypto'
@@ -29,7 +29,8 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 import { createInitialState } from '../../src/core/reducer'
-import { getUnit, UNITS } from '../../src/content'
+import * as contentModule from '../../src/content'
+import { getUnit, parseUnit, UNITS } from '../../src/content'
 import { UnitSchema } from '../../src/content/schema'
 
 const root = fileURLToPath(new URL('../../', import.meta.url))
@@ -50,10 +51,11 @@ const mp3Ids = (): string[] =>
     .map((name) => name.slice(0, -'.mp3'.length))
     .sort()
 
-describe('AC-15 —— entryId 与 38 个 mp3 完全一致', () => {
-  it('mp3 目录里是 38 个文件（改动这个数要同时改录音与本断言）', () => {
+describe('AC-15 —— entryId 与 37 个 mp3 完全一致', () => {
+  it('mp3 目录里是 37 个文件（改动这个数要同时改录音与本断言）', () => {
+    // 38 → 37 是 [CR] 2026-10-14 退役 `u1-s-what-is-this` 的连带，理由见 AC-16 那条。
     expect(mp3Ids().length, '录音数量变了 —— 少一条会静默降级到设备 TTS，多一条说明词表被改过').toBe(
-      38,
+      37,
     )
   })
 
@@ -111,15 +113,21 @@ describe('卡面文本与录音内容一致（录音不可重生成，这是不�
 })
 
 describe('AC-16 —— 单元 1 全部词汇与句子均已录入', () => {
-  it('单元 1 有 38 条词条（30 词 + 8 句）', () => {
-    expect(entries.length, '词条数变了 —— 见 AC-15 的说明，新增/删除 entryId 都是不可逆的').toBe(38)
+  it('单元 1 有 37 条词条（30 词 + 7 句）', () => {
+    // 38 → 37 是 [CR] 2026-10-14 的退役：`u1-s-what-is-this` 题面 "What is this?"
+    // 而四个选项全是完整句子，没有任何一项回答该问句，正确项标的是
+    // "I have a ball for my dog."。孩子按常识作答会被判错、扣一颗心、回炉重练。
+    // 修题面要重生成 mp3（录音归 Story 1.3），单元 1 也没有 "It is a ___" 这类
+    // 名词短语词汇可作选项，故退役而非改写。mp3 与 manifest 已同步删除。
+    // 若将来补上名词短语词汇要把它加回来，届时的条数是 38。
+    expect(entries.length, '词条数变了 —— 见 AC-15 的说明，新增/删除 entryId 都是不可逆的').toBe(37)
   })
 
-  it('词与句的分布是 30 + 8（句子以 u1-s- 前缀区分）', () => {
+  it('词与句的分布是 30 + 7（句子以 u1-s- 前缀区分）', () => {
     const sentenceCount = entries.filter((e) => e.entryId.startsWith('u1-s-')).length
 
     expect(entries.length - sentenceCount).toBe(30)
-    expect(sentenceCount).toBe(8)
+    expect(sentenceCount).toBe(7)
   })
 
   it('所有 entryId 都带 u1- 前缀', () => {
@@ -186,6 +194,31 @@ describe('AC-17 —— 三种卡型成规模存在（FR19）', () => {
 })
 
 describe('AC-18 —— 短语归入回应卡，不单独成卡', () => {
+  /**
+   * 本单元的**全部**短语（问候 / 道别 / 感谢这类可独立作答的短句）。
+   *
+   * 识别规则刻意从数据推，而不是抄一份短语清单：
+   * · 必须是句子型词条（`u1-s-` 前缀）—— 「Goodbye」「Hello」在单元 1 是**词**
+   *   （`u1-goodbye` / `u1-hello`，配图片选项），它们独立成卡是词卡的正常形态，
+   *   不属于 AC-18 要管的那一类；
+   * · 卡面 ≤ 4 个词且不是问句 —— 「How are you?」是问句，「I am fine, thank you.」
+   *   与「I have a ball for my dog.」是完整句子；剩下的 Good morning! /
+   *   Good afternoon! / Nice to meet you. / Thank you! 才是短语。
+   *
+   * ⚠️ 抄清单会得到一个永远为真的集合 —— 加了新短语而清单没动，测试不响。
+   */
+  const phrases = (): { entryId: string; text: string }[] =>
+    entries
+      .filter((entry) => entry.entryId.startsWith('u1-s-'))
+      .filter((entry) => {
+        const raw = entry.card.promptText.trim()
+        return !raw.endsWith('?') && raw.split(/\s+/).length <= 4
+      })
+      .map((entry) => ({
+        entryId: entry.entryId,
+        text: entry.card.promptText.trim().replace(/[.!?]+$/, ''),
+      }))
+
   it('不存在卡型为「短语」的第四种卡（GDD：短语归入回应卡）', () => {
     // Card.kind 只有三态，schema 已守住枚举；这里守的是**内容里没有第四种值**。
     const kinds = new Set(entries.map((e) => e.card.kind))
@@ -193,31 +226,56 @@ describe('AC-18 —— 短语归入回应卡，不单独成卡', () => {
     expect([...kinds].sort()).toEqual(['keyword', 'response', 'word'])
   })
 
-  it('短语「Good morning!」作为回应卡的选项出现', () => {
-    const asOption = entries.filter((entry) =>
-      entry.card.options.some((option) => option.id === 'u1-s-good-morning'),
-    )
+  it('每一条短语都作为回应卡的选项出现（AC-18 的正面要求）', () => {
+    // ⚠️ [CR] 2026-10-14：原先只查 `u1-s-good-morning` **一条**短语，
+    //   另外三条（Good afternoon! / Nice to meet you. / Thank you!）一条都没被守 ——
+    //   把它们从所有回应卡里拿掉，测试照样全绿。
+    //   「短语归入回应卡」是一条覆盖全部短语的规则，不该只抽查一条。
+    const all = phrases()
 
-    expect(
-      asOption.length,
-      '「Good morning!」一处选项都没出现 ⇒ 短语被当成了独立卡面而不是对问候的回应',
-    ).toBeGreaterThan(0)
+    expect(all.length, '没识别出任何短语 ⇒ 本条断言是空的').toBeGreaterThan(0)
+
+    for (const phrase of all) {
+      const asOption = entries.filter((entry) =>
+        entry.card.options.some((option) => option.id === phrase.entryId),
+      )
+
+      expect(
+        asOption.length,
+        `短语「${phrase.text}」一处选项都没出现 ⇒ 短语被当成了独立卡面而不是对问候的回应`,
+      ).toBeGreaterThan(0)
+    }
   })
 
-  it('「Good morning!」不出现在任何卡面的**正确项**之外的位置上（它不是独立成卡的短语卡）', () => {
-    // 判据（AC-18 的字面）：没有一张卡的卡面是短语本身。
-    // ⚠️ 本 story 的取舍见 Completion Notes：`u1-s-good-morning` 的卡面是「Good morning!」
-    //   本身（回应卡的题面，GDD `:185` 的表格正是这么列的），原因是那条录音不可重生成 ——
-    //   卡面若换成别的字，运行时播的仍是「Good morning!」，孩子看到与听到的直接对不上。
-    //   AC-18 要求的后半句（短语作为选项出现）由上一条断言守住。
-    const phraseCards = entries.filter(
-      (entry) => entry.card.promptText.trim().toLowerCase().replace(/[.!?]+$/, '') === 'good morning',
-    )
-
+  it('短语清单 === 已登记的例外清单（新增一条就要给出理由）', () => {
+    // ⚠️ [CR] 2026-10-14：原先的断言是 `toBeLessThanOrEqual(1)`，而 `good morning`
+    //   本来就恰好 1 条 —— **这条断言永远绿**，它允许的 1 正是它自己写出来要防的那个违规。
+    //   现在改成与已登记清单做等值比对：多出一条就红，少一条也红。
+    //
+    // 为什么这四条可以独立成卡（取舍见 Completion Notes）：
+    //   它们的卡面就是短语本身（GDD `:185` 的表格正是这么列的），原因是那条录音
+    //   **不可重生成**（架构 `:425-430`）—— 卡面若换成别的字，运行时播的仍是
+    //   「Good morning!」，孩子看到与听到的直接对不上。这是有意识的取舍，不是遗漏。
+    //   代价是这四条比问句卡更容易靠排除法选中；这个取舍是否可接受属于首次试玩
+    //   验证（Story 1-19）的观测项，不在本 story 的判定范围。
     expect(
-      phraseCards.length,
-      '存在以短语为独立卡面的卡 ⇒ 需要说明它为什么不是「对问候的正确回应」',
-    ).toBeLessThanOrEqual(1)
+      phrases().map((phrase) => phrase.entryId).sort(),
+      '短语清单变了 —— 新增一条要说明为什么它值得单独立卡；' +
+        '少一条说明有人撤了登记，请同步本清单与 Completion Notes 的取舍说明',
+    ).toEqual(['u1-s-good-afternoon', 'u1-s-good-morning', 'u1-s-nice-to-meet-you', 'u1-s-thank-you'])
+  })
+
+  it('登记成例外的短语，其卡面确实就是短语本身（登记没有与数据脱节）', () => {
+    for (const phrase of phrases()) {
+      const owner = entries.find((entry) => entry.entryId === phrase.entryId)
+
+      expect(owner, `${phrase.entryId} 不在单元里`).toBeDefined()
+      expect(
+        owner?.card.promptText.trim().replace(/[.!?]+$/, ''),
+        `${phrase.entryId} 已登记为「短语独立成卡」，但它的卡面是别的字 —— ` +
+          '要么撤掉登记，要么改卡面（改卡面要重生成录音，Story 1.3）',
+      ).toBe(phrase.text)
+    }
   })
 
   it('关键词卡的正确项确实是句中出现的那个词', () => {
@@ -283,5 +341,62 @@ describe('AC-9 —— 内容导出的 deck 能直接喂给回合层', () => {
 
     expect(raw, 'JSON 里出现了 data: URI ⇒ 图片内容被内联进 bundle').not.toContain('data:')
     expect(raw, 'JSON 里出现了 <svg ⇒ 图片内容被内联进 bundle').not.toContain('<svg')
+  })
+})
+
+// ── [CR] 2026-10-14 AC-28：失败即 throw，禁止 catch 降级 ───────────────────
+//
+// 这条是架构 `:568-571` 的分层错误策略。原先它**一条测试都守不住**：
+// `parseUnits()` 的 `map` 回调里内嵌了 safeParse + throw，而 `RAW_UNITS`
+// 是模块私有的，测试喂不进坏数据。变异坐实：把失败分支换成
+// `console.warn` + 返回 `{unitNumber: 0, entries: []}`，183 条全绿。
+// 现已抽出 `parseUnit(raw, file)` 供测试直接喂坏数据。
+
+describe('AC-28 —— 内容坏了必须拒绝进入游戏，不许降级', () => {
+  const broken = { unitNumber: 1, entries: [{ entryId: 'bad' }] }
+
+  it('parseUnit 遇到不合法的单元数据必须 throw', () => {
+    expect(() => parseUnit(broken, 'unit-99.json')).toThrowError()
+  })
+
+  it('错误信息带文件名与「拒绝进入游戏」（报错现场要能定位到是哪个文件）', () => {
+    let message = ''
+    try {
+      parseUnit(broken, 'unit-99.json')
+    } catch (error) {
+      message = (error as Error).message
+    }
+
+    expect(message, '报错里没有文件名 ⇒ 录入者不知道该开哪个文件').toContain('unit-99.json')
+    expect(message, '报错里没有「拒绝进入游戏」的语义 ⇒ 日志里看不出这是致命错误').toContain(
+      '拒绝进入游戏',
+    )
+  })
+
+  it('合法的单元数据正常返回，不抛（这条守住的是「别把好数据也判死」）', () => {
+    const raw = JSON.parse(readFileSync(join(root, 'src/content/units/unit-01.json'), 'utf8'))
+    const parsed = parseUnit(raw, 'unit-01.json')
+
+    expect(parsed.unitNumber).toBe(1)
+    expect(parsed.entries.length).toBe(entries.length)
+  })
+})
+
+describe('AC-29 —— 不提供单元选择 / 推进 API（架构 :765-777）', () => {
+  it('src/content/index.ts 的运行时导出里没有任何「选单元 / 下一单元」的后门', () => {
+    // 加一个 `pickNextUnit()` 就是绕过「views/ 下没有 UnitSelectView」那条禁令的后门。
+    // 单元推进归存档的 progress.currentUnitIndex，不归内容层。
+    const runtimeExports = Object.keys(contentModule).filter((name) => name !== 'default')
+    const expected = ['UNITS', 'entriesOf', 'getUnit', 'parseUnit']
+
+    expect(
+      [...runtimeExports].sort(),
+      '内容层多出了导出 —— 若新增的是单元选择/推进类 API 即架构违规；' +
+        '若只是新增了别的工具函数，请连同理由更新这条期望值',
+    ).toEqual(expected)
+  })
+
+  it('getUnit 取不到时抛错而不是返回 undefined（调用方没有「内容缺失」分支）', () => {
+    expect(() => getUnit(99)).toThrowError(/没有单元 99/)
   })
 })

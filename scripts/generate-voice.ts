@@ -34,9 +34,13 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 // 内容层：词表的唯一事实源（Story 1.6 起，理由见文件头）。
-// ⚠️ 这行 import **顺带**完成了一件事：import 本模块就会跑一遍 `UnitSchema` 校验，
-//   内容坏了就在**发第一个请求之前**抛出来，而不是烧掉半程 API 费用才发现。
-import { UNITS } from '../src/content/index'
+//
+// ⚠️ [CR] 2026-10-14：这行 import 原先在**此处**，作用是「import 本模块就跑一遍
+//   `UnitSchema` 校验，内容坏了在发第一个请求之前抛出来」。现在 import 移进了
+//   `main()` 的 try 里（见那里的动态 import 与理由）—— 校验时机没变早也没变晚，
+//   但内容坏掉时用户看到的是 `[voice] …` 一行 + 退出码 1，而不是绕过全部 try 的堆栈。
+//   代价：测试 import 本模块不再顺带跑一次内容校验 —— 那条校验由
+//   `npm run validate:content`（`prebuild` / `pretest`）与 `tests/content/*` 承担。
 
 // ── 常量（架构 Configuration：本文件的参数归属）──────────────────────────
 //
@@ -268,6 +272,8 @@ export type SkipReason =
   | 'missing'
   /** 磁盘上有了但内容对不上 manifest —— 半截文件、被手工改过、或换了常量。 */
   | 'corrupt'
+  /** 文件本身没问题，但它是**另一个文本**录出来的 —— 卡面改了，录音没跟着改。 */
+  | 'text-mismatch'
 
 export interface SkipDecision {
   reason: SkipReason
@@ -280,11 +286,30 @@ export function decideSkip(
   hashFile: (path: string) => string,
   target: string,
   manifest: VoiceManifest | null,
+  /**
+   * 本次**将要**朗读的文本（取自卡面 `promptText`）。
+   *
+   * ⚠️ [CR] 2026-10-14 补上这个参数：原先 `decideSkip` 只比 sha256，
+   *   完全不看 manifest 里记录的 `text`。于是这条通路是通的 ——
+   *   把 `unit-01.json` 里某个词的 `promptText` 从 "dog" 改成 "Dog!"
+   *   （或加个句号），磁盘上的 mp3 一个字节没动、哈希照样对得上，
+   *   判定就是 `verified` → 跳过 → **录音与卡面从此永久对不上**。
+   *
+   *   这与「文件存在 ≠ 文件正确」是同一条教训的下一层：那条守的是字节，
+   *   这条守的是**字节所对应的那个文本**。校验放在 `unit-01.test.ts`
+   *   （`promptText === manifest.text`），但那是**提交时**的一次性检查；
+   *   录音脚本本身必须自己守住，否则「改内容 → 补录一条」这条日常动线上
+   *   没有任何东西拦住人。
+   */
+  text: string,
 ): SkipDecision {
   if (!fileExists) return { reason: 'missing', skip: false }
   if (manifest === null) return { reason: 'unrecorded', skip: true }
   const recorded = manifest.entries[id]
   if (recorded === undefined) return { reason: 'unrecorded', skip: true }
+  // 文本先比、哈希后比：文本变了的话，哈希必然也对不上，
+  // 但那时报出来的是「corrupt（半截文件）」，会把人引向错误的方向。
+  if (recorded.text !== text) return { reason: 'text-mismatch', skip: false }
   if (hashFile(target) !== recorded.sha256) return { reason: 'corrupt', skip: false }
   return { reason: 'verified', skip: true }
 }
@@ -570,7 +595,14 @@ export async function runBatch(entries: VoiceEntry[], deps: RunDeps): Promise<Ru
     // 跳过判定只认正式名（不认 .tmp，见 writeFileAtomic），且要求**内容**对得上
     // manifest —— 「存在」不等于「正确」。半截文件、手工改过的文件、换了常量的
     // 旧录音都从这里被重新生成，而不是被当成已完成的产物跳过。
-    const decision = decideSkip(e.id, deps.fileExists(target), deps.hashFile, target, deps.manifest)
+    const decision = decideSkip(
+      e.id,
+      deps.fileExists(target),
+      deps.hashFile,
+      target,
+      deps.manifest,
+      e.text,
+    )
     if (decision.skip) {
       deps.log(`[voice] skip ${e.id}（${SKIP_REASON_TEXT[decision.reason]}）`)
       skipped += 1
@@ -651,6 +683,7 @@ const SKIP_REASON_TEXT: Record<SkipReason, string> = {
   verified: '已存在且哈希一致',
   unrecorded: '已存在但无溯源记录',
   missing: '不存在',
+  'text-mismatch': '卡面文本与录音溯源记录不一致（卡面改过？需重录）',
   corrupt: '内容与 manifest 不符',
 }
 
@@ -756,6 +789,19 @@ export async function main(argv: string[], env: NodeJS.ProcessEnv = process.env)
 
   let entries: VoiceEntry[]
   try {
+    // ⚠️ [CR] 2026-10-14：这里刻意用**动态 import** 而不是顶部的静态 `import { UNITS }`。
+    //   静态 import 在模块加载时求值，而 `src/content/index.ts` 按 AC-28「失败即 throw」
+    //   会在 import 的那一刻就抛 —— 那次抛出发生在 `main()` 之前，
+    //   于是它绕过了本文件所有的 try/catch：跑 `npm run generate:voice` 时
+    //   看到的是一整页 node 堆栈，而不是一行 `[voice] …` 加退出码 1。
+    //
+    //   静态 import 抛出的异常**无法被同步 catch** 接住，所以唯一的修法就是别静态 import。
+    //   代价是这里每次调用多一个微任务；`main` 本来就是 async，无所谓。
+    //
+    //   顺带说明为什么这条路径值得修：`npm run validate:content` 已在
+    //   `prebuild` / `pretest` 里（同一份内容、同样会抛），所以内容坏了通常先在那里被拦下；
+    //   但直接跑录音脚本时它仍是第一条通路，报错质量直接决定录入者能不能自己定位问题。
+    const { UNITS } = await import('../src/content/index')
     entries = entriesFromContent(UNITS)
   } catch (err) {
     console.error(err instanceof Error ? err.message : String(err))

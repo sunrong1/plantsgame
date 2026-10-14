@@ -75,11 +75,21 @@
   // ⚠️ 有意的归属结果：`src/content/` 同时落在 tsconfig.app.json
   // （`include: ["src/**/*.ts"]`，已自动覆盖它）与本项目里。落在 **app 项目**
   // （有 DOM、`noEmit`）而不是 core 的零 DOM 项目，是**有意的** ——
-  // 内容层是数据录入与校验，不需要 core 那套严苛的零 DOM 约束，
-  // 且它要 import `../core/balance.js` 的塔型常量，由 core 项目的 reference 解析。
-  // ⚠️ 代价（要知道）：ESLint 的 `no-restricted-globals` 只配了 `src/core/**`，
-  //   所以在 `src/content/` 里写 `window` / `localStorage` 没有任何工具会拦。
-  //   那不是疏漏，是「内容层不碰 DOM」的约定由 review 守，不由 lint 守。
+  // 内容层是数据录入与校验，不需要 core 那套严苛的零 DOM 约束。
+  //
+  // ⚠️ [CR] 2026-10-14 更正两处**已经不成立**的说法（它们从 Story 1.6 起就是错的，
+  //   只是没人回头核对，注释比它描述的现状多活了一个 story）：
+  //   1. 「它要 import `../core/balance.js` 的塔型常量」—— 内容层**不得** import core/。
+  //      `eslint.config.js` 的 `src/content/**` 块里有一条 `no-restricted-imports`
+  //      专门禁 `**/core/**`；塔型枚举在 `schema.ts` 里是**有意的字面量重复**，
+  //      由 `tests/content/content-boundary.test.ts` 断言两侧集合相等。
+  //      理由：内容校验不能依赖战斗层模块加载成功，否则一个坏 JSON 会先报成
+  //      import 失败，报错现场离错误源头很远。
+  //   2. 「ESLint 的 `no-restricted-globals` 只配了 `src/core/**`，在 `src/content/`
+  //      里写 window / localStorage 没有任何工具会拦」—— **拦得住**。
+  //      `eslint.config.js` 的 `src/content/**/*.{ts,vue}` 块配了同样的
+  //      no-restricted-globals（window / document / localStorage / speechSynthesis），
+  //      由 `content-boundary.test.ts` 的两条断言守着它的存在性与严重级别。
   //
   // 实测方式（与上面 scripts 那段同一手法）：往 `src/content/schema.ts` 里注入
   // `const x: number = "s"`，`npm run typecheck` 立刻报

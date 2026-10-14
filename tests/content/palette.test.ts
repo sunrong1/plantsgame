@@ -167,6 +167,61 @@ describe('AC-23 —— 三个塔型肉眼可分（Story 1.7 的硬要求）', ()
     ).toBeGreaterThanOrEqual(3)
   })
 
+  // ── [CR] 2026-10-14：阈值余量护栏 ────────────────────────────────────────
+  //
+  // 为什么要有这一条：阈值「≥60°」「≥3:1」守的是**下限**，而色值是**连续可调**的。
+  // 贴着阈值的色值意味着一改就红 —— 而人看到测试红了的第一反应是松阈值，
+  // 于是守卫被静默拆掉、文档也不改。护栏要求色值离阈值留出可观余量，
+  // 把「调色」和「调阈值」这两件事在成本上分开。
+  it.each(pairs)('%s 的色相间隔除了 ≥60°，还要留出余量（≥62°）', (a, b, label) => {
+    const gap = hueGap(hue(token(a))!, hue(token(b))!)
+
+    expect(
+      gap,
+      `${label} 的色相间隔只有 ${gap.toFixed(1)}°（阈值 60°）—— 改一个 hex 位就会红，` +
+        '而看到测试红了去松阈值，会把这个守卫静默拆掉。请调色值，不要动阈值。',
+    ).toBeGreaterThanOrEqual(62)
+  })
+
+  it.each(TOWERS)('%s 对草地的对比除了 ≥3:1，还要留出余量（≥3.3:1）', (name) => {
+    const ratio = contrast(token(name), token('color-bg'))
+
+    expect(
+      ratio,
+      `${name}（${token(name)}）对草地只有 ${ratio.toFixed(2)}:1（阈值 3:1）—— ` +
+        '余量不足 0.3 时改一个 hex 位就红。请调色值，不要动阈值。',
+    ).toBeGreaterThanOrEqual(3.3)
+  })
+
+  // ── [CR] 2026-10-14：`--color-sun` 的显式例外 ───────────────────────────
+  //
+  // 它是**唯一**一个不在草地上、也不在路径上的棋盘元素，且必须保持「亮」才像阳光。
+  // 草地 L = 0.369，要对它达到 3:1 需要 L_sun ≥ 1.208（数学上不可能）或
+  // L_sun ≤ 0.090（那是深棕，不叫阳光）。所以这条判据**在数学上不可达**，
+  // 硬套 3:1 只会逼着人把阳光改成深棕 —— 那是拿一个可达的坏方案换一条错的规则。
+  // 改按色相间隔查：阳光黄 48.9° vs 草地绿 89.2°，间隔 40.3°，肉眼分得开。
+  it('阳光是草地上唯一不适用 3:1 的元素，且按色相间隔 ≥30° 查（见上方理由）', () => {
+    const sunHue = hue(token('color-sun'))
+    const bgHue = hue(token('color-bg'))
+    expect(sunHue, '阳光是灰度色，没有色相可用 ⇒ 无法按间隔判可分性').not.toBeNull()
+    expect(bgHue, '草地是灰度色，没有色相可用').not.toBeNull()
+
+    const gap = hueGap(sunHue!, bgHue!)
+    expect(
+      gap,
+      `阳光与草地只差 ${gap.toFixed(1)}° —— 黄绿两色在色环上贴太近，孩子看不见阳光浮尘`,
+    ).toBeGreaterThanOrEqual(30)
+  })
+
+  it('阳光的对比度保底 ≥1.5:1（防止有人把阳光调成草地色而「无懈可击地」豁免掉）', () => {
+    const ratio = contrast(token('color-sun'), token('color-bg'))
+
+    expect(
+      ratio,
+      `阳光对草地只有 ${ratio.toFixed(2)}:1 —— 例外判据是色相，不是「随便什么亮度都行」`,
+    ).toBeGreaterThanOrEqual(1.5)
+  })
+
   it('三个塔型互不重合（名字与色值一一对应，不是一套渐变）', () => {
     const values = TOWERS.map((name) => token(name))
 

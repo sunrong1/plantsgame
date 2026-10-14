@@ -11,7 +11,7 @@
 + 修正 Epic 编号（`[CE]` 已把 4 个 Epic 归并为 3 个），未改变设计决定）。
 `[GA]` 游戏架构已定稿（`_bmad-output/planning-artifacts/game-architecture.md`，`status: complete`）。
 `[CE]` 已完成 —— Epic/Story 拆解见 `_bmad-output/planning-artifacts/epics.md`（111 KB，正式版）。
-当前在 `[DS]`：Epic 1 的 1-1 ~ 1-5 已 done，下一个待做 story 从 `sprint-status.yaml` 里找第一个 backlog。
+当前在 `[DS]`：Epic 1 的 1-1 ~ 1-6 已 done，下一个待做 story 从 `sprint-status.yaml` 里找第一个 backlog。
 
 旧实现（Vue 3 + Phaser 3 塔防，已发布至 v5.x）已归档在 git tag `legacy-v5.x-final`。
 若需要查阅旧代码（美术资源命名、平衡数值、移动端踩坑记录等）：
@@ -172,8 +172,9 @@ docs/               项目知识库（BMAD 的 project_knowledge 指向这里）
 
 ```
 Epic 1  工程基础设施 + 单元 1 内容（1-1 ~ 1-19）
-  已 done: 1-1 工程脚手架 / 1-2 音频解锁+TTS / 1-3 朗读录音 / 1-4 战斗内核 / 1-5 回合状态机
-  剩余:     1-6 内容数据层 → 1-19 首次试玩验证（生死线）
+  已 done: 1-1 工程脚手架 / 1-2 音频解锁+TTS / 1-3 朗读录音 / 1-4 战斗内核 / 1-5 回合状态机 /
+           1-6 内容数据层
+  剩余:     1-7 → 1-19 首次试玩验证（生死线）
 Epic 2  内容产能与难度阶梯（2-1 ~ 2-9）
 Epic 3  打磨与验收（3-1 ~ 3-8）
 ```

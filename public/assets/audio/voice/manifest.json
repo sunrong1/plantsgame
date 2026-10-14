@@ -186,11 +186,6 @@
       "sha256": "42cdedb061a53a392f0592a07cd9327fdb2b523a5e2e29405fbccb17a51b053e",
       "bytes": 28212
     },
-    "u1-s-what-is-this": {
-      "text": "What is this?",
-      "sha256": "dccb07fbae28cacd1fb6dab852264eebfb84c3154ec6bddc22a6b50a73c2d309",
-      "bytes": 39732
-    },
     "u1-s-thank-you": {
       "text": "Thank you!",
       "sha256": "4c5794cc40432b69fd7cc3f821710638b754bdba4a037fd0166706ea1bdaea8c",

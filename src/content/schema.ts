@@ -68,8 +68,14 @@ export const PROBLEM_CATEGORY = {
   duplicateEntryId: 'duplicate-entry-id',
   /** 选项 id 形态非法。 */
   entryIdFormat: 'entry-id-format',
+  /** `entryId` 的单元前缀与 `unitNumber` 不符（AR29 前缀未被 enforce 的那个洞）。 */
+  entryUnitMismatch: 'entry-unit-mismatch',
+  /** 选项的 `text` / `imageSrc` 是纯空白串。 */
+  blankOptionField: 'blank-option-field',
   /** 同一张卡内选项 id 重复。 */
   duplicateOptionId: 'duplicate-option-id',
+  /** 同一张卡内两个选项的显示文本重复 —— 界面上是两个无法区分的按钮。 */
+  duplicateOptionText: 'duplicate-option-text',
   /** 选项指向本单元不存在的词条。 */
   danglingOption: 'dangling-option',
   /** 其余结构性错误（类型不对、多余字段等）。 */
@@ -83,19 +89,34 @@ export function unitPrefix(unitNumber: number): string {
   return `u${unitNumber}-`
 }
 
+/**
+ * 非空白字符串。`min(1)` 挡不住 `"   "` —— 纯空白串的 length 也是 1。
+ *
+ * 与 `promptText` 同一个洞（见 CardSchema 的 AC-4 检查），但那一条在卡层判，
+ * 选项层的字符串没有那层保护。空白按钮与空白题面在界面上一样是「什么都没有」，
+ * 且没有任何报错指向它。
+ */
+const nonBlank = (field: string) =>
+  z.string().refine((value) => value.trim().length >= 1, {
+    message:
+      `选项的 ${field} 不得为空或纯空白 —— 界面上会是一个没有内容的选项，` +
+      '没有任何报错指向它',
+    params: { category: PROBLEM_CATEGORY.blankOptionField },
+  })
+
 /** 图片选项（单词卡的选项，GDD「听音 → 识物」）。有 `imageSrc`，**没有** `text`。 */
 export const ImageOptionSchema = z.strictObject({
   /** 恒等于所指向的**词条 id**（不是 `u1-dog-o1` 之类），见 Dev Notes 内容模型裁决第 3 条。 */
   id: z.string().min(1),
   /** 只是路径字符串 —— 图片数据不进 JS bundle（AR31 / 架构 `:304`）。 */
-  imageSrc: z.string().min(1),
+  imageSrc: nonBlank('imageSrc'),
   correct: z.boolean(),
 })
 
 /** 文字选项（关键词卡 / 回应卡的选项，GDD「孩子选择时同时在读」）。有 `text`，**没有** `imageSrc`。 */
 export const TextOptionSchema = z.strictObject({
   id: z.string().min(1),
-  text: z.string().min(1),
+  text: nonBlank('text'),
   correct: z.boolean(),
 })
 
@@ -211,6 +232,30 @@ export const CardSchema = z
       }
       seen.add(option.id)
     })
+
+    // ── 同一张卡内选项的显示文本互不相同 ──────────────────────────────────
+    // `duplicateOptionId` 只比 id，而 option id === 词条 id、显示文本是自由文本，
+    // 于是 `{id:'u1-dog', text:'Yes'}` 与 `{id:'u1-cat', text:'Yes'}` 合法通过 ——
+    // 孩子看到两个都写着「Yes」的按钮，一个对一个错，纯属刁难。
+    // 归一化后比较：大小写与首尾空白造成的「看起来一样」同样会给出无法区分的按钮。
+    const seenText = new Map<string, string>()
+    card.options.forEach((option, index) => {
+      const shown = 'text' in option ? option.text : option.imageSrc
+      const key = shown.trim().toLowerCase()
+      const firstId = seenText.get(key)
+      if (firstId !== undefined) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['options', index],
+          message:
+            `选项内容重复：选项 ${option.id} 与选项 ${firstId} 的显示文本都是 ` +
+            `「${shown}」—— 界面上会给出两个无法区分的按钮，孩子无从分辨该点哪个`,
+          params: { category: PROBLEM_CATEGORY.duplicateOptionText },
+        })
+      } else {
+        seenText.set(key, option.id)
+      }
+    })
   })
 
 /**
@@ -220,8 +265,23 @@ export const CardSchema = z
  * 本 schema 不引入任何「按词条改数值」的字段 —— 那会让平衡验证全部失效。
  */
 export const TowerBindingSchema = z.strictObject({
-  /** 塔的显示名来源。本 story 与 `entryId` 同值（内容模型裁决第 2 条）。 */
-  wordId: z.string().min(1),
+  /**
+   * 塔的显示名来源。本 story 与 `entryId` 同值（内容模型裁决第 2 条）。
+   *
+   * ⚠️ 不能只留 `min(1)`：架构 `:879` 声明 `wordId: string // ← 显示名 / 词图 来源`，
+   * 它会一路流到渲染层。`min(1)` 放过 `u9-zebra`（跨单元）、`../../etc/passwd`
+   * （拼进图片路径）、`🙂`（塔上没有可读的名字）—— 三者都曾实测通过 UnitSchema。
+   * 因此套上与 `entryId` 同一套形态约束。
+   *
+   * 刻意**不**强制 `wordId === entryId`：那只是本 story 的取值决策（内容模型裁决第 2 条），
+   * 不是架构不变量。单元 2 的 `2-5 选项数量递进规则` 若要给同一张卡换显示名，
+   * 硬绑定会让那一步变成改 schema 而不是改内容。
+   */
+  wordId: z.string().regex(
+    ENTRY_ID_PATTERN,
+    'wordId 必须是「单元前缀 + kebab-case」—— 它是塔的显示名与词图来源，' +
+      '不能是任意字符串',
+  ),
   towerType: TowerTypeSchema,
 })
 
@@ -236,7 +296,7 @@ export const EntrySchema = z.strictObject({
     '词条 id 必须是「单元前缀 + kebab-case」（如 u1-dog / u1-s-how-are-you）—— ' +
       '尾部的连字符、大写字母、空段都会被这条挡下',
   ),
-  wordId: z.string().min(1),
+  wordId: TowerBindingSchema.shape.wordId,
   towerType: TowerTypeSchema,
   card: CardSchema,
 })
@@ -306,6 +366,40 @@ export const UnitSchema = z
           params: { category: PROBLEM_CATEGORY.foreignOption },
         })
       })
+    })
+
+    // ── entryId 自身的单元前缀必须与 unitNumber 一致（AR29）────────────────
+    // ⚠️ 上面那条只查 option id；`entryId` 自己此前只过 `ENTRY_ID_PATTERN`，
+    // 而那个正则接受**任意** `u<N>-`。于是单元 1 的文件里可以写 `entryId: "u2-cat"`：
+    // schema 通过、启动校验通过、validate-content 也通过（单元 2 还不存在，
+    // `globalEntryIdProblems` 无从发现），然后 `generate-voice` 往**扁平**的
+    // `voice/` 目录写出 `u2-cat.mp3` —— 占用了单元 2 的录音命名空间。
+    // 等 Epic 2 真加单元 2 且里面有同名词时，那份 mp3 会被后来者静默覆盖，
+    // 而界面上只会表现为「换了单元却播了另一个单元的录音」。
+    // 这正是 AR29 要求前缀的原因，AR29 的执行点此前漏了 entryId 本身。
+    unit.entries.forEach((entry, entryIndex) => {
+      if (entry.entryId.startsWith(prefix)) return
+      ctx.addIssue({
+        code: 'custom',
+        path: ['entries', entryIndex, 'entryId'],
+        message:
+          `词条 id ${entry.entryId} 的单元前缀是 ${entry.entryId.slice(0, 3)}，` +
+          `但它位于单元 ${unit.unitNumber}（应该 ${prefix} 开头）—— ` +
+          '录音目录不按单元分层，前缀错了会占掉别的单元的录音文件名',
+        params: { category: PROBLEM_CATEGORY.entryUnitMismatch },
+      })
+      // `wordId` 与 `entryId` 各自独立过了形态校验，但形态相同不代表前缀归属相同：
+      // `entryId: "u1-dog"` 配 `wordId: "u2-dog"` 同样是跨单元，一并报。
+      if (!entry.wordId.startsWith(prefix)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['entries', entryIndex, 'wordId'],
+          message:
+            `wordId ${entry.wordId} 不属于单元 ${unit.unitNumber}（应以 ${prefix} 开头）—— ` +
+            '它是塔的显示名与词图来源，跨单元会让塔指向别的单元的词',
+          params: { category: PROBLEM_CATEGORY.entryUnitMismatch },
+        })
+      }
     })
   })
 

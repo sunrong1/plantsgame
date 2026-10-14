@@ -1,5 +1,5 @@
 # generated: 2026-10-12
-# last_updated: 2026-10-14 (Story 1.6 → review：[DS] 内容数据层落地 —— src/content/ + 单元 1 的 38 条真实内容 + validate:content 五类校验 + 30 张占位词图 + art-direction 色板（palette.test.ts 按 WCAG 实算）；12 项变异验证逐项坐实；词表唯一事实源从 voice-entries.json 迁到 src/content/，该文件退役)
+# last_updated: 2026-10-14 (Story 1.6 → done：[CR] 三层审查全部落地 —— 5 条 decision_needed 已裁决（退役 u1-s-what-is-this 使单元 1 由 38 条降至 37；u1-beautiful 的同义干扰项换成 u1-panda；色板加余量并登记 sun 例外；validate:content 接进 prebuild/pretest），19 条 patch 已改，其中 5 条经变异坐实是假绿并补上守卫；6 项 AC-32 命令全绿，547 条测试通过)
 # project: plants-game
 # project_key: NOKEY
 # tracking_system: file-system
@@ -58,7 +58,7 @@ development_status:
   1-3-朗读录音批量生成: done
   1-4-战斗内核与-5-条数值断言: done
   1-5-回合状态机与题单: done
-  1-6-内容数据层与单元-1-录入: review
+  1-6-内容数据层与单元-1-录入: done
   1-7-塔与僵尸美术资产: backlog
   1-8-单元-1-词图-第一批: backlog
   1-9-单元-1-词图-第二批: backlog

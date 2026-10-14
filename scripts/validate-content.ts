@@ -34,7 +34,12 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
-import { PROBLEM_CATEGORY, UnitSchema, type ProblemCategory } from '../src/content/schema'
+import {
+  ENTRY_ID_PATTERN,
+  PROBLEM_CATEGORY,
+  UnitSchema,
+  type ProblemCategory,
+} from '../src/content/schema'
 
 // ── 常量 ────────────────────────────────────────────────────────────────────
 
@@ -221,6 +226,30 @@ function wordImageProblems(raw: unknown, deps: ValidateDeps): ContentProblem[] {
   for (const { entryId, option } of imageOptionsOf(raw)) {
     const optionId = option.id as string
     const imageSrc = option.imageSrc as string
+
+    // ⚠️ [CR] 2026-10-14：这里的 `optionId` 来自**原始 JSON**，未经任何形态校验
+    //   （schema 那条通路会守 `ENTRY_ID_PATTERN`，而这里走的是「即使 schema 没过
+    //   也要把问题全报出来」的宽松遍历）。一个 `option.id: "../../etc/passwd"` 会：
+    //     ① 被 `expectedImageUrl` 拼成一条看似规范、实则逃出根目录的 URL 打进报错；
+    //     ② 被下面的 `join` 拼成词图根目录**之外**的文件系统路径去探测存在性。
+    //   实际影响有限（内容文件是仓库内的信任数据，这里只做存在性探测），
+    //   但「把未经校验的片段拼进路径，再把结果原样打进日志」这件事本身就该挡在门外。
+    //
+    //   所以这里**不**为形态不合法的 id 编造「规范路径应为 ……」——
+    //   那条路径是用垃圾拼出来的，报出来只会误导。直说 id 不合法，让录入者去修 id。
+    if (!ENTRY_ID_PATTERN.test(optionId)) {
+      problems.push({
+        category: PROBLEM_CATEGORY.wordImage,
+        unitNumber,
+        entryId,
+        optionId,
+        message:
+          `选项 id ${JSON.stringify(optionId)} 不是合法的词条 id（应为「单元前缀 + kebab-case」，` +
+          '如 u1-dog）—— 无法据此定位词图。请先把这个 id 改对，再看词图是否齐了',
+      })
+      continue
+    }
+
     const expectedUrl = expectedImageUrl(unitNumber, optionId)
     referenced.add(`${optionId}.svg`)
 
@@ -360,8 +389,11 @@ export function loadUnitFiles(unitsDir: string = UNITS_DIR): readonly { file: st
       try {
         raw = JSON.parse(readFileSync(join(unitsDir, file), 'utf8'))
       } catch (err) {
+        // ⚠️ 这里**不要**再写 `[content] ` 前缀：`main()` 的 catch 会统一加
+        //   `[content] ERROR `，两处都加的话终端上会看到
+        //   `[content] ERROR [content] /path 不是合法 JSON：…`，像是两条错误。
         throw new Error(
-          `[content] ${join(unitsDir, file)} 不是合法 JSON：` +
+          `${join(unitsDir, file)} 不是合法 JSON：` +
             `${err instanceof Error ? err.message : String(err)}`,
         )
       }
@@ -371,7 +403,17 @@ export function loadUnitFiles(unitsDir: string = UNITS_DIR): readonly { file: st
 
 // ── 入口（顶层副作用集中在这里）─────────────────────────────────────────────
 
-function parseCli(argv: readonly string[]): { wordImageRoot: string } {
+/**
+ * 解析命令行参数。
+ *
+ * ⚠️ 导出供测试直接断言（`[CR]` 2026-10-14）：原先它是模块私有的，
+ *   唯一的调用方 `main()` 在测试里一律传 `[]` 或一个坏的 `load`，
+ *   于是「词图根目录可以被 `--word-image-root` 改掉」这条能力**零覆盖** ——
+ *   参数名打错一个字母、忘了 `i += 1`、把下一个参数当成目录名，全都不会红。
+ *   这是词图尚未录入（Epic 2）期间唯一的词图目录入口，它坏掉时没有任何症状，
+ *   直到那时才一次性爆发。
+ */
+export function parseCli(argv: readonly string[]): { wordImageRoot: string } {
   const cli = { wordImageRoot: WORD_IMAGE_ROOT }
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i]

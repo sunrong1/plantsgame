@@ -15,6 +15,10 @@
  *   子串匹配可以被另一个 config 块分别满足，测试全绿而防线已废。
  */
 
+import { readFileSync, readdirSync } from 'node:fs'
+import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
 import { describe, expect, it } from 'vitest'
 
 import { TOWER_TYPES } from '../../src/core/balance'
@@ -57,14 +61,53 @@ describe('AC-7 / M11 —— 塔型的单一事实源', () => {
     ).toEqual([...TOWER_TYPES].sort())
   })
 
-  it('内容层**不 import** core（塔型是字面量重复 + 测试等值断言，不是运行期耦合）', () => {
+  it('content/ 上 no-restricted-imports 同时禁 vue 与 core（两条边界都要真被守）', () => {
     // 若哪天有人图省事改成 `z.enum(TOWER_TYPES)`，内容校验就会依赖战斗层模块加载成功。
     // 这条断言把那个选择挡在外面：要改成 import，必须先改这条测试并说明理由。
     const rule = rulesFor('src/content/**/*.{ts,vue}')['no-restricted-imports']
     expect(rule, 'content/ 上没有 no-restricted-imports 规则').toBeDefined()
 
-    // 约束的形状：vue 被禁（零 Vue 依赖）。core 不在禁列里 —— 见下一条 it。
-    expect(JSON.stringify(rule)).toContain('vue')
+    const shape = (Array.isArray(rule) ? rule[1] : rule) as {
+      paths?: { name?: string }[]
+      patterns?: { group?: string[] }[]
+    }
+    // 边界一：零 Vue 依赖。
+    expect(
+      (shape.paths ?? []).map((p) => p.name),
+      'vue 不在禁列里 ⇒ content/ 可以 import vue，边界已废',
+    ).toContain('vue')
+
+    // 边界二：不 import core。
+    // ⚠️ [CR] 2026-10-14：这一条原先**根本不存在**。旧断言只检查了「规则存在且含 vue」，
+    // 而 core 从来不在禁列里 —— 注释还写着「core 不在禁列里 —— 见下一条 it」，
+    // 后面并没有下一条 it。变异坐实：给 schema.ts 加
+    // `import { TOWER_TYPES } from '../core/balance'` 后 93/93 全绿。
+    // 「声明的边界」和「被守的边界」差了整整一条，这是本项目记忆里那条教训的第四次。
+    const groups = (shape.patterns ?? []).flatMap((p) => p.group ?? [])
+    expect(
+      groups,
+      'core 不在 no-restricted-imports 的 patterns 里 ⇒ 内容层可以依赖战斗层模块加载成功，' +
+        '一个坏 JSON 会先报成 import 失败，报错现场离错误源头很远',
+    ).toContain('**/core/**')
+  })
+
+  it('content/ 的源码里真的没有 import core（规则之外再验一次实际代码）', () => {
+    // 规则可能配错、可能只对某些 glob 生效。这条直接读源码，
+    // 是「边界」这个断言最后一道不依赖任何配置的兜底。
+    const srcDir = fileURLToPath(new URL('../../src/content/', import.meta.url))
+    const offenders: string[] = []
+    for (const name of readdirSync(srcDir)) {
+      if (!name.endsWith('.ts')) continue
+      const body = readFileSync(join(srcDir, name), 'utf8')
+      for (const m of body.matchAll(/from\s+'([^']+)'/g)) {
+        if (/(^|\/)core(\/|$)/.test(m[1])) offenders.push(`${name} → ${m[1]}`)
+      }
+    }
+
+    expect(
+      offenders,
+      `内容层 import 了 core：${offenders.join('、')} —— 内容校验不得依赖战斗层模块加载成功`,
+    ).toEqual([])
   })
 })
 
