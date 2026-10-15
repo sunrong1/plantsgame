@@ -2,7 +2,7 @@
 title: '文档治理：单一裁决源 + 完成归档 + 常驻瘦身'
 type: 'chore'
 created: '2026-10-15'
-status: 'in-review'
+status: 'done'
 specLoopIteration: 1
 baseline_commit: 4e66e47
 context: []
@@ -224,3 +224,73 @@ spec 任务清单写的是 `testing.md R-40..R-50` / `content.md R-60..R-68`，�
 | `npm run validate:content` | 0 | 无输出 |
 
 `git log --oneline --follow <归档文件>` 在提交后执行（`git mv` 只进了暂存区，提交前 `--follow` 必然返回 0）。
+
+## Suggested Review Order
+
+**先看这里：判据本身**
+
+- 单一裁决源这条元规则 —— 整个治理都从它长出来
+  [`process.md:114`](../../docs/rules/process.md#L114)
+
+- R-40 归档与「默认不读」—— AC-2/AC-4 都挂在它身上
+  [`process.md:162`](../../docs/rules/process.md#L162)
+
+**守卫：两处假绿的修法（本 commit 的核心）**
+
+- `norm()` 归一化 —— 旧判据对「抄走但没加粗」完全失明，M7 坐实
+  [`docs-rules.test.ts:106`](../../tests/scaffold/docs-rules.test.ts#L106)
+
+- 阈值降到 8 + 四段齐全检查 —— 短规则曾被静默排除，M8 坐实
+  [`docs-rules.test.ts:51`](../../tests/scaffold/docs-rules.test.ts#L51)
+
+- 「解析器没漏块」对照标题数，不再写死 `>= 30`
+  [`docs-rules.test.ts:149`](../../tests/scaffold/docs-rules.test.ts#L149)
+
+- 四段齐全检查 —— spec 自己的契约，现在有牙齿了
+  [`docs-rules.test.ts:188`](../../tests/scaffold/docs-rules.test.ts#L188)
+
+**守卫：健壮性**
+
+- `walk()` 加 try/catch —— 环境读不到目录不该让守卫红
+  [`docs-rules.test.ts:72`](../../tests/scaffold/docs-rules.test.ts#L72)
+
+- archive 正则以 `.md` 收尾 + 左边界 —— 原先会把中文顿号吞成假路径
+  [`docs-rules.test.ts:247`](../../tests/scaffold/docs-rules.test.ts#L247)
+
+**规则正文：本次修的漂移**
+
+- R-32 删掉「9 处」—— 会自己烂掉的数字不进规则正文
+  [`process.md:33`](../../docs/rules/process.md#L33)
+
+- 变异验证铁律 —— 后面所有守卫的元规则
+  [`testing.md:8`](../../docs/rules/testing.md#L8)
+
+**索引与诚实说明**
+
+- 索引 + ✅/❌/⚠️ 守卫状态表
+  [`README.md:1`](../../docs/rules/README.md#L1)
+
+- 31 条规则无守卫的如实说明 —— 别把「写清楚了」当「已覆盖」
+  [`README.md:102`](../../docs/rules/README.md#L102)
+
+**常驻入口**
+
+- 硬约束正文换成 R-ID 索引表（241 → 106 行）
+  [`CLAUDE.md:40`](../../CLAUDE.md#L40)
+
+- 目录约定新增 archive 声明
+  [`CLAUDE.md:82`](../../CLAUDE.md#L82)
+
+**偏离与移交（review 时请重点看这两处）**
+
+- 5 条 Spec Change Log + 第 6 条未登记的范围扩张
+  [`spec-doc-governance.md:84`](./spec-doc-governance.md#L84)
+
+- 三个 subagent 的分类结果：8 patch / 9 defer / 3 reject
+  [`spec-doc-governance.md:161`](./spec-doc-governance.md#L161)
+
+- 移交 Story 1.13 的 5 条 AC/守卫设计问题（首跑很可能 0 红）
+  [`deferred-work.md:703`](./deferred-work.md#L703)
+
+- 移交失效的 Bash 授权路径（**未修，等你定**）
+  [`deferred-work.md:720`](./deferred-work.md#L720)
