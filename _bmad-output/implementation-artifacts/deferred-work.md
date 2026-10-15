@@ -1,5 +1,18 @@
 # 延后工作
 
+> ⚠️ **2026-10-15 文档治理标注 —— 本文件里的「Story 1.13」是重编号前的旧编号。**
+>
+> Epic 1 于 2026-10-14 从 4 个归并为 3 个，story 编号随之重排。**旧编号 1.13 = 音效与 BGM 接入，
+> 现编号 1.14。** 所以本文件中凡写「Story 1.13 要接上真实音效 / effects-runner / BGM /
+> 决定 effects-runner 的异步形态」处，**归属 story 是 1.14，不是 1.13**（现行 1.13 是 HUD）。
+>
+> 涉及条目：讲 `app/effects-runner.ts` 不在守卫名单内的两条、讲五条「已处理但零测试覆盖」
+> 分支的延后理由、讲 BGM 接目标平台、讲 effects-runner 异步形态的条目。
+> 见 [R-32](../../docs/rules/process.md)
+> 与 `1-13-hud-阳光-心与进度.md`「裁决 1」的逐处对照表。
+>
+> **改这些条目时按 1.14 理解，但不要顺手改写原文** —— 原文保留作历史记录。
+
 ## Deferred from: code review of story-1-2-音频解锁与-tts-朗读 (2026-10-12)
 
 ### 第二轮 `[CR]` 三层并行审查新增（2026-10-12）
@@ -52,6 +65,18 @@
   装环境是项目级决定，不宜在 Story 1.2 顺手做。
   ——
   `src/views/StartView.vue`
+
+  > ⚠️ **2026-10-15 文档治理更正 —— 延后理由已失效，但缺口仍然开着。**
+  >
+  > 上面这段「`jsdom` 与 `happy-dom` 都没有」**已不成立**：`jsdom ^30.1.2` 早在
+  > Story 1.9 就装进了 devDependencies，且 `vitest.config.ts` 里那条「两个都没装」
+  > 的过期注释**已被 Story 1.11 更正**。全局 `environment` 保持 `'node'` 是对的，
+  > 组件测试逐个文件加 docblock 即可，见 [R-60](../../docs/rules/testing.md)。
+  >
+  > **所以：延后理由没了，这条缺口现在没有挡路的理由。** 实测确认
+  > `unlockAudioSequence()` 函数本身**有**测试（`tests/services/audio.test.ts`），
+  > 缺的是**接线** —— 没有任何测试渲染 `StartView.vue` 并点击。
+  > 下个 story 接手音频时可直接补，见 [R-41](../../docs/rules/process.md)。
 
 - **五条「已处理但零测试覆盖」的分支** ——
   ① `AudioContext` 不存在 ② `new Audio()` 抛错 ③ `synth.cancel()` 抛错
@@ -646,4 +671,33 @@
 - 这是**裁决 2 的已知代价**（单元 1 就有 37 词条，全年 200-400），
   1.12 不改（分组 / 筛选 / 竖排都属产品决定，不是 UI bug）。
   **1.19 真机试玩**要问孩子的是「第三关之后还找得到我那张卡吗」。
+
+## Deferred from: QD 文档治理 §1-§3 (2026-10-15)
+
+处置：`_bmad-output/implementation-artifacts/spec-doc-governance.md`（status: in-progress）。
+本次只做 §1-§3，以下两项**明确划到范围外**，未开工。
+
+### 记忆侧仍有一份重复的规则正文（在仓库外，story 改不到）
+
+`docs/rules/README.md` 立了 R-37「判据只写一份」，但
+`~/.claude/projects/-root-repos-plants-game/memory/` 下的记忆文件里
+仍有若干条**成文规则正文**（变异验证纪律、实测值优先、跳过必须验哈希、`flush:'sync'` …）。
+
+- **为什么这次没动**：那些文件在 `~/.claude/`，**不在本仓库 git 管辖内**，
+  BMAD story 的产物约定与提交约定都覆盖不到；且它们是跨仓库复用的经验，
+  与本项目的 R-ID 未必一一对应。
+- **要做什么**：逐条判定「是通用经验（保留）还是本项目专属（改成 R-ID 引用）」，
+  后者从记忆正文删掉、只留一句指向 `docs/rules/`。
+- **注意**：改记忆文件不产生 git 记录，**改完没有 review 能看见** ⇒ 需单独留痕。
+
+### BMAD 模板侧的流程改造（§4，独立 QD）
+
+`.claude/skills/` 与 `_bmad/` 下 GDS 技能的 step 文件里，
+**仍然写着「把约定原样抄进下一份 story 文档」这类指引** —— R-37 要消除的复制链，
+源头就在这些模板里。本次不改（spec 的 Never 边界已写明「BMAD 模板改造是下一个独立 story」）。
+
+- **要做什么**：走 `bmad-customize`（或直接改模板）把 step 文件里的
+  「复述既有约定」改成「引用 R-ID」，并让 `[DS]` 的产出模板带 R-ID 字段。
+- **风险**：`_bmad/` 是安装器管理的，改动可能被升级覆盖 ⇒ 需要先确认覆盖策略。
+
 

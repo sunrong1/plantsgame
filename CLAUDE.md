@@ -1,20 +1,18 @@
 # CLAUDE.md
 
 本文件为 Claude Code (claude.ai/code) 在本仓库工作时的指引。
+**它是入口，不是事实源。** 任何与 `docs/rules/`、GDD、架构文档冲突的表述，以那些文件为准。
 
 ## 项目状态
 
-本仓库于 2026-10-11 通过 BMAD Method 从零重做。
+回合制英语单词塔防，面向中文母语儿童（4–8 岁）。
+Epic 1（工程基础设施 + 单元 1 内容）进行中。
 
-进度：`[GDD]` 已定稿（`_bmad-output/planning-artifacts/gdds/gdd-plants-game-2026-10-11/gdd.md`，
-`status: final`，**revision 4** —— rev 4 由 `[IR]` 修订：补战斗疲劳处置路径（原承诺无 story 承接）
-+ 修正 Epic 编号（`[CE]` 已把 4 个 Epic 归并为 3 个），未改变设计决定）。
-`[GA]` 游戏架构已定稿（`_bmad-output/planning-artifacts/game-architecture.md`，`status: complete`）。
-`[CE]` 已完成 —— Epic/Story 拆解见 `_bmad-output/planning-artifacts/epics.md`。
+> **唯一状态源是 `_bmad-output/implementation-artifacts/sprint-status.yaml`。**
+> 本文件曾经复述 story 状态，已过时过一次（见 [R-30](docs/rules/process.md)）。
+> **开工先读那个 yaml，不要凭记忆、不要读这里。**
 
 ## 技术栈
-
-由 `[GA]` 定稿，完整依据见 `_bmad-output/planning-artifacts/game-architecture.md`。
 
 | 层 | 选择 | 版本 |
 |---|---|---|
@@ -26,216 +24,83 @@
 | 部署 | HTTPS 静态托管 + PWA | — |
 
 **为什么没有游戏引擎：** 本作是**回合制**，无实时循环、无物理、无碰撞、无网络。
-引擎 90% 的能力用不上；DOM 直接白送文字渲染（英文单词的认读质量直接受益）
-与竖屏自适应布局。
+引擎 90% 的能力用不上；DOM 直接白送文字渲染（英文单词的认读质量直接受益）与竖屏自适应布局。
 
 ## 命令
 
 ```bash
 npm run dev               # 开发服务器
-npm run test              # Vitest
+npm run test              # Vitest（pretest 会先跑 validate:content）
+npm run typecheck         # vitest 不查类型，改 .vue 后必跑（R-54）
+npm run lint
 npm run validate:content  # 内容校验，提交前必跑
 npm run balance-sim       # 平衡模拟，import 真实 core/
 ```
 
 ## 架构硬约束
 
-**这几条是 `[GA]` 定案的，违反即架构错误。实现前先读 `_bmad-output/planning-artifacts/game-architecture.md`。**
+**全部工程规则住在 [`docs/rules/`](docs/rules/README.md)，每条只写一次。**
+本文件只列入口，**不复述正文** —— 复述就是 [R-37](docs/rules/process.md) 说的那条复制链，
+本仓库已经因此产出 6 类活着的错误信息。
 
-1. **`core/` 零 DOM、零 Vue** —— 由 `tsconfig.core.json` 的 `lib` 不含 `DOM` 强制，
-   写 `window` / `localStorage` 会编译报错。配套 ESLint `no-restricted-imports`。
-2. **组件内不得出现战斗规则计算** —— 只能读 state 或 dispatch action。
-   答案只有一个来源：`core/`。⚠️ 这是 AI 最容易漂移的一条，`[CR]` 须重点检查。
-3. **战斗数值只读 `tower.towerType`，永远不读 `wordId`** —— 否则同一塔型因绑定词
-   不同而表现不同，平衡验证全部失效。
-4. **副作用只在 `app/effects-runner.ts` 执行** —— 组件内禁止 `watch` 后自行播音效。
-5. **动画时长写在 CSS，不写在 TS。**
-6. **进度与对局是两套独立持久化** —— `SaveFile { progress, currentGame }`。
-   战场每局清空，进度只增不减，混在一起会在局末丢掉「21/60」。
-7. **范围塔 = 同行 3 格**（左 1 / 自身 / 右 1），不是半径 2 的圆（5 格严重超模）。
-8. **音频解锁在「开始游戏」点击处理器内同步完成**，三者之间不允许 `await`；
-   `speechSynthesis.cancel()` 只在 `speech === true` 时调用。
-9. **TTS 失败绝不阻断回合流转** —— 必须有预录录音降级通路。
-10. **平衡模拟是 TypeScript，不是 Python** —— 避免两份数值漂移。
+| 主题 | ID 区间 | 何时必读 |
+|---|---|---|
+| [架构硬约束](docs/rules/architecture.md) | R-01..R-14 | **每次写代码前** |
+| [数值与平衡](docs/rules/range-and-balance.md) | R-20..R-24 | 碰任何数值时（⚠️ 改之前问人） |
+| [流程与文档](docs/rules/process.md) | R-30..R-41 | 记录 / 引用 / 作废约定时 |
+| [测试与守卫](docs/rules/testing.md) | R-50..R-61 | 写测试或守卫时 |
+| [内容与词图](docs/rules/content.md) | R-70..R-78 | 画词图或写 SVG 时 |
 
-## `[CE]` 已完成：词图产能如何落进 Epic
-
-**词图产能是项目级最大风险**：全年 200-400 词需 200-400 张各不相同的插画
-架构已锁定 SVG 格式与命名规范，但产能本身没被解决。
-
-`[CE]` 的拆解结论（详见 `epics.md`）：
-- **Epic 2 `2-1-词图产能验证`** 是独立 story，先小规模验证产能再放量
-- **`2-2` 难度阶梯规则落地** 依赖词图就绪，不提前做
-- Epic 1 的 `1-6-内容数据层与单元-1-录入` 只做数据层，词图留给 Epic 2
-
-**不允许默认「Epic 2 就是把词图画完」** —— 先过 `2-1` 验证产能，才谈批量。
+⚠️ 索引里有 **31 条规则目前没有守卫测试**（各条「守卫」字段如实标注）。
+不要把「无守卫」当成「已覆盖」。
 
 ## BMAD 工作流
 
 本项目使用 [BMad Method](https://docs.bmad-method.org/)，**Game Dev Studio（GDS）模块**。
+走 GDS 路径 —— 产出物在 `_bmad-output/`，且不需要 PRD（设计起点是 GDD）。
 
-> BMM 模块的技能也装着，但本项目走 GDS 路径 —— 产出物在 `_bmad-output/`，
-> 且 GDS 不需要 PRD（设计起点是 GDD，不是产品需求文档）。
+| 阶段 | 状态 |
+|---|---|
+| 1-preproduction | 已跳过 |
+| 2-design（`gds-gdd` / `gds-ux` / `gds-prd`） | ✅ 已完成 |
+| 3-technical（`gds-game-architecture` / `gds-create-epics-and-stories` / `gds-check-implementation-readiness`） | ✅ 已完成 |
+| 4-production（`gds-sprint-planning` → `gds-create-story` → `gds-dev-story`） | 进行中 |
 
-### 1-preproduction（可选）
+**随时可用**：`/bmad-help`（我在哪）、`/gds-correct-course`（跑偏了怎么纠）、
+`/gds-investigate`（取证式排查）、`/gds-quick-dev`（小改动一条龙）、
+`/gds-code-review`、`/gds-retrospective`、`/bmad-review`。
 
-| 菜单码 | 技能 | 必做 |
-|---|---|---|
-| BG | `gds-brainstorm-game` | 可选 |
-| GB | `gds-create-game-brief` | 可选 |
-| DR | `gds-domain-research` | 可选 |
+**每个技能在新开的 context window 里跑** —— BMAD 的规划对话很长，上下文污染会拉低后续质量。
 
-本项目已跳过这一阶段，直接进入设计。
-
-### 2-design（产出写入 `_bmad-output/planning-artifacts/`）
-
-| 顺序 | 菜单码 | 技能 | 必做 |
-|---|---|---|---|
-| 1 | GDD | `gds-gdd` | **必做** ✅ 已完成 |
-| 2 | CU | `gds-ux` | 可选（UI 占比大时强烈建议） |
-| 3 | PRD | `gds-prd` | 可选（通常从 GDD 派生） |
-
-#### GDD 正文修订（2026-10-15 定，Story 1.12 实证）
-
-**`[CC]` 不是「改 GDD 的许可证」** —— `gds-correct-course` 的产出是
-**一份 Sprint Change Proposal**（分析变更对全部产物的影响面），触发条件是
-用户说 "correct course"。它管的是**重大变更要不要动下游计划**，不垄断 GDD 的编辑权。
-
-**判据：`[DS]` 唯一可以改 GDD 正文的合法情形是「文档追认事实」** ——
-把 GDD 改成它**实际描述**的样子。三个条件全满足才可以：
-
-1. **被描述的行为已经交付**，且**有守卫/测试钉住**（能指出具体是哪几条）；
-2. **另一侧没有选择** —— 改实现去迁就 GDD 才是真正的设计变更（那种走 `[CC]`）；
-3. **升 `revision` + 追加 `revisionNote`**（**不覆盖旧版 note**）+ 同步 `deferred-work.md`。
-
-**不满足 ⇒ 走 `[CC]`。** 尤其是：改数值、改关卡设计、动 v1.0 范围 —— 一律 `[CC]`。
-
-> ⚠️ **引用文档一律用原文句子，不用行号。** 1.4 留下的 `gdd.md:296/:310`
-> 就是行号随 revision 漂移后失效的实例（Story 1.12 实测发现：现行 GDD 里
-> 谈圆形射程的是 `:337`/`:351`，按旧行号找会**找不到**）。
-
-> 📎 **本条判据的由来**：1.4 曾把「改 GDD 属 `[CC]` 流程」写进自己的 AC，
-> 经 `deferred-work.md` 传导，被 1.6 / 1.10 / 1.12 **逐个引用二手来源** ——
-> 三个 story 没有一个回 GDD 或流程定义核对过，而 GDD 自身**从未写过**这条禁令。
-> 反例在 GDD 自己的 frontmatter：**rev 4 是 `[IR]` 改的，不是 `[CC]`**。
-> ⇒ 那条约束不是成文规则，是被三个 story 自我强化出来的惯例。
-
-### 3-technical
-
-| 顺序 | 菜单码 | 技能 | 必做 |
-|---|---|---|---|
-| 1 | GA | `gds-game-architecture` | ✅ 已完成 |
-| 2 | CE | `gds-create-epics-and-stories` | ✅ 已完成（产出 `epics.md`）|
-| 3 | IR | `gds-check-implementation-readiness` | ✅ 已完成 |
-
-### 4-production
-
-| 顺序 | 菜单码 | 技能 | 必做 |
-|---|---|---|---|
-| 1 | SP | `gds-sprint-planning` | **必做** |
-| 2 | CS | `gds-create-story` | **必做** |
-| 3 | DS | `gds-dev-story` | **必做** |
-
-### 随时可用
-
-`[BH]` `bmad-help`（我在哪、下一步做什么）、`[PC]` `gds-generate-project-context`、
-`[SS]` `gds-sprint-status`、`[QD]` `gds-quick-dev`（小改动一条龙）、
-`[CC]` `gds-correct-course`（跑偏了怎么纠）、`[IN]` `gds-investigate`（取证式排查 bug）、
-`[RV]` `bmad-review`、`[RS]` `bmad-deep-recon`。
-
-Epic 收尾可选：`[CR]` `gds-code-review`、`[ER]` `gds-retrospective`。
-游戏测试可选：`[TA]` `gds-test-automate`、`[PP]` `gds-playtest-plan`。
-
-用 `/` 前缀调用对应 skill。**每个技能在新开的 context window 里跑** —— BMAD 的规划对话很长，
-上下文污染会拉低后续 story 的质量。
+**epic / story 的完整定义只在 `_bmad-output/planning-artifacts/epics.md`（2,169 行）。**
+只在需要新增或拆分 story 时才读，日常不要读 —— 读它会挤占一个 context window 的四分之一。
 
 ## 语言
 
-BMAD 对话与产出文档一律使用**中文**。
-配置在 `_bmad/custom/config.user.toml`（个人配置，不提交仓库）。
+BMAD 对话与产出文档一律使用**中文**。配置在 `_bmad/custom/config.user.toml`（不提交仓库）。
 
 ## 目录约定
 
 ```
-_bmad/              BMAD 方法论本体（安装器管理，已提交）
+_bmad/              BMAD 方法论本体（安装器管理）
 _bmad/custom/       个人/团队覆盖配置（*.user.toml 不提交）
-_bmad-output/       BMAD 产出物
-  planning-artifacts/
-    gdds/<slug>/    GDD 及其配套（decision-log、epics 草案）
-                    注：旧 balance-scan.py 已删除，平衡模拟统一用 npm run balance-sim（scripts/balance-sim.ts）
-  implementation-artifacts/ sprint 状态、story
-docs/               项目知识库（BMAD 的 project_knowledge 指向这里）
+_bmad-output/
+  planning-artifacts/       GDD、架构、epics —— 规划产物
+  implementation-artifacts/ sprint-status.yaml + 当前活跃 story 文档
+  archive/                  已完成（done）的 story 文档 —— 默认不读（R-40）
+docs/               项目知识库；docs/rules/ 是工程规则的唯一裁决源
 ```
 
 ## 提交约定
 
-遵循 Conventional Commits（`feat:`、`fix:`、`docs:`、`test:`、`refactor:`、`chore:`）。
-不要在规划阶段写产品代码 —— 那是 `[DS]` gds-dev-story 的职责。
+Conventional Commits（`feat:` / `fix:` / `docs:` / `test:` / `refactor:` / `chore:`）。
+不要在规划阶段写产品代码 —— 那是 `/gds-dev-story` 的职责。
 
----
+## 常驻速查
 
-## 📌 常驻速查（省 token 专用）
-
-> 下面这些内容**每次新 session 都必须知道**，写在这里就不用重复读原始文件。
-> 原始文件只在需要修改结构时才读。
-
-### Epic 清单
-
-```
-Epic 1  工程基础设施 + 单元 1 内容（1-1 ~ 1-19）
-  已 done: 1-1 工程脚手架 / 1-2 音频解锁+TTS / 1-3 朗读录音 / 1-4 战斗内核 / 1-5 回合状态机 /
-           1-6 内容数据层
-  剩余:     1-7 → 1-19 首次试玩验证（生死线）
-Epic 2  内容产能与难度阶梯（2-1 ~ 2-9）
-Epic 3  打磨与验收（3-1 ~ 3-8）
-```
-
-**epic / story 完整定义见 `_bmad-output/planning-artifacts/epics.md`，
-只在需要新增或拆分 story 时才读，日常不要读。**
-
-### 状态速查
-
-```
-当前 sprint: Epic 1 进行中
-下一个该做的 story: 从 sprint-status.yaml 里找第一个 backlog
-状态机: backlog → (CS) → ready-for-dev → (DS) → review → (CR) → done
-```
-
-**`sprint-status.yaml` 是唯一状态源，每次开工先读它，不要凭记忆判断进度。**
-
-### 文件位置
-
-```
-规划产物:   _bmad-output/planning-artifacts/
-            ├── gdd.md                        游戏设计文档
-            ├── game-architecture.md          架构决策
-            ├── epics.md                      Epic/Story 定义（少读）
-            └── gdds/<slug>/                  GDD 配套（decision-log 等）
-实现产物:   _bmad-output/implementation-artifacts/
-            ├── sprint-status.yaml            状态机
-            └── <story-key>.md                单个 story 的上下文
-```
-
-### 工具使用纪律（省 token）
-
-```
-改文件用 Edit / Write，不要用 python3 -c 或 sed -i
-  · Edit 只传 diff，参数体积比 Bash 改文件小一个数量级
-  · Bash 只用于：跑测试、看 git 状态、查文件列表
-
-读文件用 Read，不要 cat / head / tail
-  · Read 走工具协议，可以被 review 看到
-  · cat 的输出也会进上下文，但没有 Read 的缓存复用
-
-同一个文件不要反复读
-  · 上面「常驻速查」已经覆盖了高频查询
-  · 真要读原文，读一次就够，别读 36 次
-```
-
-### 数值平衡参数（禁止擅自改）
-
-```
-心数上限、阳光递增公式、僵尸血量/速度、关卡阈值
-这些是产品决策，改动前必须问人。
-其他历史教训见 gdds/<slug>/decision-log.md，不要重新推导。
-```
+- **状态机**：`backlog → (CS) → ready-for-dev → (DS) → review → (CR) → done`；
+  done 的 story 文档在 `[DS]` 收尾时 `git mv` 进 `_bmad-output/archive/`（R-40）
+- **改文件用 Edit / Write**，禁 shell 重定向 / `sed -i` / `python3 -c`（R-34）
+- **发现「某文件属 Story X.X」的冲突**：以 `epics.md` 的 AC 正文为准，编号会随 Epic 归并重排（R-32）
+- **引用文档用原文句子，不用行号** —— 行号随 revision 漂移（R-31）
+- **收尾门槛逐项贴真实输出**，不写「应该会绿」（R-39）
