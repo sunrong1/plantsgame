@@ -128,6 +128,13 @@ export { assertInvariants, createInitialState, nextQuestion, reduce } from './re
 
 export type { CreateInitialStateInput } from './reducer.js'
 
+// 📎 建造判据（Story 1.12 / AC-B1）。架构硬约束 2 的落点：组件关于
+//   「能不能放 / 会打到哪里 / 多少钱 / 手上有几张卡」的问题**只能**问这三个函数，
+//   组件里出现第二份判断即为架构漂移。
+export { coverCellsAt, handCards, placementBlockedReason } from './build.js'
+
+export type { HandCard } from './build.js'
+
 // 📎 词图加载失败时的内联占位图形（Story 1.11 / AC-B3）。**字符串常量，不造 DOM** ——
 //   规格要求它「随 core/ 提供」是因为本层同时满足零 DOM 与不引入副作用事实两条约束。
 //   下游一律从这里取，不要深路径 import `core/placeholder`。

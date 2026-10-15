@@ -26,12 +26,31 @@
 
 import { computed, ref } from 'vue'
 
-import type { Tower as TowerEntity } from '../../core'
+import type { Tower as TowerEntity, TowerType } from '../../core'
 import { expectedTowerAssetUrl } from '../../services/asset-url'
 
 const props = defineProps<{
   readonly tower: TowerEntity
 }>()
+
+/**
+ * 塔型字面量 → 色板 token 名。**必须显式映射，不能拼字符串**。
+ *
+ * ⚠️ 塔型字面量是 `direct`，而色板 token 叫 `--color-tower-shooter`（1.6 的历史命名，
+ *   `asset-url.ts:53` 与 `art-direction.md:499` 都记了这条易混）。
+ *   拼 `` var(--color-tower-${towerType}) `` 会得到一个**不存在**的
+ *   `--color-tower-direct` ⇒ `background-color` 回落到 `transparent`
+ *   ⇒ **直射塔的降级色块整只看不见**（只剩那一圈白色 inset 描边）。
+ *
+ * 🐛 **Story 1.12（AC-C2「沿用 Tower.vue 的加载失败降级形态」）顺带修掉的既有缺陷**：
+ *   本文件原先就是那行拼接 —— 直射塔的降级形态一直没显示出塔色。
+ *   手牌卡（`hand/HandCard.vue`）要复用同一形态，复制缺陷不叫「沿用」。
+ */
+const TOWER_COLOR_TOKEN: Record<TowerType, string> = {
+  direct: 'var(--color-tower-shooter)',
+  slow: 'var(--color-tower-slow)',
+  aoe: 'var(--color-tower-aoe)',
+}
 
 /** 图 URL 走 `asset-url.ts`（已接 `import.meta.env.BASE_URL`），不手写字符串拼接。 */
 const src = computed(() => expectedTowerAssetUrl(props.tower.towerType))
@@ -76,7 +95,7 @@ function onImageError(): void {
     :data-tower="tower.id"
     :data-tower-type="tower.towerType"
     :data-fallback="true"
-    :style="{ backgroundColor: `var(--color-tower-${tower.towerType})` }"
+    :style="{ backgroundColor: TOWER_COLOR_TOKEN[tower.towerType] }"
   />
 </template>
 

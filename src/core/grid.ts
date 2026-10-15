@@ -172,17 +172,23 @@ export function hasReachedHouse(col: number): boolean {
  *   「reducer 允许建」就是两份独立判断，改一处忘另一处时**界面上看不出任何异常**
  *   —— 孩子点下去只会撞上一条报错。
  *
- * ── 为什么**不**改 reducer 去调它（本次的取舍，如实记录）─────────────────
+ * ── 为什么 1.10 当时**不**改 reducer 去调它 ──────────────────────────────
  *   最彻底的做法是让 `placeTowerIn` 也走这个函数，那样两份判断在结构上就不可能分叉。
- *   本 story 没那么做，改为**保留 reducer 原样 + 加一条交叉断言**（见
+ *   1.10 没那么做，改为**保留 reducer 原样 + 加一条交叉断言**（见
  *   `tests/core/buildable-cells.test.ts`）：逐格比对 `canBuildAt` 与
  *   `placeTower` 的真实接受 / 拒绝。理由有二，都记在这里以便日后推翻：
  *     ① reducer 那两条抛错消息是**给排查用的**（写了「射程单边」「踏上即离场」
  *        这样的因果），走通用谓词会把它们压扁成一句笼统的「不能建」；
- *     ② 「不要改任何战斗数值 / 战斗判定」是本 story 的硬边界（Dev Notes §6），
+ *     ② 「不要改任何战斗数值 / 战斗判定」是 1.10 的硬边界（Dev Notes §6），
  *        改 reducer 属于越过边界做重构，而交叉断言已经能挡住漂移。
- *   ⇒ **漂移是被守住的，不是被消除的**。若日后 Story 1.12 真的要动 reducer，
- *     应把两条抛错改成调用本函数并保留各自的消息，而不是各留一份判断。
+ *
+ * ── ✅ Story 1.12 收口（2026-10-15，AC-B2）─────────────────────────────────
+ *   上面那句「若日后 1.12 真的要动 reducer，应把两条抛错改成调用本函数并保留
+ *   各自的消息」**已经照办了**：`reducer.placeTowerIn` 的 ③'/③'' 现在调用本函数，
+ *   抛出的错误**逐字采用本函数的消息**（因果文案一条没丢）。
+ *   ⇒ **漂移从「被守住的」升级成「被消除的」**：两份判断现在只有一份实现。
+ *   `tests/core/buildable-cells.test.ts` 的交叉断言**继续留着** ——
+ *   它守的不再是这两列，而是 `canBuildAt` 这一侧与 reducer 的整体一致性。
  */
 export function buildBlockedReason(row: number, col: number): string | null {
   // ⚠️ 用 isInsideGrid 而不是 assertInsideGrid：本函数会被组件对**任意**坐标调用，

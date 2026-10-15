@@ -7,18 +7,28 @@
  * 的静态区别表达出来。本文件**不含任何战斗规则计算**。
  *
  * ── 刻意不做的事 ──────────────────────────────────────────────────────────
- * · **不做建塔点击交互**（选卡 → 点格子）—— 属 Story 1.12（AR43 / FR32）。
- *   本 story 的格子只是「看起来」，不是「能点」。
  * · **不重算抵达判定**（AC-10）—— 抵达房子的僵尸已经不在 `state.zombies` 里了
  *   （`reducer.ts` 的 `applyResolve` 已扣心并移除）。渲染层若再判一次 `col <= 0`，
  *   就是**第二个**抵达事实源，而两个事实源迟早分叉。丢心口径以
  *   `grid.ts` 的 `hasReachedHouse` 为准。
  * · **不显示列号 / 行号**（AC-7）—— 内部 0-based、界面 1-based 的混用由守卫
  *   **G18** 从**空间位置**上抓，不依赖任何可见文字。6 岁半不需要读数。
- * · **不画射程预览** —— 属 1.12，且 GDD `:296/:310` 残留的「圆形射程」要改
- *   得走 `[CC]`（`deferred-work.md:229`）。
  * · **不做 HUD** —— 属 1.13。**尤其不在战场上画心。**
  * · **不在渲染路径打日志**（`[GA]:619-622`）—— 本文件一条日志都没有。
+ *
+ * ── 建塔点击交互（Story 1.12 / AC-D1 … D3、AC-E1 … E4）──────────────────────
+ *   两步放置：**`pointerdown` 只负责「指向」，`pointerup` 才负责「种下」**。
+ *   ⚠️ 为什么必须分开：手指按下与抬起之间会有落点漂移，用 `click` 一把梭
+ *     就会在漂移后于**别的格子**建塔 —— 而「种错位置」正是孩子最常见、
+ *     也最看不出所以然的失败形态（AC-D1 的原话）。
+ *   ⚠️ **不用 hover、不用拖拽、不用 `pointermove`**（守卫 G39）：目标形态是
+ *     竖屏平板，压根没有 hover；拖拽是另一套交互，本 story 不做。
+ *   ⚠️ **不用任何延迟/防抖代替选中态**（`epics.md:1114`）：防误触靠**看得见的高亮**。
+ *
+ *   ⚠️ GDD `:296/:310` 残留的「圆形射程」**本 story 不改**（裁决 1）：
+ *     覆盖层画的是 `coverCellsAt` 的**真实伤害形状**（范围塔 = 同行 3 格），
+ *     而 GDD 正文仍写着圆。改文档要走 `[CC]`，登记见 AC-H2。
+
  *
  * ── 索引基准 ──────────────────────────────────────────────────────────────
  * 内部 0-based，界面 1-based（`grid.ts` 裁决 3）。本文件渲染的是**内部**坐标，
@@ -31,10 +41,24 @@
  *   键入 `dict[col]` **静默吞僵尸**的坑，得出过错的失败门槛。
  */
 
-import { COLS, HOUSE_COL, ROWS, ZOMBIE_ROW, ZOMBIE_SPAWN_COL, canBuildAt, cellKey } from '../../core'
-import type { Tower as TowerEntity, Zombie as ZombieEntity } from '../../core'
-import { state } from '../../app/store'
+import { computed, ref, watch } from 'vue'
 
+import {
+  COLS,
+  HOUSE_COL,
+  ROWS,
+  ZOMBIE_ROW,
+  ZOMBIE_SPAWN_COL,
+  canBuildAt,
+  cellKey,
+  coverCellsAt,
+  handCards,
+  placementBlockedReason,
+} from '../../core'
+import type { HandCard, Tower as TowerEntity, Zombie as ZombieEntity } from '../../core'
+import { placeSelectedAt, selectedEntryId, state } from '../../app/store'
+
+import RangeOverlay from './RangeOverlay.vue'
 import Tower from './Tower.vue'
 import Zombie from './Zombie.vue'
 
@@ -108,10 +132,174 @@ function zombiesAt(cell: Cell): readonly ZombieEntity[] {
   if (cell.row !== ZOMBIE_ROW) return []
   return state.value.zombies.filter((zombie) => zombie.col === cell.col)
 }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * 建塔交互（Story 1.12）
+ *
+ * ⚠️ **这里只有 UI 态，没有规则。** 「这一格能不能放」的答案只有一个来源：
+ *   `placementBlockedReason(state, entryId, row, col)`（架构硬约束 2）。
+ *   本文件**不**重写「已占用 / 位置不可建 / 阳光不足 / 相位不对」中的任何一条 ——
+ *   AC-B5 那道交叉断言守的就是「预览与落子用同一把尺子」。
+ * ────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * 当前选中的是哪张卡（`null` = 没选）。
+ *
+ * 走 `handCards(state)` 回查而不是直接读 `state.deck`：
+ * 那是**同一个** core 函数给出手牌区渲染的列表，取的就是孩子眼睛看见的那一张 ——
+ * 若两者哪天分叉（比如 core 过滤掉了一条脏数据），战场预览会亮起一张
+ * **根本没有渲染出来**的卡 ⇒ 孩子按住看到一片高亮，松手什么也没发生。
+ */
+const selectedCard = computed<HandCard | null>(() => {
+  const entryId = selectedEntryId.value
+  if (entryId === null) return null
+  return handCards(state.value).find((card) => card.entryId === entryId) ?? null
+})
+
+/**
+ * **指向格**（candidate）：已选中卡 + 手指/鼠标按在某个格子上（AC-E1）。
+ *
+ * ⚠️ 刻意**不放在 `app/store.ts`**：它连 `State` 都不参与、连跨组件都不需要 ——
+ *   只有战场内部的预览读它。放进 store 只会让它看起来像跨组件状态。
+ *   （对照 AC-D4：`selectedEntryId` 之所以进 store，是因为手牌区与战场**两处**都读它。）
+ *
+ * ⚠️ 刻意**不用 hover、不用 `pointermove`**（守卫 G39）：目标设备没有 hover。
+ */
+const candidate = ref<{ readonly row: number; readonly col: number } | null>(null)
+
+/**
+ * 压暗闪：按在不可建 / 已占用格上的那一格（AC-D3）。
+ *
+ * ⚠️ 只存**一个** key —— 同时按两格在触摸设备上不可能，而存一个数组
+ *   会诱使后来人写出「同时闪多格」的语义，那不是 AC-D3 要的形态。
+ */
+const refusedKey = ref<string | null>(null)
+
+/**
+ * 射程覆盖到的格子（AC-E1）。
+ *
+ * ⭐ **这一行是整个 story 的正题**：第 3 行 7 个可建格的并集是**整行全亮**，
+ *   什么也没告诉孩子（AC-E1 的原话：那样「所有空格子都显示」在数学上退化）。
+ *   ⇒ 覆盖**必须**挂在具体的一格上，而那一格的坐标由 `pointerdown` 给出。
+ *   `coverCellsAt` 本来就含/不含指向格（范围塔含，直射与减速塔不含），
+ *   **UI 不得额外把指向格点亮**（AC-E2b）。
+ */
+const coveredKeys = computed<ReadonlySet<string>>(() => {
+  const card = selectedCard.value
+  const point = candidate.value
+  if (card === null || point === null) return new Set()
+  return new Set(coverCellsAt(point.row, point.col, card.towerType))
+})
+
+/**
+ * 非第 3 行整行压暗的开关（AC-E3）。
+ *
+ * ⚠️ 要 `selectedCard !== null` **且**相位是 `awaiting-build`：
+ *   AC-E3 明写「整行压暗在 `awaiting-build` 之外的阶段不画」，与手牌区同相位。
+ *   （`selectedEntryId` 通常已经随相位被清掉，那道是常态路径；
+ *   这里再判一次是**冗余保险** —— 两道都要有，理由同 AC-D5 对门面的说法。）
+ */
+const showInertRows = computed(
+  () => selectedCard.value !== null && state.value.phase.kind === 'awaiting-build',
+)
+
+/** 这一格此刻能不能放（唯一判据：`placementBlockedReason`）。 */
+function blockedAt(cell: Cell): boolean {
+  const entryId = selectedEntryId.value
+  if (entryId === null) return true
+  return placementBlockedReason(state.value, entryId, cell.row, cell.col) !== null
+}
+
+/**
+ * AC-D1：`pointerdown` —— **只指向，不种**。
+ *
+ * 三条分支，缺一不可：
+ * ① 没选中任何卡 ⇒ **什么都不做**（连覆盖层都不出现，AC-D1 明写）
+ * ② 按在不能放的格上 ⇒ 压暗闪（AC-D3），**不清选中**（AC-D2 的注释：
+ *    「点了个这里不能放」已经是一个信号，再把卡也取消就是两个信号叠一起，更难懂）
+ * ③ 能放 ⇒ 记指向格，画覆盖
+ */
+function onCellPointerDown(cell: Cell): void {
+  if (selectedEntryId.value === null) return
+  if (blockedAt(cell)) {
+    refusedKey.value = cell.key
+    return
+  }
+  candidate.value = { row: cell.row, col: cell.col }
+}
+
+/**
+ * AC-D1：`pointerup` —— **只落在与 `pointerdown` 同一格时才种**。
+ *
+ * ⚠️ 落在别处 ⇒ **只移动预览，不种**（AC-E1 的逐字要求）。
+ *   这一格能不能放要**重新问一次**：从能放的格滑到不能放的格上松手，
+ *   预览必须跟着撤掉 —— 否则屏幕上会留着一片「这里能放」的绿光，
+ *   而松手什么也没发生，孩子完全无从判断是哪一步出的问题。
+ */
+function onCellPointerUp(cell: Cell): void {
+  if (selectedEntryId.value === null) return
+  const point = candidate.value
+  if (point === null) return
+  const sameCell = point.row === cell.row && point.col === cell.col
+  candidate.value = blockedAt(cell) ? null : { row: cell.row, col: cell.col }
+  if (!sameCell) return
+  /**
+   * 调门面包办：内部先问 `placementBlockedReason`，非 `null` 直接 `return false`
+   * 且**不 dispatch**（AC-D5），成功种下后自己清 `selectedEntryId`（AC-D2③）。
+   *
+   * ⚠️ 组件**不**自己 dispatch `applyAction(placeTower(...))` ——
+   *   绕过了禁用判断就是「孩子点一下白屏」。
+   */
+  placeSelectedAt(cell.row, cell.col)
+  candidate.value = null
+}
+
+/**
+ * AC-D2②：点**网格之外**的空白取消选中。
+ *
+ * ⚠️ `.self` 修饰符：事件目标必须**就是** `.battle-grid` 容器本身。
+ *   点在格子上时事件从 `.battle-cell` 冒上来，`target` 是那个 cell，
+ *   `.self` 因此不成立 —— 「按格建塔」与「点空白取消」才不会互相误伤。
+ * ⚠️ 这里清的是**网格外**的空白。网格**之内**的空可建格是落子目标（AC-D1），
+ *   点它不是取消选中 —— AC-D2 的注释专门澄清过这个歧义。
+ */
+function onGridBlank(): void {
+  selectedEntryId.value = null
+}
+
+/** 压暗闪动画播完 ⇒ 收掉 class，不留残影（架构硬约束 5：时长写 CSS 不写 TS）。 */
+function onCellAnimationEnd(): void {
+  refusedKey.value = null
+}
+
+/**
+ * 选中态一变 ⇒ 指向与压暗闪一并作废。
+ *
+ * ⚠️ 不作废的后果很具体：孩子换了一张卡（射程完全不同），
+ *   屏幕上却还留着上一张卡的射程预览 —— 那不是「过期」，那是**错的**。
+ *   （AC-E1：选中卡但尚未指向任何格时，不画 `.is-in-range`。）
+ *
+ * 🚨 **必须 `flush: 'sync'`**（这条是被测试逼出来的，不是偏好）：
+ *   默认的 `'pre'` 是**批处理**的 —— watcher 在下一个渲染周期才跑。
+ *   于是「选卡」与「按格」若落在同一个 tick 内（本组件测试里正是如此：
+ *   `selectTowerCard(...)` 之后紧接着 `trigger('pointerdown')`），
+ *   顺序会变成「设 candidate → watcher 才把 candidate 清掉」，
+ *   **覆盖层一帧都不显示**。真机上两次触摸通常不在一个 tick，所以那条路径
+ *   平时看不出来 —— 正是这种「只在测试里复现」的次序依赖最容易活到线上。
+ *   `flush: 'sync'` 让「作废」与「换卡」发生在**同一个瞬间**，语义也对：
+ *   换卡的那一刻，上一张卡的指向信息就不再有意义了。
+ */
+watch(selectedEntryId, () => {
+  candidate.value = null
+  refusedKey.value = null
+}, { flush: 'sync' })
 </script>
 
 <template>
-  <div class="battle-grid">
+  <div
+    class="battle-grid"
+    @click.self="onGridBlank"
+  >
     <div
       v-for="cell in cells"
       :key="cell.key"
@@ -120,9 +308,13 @@ function zombiesAt(cell: Cell): readonly ZombieEntity[] {
         'is-house': cell.isHouse,
         'is-spawn': cell.isSpawn,
         'is-buildable': cell.isBuildable,
+        'is-candidate': candidate !== null && candidate.row === cell.row && candidate.col === cell.col,
       }"
       :data-row="cell.row"
       :data-col="cell.col"
+      @pointerdown="onCellPointerDown(cell)"
+      @pointerup="onCellPointerUp(cell)"
+      @animationend="onCellAnimationEnd"
     >
       <!-- 房子（第 1 列 = 内部 col 0）。CSS 画，不新增 SVG 资产 ——
            守卫 G1 断言塔/僵尸目录里的文件集合「恰好等于」预期，多一个文件就红。 -->
@@ -146,6 +338,28 @@ function zombiesAt(cell: Cell): readonly ZombieEntity[] {
         v-for="zombie in zombiesAt(cell)"
         :key="zombie.id"
         :zombie="zombie"
+      />
+
+      <!--
+        覆盖层（Story 1.12）。⚠️ 三个 `RangeOverlay` 必须排在塔与僵尸**之后**：
+          层序靠 `z-index: 0` 与 `::before` 的 `auto` 落在同一级后的 **DOM 顺序**分胜负
+          （见 `RangeOverlay.vue` 的文件头）。把这段往上挪，覆盖层就会钻到房子罩底下，
+          而那道改动**不会让任何测试变红**。
+      -->
+      <!-- ① 射程覆盖：该格落在 `coverCellsAt(指向格, 塔型)` 里。 -->
+      <RangeOverlay
+        v-if="coveredKeys.has(cell.key)"
+        variant="range"
+      />
+      <!-- ② 非第 3 行整行压暗：选中卡时，第 1/2/4/5 行。 -->
+      <RangeOverlay
+        v-else-if="showInertRows && cell.row !== ZOMBIE_ROW"
+        variant="inert"
+      />
+      <!-- ③ 拒绝闪：按在不能放的格上。与 ① 互斥（能放的格不会走到压暗闪）。 -->
+      <RangeOverlay
+        v-else-if="refusedKey === cell.key"
+        variant="refused"
       />
     </div>
   </div>
@@ -211,9 +425,14 @@ function zombiesAt(cell: Cell): readonly ZombieEntity[] {
 /*
  * 不可建格（房子格 col 0 与入场格 col 8）：盖一层压暗罩。
  *
- * ⚠️ 静态区分，**点击交互属 Story 1.12**。本 story 不让这些格子可点，
- *   所以孩子此刻看到的是「这两列不一样」，而不是「点了会怎样」。
- *   塔位有效性的完整结论（deferred-work.md:171）已移交 1.12。
+ * ⚠️ 这层罩**保持 `z-index: auto`**（AC-E2）：射程覆盖层是 `z-index: 0`，
+ *   两者落在同一层叠级别，靠 DOM 顺序分先后 —— `::before` 是 cell 的第一个子盒，
+ *   覆盖层在模板里排在它**之后**，所以射程罩必然压在上面。
+ * ⚠️ 别给这条加 `z-index`：一旦它变成 `z-index: 1` 就会与塔/僵尸同层，
+ *   而此时压不压得住就变成「谁在 DOM 里靠后」的偶然 —— 房子格那一列
+ *   会出现层级跳变（AC-H1-2 要在真浏览器里核的那一项）。
+ *
+ * Story 1.12 起，按在这两列上的行为是 AC-D3 的「不响应 + 100ms 压暗闪」。
  */
 .battle-cell.is-house::before,
 .battle-cell.is-spawn::before {
@@ -221,6 +440,27 @@ function zombiesAt(cell: Cell): readonly ZombieEntity[] {
   position: absolute;
   inset: 0;
   background-color: var(--color-overlay-blocked);
+}
+
+/*
+ * 指向格描边（AC-E1 / AC-E2b）。
+ *
+ * ⚠️ **指向格不靠 `.is-in-range` 表达，另有另一套视觉**：范围塔的覆盖本就含自身，
+ *   直射与减速塔不含 —— UI 若额外把指向格也点亮，就与范围塔的语义打架了。
+ *   所以指向格是**描边**，射程罩是**填充**，两件事在视觉上可分辨。
+ *
+ * ⚠️ 用 `::after` + `z-index: 2` 而不是 `outline`/`box-shadow`：
+ *   后两者画在 cell 自己的背景/边框层，会被塔（`z-index: 1`）压住边缘；
+ *   描边的职责是「手指落在这儿」，**任何时候都看得见**才成立。
+ * ⚠️ `pointer-events: none`：描边绝不能吃掉格子的指针事件。
+ */
+.battle-cell.is-candidate::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  border: 3px solid var(--color-sun);
 }
 
 /* 入场格在**最右**列：给它一条指向左侧的入场标记，

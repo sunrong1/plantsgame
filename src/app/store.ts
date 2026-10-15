@@ -27,7 +27,16 @@
 import { ref, type Ref } from 'vue'
 
 import { entriesOf } from '../content'
-import { createInitialState, reduce } from '../core'
+import {
+  cellKey,
+  continueRound,
+  createInitialState,
+  endBuild,
+  placementBlockedReason,
+  placeTower,
+  reduce,
+  resolveRound,
+} from '../core'
 import type { Action, State } from '../core'
 import { playPronunciation } from '../services/pronunciation'
 
@@ -95,6 +104,42 @@ export function enterLevel(): void {
   view.value = 'level'
 }
 
+// ── 建造交互的视图状态与门面（Story 1.12 / AC-D4、AC-D5、AC-F2、AC-F3）──────
+//
+// ⚠️ **`selectedEntryId` 与 `view` 同一性质，是 UI 态，不是战斗态。** 它：
+//   · **不进 `State`** —— 不参与 `reduce`，不会有 action 能改它
+//   · **不存档** —— 关掉页面重开就该回到「没选中任何卡」
+//   · **不触发任何副作用** —— 选中一张卡不播音效、不发请求
+//
+// ⚠️ 为什么它不能进 `State`：那会让「孩子此刻点了哪张卡」占一个 `Action` 变体与
+//   一个 reducer 分支，而它对「这局打成什么样」没有任何影响 —— 与架构 `:842-849`
+//   对 `State` 的两条纪律（回合内的两处无限等待才属 State）冲突。
+
+/**
+ * 当前选中的手牌卡 `entryId`。`null` = 没选中。
+ *
+ * ⚠️ **必须自动清空**，否则有个很具体的后果：孩子点「开战」进入下一回合，
+ *   回来答题时上一张卡**还亮着**，于是他点战场就建出一座他没选过的塔。
+ *   清空点有两个，`applyAction` 里的相位检查只是**其中一个**：
+ *     ① `applyAction` —— 相位离开 `awaiting-build` 时置 `null`（AC-D4）
+ *     ② `placeSelectedAt` —— **成功种下**后自己置 `null`（AC-D5）
+ *   ⚠️ **② 不可省**：建塔之后 `phase.kind` **仍然是** `'awaiting-build'`，
+ *     ① 那条检查**根本不触发**。守卫 **G42** 专测这一点。
+ */
+export const selectedEntryId: Ref<string | null> = ref(null)
+
+/**
+ * 派发后清掉不该跨阶段残留的 UI 态。
+ *
+ * ⚠️ 这段代码挂在 `applyAction` 里，所以**每一条** action 路径都会经过它 ——
+ *   包括组件自己调的门面。挂在组件里则会漏掉「别的组件 dispatch」的那些路径。
+ */
+function clearSelectionIfLeavingBuildPhase(next: State): void {
+  if (next.phase.kind !== 'awaiting-build') {
+    selectedEntryId.value = null
+  }
+}
+
 /**
  * 派发一个 action —— 状态变更的**唯一**入口。
  *
@@ -117,6 +162,106 @@ export function applyAction(action: Action): void {
   // 抓到的「假绿」形态。留注释是诚实的：这一层现在**确实**不做副作用。
   // 接入时它必须排在 `state.value = next` **之前**（见文件头）。
   state.value = next
+  // ⚠️ **📎 Story 1.12 在这一步之后加了一行**（AC-D4）：相位离开 `awaiting-build`
+  //   时清掉选中态。排在赋值**之后**是刻意的 —— 判据必须读**新**相位。
+  //   ⚠️ 这**不是**建塔成功那条路径的兜底：建塔后 `phase.kind` 仍是
+  //   `'awaiting-build'`，这行不触发。成功那条见 `placeSelectedAt`（守卫 G42）。
+  clearSelectionIfLeavingBuildPhase(next)
+}
+
+// ── 建造交互的三个门面（Story 1.12 / AC-D5、AC-F2、AC-F3）─────────────────
+//
+// ⚠️ **门面的存在理由不只是「方便」**：它是「组件层不碰 action 构造器」这条
+//   边界的**落点**。`core/actions.ts:11-15` 明写「构造器若开始校验，组件就会有两套
+//   入口」—— 反过来，组件直接 `applyAction(placeTower(id, cell))` 就绕过了下面这层
+//   禁用判断：孩子点一下撞上一条抛错，界面上白着而没有任何东西指向原因
+//   （架构 `:563` 压倒性原则「孩子面前永不出现技术错误」）。
+//
+// ⇒ **组件只调这三个函数**，不 import `core/actions`。
+
+/**
+ * 选中一张手牌卡；**再点同一张则取消**（AC-D2①）。
+ *
+ * ⚠️ **不校验这张卡此刻能不能建**：能不能放由 `placementBlockedReason` 在
+ *   **落子那一格**上回答。选中态是 UI 态，此处多问一次只会把「卡已变灰」与
+ *   「这张卡选不了」两件不同的事混在一起。
+ */
+export function selectTowerCard(entryId: string): void {
+  selectedEntryId.value = selectedEntryId.value === entryId ? null : entryId
+}
+
+/**
+ * 在 `(row, col)` 放下当前选中的卡。返回**是否真的种下了**。
+ *
+ * ⚠️ **内部先问 `placementBlockedReason`，非 `null` 直接 `return false`、不 dispatch**
+ *   （AC-D3：点无效格子「不响应」且**不抛错** —— 组件层不许 throw，架构 `:567-606`）。
+ *
+ * ⚠️🚨 **成功种下后必须自己把 `selectedEntryId` 置 `null`**（AC-D2③ / AC-D5）：
+ *   **别指望 `applyAction` 里那条相位检查兜底** —— 建塔之后 `phase.kind`
+ *   **仍然是** `'awaiting-build'`，那条检查**根本不触发**。
+ *   这是校验阶段抓出的一个「看起来有守卫、实际恒不触发」的洞，守卫 **G42** 专测它，
+ *   变异 **M75** 专打它。
+ *
+ * @returns `true` = 塔已种下（且选中态已清）；`false` = 什么也没发生。
+ */
+export function placeSelectedAt(row: number, col: number): boolean {
+  const entryId = selectedEntryId.value
+  // 未选中任何卡 ⇒ 连判据都不必问（`placementBlockedReason` 需要一个 entryId）。
+  if (entryId === null) {
+    return false
+  }
+  if (placementBlockedReason(state.value, entryId, row, col) !== null) {
+    return false
+  }
+  applyAction(placeTower(entryId, cellKey(row, col)))
+  // 建塔之后相位仍是 awaiting-build ⇒ 上面的相位检查不触发 ⇒ 必须在这里清。
+  selectedEntryId.value = null
+  return true
+}
+
+/**
+ * 「⚔ 开战」按钮的三连 dispatch（AC-F2，裁决 3）。
+ *
+ * ⚠️ **为什么这条链路归 1.12**：`applyAnswer` 答完立刻切到 `awaiting-build`
+ *   （`reducer.ts` 的 `withBuildPhase`），而**没有任何 story 拥有 `END_BUILD`
+ *   之后的那段链路** —— 1.13 管 HUD / effects-runner，1.16 管通关 / 失败 / 重打，
+ *   两者的 AC 里都没有「结算这一回合」。不接上它，1.12 交付后游戏停在
+ *   `awaiting-build`，**1.12 的成果无法真机验证**。
+ *
+ * ⚠️ **`CONTINUE` 前必须判 `round-over`**（AC-F2 / AC-F3）：
+ *   `RESOLVE_ROUND` 在心数归零时把相位直接推到 `level-failed`，而 `applyContinue`
+ *   对该相位会 `rejectAction` **抛错** —— 孩子点一次「开战」就看到一个技术错误。
+ *   守卫 **G37** 专测这条，变异 **M69** 专打它。
+ *
+ * ⚠️ **三连是同步的**：`applyAction` 同步替换 `state.value`，中间不需要 `await`。
+ * ⚠️ **终态不渲染画面**（AC-F4，属 Story 1.16）：手牌区与开战按钮随相位离开
+ *   `awaiting-build` 自动消失，`BattleField` 照常渲染（reducer 已清空战场实体）。
+ */
+export function startRound(): void {
+  // 守卫：按钮不该可点，但要有（AC-F3）—— 与 AC-D6 同一口径。
+  if (currentPhaseKind() !== 'awaiting-build') {
+    return
+  }
+  applyAction(endBuild())
+  applyAction(resolveRound())
+  if (currentPhaseKind() === 'round-over') {
+    applyAction(continueRound())
+  }
+}
+
+/**
+ * 当前相位种类 —— **每次调用都重新从 `state.value` 读**。
+ *
+ * ⚠️ **为什么不能直接写 `state.value.phase.kind === 'round-over'`**：
+ *   TypeScript 会把上一次 `if (state.value.phase.kind !== 'awaiting-build')`
+ *   之后**return** 的事实窄化下来，于是中间两次 `applyAction` 改变的那份
+ *   `state.value` 不被看见，后面那句比较直接编译报错 TS2367
+ *   （`'awaiting-build'` 与 `'round-over'` 无交集）。
+ *   ⇒ 用函数把「重新读一遍」这件事写进类型里，而不是靠 `as` 逃出去。
+ *   本仓库对 `as` 的态度见 §8 教训 3：它常用来把**断言**变得不再断言。
+ */
+function currentPhaseKind(): State['phase']['kind'] {
+  return state.value.phase.kind
 }
 
 /**

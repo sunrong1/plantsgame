@@ -37,6 +37,9 @@ import BattleField from '../components/battle/BattleField.vue'
 //   漏掉这行会渲染成一个没有内容的自定义元素，而 vue-tsc / build / test / lint
 //   **全绿**，页面只是白着（Story 1.10 的 Debug Log #4）。
 import QuestionCard from '../components/quiz/QuestionCard.vue'
+// ⚠️ **必须显式 import**（同上面那条，`vue/no-undef-components: 'error'` 为此设了守卫）：
+//   手牌区在 Story 1.12 落地后是 `<QuestionCard />` 的**下一个兄弟**（AC-C1）。
+import HandDeck from '../components/hand/HandDeck.vue'
 </script>
 
 <template>
@@ -54,6 +57,13 @@ import QuestionCard from '../components/quiz/QuestionCard.vue'
          ⚠️ **不写死卡面区高度** —— 写了 1.12/1.13 落地时必然回头重排。
     -->
     <QuestionCard />
+    <!--
+      手牌区（Story 1.12 / AC-C1）：接在 `<QuestionCard />` **之后** ——
+      卡面区在战场与题面之下，孩子答完题拿到卡，「选项在上、卡在下」读起来顺。
+      ⚠️ 战场区的 `flex: 0 0 auto`（下方样式块）**一个字都没改**，
+        1.10 那个「横向撑破到 1351px」的坑不许重新踩。
+    -->
+    <HandDeck />
   </main>
 </template>
 

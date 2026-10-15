@@ -23,7 +23,7 @@
  */
 
 import { HEARTS, ZOMBIE_HP, assertTowerType, costOf, initialSunFor, sunPerCorrectFor } from './balance.js'
-import { HOUSE_COL, ZOMBIE_SPAWN_COL, cellKey, parseCellKey } from './grid.js'
+import { ZOMBIE_SPAWN_COL, buildBlockedReason, cellKey, parseCellKey } from './grid.js'
 import { resolveCombatRound } from './turn.js'
 import {
   assertSlowTurns,
@@ -235,18 +235,18 @@ function placeTowerIn(state: State, entryId: string, cell: string): State {
   //   col 0 的危害是浪费：僵尸走到 col 0 就已离场，塔在它脚下却从未开过火。
   //   此前 AC-12 只列了三条规则，本 story 据此实现且把这两列记进了 deferred-work；
   //   现在补上，因为「不能建在一格必然无效的位置」不是取舍，是 bug。
-  if (col === ZOMBIE_SPAWN_COL) {
-    throw new Error(
-      `格子 ${cell} 是僵尸入场格（col ${ZOMBIE_SPAWN_COL}）—— 僵尸恒在它或更右侧入场，` +
-        '而射程是单边的（只打自己左边的格子），所以建在这里的塔永远打不到任何东西：' +
-        '孩子花掉全部阳光买到一个整局不动的塔，而界面上没有任何东西指向原因。',
-    )
-  }
-  if (col === HOUSE_COL) {
-    throw new Error(
-      `格子 ${cell} 是房子格（col ${HOUSE_COL}）—— 僵尸走到这一格就已经离场并丢心，` +
-        '塔在它脚下却从未开过火。这是白花阳光，不是取舍。',
-    )
+  //
+  //   📎 **Story 1.12 收口（AC-B2，2026-10-15）**：这两条硬编码现已改成调用
+  //   `grid.ts` 的 `buildBlockedReason()`，消息由它给出。这正是 1.10 在
+  //   `grid.ts:184-185` 留下的那句话——「若 1.12 真的要动 reducer，应把两条抛错
+  //   改成调用本函数并保留各自的消息，而不是各留一份判断」。
+  //   改动之前，两份判断读同一批常量但**没有任何东西强制它们继续一致**：
+  //   改一处而忘了另一处时，UI 会把一格显示成「可以建」，孩子点下去撞上一条报错，
+  //   **界面上没有任何东西指向原因**。收口之后它们在**结构上**就不可能分叉，
+  //   而 `tests/core/buildable-cells.test.ts` 的交叉断言继续守着另一侧。
+  const positionReason = buildBlockedReason(row, col)
+  if (positionReason !== null) {
+    throw new Error(positionReason)
   }
   // ④ 该格必须为空（FR30）。
   // ⚠️ 读的是**规范键** `canonicalCell` 而不是调用方传进来的 `cell`
