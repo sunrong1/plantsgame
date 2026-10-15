@@ -38,7 +38,11 @@
 2. `epics.md` 对应 story 的 **AC 正文**优先于任何旧 story 文件的 Dev Notes 与源码注释；
 3. 判定结果要同时写进 story 的偏离表与 `sprint-status.yaml`。
 
-**依据** 照旧引用抢活会让一个已被 AC 排除的文件提前落地，且**无人发现** —— 两边文档都「有出处」，只是其中一边已过期。实测有 **9 处**文档把 `core/effects.ts` / `app/effects-runner.ts` 归给旧编号的 1.13（= 音效），而 `epics.md` 逐字把这两个文件给了 1.14。
+**依据** 照旧引用抢活会让一个已被 AC 排除的文件提前落地，且**无人发现** —— 两边文档都「有出处」，只是其中一边已过期。实测**多份**活跃文档（1-2 / 1-10 / 1-11 / 1-12 / `deferred-work.md`）把 `core/effects.ts` / `app/effects-runner.ts` 归给旧编号的 1.13（= 音效），而 `epics.md` 逐字把这两个文件给了 1.14。
+
+⚠️ **此处刻意不写具体处数。** 原文写的是「9 处」，那是把 1.13 的证据表**行数**当成了出现位置数 —— 同一份表格里 `deferred-work.md` 独占 3 个行号、`1-12` 独占 2 行，实际出现位置远多于 9。**一个会自己烂掉的数字写进规则正文，正是本规则要消灭的那类漂移**（R-37）。逐处更正以各文档顶部的 R-32 标注为准，本条只描述现象。
+
+**如何验证**：`grep -rn "effects-runner" docs/ _bmad-output/implementation-artifacts/ CLAUDE.md | grep -v archive/ | grep "1\.13"`
 
 **守卫** ⚠️ **无守卫**
 
@@ -120,7 +124,7 @@ grep -rhoE '\bM[0-9]+：' tests/ src/ | sort -uV | tail   # ⚠️ 必须带全�
 | 「12 个 `--color-*`」（1-10） | 15 个 |
 | 「14 个 `--color-*`」（1-11 / 1-12 / 1-13） | 15 个 |
 | `jsdom` 与 `happy-dom` 都没装（`deferred-work.md`） | `jsdom ^30.1.2` 早已装好，连 `vitest.config.ts` 的注释都已更正 |
-| `effects-runner` 属 1.13（9 处） | 属 1.14 |
+| `effects-runner` 属 1.13 | 属 1.14 |
 | 改 GDD 一律走 `[CC]`（5 篇） | 见 R-33 |
 
 **发现正文被抄到别处时**：把副本删掉，换成 R-ID 引用。**不要**去「同步」两份 —— 那只是把一条约定变成两条要同步的约定。

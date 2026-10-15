@@ -1211,7 +1211,7 @@ Story 3.4 需要按教材录音另行校准（epics Story 3.4 原文正是这个
 | GDD 性能预算（TTS 起声 ≤500ms） | `gdd.md:500` |
 | GDD 降级方案（预置录音）与触发标准 | `gdd.md:537-543` |
 | 旧版 `preheat()` / 音色链 / cancel 时机的原始实现 | `git show legacy-v5.x-final:src/systems/SpeechService.ts` |
-| Story 1.1 的交接信息与 `[CR]` 三处「假绿」教训 | `1-1-工程脚手架与启动界面.md:832-928` |
+| Story 1.1 的交接信息与 `[CR]` 三处「假绿」教训 | 见 [R-50](../../docs/rules/testing.md) 的「依据」段（四次假绿的完整清单）—— 原文已归档，按 R-40 默认不读 |
 | `[IR]` NFR12 降级通路归属（TTS → Story 1.2） | `implementation-readiness-report-2026-10-12.md:723-738` |
 | Chrome 自动播放策略与 Web Audio（§13.1 A1–A4） | [developer.chrome.com/blog/autoplay](https://developer.chrome.com/blog/autoplay/)、[web-audio-autoplay](https://developer.chrome.com/blog/web-audio-autoplay/)、[chromestatus 4510315433689088](https://chromestatus.com/feature/4510315433689088) |
 | Web Audio 也计入 MEI（§13.1 A5） | [developers.google.com/web/updates/2018/11/web-audio-autoplay](https://developers.google.com/web/updates/2018/11/web-audio-autoplay) |
