@@ -138,8 +138,16 @@ if bad == 0:
 
 print()
 print("═══ C. baseline_tests 与实际测试数 ═══")
-body = STATUS.read_text(encoding="utf-8")
-declared = {int(m) for m in re.findall(r"baseline_tests=(\d+)", body)}
+# sprint-status 只留状态机（注释已清理），基线声明在 story 文件的 YAML frontmatter 里。
+# 实测写法是 `baseline_tests: 778`（YAML 风格，不是 key=value），所以两种都要匹配。
+declared = set()
+for pat in (r"baseline_tests[=:]\s*(\d+)",):
+    declared |= {int(m) for m in re.findall(pat, STATUS.read_text(encoding="utf-8"))}
+for sf in story_files.values():
+    txt = sf.read_text(encoding="utf-8")
+    m = re.search(r"baseline_tests\s*[=:]\s*(\d+)", txt)
+    if m:
+        declared.add(int(m.group(1)))
 if not declared:
     warn("status 里没有 baseline_tests 声明（尚未记录基线）")
 else:
