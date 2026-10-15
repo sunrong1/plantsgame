@@ -134,8 +134,26 @@ watch(
   { immediate: true },
 )
 
-/** 点一个选项：记下点了哪个，然后 `applyAction` —— **组件里不判定对错**（AC-D1）。 */
+/**
+ * 点一个选项：记下点了哪个，然后 `applyAction` —— **组件里不判定对错**（AC-D1）。
+ *
+ * 🚨 **守门 `answering` 不可省，`[CR]` 2026-10-16 实测复现过一次 P0 崩溃。**
+ *   AC-C5 要求卡面在 `awaiting-build` 期间**继续渲染**（`lastQuestion` 兜底），
+ *   而 `Phase.awaiting-build` 上**没有 question** —— 也就是说卡面可见期间，
+ *   `state.phase.kind` 可能早就不是 `awaiting-answer` 了。
+ *   孩子看着「上一道题的卡面还在」，点其中一个选项 ⇒
+ *   `applyAction(answer(…))` 走进 `reduce` 的 `case 'awaiting-build'` 分支 ⇒
+ *   `applyBuild` 调 `rejectAction` **抛错**（`reducer.ts:147`）⇒ 整局崩在事件回调里。
+ *
+ *   守卫顺序也重要：**先守门、再写 `pickedOptionId`**。
+ *   反过来写的话，抛错发生在 state 变更之前，而 `pickedOptionId` 已经写入 ⇒
+ *   反馈条照样渲染，而 `pickedRight` 读的是上一道**已答对**的题 ⇒
+ *   孩子看到一个「答对了 ✓」的假反馈，却什么都没发生（比崩溃更难排查）。
+ *
+ *   与 `onReplay` 同口径 —— 两个入口都只在 `awaiting-answer` 有效。
+ */
 function onPick(optionId: OptionId): void {
+  if (!answering.value) return
   pickedOptionId.value = optionId
   applyAction(answer(optionId))
 }
@@ -171,9 +189,30 @@ function onReplay(): void {
         {{ shown.card.promptText }}
       </p>
       <div class="question-card__options">
+        <!--
+          🚨🚨 **`:key` 必须是 `entryId + option.id`，不能只有 `option.id`**（`[CR]` 2026-10-16）。
+          只按 `option.id` 的话，Vue 会在**换题时复用同一个 OptionCard 实例**，
+          而 `failed`（`OptionCard.vue:69`）是实例内的 ref、**永不复位**。
+
+          ⇒ 实测数据（`unit-01.json` 全量扫描）里 **6 个 option id 同时出现在
+          图片选项与文字选项上**：`u1-hello` / `u1-goodbye` / `u1-ball` /
+          `u1-book` / `u1-pen` / `u1-chair`。其中 **`u1-ball`（关键词卡正确项）、
+          `u1-hello`（2 张回应卡正确项）、`u1-goodbye`（2 张回应卡正确项）**
+          是那些文字卡上**唯一的正确项**。
+
+          于是这条链成立：单词卡上 `u1-ball` 的图 404 ⇒ 该实例 `failed = true`
+          ⇒ 二十几道题之后，那张以 `u1-ball` 为正确项的关键词卡复用了这个实例
+          ⇒ 正确项被渲染成**置灰且 disabled 的文字按钮**，`onPick` 直接 return
+          ⇒ `masteredEntryIds` 永远不增长 ⇒ `nextQuestion` 永远返回同一道
+          ⇒ 心数耗尽 `level-failed`，**这一关永远通不了**。
+
+          把 `entryId` 放进 key，换题即换实例，`failed` 随之归零。
+          📎 **同题重考（AC-4，`entryId` 不变）仍然复用实例** —— 这是**对的**：
+          图真的坏了，重考时它就该继续坏着。
+        -->
         <OptionCard
           v-for="option in shown.card.options"
-          :key="option.id"
+          :key="`${shown.entryId}:${option.id}`"
           :option="option"
           :kind="shown.card.kind"
           :picked="pickedOptionId === option.id"
@@ -203,7 +242,21 @@ function onReplay(): void {
   /* 战场区是 `flex: 0 0 auto`（LevelView），卡面区吃掉余下的高度。
      给它 `flex: 0 0 auto` 而不是 `1 1 auto` 的理由与战场区相同。 */
   flex: 0 0 auto;
-  padding: var(--space-panel-pad) 0;
+  /*
+   * 🚨 **白面板（`[CR]` 2026-10-16 修的 P0）。**
+   *   改之前卡面区没有自己的底色，而题面文字写的是 `color: #ffffff`
+   *   ⇒ 白字落在浏览器默认白底上，**对比度 1.00:1，完全不可见**
+   *   （真浏览器实测：祖先链 html/body/#app/.level-view 全部 `rgba(0,0,0,0)`）。
+   *
+   *   现在整页是草地绿（`LevelView.vue`），卡面区自己是白面板：
+   *   ① 题面文字改 `#212121` ⇒ 白底上 **16.1:1**（WCAG AAA）
+   *      —— 与 `.option-card__text` 已有的 `#212121` 同色，两者是同一块面板
+   *   ② 白面板压在绿底上 ⇒ 卡片区边界自己就看得出来
+   *   ③ 白卡（`.option-card`）落在白面板上仍需一道可见边界，见 OptionCard.vue 的边框说明
+   */
+  background-color: #ffffff;
+  border-radius: 12px;
+  padding: var(--space-panel-pad);
 }
 
 .question-card__tappable {
@@ -218,7 +271,10 @@ function onReplay(): void {
   font-size: var(--text-prompt);
   line-height: 1.2;
   text-align: center;
-  color: #ffffff;
+  /* ⚠️ **深色，不是白色**（`[CR]` 2026-10-16）。白底白字的教训见上面 `.question-card`
+   *   的长注释：这条在 jsdom 里测不出来，只有真浏览器能看见 —— 而 story 的
+   *   AC-F1 五项核对清单里**没有「题面文字可见」这一项**，所以它此前一直漏网。 */
+  color: #212121;
 }
 
 /* 四个选项并排（AC-F1 ①）。档间距 12px，比战场的 `--space-grid-gap` 宽一档，

@@ -41,7 +41,7 @@ import {
   endBuild,
   resolveRound,
 } from '../../src/core'
-import type { Card, Question, State } from '../../src/core'
+import type { Card, OptionId, Question, State } from '../../src/core'
 import { entriesOf } from '../../src/content'
 
 // ⚠️ **`applyAction` / `speakQuestion` 必须用 `vi.mock` 拦，不能用 `vi.spyOn`** ——
@@ -75,6 +75,10 @@ enableAutoUnmount(afterEach)
 import questionCardSource from '../../src/components/quiz/QuestionCard.vue?raw'
 import optionCardSource from '../../src/components/quiz/OptionCard.vue?raw'
 import answerFeedbackSource from '../../src/components/quiz/AnswerFeedback.vue?raw'
+// G30（题面可见性）要**跨组件**算对比度：文字色在 QuestionCard、底色在
+// LevelView、token 值在 tokens.css。少任何一个都算不出「实际落在什么底上」。
+import levelViewSource from '../../src/views/LevelView.vue?raw'
+import tokensSource from '../../src/styles/tokens.css?raw'
 
 /**
  * 剥掉块注释、行注释与 HTML 注释，只留代码。
@@ -226,6 +230,45 @@ function stateWith(question: Question): State {
 }
 
 /**
+ * 从**真实内容**里找出「同一个 option id 既是图片卡的选项、又是文字卡的**正确项**」的一对题。
+ *
+ * 🚨 **这是 G28b 的事实来源，不是 fixture**（`[CR]` 2026-10-16）。
+ *   单元 1 里这样的 id 有 6 个（`u1-hello` / `u1-goodbye` / `u1-ball` /
+ *   `u1-book` / `u1-pen` / `u1-chair`），其中 3 个是文字卡的正确项。
+ *
+ *   之所以现筛而不写死：`unit-01.json` 是内容层数据，会随单元 1 修订而变
+ *   （增删选项、换卡型）。写死 id 名的话，内容一改这条用例就**测另一件事**
+ *   或者干脆报错，而「跨卡型复用仍然存在」这个前提本身已经悄悄不成立了。
+ *   现筛的代价是：复用关系被内容修订消除时，这条用例会红 —— **那正是它该叫的**。
+ */
+function findReusedCorrectOptionQuestion(): {
+  wordQ: Question
+  textQ: Question
+  sharedId: OptionId
+} | null {
+  const entries = entriesOf(1)
+  // 先收集「出现在图片卡里」的 option id
+  const asImageOption = new Set<string>()
+  for (const e of entries) {
+    if (e.card.kind !== 'word') continue
+    for (const o of e.card.options) if ('imageSrc' in o) asImageOption.add(o.id)
+  }
+  // 再找「同时是文字卡正确项」的那个
+  for (const textEntry of entries) {
+    if (textEntry.card.kind === 'word') continue
+    for (const o of textEntry.card.options) {
+      if (!o.correct || !asImageOption.has(o.id)) continue
+      const wordEntry = entries.find(
+        (e) => e.card.kind === 'word' && e.card.options.some((w) => w.id === o.id && 'imageSrc' in w),
+      )
+      if (wordEntry === undefined) continue
+      return { wordQ: wordEntry, textQ: textEntry, sharedId: o.id }
+    }
+  }
+  return null
+}
+
+/**
  * 🚨 一张**真正非法**的卡：`kind: 'word'` 却配了文字选项。
  *
  * 它能编译通过是因为 `Card` 被拍平成 `kind + options` 的扁平联合
@@ -353,7 +396,10 @@ describe('G24 下半 —— 真实内容里关键词 / 回应卡的选项区无 
 
     expect(wrapper.findAll('.option-card__text')).toHaveLength(4)
     expect(wrapper.findAll('img')).toHaveLength(0)
-    expect(g24Violation(0, 4)).toBeNull()
+    // 🚨 `[CR]` 2026-10-16 —— 这里原本传的是**字面量** `g24Violation(0, 4)`，
+    //   那是在断言一个常量恒等于 null，**与 DOM 无关** ⇒ 换任何渲染结果都绿。
+    //   改成喂**实测计数**，`g24Violation` 才真的在检查这次渲染。
+    expect(g24Violation(wrapper.findAll('img').length, wrapper.findAll('.option-card__text').length)).toBeNull()
   })
 
   it('反向：恒走图片分支（不看 kind，一律 <img>）⇒ 关键词卡渲染出 4 张 <img>，M50b 变红', () => {
@@ -388,7 +434,8 @@ describe('G26 —— 三型各渲染一张，分派互斥且穷尽', () => {
 
     expect(wrapper.findAll('.option-card__image')).toHaveLength(4)
     expect(wrapper.findAll('.option-card__text')).toHaveLength(0)
-    expect(g24Violation(4, 0)).toBeNull()
+    // 同上：喂实测计数，不是字面量（`[CR]` 2026-10-16）
+    expect(g24Violation(wrapper.findAll('.option-card__image').length, wrapper.findAll('.option-card__text').length)).toBeNull()
   })
 
   it('关键词卡：4 个文字选项、0 张 <img>', () => {
@@ -396,7 +443,8 @@ describe('G26 —— 三型各渲染一张，分派互斥且穷尽', () => {
 
     expect(wrapper.findAll('.option-card__text')).toHaveLength(4)
     expect(wrapper.findAll('.option-card__image')).toHaveLength(0)
-    expect(g24Violation(0, 4)).toBeNull()
+    // 同上：喂实测计数，不是字面量（`[CR]` 2026-10-16）
+    expect(g24Violation(wrapper.findAll('.option-card__image').length, wrapper.findAll('.option-card__text').length)).toBeNull()
   })
 
   it('回应卡：4 个文字选项、0 张 <img>', () => {
@@ -404,7 +452,8 @@ describe('G26 —— 三型各渲染一张，分派互斥且穷尽', () => {
 
     expect(wrapper.findAll('.option-card__text')).toHaveLength(4)
     expect(wrapper.findAll('.option-card__image')).toHaveLength(0)
-    expect(g24Violation(0, 4)).toBeNull()
+    // 同上：喂实测计数，不是字面量（`[CR]` 2026-10-16）
+    expect(g24Violation(wrapper.findAll('.option-card__image').length, wrapper.findAll('.option-card__text').length)).toBeNull()
   })
 
   it('题面区承载 promptText（供朗读与重听）', () => {
@@ -506,6 +555,83 @@ describe('G28 —— 词图加载失败降级', () => {
 
     expect(withDisabled).toContain('disabled')
     expect(cssOnly).not.toContain('disabled')
+  })
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // 🚨 G28b —— 跨卡型的 `failed` 泄漏（`[CR]` 2026-10-16 抓到的 P0）
+  //
+  // 这是本 story 交付以来**最严重**的一条，且前三层审查里没有一条在变异表里出现过。
+  //
+  // 事实（`unit-01.json` 全量扫描实测，不是推断）：
+  //   **6 个 option id 同时是图片选项与文字选项** ——
+  //   `u1-hello` / `u1-goodbye` / `u1-ball` / `u1-book` / `u1-pen` / `u1-chair`。
+  //   其中 `u1-ball` 是 1 张关键词卡的正确项、`u1-hello` 与 `u1-goodbye`
+  //   各是 2 张回应卡的正确项。
+  //
+  // 泄漏链：`:key` 曾经只有 `option.id` ⇒ Vue 换题时**复用同一个 OptionCard 实例**
+  // ⇒ 实例内的 `failed` ref（`OptionCard.vue:69`，永不复位）跨题带过去
+  // ⇒ 单词卡上 404 过的图，把那道关键词卡的**唯一正确项**渲染成
+  //    置灰 + disabled 的按钮 ⇒ `onPick` 直接 return
+  // ⇒ `masteredEntryIds` 不增长 ⇒ `nextQuestion` 永远吐同一道
+  // ⇒ 心数耗尽 `level-failed`，**这一关永远通不了**。
+  //
+  // 本用例按真实顺序走：**先**在单词卡上把 `u1-ball` 的图打崩，**再**切到那张
+  // 以 `u1-ball` 为正确项的关键词卡，断言它**可点**。
+  // ════════════════════════════════════════════════════════════════════════════
+  it('单词卡上 404 的 option id，换到把它当正确项的关键词卡后**仍然可点**', async () => {
+    // ① 找出真正同 id 的两张卡：一张图片卡、一张文字卡，且该 id 是文字卡的正确项。
+    //    这三条是从真实内容里筛出来的，不是写死的 fixture 名 ——
+    //    内容一改（选项复用关系变了），本用例会**自己先红**，提醒人重判。
+    const wordQuestion = findReusedCorrectOptionQuestion()
+    expect(wordQuestion, '内容里找不到「图片卡与文字卡共用同一个正确项 id」的例子').not.toBeNull()
+    if (wordQuestion === null) return
+    const { wordQ, textQ, sharedId } = wordQuestion
+
+    // ② 在图片卡上把那个 option 的图打崩。
+    //    🚨 **必须全程用同一个 wrapper** —— 泄漏的前提是「Vue 在**同一个**组件树里
+    //    换题时复用 OptionCard 实例」。另起一个 `mountCard` 拿到的是全新实例，
+    //    `failed` 从 false 起步，于是这条用例会**绿着通过一个已修复的 bug** ——
+    //    这正是本条第一稿的写法，也是它第一次变异实测 0 红的直接原因。
+    const wrapper = mountCard(wordQ)
+    const targetIndex = wordQ.card.options.findIndex((o) => o.id === sharedId)
+    expect(targetIndex).toBeGreaterThanOrEqual(0)
+    await wrapper.findAll('.option-card__image')[targetIndex].trigger('error')
+    expect(wrapper.findAll('.option-card')[targetIndex].attributes('disabled')).toBeDefined()
+
+    // ③ **同一个组件树内**切到把它当正确项的那张文字卡 —— 旧 `:key` 下这里会复用实例
+    state.value = stateWith(textQ)
+    await wrapper.vm.$nextTick()
+    const textIndex = textQ.card.options.findIndex((o) => o.id === sharedId)
+    expect(textIndex).toBeGreaterThanOrEqual(0)
+    // 确认真的换题了（否则下面所有断言都在测同一张卡，等于空转）
+    expect(wrapper.findAll('.option-card__text')).toHaveLength(4)
+    expect(wrapper.findAll('.option-card__image')).toHaveLength(0)
+
+    const button = wrapper.findAll('.option-card')[textIndex]
+    expect(button.attributes('disabled'), `正确项 ${sharedId} 被上一题的破图污染成了 disabled`).toBeUndefined()
+    expect(button.classes()).not.toContain('is-degraded')
+
+    // ④ 不只是「没被 disable」，还得真能点得动、并且派发出 ANSWER
+    applyActionMock.mockReset()
+    await button.trigger('click')
+    expect(applyActionMock).toHaveBeenCalledTimes(1)
+    expect(applyActionMock).toHaveBeenCalledWith(answer(sharedId))
+  })
+
+  it('反向：`:key` 退回只有 option.id ⇒ 上面那条红（把 failed 泄漏原样复现）', () => {
+    // 本用例不重跑整条链（太重），而是把**决定性的那一步**单独算出来：
+    // Vue 的 key 唯一性只看 key 字符串本身。
+    // `entryId` 不参与时，同一个 option.id 在两张不同的题上就是**同一个 key**
+    // ⇒ Vue 复用实例 ⇒ 实例内的 failed 跨题存活。
+    const keyWithEntry = (entryId: string, optionId: string): string => `${entryId}:${optionId}`
+    const keyWithoutEntry = (_entryId: string, optionId: string): string => optionId
+
+    // 真实内容里的那对复用：不同 entryId，同一个 option.id
+    const qA = 'u1-ball-entry', qB = 'u1-s-i-have-a-ball-for-my-dog'
+    const opt = 'u1-ball'
+
+    expect(keyWithEntry(qA, opt)).not.toBe(keyWithEntry(qB, opt))
+    expect(keyWithoutEntry(qA, opt)).toBe(keyWithoutEntry(qB, opt)) // ← 复用实例
   })
 })
 
@@ -639,8 +765,13 @@ describe('AC-D1 / AC-D2 —— 点击 → dispatch → 反馈，组件内零判�
     const feedbackClasses = ['is-right', 'is-wrong', 'is-picked', 'is-degraded']
 
     for (const rule of code.split('}')) {
+      // 🚨 `[CR]` 2026-10-16 —— 判据原本写 `if (!selector.includes('{')) continue`，
+      //   而 `selector = rule.split('{')[0]` **按构造永远不含 `{`** ⇒ 恒 continue
+      //   ⇒ 循环体一次都没执行过 ⇒ 这条守卫自落地起就是**零断言的空转**。
+      //   实测证据：给 `.option-card.is-right` 加上 `transition:`（正是它要禁的违规），
+      //   **64 条全绿**。正确判据是「这个片段里有没有 `{`」，即它是不是一条 CSS 规则。
+      if (!rule.includes('{')) continue
       const selector = rule.split('{')[0]
-      if (!selector.includes('{')) continue
       const isFeedbackRule = feedbackClasses.some((cls) => selector.includes(cls))
       const isPseudoPress = /:(hover|active)/.test(selector)
 
@@ -660,6 +791,170 @@ describe('AC-D1 / AC-D2 —— 点击 → dispatch → 反馈，组件内零判�
     expect(selector).toContain('is-right')
     expect(/:(hover|active)/.test(selector)).toBe(false)
     expect(rule).toContain('transition:')
+  })
+
+  // 🚨 `[CR]` 2026-10-16 —— AC-D2 的主反馈颜色不得被降级态覆盖。
+  //
+  //   `.option-card.is-degraded` 与 `.is-right` / `.is-wrong` **特异度完全相同**
+  //   （都是 `.option-card` + 一个状态类 = `(0,2,0)`），胜负只看**源码顺序**。
+  //   降级态原先排在最后 ⇒ 它赢。
+  //
+  //   可复现的丢失：孩子点中正确项 ⇒ `applyAction` 同步打上 `is-right`（绿底）；
+  //   150ms 后那张图才 `error` ⇒ `failed` 翻真、该卡同时挂上 `is-degraded`
+  //   ⇒ **绿底被换成灰底 + 55% 透明，而反馈条仍写着「答对了 ✓」**。
+  //   （jsdom 不做样式计算，所以这条守的是**选择器形态**而不是像素 ——
+  //     真正的可见性由 `[DS]` 的真浏览器核对那一档负责。）
+  it('降级置灰不与 is-right / is-wrong 同时生效（特异度相同时源码顺序会判后者赢）', () => {
+    const css = optionCardSource.slice(optionCardSource.indexOf('<style'))
+    const degradedRule = css
+      .split('}')
+      .find((rule) => rule.includes('.option-card.is-degraded'))
+    expect(degradedRule, 'OptionCard.vue 里找不到 .option-card.is-degraded 规则').toBeDefined()
+    if (degradedRule === undefined) return
+
+    const selector = degradedRule.slice(0, degradedRule.indexOf('{'))
+    // 一旦选中（is-picked），对错颜色说了算 —— 必须显式排除掉 is-picked
+    expect(selector).toContain(':not(.is-picked)')
+
+    // 📎 **不要求它排在 `.is-right` 之前** —— 第一稿这里写了顺序断言，跑出来是红的，
+    //   查下来是**断言本身错了**，不是代码错了：`:not(.is-picked)` 已经让两条规则
+    //   在任何时刻都**互斥**（`.is-right` / `.is-wrong` 只有 `is-picked` 在时才有，
+    //   而 `is-degraded` 恰恰只在 `is-picked` **不在**时才生效）
+    //   ⇒ 特异度相同也不再需要靠源码顺序分胜负。
+    //   记在这里是防止后人为「保险起见」去调顺序，白白制造一条脆弱断言。
+    const rightRule = css.split('}').find((r) => r.includes('.option-card.is-right'))
+    expect(rightRule).toBeDefined()
+    if (rightRule !== undefined) {
+      // `right` / `wrong` 两个 prop 的绑定里都含 `pickedOptionId === option.id` ——
+      // 这是「两条规则互斥」的**真正依据**，守住它（源码里 `QuestionCard` 的模板）。
+      const tpl = questionCardSource
+      expect(tpl).toContain(':right="pickedOptionId === option.id && pickedRight"')
+      expect(tpl).toContain(':wrong="pickedOptionId === option.id && !pickedRight"')
+      // 而 is-picked 在 `.is-degraded` 不生效的那一侧 ⇒ 确认两者不同时成立
+      expect(selector.includes(':not(.is-picked)')).toBe(true)
+    }
+  })
+})
+
+// ══════════════════════════════════════════════════════════════════════════════
+// 🚨 G30 —— 题面文字**在真浏览器里看得见**（`[CR]` 2026-10-16 修的 P0）
+//
+// 这条守卫的由来是个**此前没有任何东西覆盖的洞**（R-41）：
+//   `.question-card__prompt` 写的是 `color: #ffffff`，而改之前
+//   `html`/`body`/`#app`/`.level-view` **全链路没有背景色**
+//   ⇒ 白字落在浏览器默认白底上，**对比度 1.00:1**，题面在浏览器里完全不可见。
+//   为什么一直没被发现：jsdom 不做样式计算（此前 68 条用例没有一条能看见它），
+//   而 AC-F1 的五项真浏览器核对清单里**没有「题面文字可见」这一项**。
+//   ⇒ 「无守卫」+「不在人工清单」= 双重漏网。
+//
+// 判据：**实算 WCAG 对比度**，不做「源码里写了什么颜色」的形式检查 ——
+// 后者恰好是能放行上面那版白字白底代码的那种检查。
+// ══════════════════════════════════════════════════════════════════════════════
+
+/** WCAG 相对亮度。 */
+function relLuminance(hex: string): number {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim())
+  if (m === null) throw new Error(`不是 6 位十六进制色：${hex}`)
+  const v = parseInt(m[1], 16)
+  const chan = (c: number): number => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4)
+  return (
+    0.2126 * chan((v >> 16) & 0xff) +
+    0.7152 * chan((v >> 8) & 0xff) +
+    0.0722 * chan(v & 0xff)
+  )
+}
+
+/** WCAG 对比度，保留两位小数。 */
+function contrastRatio(a: string, b: string): number {
+  const l1 = relLuminance(a)
+  const l2 = relLuminance(b)
+  return Math.floor(((Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05)) * 100) / 100
+}
+
+/**
+ * 从源码里取出 `selector { … }` 的声明体。
+ *
+ * 🚨 **先 `stripComments`** —— 这不是保险，是本仓库对全部源码匹配型守卫的
+ *   强制前置（R-52）。第一稿漏了它，守卫立刻抓到我自己的违规：
+ *   `OptionCard.vue` 的边框那段长注释里**逐字写着** `border: 3px solid transparent`
+ *   （解释「改之前是什么样」），`indexOf('.option-card {')` 命中的是那条注释之前的
+ *   位置，再找 `{` 就跳进注释里 ⇒ 取出来的「声明体」是**注释正文**，
+ *   断言于是对着自己写的说明文字报错。**注释里描述违规形态，正则会命中注释。**
+ */
+function cssDecl(source: string, selector: string): string {
+  const code = stripComments(source)
+  const idx = code.indexOf(selector)
+  if (idx === -1) throw new Error(`源码里找不到选择器 ${selector}`)
+  const open = code.indexOf('{', idx)
+  const close = code.indexOf('}', open)
+  return code.slice(open + 1, close)
+}
+
+/** 解析 `var(--x)`（去 `tokens.css` 取值）或 `#abc`（直接返回）。 */
+function resolveColor(value: string): string {
+  const v = value.trim()
+  const m = /^var\(\s*(--[a-z0-9-]+)\s*\)$/i.exec(v)
+  if (m === null) return v
+  const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})\s*;?$/i.exec(cssDecl(tokensSource, m[1]).trim())
+  if (hex === null) throw new Error(`token ${m[1]} 的值不是十六进制色`)
+  const h = hex[1]
+  return h.length === 3 ? `#${h[0]}${h[0]}${h[1]}${h[1]}${h[2]}${h[2]}` : `#${h}`
+}
+
+describe('G30 —— 题面文字在真浏览器里看得见（jsdom 看不见，只能实算对比度）', () => {
+  it('卡面区必须有自己的底色 —— 改之前它没有，于是白字落在白页上', () => {
+    const panel = cssDecl(questionCardSource, '.question-card {')
+    expect(panel, '.question-card 没有声明自己的背景色').toMatch(
+      /background-color:\s*(#[0-9a-f]{3,6}|var\(--[\w-]+\))/i,
+    )
+  })
+
+  it('整页必须铺底色 —— 否则卡片区之下是浏览器默认白底', () => {
+    expect(cssDecl(levelViewSource, '.level-view {')).toMatch(
+      /background-color:\s*(#[0-9a-f]{3,6}|var\(--[\w-]+\))/i,
+    )
+  })
+
+  it('🚨 题面文字与其实际底色的 WCAG 对比度 ≥ 4.5:1（改之前是 1.00:1）', () => {
+    const color = resolveColor(/color:\s*([^;]+);/i.exec(cssDecl(questionCardSource, '.question-card__prompt {'))?.[1] ?? '')
+    // 底色依次取：卡面区自己的背景 → 整页背景 → 浏览器默认白。
+    // ⚠️ 必须**逐级回退**：改之前卡面区与整页都没有背景，
+    //   判据若只看卡面区就会因为「找不到背景」而无法复现那个 1.00:1。
+    const panel = /background-color:\s*([^;]+);/i.exec(cssDecl(questionCardSource, '.question-card {'))?.[1]
+    const page = /background-color:\s*([^;]+);/i.exec(cssDecl(levelViewSource, '.level-view {'))?.[1]
+    const background = resolveColor(panel ?? page ?? '#ffffff')
+
+    const ratio = contrastRatio(color, background)
+    // 📎 4.5 是 WCAG AA **正文**门槛；题面是大字号（--text-prompt），
+    //   AA 大字号门槛是 3.0 —— 这里按更严的 4.5 要求是有意留余量：
+    //   4–8 岁是目标读者，且 AC-C1 的题面字号还会被 1.12 / 1.13 沿用。
+    expect(ratio, `题面文字 ${color} 落在 ${background} 上只有 ${ratio}:1（白字白底那一版就是 1.00:1）`).toBeGreaterThanOrEqual(4.5)
+  })
+
+  it('选项卡文字与其底色的对比度 ≥ 4.5:1', () => {
+    const color = resolveColor(/color:\s*([^;]+);/i.exec(cssDecl(optionCardSource, '.option-card__text {'))?.[1] ?? '')
+    const bg = resolveColor(/background:\s*([^;]+);/i.exec(cssDecl(optionCardSource, '.option-card {'))?.[1] ?? '#ffffff')
+    expect(contrastRatio(color, bg)).toBeGreaterThanOrEqual(4.5)
+  })
+
+  it('🚨 选项卡必须有可见边框 —— 改之前是 `transparent`，白卡叠白底没有边界', () => {
+    const border = (/border:\s*([^;]+);/i.exec(cssDecl(optionCardSource, '.option-card {'))?.[1] ?? '').toLowerCase()
+    expect(border, '.option-card 的边框是透明的 ⇒ 卡片没有可见边界').not.toContain('transparent')
+    expect(border).toContain('solid')
+  })
+
+  it('🚨 选中态边框必须看得见，且不得复用战场射程罩 `--color-overlay-range`', () => {
+    const borderColor = (/border-color:\s*([^;]+);/i.exec(cssDecl(optionCardSource, '.option-card.is-picked {'))?.[1] ?? '').trim()
+    // 射程罩是 `rgba(255,255,255,.3)`，落在白底上 1.16:1 ⇒ 孩子点了看不出任何变化
+    expect(borderColor, '选中态复用了战场射程罩，语义跨域且在白底上不可见').not.toContain('--color-overlay-range')
+
+    if (/^#[0-9a-f]{3,6}$/i.test(borderColor)) {
+      const bg = resolveColor(/background:\s*([^;]+);/i.exec(cssDecl(optionCardSource, '.option-card {'))?.[1] ?? '#ffffff')
+      // 3:1 是「非文本的图形对象（UI 组件边界）」的 WCAG 门槛
+      expect(contrastRatio(borderColor, bg), `选中态边框 ${borderColor} 在 ${bg} 上只有 ${contrastRatio(borderColor, bg)}:1`).toBeGreaterThanOrEqual(3)
+    } else {
+      expect(borderColor).not.toBe('')
+    }
   })
 })
 
@@ -730,6 +1025,72 @@ describe('AC-C5 —— 组件本地 lastQuestion', () => {
     expect(wrapper.findAll('.option-card')).toHaveLength(4)
     await wrapper.find('.question-card__tappable').trigger('click')
     expect(speakMock).toHaveBeenCalledTimes(0)
+  })
+
+  // 🚨 `[CR]` 2026-10-16 —— P0：awaiting-build 期点选项卡必抛。
+  //
+  // 上面那条用例已经把场景搭好了（卡面仍在、重听已禁），**却只验了重听**，
+  // 于是「点选项卡」这条路径整个没被走过。实际后果不是断言红，是运行时崩：
+  //   onPick → applyAction(answer) → reduce 的 `case 'awaiting-build'` 分支
+  //   → applyBuild → rejectAction **throw**（reducer.ts:147）⇒ 崩在事件回调里。
+  //
+  // 判据取「applyAction 一次都没被调用」而不是「有没有抛」：
+  //   Vue 的事件错误上报走它自己的 logError 通道，`trigger()` **不会**同步抛出，
+  //   try/catch 与 console spy 都抓不到（实测两者都漏）——
+  //   而「这个 action 根本不该被派发」既是契约，也稳定可断言。
+  //   守卫 G27 已是同型判据（连点重听后 applyAction 零调用）。
+  it('awaiting-build 期点选项卡：不派发 ANSWER，也不点亮反馈（守门在写 pickedOptionId 之前）', async () => {
+    const question = firstQuestionOfKind('word')
+    const wrapper = mountCard(question)
+    // 先真的答一道 ⇒ reducer 把 phase 推到 awaiting-build（比手工塞 phase 更真）
+    const correct = question.card.options.find((o) => o.correct)
+    if (correct === undefined) throw new Error('单元 1 的卡没有正确选项')
+    const real = await vi.importActual<typeof import('../../src/app/store')>('../../src/app/store')
+    real.applyAction(answer(correct.id))
+    expect(state.value.phase.kind).toBe('awaiting-build')
+    await wrapper.vm.$nextTick()
+
+    applyActionMock.mockReset()
+    // AC-C5 的前提正是「卡面还在」，否则这条用例测的是「卡都不在」——
+    // 那样守门自然成立，会变成一条永远不会失败的断言。
+    expect(wrapper.findAll('.option-card')).toHaveLength(4)
+
+    await wrapper.findAll('.option-card')[1].trigger('click')
+
+    expect(applyActionMock).toHaveBeenCalledTimes(0)
+    // 🚨 守门若被挪到 `pickedOptionId.value = optionId` **之后**，
+    //   上面那条仍然绿（applyAction 依然没被调用），而孩子会看到一个假反馈。
+    expect(wrapper.find('.answer-feedback').exists()).toBe(false)
+    expect(wrapper.findAll('.option-card').some((el) => el.classes().includes('is-picked'))).toBe(false)
+  })
+
+  // ⚠️ **这条替换掉了原 M57「反向夹具」** —— 那个夹具是**空转**（`[CR]` 2026-10-16）。
+  //   它长这样：`const guarded = (k) => k === 'awaiting-answer' ? 0 : 1`
+  //   —— 一个**与 `QuestionCard.vue` 毫无关联的本地箭头函数**，断言的是它自己。
+  //   把 `QuestionCard.vue` 的守门整行删掉，它**照样绿**。
+  //   与记忆里「守卫断言允许了它要防的违规」同型：装饰性的严谨。
+  //
+  //   M57 的鉴别力改为**真变异实测**（贴的是实测输出，不是「应该会红」）：
+  //     ① 删掉 `if (!answering.value) return`
+  //        ⇒ 红 1 条：`expected "vi.fn()" to be called +0 times, but got 1 times`（:765）
+  //     ② 把守门挪到 `pickedOptionId.value = optionId` **之后**
+  //        ⇒ 红 1 条：`expected true to be false`（反馈条误亮，:768）
+  //   下面这条把「守门覆盖的是所有非答题相位」也钉住 ——
+  //   只测 `awaiting-build` 的话，把守门写成 `if (phase.kind !== 'awaiting-build') return`
+  //   也能过，而 `resolving` / `round-over` 仍是敞开的。
+  it.each(['resolving', 'round-over'] as const)('%s 期点选项卡：同样不派发 ANSWER', async (kind) => {
+    const question = firstQuestionOfKind('word')
+    const wrapper = mountCard(question)
+    state.value = { ...state.value, phase: { kind } } as never
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.findAll('.option-card')).toHaveLength(4) // 卡面仍在（lastQuestion 兜底）
+    applyActionMock.mockReset()
+
+    await wrapper.findAll('.option-card')[0].trigger('click')
+
+    expect(applyActionMock).toHaveBeenCalledTimes(0)
+    expect(wrapper.find('.answer-feedback').exists()).toBe(false)
   })
 })
 

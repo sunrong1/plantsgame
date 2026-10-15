@@ -575,7 +575,6 @@
   缺的只有「正确项失败 ⇒ 换题」这一半。
 
 ### 断网情形的移交（AC-B4 + AC-B5）
-
 - **AC-B4（词图在断网下仍可用）** —— 本 story **用真实机制兑现了**，不是降级：
   120 张词图是**仓库里的静态文件**，随站点一起部署，走的是同源相对 URL。
   断网时**只要站点本身已缓存**（PWA service worker）词图照常加载；
@@ -728,6 +727,67 @@
 **要做什么**：把路径改到 `_bmad-output/archive/1-5-…`，或直接删掉这条授权
 （下次 `[DS]` 用到时会让工具重新提示授权）。**注意仓库里没有任何测试会发现这类失效路径** ——
 CI 不读 `.claude/`，守卫的 `SKIP_DIRS` 也跳过了它。
+
+## Deferred from: story-1-11-三种卡型与答题交互 `[CR]` (2026-10-16)
+
+三层审查（Blind Hunter / Edge Case Hunter / Acceptance Auditor）提出 21 条。
+8 条已改并加守卫，**以下 8 条如实登记、不在本 story 修**。
+
+### 移交 Story 1.16：问答卡面的三个生命周期缺口
+
+`QuestionCard.vue` 的三个组件本地 ref —— `lastQuestion` / `pickedOptionId` / `spokenEntryId` ——
+**没有一条在关卡结束时复位**，而 1.16 的 `RESTART_LEVEL` 不卸载 `QuestionCard`（视图仍是 `level`）。
+
+| ref | 缺口 | 后果 |
+|---|---|---|
+| `spokenEntryId` | `restart()` 重新发出 entry 0，**首题的 `entryId` 与上次相同** ⇒ 守门 `if (entryId === spokenEntryId) return` 吞掉朗读 | **首题无声**。对 4–8 岁尚不能独立读题的孩子 = 一块无声的死屏，且无任何报错 |
+| `lastQuestion` | `shown` 的兜底覆盖**全部五个**无 `question` 的相位（`awaiting-build` / `resolving` / `round-over` / `level-complete` / `level-failed`） | `level-complete` / `level-failed` 下卡面 + 四个选项 + 反馈条**仍在**，且 `.question-card__tappable` 仍是 `cursor: pointer` ⇒ **看着可点、点了没反应**（`[CR]` 补的 `answering` 守门把崩溃换成了静默吞掉，方向对但体验仍是死路） |
+| `pickedOptionId` | 终局相位下不清 | `level-failed` 时仍挂着上一题的**绿色「答对了 ✓」** |
+
+**要做什么**：1.16 做游戏结束画面时，`RESTART_LEVEL` 走一条**显式复位**路径把三个 ref 清干净；
+并决定 `shown` 的兜底要不要收窄到只兜底 `awaiting-build`（收窄更对，但会让「关卡结束那一瞬」
+的过渡观感变化，属 1.16 的画面设计裁决）。
+
+**顺带一条 1.16 前置**：组件**没有 `onBeforeUnmount`**。已逐项查过没有定时器 / 监听器 /
+objectURL 可漏，但 `pronunciation.ts` **没有公开的 stop** ⇒ 若孩子点了重听后组件被卸载，
+朗读会播到结束。目前不可达（还没有会卸载它的路径）。
+
+### 移交 Story 1.18：部署期 `BASE_URL` 配错会让整关不可通
+
+`unit-01.json` 全量扫描实测：**30/30 单词卡的正确项全部是图片选项**。
+⇒ 若正确项那张图加载失败，该选项被 `disabled`（`OptionCard.vue` 的降级协议）
+⇒ 孩子**无法答对那道题** ⇒ `masteredEntryIds` 不增长 ⇒ `nextQuestion` 永远吐同一道
+⇒ 心数耗尽 `level-failed`，**这一关通不了**。
+
+- ⚠️ 与本 story `[CR]` 已修的那条（跨卡型 `failed` 泄漏，`[CR]`-B）是**两条不同的链**：
+  那条是**某个 option id 的失败状态串到别的卡**上，本条是**这张卡自己的正确项失败**。
+- **本 story 刻意不引入「降级卡片仍可选」的兜底** —— 那是产品决策
+  （降级卡该不该可点？点了算不算答对？答不出正确项时孩子的挫败感怎么办？），
+  不该由 `[CR]` 替产品定。
+- **现实触发路径就是部署**：`import.meta.env.BASE_URL` 与站点前缀不一致
+  （`OptionCard.vue` 的 warn 文案里已经指向这一点，G22 也逐张守着）。
+  **这正是 1.18 的部署 AC 该覆盖的场景。**
+- 📎 **文案诚实性**：`OptionCard.vue` 的 warn 写「回合流转不受影响」——
+  **这句是对的**（回合确实流转），但**关卡进度**会卡住。已在 `[CR]` 中限定含义，
+  后续若加兜底请同步更新这句。
+
+### 移交（本 story 不修）：`stripComments` 剥不掉行尾注释
+
+`tests/components/quiz-card.test.ts` 的 `stripComments` 用 `^\s*//.*$`，
+**只剥行首的行注释**，剥不掉 `const x = 1 // 不 throw` 这类行尾形态。
+G21 / G23 / G25 / G29 四条源码守卫都靠它。
+
+- **反向是误报**（正确代码里的行尾注释含 `throw` ⇒ 守卫变红 ⇒ 会被当噪声忽略）
+- **正向是漏报**（`const x = 1 // throw new Error()` 检不出来）
+
+现有代码全部用行首注释，所以**从未触发**。**本次 `[CR]` 不改** ——
+改了会让四条守卫同时换判据基线，属另一个 story 的范围。
+📎 但本次 `[CR]` 已经吃过一次同型的亏：G30 的 `cssDecl` 第一稿忘了 `stripComments`，
+立刻被自己的断言抓到 —— 因为 `OptionCard.vue` 的注释里**逐字写着**
+`border: 3px solid transparent`（解释「改之前是什么样」），
+`indexOf` 命中注释后再找 `{` 就跳进注释正文 ⇒ 断言对着自己写的说明文字报错。
+**注释里描述违规形态，正则会命中注释。**
+
 
 
 

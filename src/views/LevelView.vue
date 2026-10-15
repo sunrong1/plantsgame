@@ -85,6 +85,27 @@ import HandDeck from '../components/hand/HandDeck.vue'
   display: flex;
   flex-direction: column;
   min-height: 100dvh;
+  /*
+   * 🚨 **整页铺草地绿（`[CR]` 2026-10-16 修的 P0：题面文字白字白底不可见）。**
+   *
+   *   改之前 `html`/`body`/`#app`/`.level-view` **全链路没有背景色**，
+   *   而 `--color-bg`（注释就写着「草地底色」）只被 `BattleField` 的**格子**
+   *   引用 ⇒ 格子以下是浏览器默认白底。落在那片白底上的三样东西全都看不见：
+   *     ① `.question-card__prompt { color:#ffffff }` ⇒ **对比度 1.00:1**，完全不可见
+   *     ② `.option-card { background:#fff; border:3px solid transparent }`
+   *        ⇒ 白卡叠在白页上，**没有可见边界**，四张词图看着像浮空
+   *     ③ `.is-picked { border-color: var(--color-overlay-range) }`
+   *        = `rgba(255,255,255,.3)` ⇒ 白底上同样不可见
+   *
+   *   ⚠️ **`--color-bg` 本来就是给整页用的** —— 它的注释写着「草地底色」，
+   *   而战场格子另有一句「与 `--color-bg` 同值，让网格融进草地」的注释
+   *   ⇒ 格子是**复用了**整页底色，整页自己却一直没铺。
+   *
+   *   用户裁决（2026-10-16）：整页铺草地绿 + 卡片区给白面板（白面板见
+   *   `QuestionCard.vue`）。绿底让白卡片的边界天然可见，
+   *   不必再为 `.option-card` 单独设计边框色。
+   */
+  background-color: var(--color-bg);
   padding: calc(var(--space-panel-pad) + env(safe-area-inset-top))
     calc(var(--space-panel-pad) + env(safe-area-inset-right))
     0

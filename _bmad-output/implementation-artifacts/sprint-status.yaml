@@ -1,6 +1,8 @@
 # generated: 2026-10-12
 # [CS] Story 1.12 → ready-for-dev（2026-10-15）。运行记录见该 story 文档的 Completion Notes。
 # [DS] Story 1.9 → review（2026-10-15）。运行记录见该 story 文档的 Completion Notes。
+# [CR] Story 1.11 → done（2026-10-16）。运行记录见该 story 文档的 Dev Agent Record。
+# [CR] Story 1.11 → review（2026-10-16）。运行记录见该 story 文档的 Completion Notes。
 # project: plants-game
 # project_key: NOKEY
 # tracking_system: file-system
@@ -67,7 +69,7 @@ development_status:
   1-8-单元-1-词图-第一批: done
   1-9-单元-1-词图-第二批: done
   1-10-战场渲染与网格: review
-  1-11-三种卡型与答题交互: review
+  1-11-三种卡型与答题交互: done
   1-12-建造-阳光与射程可视化: review
   1-13-hud-阳光-心与进度: ready-for-dev
   1-14-音效与-bgm-接入: backlog

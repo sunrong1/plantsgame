@@ -149,7 +149,16 @@ function onPick(): void {
   min-height: var(--touch-min);
   padding: 12px;
   background: #ffffff;
-  border: 3px solid transparent;
+  /*
+   * 🚨 **边框必须给一道看得见的灰色，不是 `transparent`**（`[CR]` 2026-10-16）。
+   *   改之前是 `border: 3px solid transparent`，而卡片区（改之前）连自己的底色都没有
+   *   ⇒ 白卡叠在白页上、边框透明 ⇒ **四张选项卡完全没有边界**，
+   *   真浏览器截图里只剩四张浮空的图。
+   *   现在卡面区是白面板（`QuestionCard.vue`），白卡叠白面板仍然分不清
+   *   ⇒ 这道灰边框是让 4 个可点目标对 4–8 岁孩子**看得见、点得准**的唯一线索。
+   *   灰阶与卡片内的黑色文字同族，不引入新色相。
+   */
+  border: 3px solid #bdbdbd;
   border-radius: 12px;
   cursor: pointer;
   /* 只给 hover / press 形变过渡；反馈 class 一律不带 transition
@@ -166,7 +175,19 @@ function onPick(): void {
 }
 
 .option-card.is-picked {
-  border-color: var(--color-overlay-range);
+  /*
+   * 🚨 **刻意不复用 `--color-overlay-range`**（`[CR]` 2026-10-16）。
+   *   那个 token 的定义是「射程高亮：中性浅色罩盖在**战场路径**上」
+   *   （`tokens.css:46-48`）—— 它属于棋盘那一层，跨域拿来当「孩子点了这张卡」
+   *   的选中态有两处不对：
+   *     ① **语义**：射程罩说的是「这里被打到」，选中态说的是「你选了这个」
+   *     ② **可见性**：`rgba(255,255,255,.3)` 落在白面板上是 **1.16:1**
+   *        ⇒ 孩子点了卡片却看不到任何变化，AC-D2 的「立刻可见」直接落空
+   *
+   *   选中态用一道**深中性**描边：白底上对比度够高、形状上与
+   *   「对/错」的整块底色区分得开（底色变，描边不变），且不引入新色相。
+   */
+  border-color: #424242;
 }
 
 /*
@@ -185,7 +206,20 @@ function onPick(): void {
   background: var(--color-wrong);
 }
 
-.option-card.is-degraded {
+/*
+ * 🚨 **`.is-degraded` 刻意不与 `.is-right` / `.is-wrong` 同时生效**（`[CR]` 2026-10-16）。
+ *   三条状态类的选择器特异度**完全相同**（都是 `.option-card` + 一个类 = `(0,2,0)`），
+ *   所以胜负只由**源码顺序**决定。而降级态原先写在最后 ⇒ 它赢。
+ *
+ *   实测可复现的丢失：孩子点中正确项 ⇒ `applyAction` 同步打上 `is-right`（绿底）；
+ *   150ms 后那张图才 `error` ⇒ `failed` 翻真 ⇒ 该卡同时挂上 `is-degraded`
+ *   ⇒ **绿底被换成灰底 + 55% 透明，而反馈条仍然写着「答对了 ✓」**。
+ *   AC-D2 的主反馈载体就这么没了（答错时同理，红底消失，孩子只看到一个暧昧的灰卡）。
+ *
+ *   ⇒ 降级置灰只在**尚未判定对错**时生效：一旦点了（`is-picked`），
+ *   让 `is-right` / `is-wrong` 的颜色说了算。
+ */
+.option-card.is-degraded:not(.is-picked) {
   /* 置灰：与真图「一眼可分」。禁用态额外压一层不可建的同族罩（中性 alpha，不带色相）。 */
   background: #eceff1;
   border-color: var(--color-overlay-blocked);
