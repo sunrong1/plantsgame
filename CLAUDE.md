@@ -6,29 +6,11 @@
 
 本仓库于 2026-10-11 通过 BMAD Method 从零重做。
 
-**产品代码已有**：Epic 1 的 Story 1-1 ~ 1-6 已完成并合入 main
-（工程脚手架、音频解锁与 TTS、朗读录音、战斗内核、回合状态机、内容数据层）。
-旧实现（Vue 3 + Phaser 3 塔防）已归档在 git tag `legacy-v5.x-final`，**仅作参考，不是蓝本**。
-
 进度：`[GDD]` 已定稿（`_bmad-output/planning-artifacts/gdds/gdd-plants-game-2026-10-11/gdd.md`，
 `status: final`，**revision 4** —— rev 4 由 `[IR]` 修订：补战斗疲劳处置路径（原承诺无 story 承接）
 + 修正 Epic 编号（`[CE]` 已把 4 个 Epic 归并为 3 个），未改变设计决定）。
 `[GA]` 游戏架构已定稿（`_bmad-output/planning-artifacts/game-architecture.md`，`status: complete`）。
-`[CE]` 已完成 —— Epic/Story 拆解见 `_bmad-output/planning-artifacts/epics.md`（111 KB，正式版）。
-当前在 `[DS]`：Epic 1 的 1-1 ~ 1-6 已 done，下一个待做 story 从 `sprint-status.yaml` 里找第一个 backlog。
-
-旧实现（Vue 3 + Phaser 3 塔防，已发布至 v5.x）已归档在 git tag `legacy-v5.x-final`。
-若需要查阅旧代码（美术资源命名、平衡数值、移动端踩坑记录等）：
-
-```bash
-git ls-tree -r legacy-v5.x-final --name-only     # 看旧文件清单
-git show legacy-v5.x-final:src/config/plants.ts  # 读单个旧文件
-```
-
-**除非 GDD/架构阶段明确要求，不要从旧代码复制实现。** 它的作用是参考，不是蓝本。
-
-值得直接继承的旧资产：`SpeechService.preheat()`（Android 音频解锁踩坑的产物）。
-注意旧实现用的是 **Phaser 3，该版本已于 2025-05 停止支持** —— 新项目不用 Phaser。
+`[CE]` 已完成 —— Epic/Story 拆解见 `_bmad-output/planning-artifacts/epics.md`。
 
 ## 技术栈
 
@@ -79,7 +61,7 @@ npm run balance-sim       # 平衡模拟，import 真实 core/
 ## `[CE]` 已完成：词图产能如何落进 Epic
 
 **词图产能是项目级最大风险**：全年 200-400 词需 200-400 张各不相同的插画
-（旧版本 5 个大版本只积累 9 张）。架构已锁定 SVG 格式与命名规范，但产能本身没被解决。
+架构已锁定 SVG 格式与命名规范，但产能本身没被解决。
 
 `[CE]` 的拆解结论（详见 `epics.md`）：
 - **Epic 2 `2-1-词图产能验证`** 是独立 story，先小规模验证产能再放量
@@ -163,7 +145,6 @@ docs/               项目知识库（BMAD 的 project_knowledge 指向这里）
 ## 提交约定
 
 遵循 Conventional Commits（`feat:`、`fix:`、`docs:`、`test:`、`refactor:`、`chore:`）。
-
 不要在规划阶段写产品代码 —— 那是 `[DS]` gds-dev-story 的职责。
 
 ---
