@@ -15,7 +15,8 @@
  *   本视图**无条件**渲染战场：1.10 的题单交互尚未落地，`state.phase` 的六种
  *   变体里只有开局那一种有画面。若这里按 phase 分支，就会渲染出一片空白，
  *   而 AC-16 要求「战场在浏览器里肉眼可见」。
- * · **不做词图加载** —— 属 1.11 / 1.18。
+ * · **不做词图加载** —— 属 1.11 / 1.18。**由 `<QuestionCard />` 消费**
+ *   （1.11 把 30 张词图第一次接进运行时通路），本视图不碰任何 URL。
  * · **不建选关入口**（`UnitSelectView`）—— GDD 无选关自由，1.15 也不得建
  *   （`[GA]:770-782` 专门有纠错说明）。
  *
@@ -32,6 +33,10 @@
 //   而且 vue-tsc / build / test / lint **全绿**，页面只是白着。
 //   `eslint.config.js` 的 `vue/no-undef-components: 'error'` 为此设了守卫。
 import BattleField from '../components/battle/BattleField.vue'
+// ⚠️ **必须显式 import**（同上面那条，`vue/no-undef-components: 'error'` 为此设了守卫）：
+//   漏掉这行会渲染成一个没有内容的自定义元素，而 vue-tsc / build / test / lint
+//   **全绿**，页面只是白着（Story 1.10 的 Debug Log #4）。
+import QuestionCard from '../components/quiz/QuestionCard.vue'
 </script>
 
 <template>
@@ -43,6 +48,12 @@ import BattleField from '../components/battle/BattleField.vue'
          而它在 1.10 的浏览器核对里也只会让人以为「这里本来该有东西」。
     -->
     <BattleField />
+    <!--
+      📎 **给 Story 1.12 的手牌区预留的位置**：卡面区在战场之下，
+         1.12 的手牌区接在它后面即可。
+         ⚠️ **不写死卡面区高度** —— 写了 1.12/1.13 落地时必然回头重排。
+    -->
+    <QuestionCard />
   </main>
 </template>
 

@@ -24,7 +24,9 @@
  * · ⚠️ **`WORD_IMAGE_URL_PREFIX` / `expectedImageUrl()` 不在这里，也一个字都不许动**
  *   —— 那是**内容 JSON 里存的值的判据**（`unit-01.json` 里 30 张词图的
  *   `imageSrc` 全部是无 base 的 `/assets/words/unit-01/u1-dog.svg`）。
- *   JSON 存什么就校验什么；词图在运行时怎么接 base 属 Story 1.11 / 1.18。
+ *   JSON 存什么就校验什么；⚠️ 与此并列的是**运行时那一半**：
+ *   把 JSON 里的路径接上 base 的 `wordImageUrl()` 住在**本文件下方**（Story 1.11 / AC-B1）——
+ *   两者互为逆运算（`wordImageUrl` ↔ `assetPathWithinPublic`），**改动必须成对**。
  *
  * ── 刻意不做的事 ──────────────────────────────────────────────────────────
  * · **不 import `TOWER_TYPES` 枚举**：那是「应有哪几个文件」的集合推导，
@@ -70,4 +72,39 @@ export function expectedTowerAssetUrl(towerType: TowerType): string {
 export function assetPathWithinPublic(url: string): string {
   const base = import.meta.env.BASE_URL
   return url.startsWith(base) ? url.slice(base.length) : url
+}
+
+/**
+ * 词图 URL —— **带 base**，直接给 `<img src>` 用（Story 1.11 / AC-B1）。
+ *
+ * ── 与上面两个函数的关系 ────────────────────────────────────────────────────
+ * 塔 / 僵尸的 base 是在模板字面量里拼的（`:40,43`），**没有通用函数可照抄**；
+ * 词图不同：**`imageSrc` 存在内容 JSON 里**，形如
+ * `/assets/words/unit-01/u1-dog.svg` —— **无 base**，于是必须有一道
+ * 「把 JSON 里的路径接上 base」的转换。本函数就是那一道，
+ * 且与 {@link assetPathWithinPublic} 成对（一个接上、一个摘掉）。
+ *
+ * ⚠️ **它们不是严格互逆，据实记一笔**：`wordImageUrl` 为避免双斜杠剥掉首斜杠，
+ *   而 `assetPathWithinPublic`（G16 塔图判据的依赖，行为不许动）只摘 base、
+ *   不把首斜杠补回去 ⇒ 往返得到的是**相对** `public/` 的路径。
+ *   G22 (b) 用 `join(root, 'public', …)` 落盘，两种形状命中同一文件，不受影响。
+ *
+ * ⚠️ **为什么 `imageSrc` 在数据里是无 base 的**：JSON 存什么就校验什么，
+ *   部署前缀是**部署期**的事实（`vite.config.ts` 的 `base`），把它烤进内容数据
+ *   意味着换一次部署前缀就要改 120 个字段。而 `scripts/validate-content.ts` 的
+ *   `WORD_IMAGE_URL_PREFIX` / `expectedImageUrl()` 判的正是「JSON 里的无 base 形状」
+ *   —— 那是**内容判据，一个字都不许动**（见文件头 `:24-27`）。
+ *
+ * ⚠️ **前导斜杠只留一个**：`BASE_URL` 自带尾斜杠（`/plantsgame/`），
+ *   而 `imageSrc` 自带首斜杠（`/assets/...`）。不处理会拼出
+ *   `/plantsgame//assets/...` —— 多数服务器仍能命中，但开了严格路径规范化的会 404，
+ *   **而本地 `vite dev` 完全正常 ⇒ 只在部署后暴露**（与本文件头同一类坑）。
+ *
+ * ⚠️ **本函数刻意不校验输入是否带 base，也不校验文件是否存在。**
+ *   与 {@link assetPathWithinPublic} 同一理由：把「URL 拼得对不对」搬进实现里
+ *   会让守卫的判据在**调用点**炸掉，而不是在**判据**里变红 ——
+ *   那是「运行时崩了」，不是「守卫抓到了回归」，两者是不同的证据。
+ */
+export function wordImageUrl(imageSrc: string): string {
+  return `${import.meta.env.BASE_URL}${imageSrc.replace(/^\/+/, '')}`
 }

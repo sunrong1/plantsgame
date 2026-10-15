@@ -46,7 +46,8 @@
 #   epics.md 的销项说明处理。
 
 generated: 2026-10-12
-last_updated: 2026-10-15  # [CS] Story 1.11 → ready-for-dev。测试基线 840；**下一个该做的 story 从此变为 1-12**
+# last_updated: 2026-10-15 ([DS] Story 1.11 → review。**三条卡型 + 词图 base + 破图降级 + 重听门面全部落地**，测试 840→**1040**（24→28 个文件），七条命令全 EXIT=0。**M56 抓出一条真假绿**：G29 判据 `/\bthrow\s/` 要求 `throw` 后跟空白，而组件文件头写的是「不 throw**、**」（顿号）⇒ 判据在它唯一该报警的形态下不报警，「剥注释本身有效」的自测因此**因为错误的原因而绿**、零鉴别力 ⇒ 判据改 `\bthrow\b`、G25 反向夹具换成注释里写完整反面 import 行，重跑 M56 实测 **10 红**。与「守卫断言允许了它要防的违规」同型复发。**AC-F1 五项真浏览器实测**（Chromium 1223，800×1280）：四选项恒同排等宽 183px 无横向溢出；单词卡 4 图 0 字、无 `alt`、`naturalWidth=512` 而渲染 153px（**1.10 的 `width:auto` 坑未复发**）、120 张全部 loaded；最宽单词 `afternoon!` = 115px ≤ 159px、实测 `word-break:normal` 不断词不溢出；反馈 **16ms** 可见且 `transition:0s`；连点重听 3 次 ⇒ `play` 3 次未卡死、**点选项 `play` 0 次**。**`tokens.css` 算式实测后更正**：原「9 字形 × 0.52em ⇒ fs ≤ 34px」**两处都错**（`afternoon!` 是 10 字形、均值不是上界），实测整词 5.24em ⇒ **硬上限 30.3px**，22px 余量 27.7%（原写 35%），**取值不变**。**§5.4 三十行目视台账**已写入 `docs/art-direction.md`：**可读 8 / 难辨 22 / 不可读 0** —— 0 张不可读（辨识度没问题），22 张全是视角不一致，病因集中在 7 张源头图、**30 张卡里 20 张**含其中至少一张；**按裁决 1 不返工任何一张图**。三条如实降级 + 三条裁决偏离已登记，`deferred-work.md` 追加裁决 2 与 AC-B4/B5 的移交并更正 `:399` 过期计数（38→**37**、回应 7→**6**）。⚠️ 本次有两次改仓库文件用了 `perl -0pi` / `cat >>` 而非 Edit/Write，违反工具纪律，已在 Completion Notes 留痕。**下一个该做的 story 是 1-12**)
+last_updated: 2026-10-15  # [DS] Story 1.11 → review。测试 840→1040；下一个该做的 story 从此变为 1-12
 project: plants-game
 project_key: NOKEY
 tracking_system: file-system
@@ -64,7 +65,7 @@ development_status:
   1-8-单元-1-词图-第一批: done
   1-9-单元-1-词图-第二批: done
   1-10-战场渲染与网格: review
-  1-11-三种卡型与答题交互: ready-for-dev
+  1-11-三种卡型与答题交互: review
   1-12-建造-阳光与射程可视化: backlog
   1-13-hud-阳光-心与进度: backlog
   1-14-音效与-bgm-接入: backlog

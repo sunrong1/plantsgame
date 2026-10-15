@@ -8,6 +8,8 @@
  * ── 刻意不做的事 ──────────────────────────────────────────────────────────
  * · **不建 `src/app/router.ts`** —— 属 Story 1.15。这里只有最小的 `view` 态（见下）。
  * · **不写 `runEffects` 的实现** —— 属 Story 1.13（`app/effects-runner.ts`）。
+ *   本文件只提供 {@link speakQuestion} 这个**朗读门面**（Story 1.11 / 裁决 3），
+ *   它与 `runEffects` 不是一回事：后者 action 驱动，前者是「用户点重听」触发的。
  *   下面是**显式的空位注释**，不是「先造一个空函数占位」——
  *   空函数会让「副作用已接上」这件事看起来成立，而实际上一条音效都没播过。
  * · **不做存档** —— 属 Story 1.15（决策 5 的 `SaveFile`）。
@@ -27,6 +29,7 @@ import { ref, type Ref } from 'vue'
 import { entriesOf } from '../content'
 import { createInitialState, reduce } from '../core'
 import type { Action, State } from '../core'
+import { playPronunciation } from '../services/pronunciation'
 
 /**
  * 首个单元号。Epic 1 只有单元 1；「选单元」入口属 Story 1.15，
@@ -114,4 +117,41 @@ export function applyAction(action: Action): void {
   // 抓到的「假绿」形态。留注释是诚实的：这一层现在**确实**不做副作用。
   // 接入时它必须排在 `state.value = next` **之前**（见文件头）。
   state.value = next
+}
+
+/**
+ * 朗读当前题 —— **朗读通路的唯一门面**（Story 1.11 / AC-D4 / 裁决 3）。
+ *
+ * ── 为什么组件不直接 import `pronunciation` ─────────────────────────────────
+ * `StartView.vue:14-16` 立的纪律是「组件不直接碰 `services/`」，理由是音频解锁的
+ * 三步顺序是一条架构约束，写在 `app/audio-unlock.ts` 里肉眼可查。
+ * `pronunciation.ts` **完全落在那条理由之内** —— 它持有 `globalThis.AudioContext`
+ * 且有解锁时序。
+ * ⚠️ **但这条纪律不是「组件不碰整个 `services/`」**：无状态的 `asset-url.ts`
+ *   由 1.10 为塔 / 僵尸开过直接 import 的口（守卫 G25 只禁 `pronunciation`）。
+ *
+ * ── 为什么**不**走 `effects-runner.ts` ──────────────────────────────────────
+ * 它的签名 `runEffects(action, prev, next)` 是为 **action 驱动**设计的，
+ * 而「孩子主动点重听」**不对应任何 action** —— 硬塞进去是形状错配。
+ * 它属 Story 1.13，且那时的用法会是「本 facade 在 action 链路上转调它」。
+ *
+ * ── 🚨 为什么必须先做 phase 收窄 ──────────────────────────────────────────
+ * `Phase` 是六变体联合，其中**五个没有 `question`**（`types.ts:307-314`）。
+ * 不收窄就写 `state.value.phase.question` 会在**其余五种阶段**上抛
+ * `Cannot read properties of undefined` —— 而卡面在 `awaiting-build` 期间
+ * 仍然渲染（`lastQuestion`，AC-C5），点它就是必崩。
+ * 写法与 `reducer.ts:180-182` 同型。
+ */
+export function speakQuestion(): void {
+  const phase = state.value.phase
+  if (phase.kind !== 'awaiting-answer') return
+  // ⚠️ **`entryId` 必须传**（`pronunciation.ts:584-592`）：不传时直接走 TTS，
+  //   而 TTS 再失败就只剩一条 console.warn —— `fallbackToRecording` 不播任何音频。
+  //   也就是说「TTS 挂了也有录音兜底」这句话**只对传了 entryId 的调用方成立**。
+  //
+  //   朗读失败**绝不阻断回合**（FR5 / AR37）：`playPronunciation` 内部已保证
+  //   「绝不向调用方抛」，所以这里**刻意不加 try/catch** ——
+  //   再包一层会把「哪一层出的问题」这个信息抹掉，正是本文件 `initialState()`
+  //   上方注释里说的那种损失。
+  playPronunciation(phase.question.card.promptText, phase.question.entryId)
 }

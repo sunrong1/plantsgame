@@ -5,16 +5,6 @@
 
 [workflow]
 
-# ── 测试执行纪律（Step 7）────────────────────────────────────
-# BMAD 原版 Step 7 写的是「Run all existing tests to ensure no regressions」，
-# 字面执行意味着「每个 task 跑一次全量套件」。本项目 Story 1-10 有 10 个 task，
-# 实测全量 5.6 秒 / 24 worker，单个 story 会因此多跑 9 次全量。
-# 下面这条把「全量」收窄为「与当前 task 直接相关」，全量留给 Step 9 收口。
-#
-# 背景数据：Story 1-10 的 DS 跑了 362 请求 / 38M token，是全项目最贵的一次。
-
 persistent_facts = [
   "测试执行纪律：Step 7 的 'Run all existing tests' 在本项目理解为「跑与当前 task 直接相关的测试文件」，不是全量套件。做法：用 git diff --name-only 看本 task 改了哪些测试文件及其被测源文件，只跑这批；若某 task 的改动可能影响其他模块，补跑受影响的那几个文件并在 Completion Notes 里说明为什么补。全量 `npm run test` 只在 Step 9 收口时跑一次。",
-  "Bash 纪律：跑测试时始终加 `--reporter=dot` 或 `2>&1 | tail -30`，不要把 800+ 条测试的逐条输出灌进上下文；全量套件的结果只需要「通过数 / 失败数 / 退出码」三项。",
-  "Read 纪律：同一个文件在本 story 内只完整读一次。后续需要细节时用 Bash 的 sed -n '起,止p' 取片段，不要重复 Read 整个文件。",
 ]

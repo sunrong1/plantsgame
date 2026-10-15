@@ -127,3 +127,8 @@ export { actionName, answer, continueRound, endBuild, placeTower, resolveRound, 
 export { assertInvariants, createInitialState, nextQuestion, reduce } from './reducer.js'
 
 export type { CreateInitialStateInput } from './reducer.js'
+
+// 📎 词图加载失败时的内联占位图形（Story 1.11 / AC-B3）。**字符串常量，不造 DOM** ——
+//   规格要求它「随 core/ 提供」是因为本层同时满足零 DOM 与不引入副作用事实两条约束。
+//   下游一律从这里取，不要深路径 import `core/placeholder`。
+export { WORD_IMAGE_PLACEHOLDER_SVG } from './placeholder.js'

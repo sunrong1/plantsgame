@@ -1,0 +1,231 @@
+<script setup lang="ts">
+/**
+ * QuestionCard —— 卡面（Story 1.11 / AC-C5、AC-D1、AC-D2、AC-D3）。
+ *
+ * ── 职责边界 ──────────────────────────────────────────────────────────────
+ * 题面区 + 选项区 + 重听。**不判定对错**（AC-D1）：它读的是 reducer 已经
+ * 算好、存进 `state.masteredEntryIds` 的事实，不是自己实现一条规则。
+ * 判据在下面 `pickedRight`，**三行、零分支逻辑**，且逐字对应 AC-D2 的公式。
+ *
+ * ── 刻意不做的事 ──────────────────────────────────────────────────────────
+ * · **不 import `services/pronunciation`** —— 朗读只经 `store` 的
+ *   `speakQuestion()` 门面（裁决 3、守卫 G25）。
+ * · **不 throw、不写 assert**（AC-E3 / `[GA]:567-575`）。
+ * · **不建 `app/effects-runner.ts`** —— 属 Story 1.13。
+ * · **不写死卡面区高度** —— 1.12 的手牌区与 1.13 的 HUD 都要位置（Dev Notes §10）。
+ *
+ * ── 🚨 关于 `lastQuestion`（裁决 4 / AC-C5）─────────────────────────────
+ *   `applyAnswer`（`reducer.ts:195`）答完**立刻**切到 `awaiting-build`，
+ *   而 `Phase.awaiting-build`（`types.ts:309`）只有 `{kind, unlocked, sun}` ——
+ *   **没有 `question`**。卡面若在 `awaiting-answer` 一结束就卸载，
+ *   孩子点下去后屏幕上什么都没发生：反馈不是「慢了 100ms」，是**根本没有**
+ *   （`epics.md:1064` 的 ≤100ms 反馈需要一个可见的载体）。
+ *   ⇒ 用组件本地的 `lastQuestion` 在 `awaiting-build` 期间继续渲染。
+ *
+ *   **代价如实登记**（Completion Notes 的「裁决的偏离」第 2 条）：
+ *   1.15 存档恢复到 `awaiting-build` 时反馈条会消失 —— 组件是空的。
+ *   **这是正确的**：重启本来就不该停在「刚刚答完」的反馈上。
+ *   `lastQuestion` **不进 `State`、不存档、不参与 `reduce`**；
+ *   局末由 1.16 的 `RESTART_LEVEL` 走同一条重置路径清掉（FR51）。
+ */
+
+import { computed, ref, watch } from 'vue'
+
+import { answer } from '../../core'
+import type { OptionId, Question } from '../../core'
+import { applyAction, speakQuestion, state } from '../../app/store'
+
+import AnswerFeedback from './AnswerFeedback.vue'
+import OptionCard from './OptionCard.vue'
+
+/** 上一道题（`awaiting-build` 期间继续用它渲染）。只读数据，不参与 `reduce`。 */
+const lastQuestion = ref<Question | null>(null)
+/** 孩子点了哪个（瞬时 UI 态）。**每次回到 `awaiting-answer` 都清**。 */
+const pickedOptionId = ref<OptionId | null>(null)
+/** 已经自动朗读过的 `entryId` —— 触发源是「换了一道题」这一可数事件。 */
+const spokenEntryId = ref<string | null>(null)
+
+/**
+ * 渲染源：**当前 phase 有 question 就用它，否则用上一次的**（AC-C5 ① 选项 A）。
+ *
+ * ⚠️ **为什么用 computed 兜底而不是只靠 watch**：Vue 的 `watch` **默认不在 setup
+ *   时触发**，而 `createInitialState`（`reducer.ts:69`）把初始 phase 设成
+ *   `awaiting-answer` ⇒ **首次挂载就是一道待答题**。
+ *   只写 `watch(() => phase, …)` 的话首次渲染 `lastQuestion.value === null`，
+ *   结果是**整个 story 的交付物在浏览器里是空的**，而且 FR1 的自动朗读也永不触发
+ *   —— 症状是 G24 / G26 / G28 全红，红得像是「分派写错了」。
+ *   `shown` 走 phase 本身 ⇒ 首次挂载必然有题。
+ */
+const shown = computed<Question | null>(() =>
+  state.value.phase.kind === 'awaiting-answer' ? state.value.phase.question : lastQuestion.value,
+)
+
+/** 当前是否在等孩子答题 —— 决定重听与自动朗读是否可用。 */
+const answering = computed(() => state.value.phase.kind === 'awaiting-answer')
+
+/**
+ * 🚨 「答对没答对」的唯一读法：**`masteredEntryIds` 里有没有 `question.entryId`**。
+ *
+ *   `ANSWER` 之后 reducer 在答对时把 **`question.entryId`** 追加进
+ *   `masteredEntryIds`（`reducer.ts:192`），答错时原样不动。
+ *
+ * ⚠️⚠️ **绝对不要拿「刚点的 `option.id`」去 `includes`。**
+ *   `option.id` 与 `entryId` 对关键词卡与回应卡**根本不是同一个东西**：
+ *     entryId `u1-s-i-have-a-ball-for-my-dog`（keyword）的正确选项是 `u1-ball`
+ *     entryId `u1-s-how-are-you`（response）的正确选项是 `u1-s-i-am-fine`
+ *   拿 `option.id` 去查 ⇒ 这两型的正确率**永远显示 0%**。
+ *   而单词卡碰巧能对上（正确项 id 恰好 === entryId）⇒ 30/37 的卡上
+ *   **「看起来正常」** —— 正是最容易被真浏览器核对放过的形态。
+ *
+ *   这不是「在组件里实现了一条规则」，是**读 reducer 已经算好的事实**：
+ *   前者的值一旦 reducer 改了就会静默错，后者永远跟着 reducer 走。
+ *   且 `nextQuestion()`（`reducer.ts:100`）跳过已答对的条目 ⇒ 没有历史污染。
+ */
+const pickedRight = computed(() => {
+  const question = shown.value
+  if (question === null) return false
+  return state.value.masteredEntryIds.includes(question.entryId)
+})
+
+/**
+ * 记住当前题，并在**每次进入一道新题**时清 `pickedOptionId`。
+ *
+ * 🚨 **重置判据是「进入了一道新题」这个事件，不是「`entryId` 变了」**（AC-C5 ③）。
+ *   答错 → `END_BUILD` → `resolving` → `round-over` → `CONTINUE` → `nextQuestion`
+ *   （`reducer.ts:100`）**返回同一道题**（AC-4 重考）⇒ `entryId` 不变。
+ *   只按 `entryId` 判断的话 watch 不触发，`pickedOptionId` 仍指着上一轮点过的选项，
+ *   **孩子还没点，`is-picked` 就已经亮着**。
+ */
+watch(
+  () => state.value.phase,
+  (phase) => {
+    if (phase.kind !== 'awaiting-answer') return
+    lastQuestion.value = phase.question
+    pickedOptionId.value = null
+  },
+  { immediate: true },
+)
+
+/**
+ * FR1：卡面出现时自动播一次。
+ *
+ * ⚠️ **watch 整个 `phase` 而不是 `phase.question.entryId`**（T7.6）：
+ *   `Phase` 是六变体联合，`awaiting-build` 等五个变体上**没有 `question`**，
+ *   照字面写 `() => state.value.phase.question.entryId` 是 TS2339，
+ *   而最顺手的解法是加一个 `as` —— 那正是 §8 教训 3 的失败形态。
+ *   这里 watch 整个 `phase`、**内部先收窄再用 `p.question`**。
+ *
+ * ⚠️ **`immediate: true` 不可省**：首次挂载就是一道待答题，
+ *   不 immediate 则**一次都不会自动朗读**（与 `shown` 的理由同源）。
+ *
+ * ⚠️ **这条与架构硬约束 4「副作用只在 effects-runner」有张力。** 处置见
+ *   Completion Notes 的「裁决的偏离」第 1 条：触发源是「换了一道题」这一
+ *   **可数事件**，守卫 G27 断言连点 3 次重听后 `applyAction` 一次都没被调用、
+ *   且自动朗读不重复触发。**不假装这条张力不存在。**
+ */
+watch(
+  () => state.value.phase,
+  (phase) => {
+    if (phase.kind !== 'awaiting-answer') return
+    if (phase.question.entryId === spokenEntryId.value) return
+    spokenEntryId.value = phase.question.entryId
+    speakQuestion()
+  },
+  { immediate: true },
+)
+
+/** 点一个选项：记下点了哪个，然后 `applyAction` —— **组件里不判定对错**（AC-D1）。 */
+function onPick(optionId: OptionId): void {
+  pickedOptionId.value = optionId
+  applyAction(answer(optionId))
+}
+
+/** 重听：FR1「重听无任何代价或次数限制」。只在 `awaiting-answer` 提供（AC-C5 ⑥）。 */
+function onReplay(): void {
+  if (!answering.value) return
+  speakQuestion()
+}
+</script>
+
+<template>
+  <!--
+    ⚠️ **`shown === null` 时这里一个节点都不渲染**（AC-C5 ②）：不是白框、
+    不是空 div、连反馈条也不渲染。没有题就没有可显示的东西，
+    而一个空壳 div 会让 G26 的「选项区有几个节点」类断言失去参照。
+  -->
+  <section
+    v-if="shown"
+    class="question-card"
+  >
+    <!--
+      🚨 **可点重听的容器只包题面区 + 选项区，不包 `AnswerFeedback`**（AC-D3）。
+      `@click.stop` **只挡按钮自身及其子树**，挡不住同一容器里的其他元素 ——
+      把结果条放进来，点它就会同时触发重听，那是一次点击变成两个事件。
+      选项按钮上的 `@click.stop` 负责挡另一半。
+    -->
+    <div
+      class="question-card__tappable"
+      @click="onReplay"
+    >
+      <p class="question-card__prompt">
+        {{ shown.card.promptText }}
+      </p>
+      <div class="question-card__options">
+        <OptionCard
+          v-for="option in shown.card.options"
+          :key="option.id"
+          :option="option"
+          :kind="shown.card.kind"
+          :picked="pickedOptionId === option.id"
+          :right="pickedOptionId === option.id && pickedRight"
+          :wrong="pickedOptionId === option.id && !pickedRight"
+          @pick="onPick"
+        />
+      </div>
+    </div>
+    <AnswerFeedback
+      v-if="pickedOptionId !== null"
+      :right="pickedRight"
+    />
+  </section>
+</template>
+
+<style scoped>
+/*
+ * ⚠️ **卡面区刻意不写死高度**（Dev Notes §10 给 1.12 / 1.13 的预留）：
+ *   1.12 的手牌区与 1.13 的 HUD 都要位置。写了固定 px 高度，
+ *   那两个 story 落地时必然回头重排，而重排布局意味着战场 45 格重测一遍
+ *   （1.10 的教训：`flex: 1 1 auto` 把战场拉满屏、横向撑破）。
+ */
+.question-card {
+  display: flex;
+  flex-direction: column;
+  /* 战场区是 `flex: 0 0 auto`（LevelView），卡面区吃掉余下的高度。
+     给它 `flex: 0 0 auto` 而不是 `1 1 auto` 的理由与战场区相同。 */
+  flex: 0 0 auto;
+  padding: var(--space-panel-pad) 0;
+}
+
+.question-card__tappable {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  cursor: pointer;
+}
+
+.question-card__prompt {
+  margin: 0;
+  font-size: var(--text-prompt);
+  line-height: 1.2;
+  text-align: center;
+  color: #ffffff;
+}
+
+/* 四个选项并排（AC-F1 ①）。档间距 12px，比战场的 `--space-grid-gap` 宽一档，
+   理由见 tokens.css 字体段（选项卡上是要逐个读的密集文字）。 */
+.question-card__options {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+</style>
