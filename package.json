@@ -16,7 +16,8 @@
     "lint": "eslint .",
     "validate:content": "tsx scripts/validate-content.ts",
     "balance-sim": "tsx scripts/balance-sim.ts",
-    "generate:voice": "tsx scripts/generate-voice.ts"
+    "generate:voice": "tsx scripts/generate-voice.ts",
+    "word-image-metrics": "tsx scripts/word-image-metrics.ts"
   },
   "dependencies": {
     "vue": "~3.5.43",
