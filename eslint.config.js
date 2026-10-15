@@ -148,6 +148,66 @@ export default tseslint.config(
     },
   },
   {
+    // Story 1.10 / AC-14：组件层的两条边界。
+    //
+    // ── 为什么第一条规定在组件层 ────────────────────────────────────────
+    // 架构 `[GA]:1023-1032` 的「已知边界表」逐字写着：「组件内不得出现战斗规则计算」
+    // 这条**无工具可强制、只能靠 `[CR]`**，漂移风险标为**最高** ——
+    // 「AI 常顺手在组件里写 `if (hp <= 0)`」。
+    //
+    // 本条把那半个「工具」补上：组件**不许 import `src/core/balance`**，
+    // 即战斗数值的单一事实源（架构 `:634`）。组件必须从 `State` / `Tower` /
+    // `Zombie` 拿值，或调 `core/` 里已封装好的**纯函数**（如 `zombieHpRatio()`）。
+    //
+    // ⚠️ **它挡不住全部漂移形态**：组件照样可以写 `zombie.hp / 100`，
+    //   只要它不去 import balance.ts。⇒ 所以还配了守卫 **G19**：断言组件源码里
+    //   不出现裸的血量/伤害算术。两条合起来才是「工具 + 审查」的全覆盖，
+    //   缺一条就只是把漂移从「一眼可见」降级成「需要搜索才看得见」。
+    //
+    // ⚠️ **为什么必须用相对路径形态**（同 `src/core/**` 块里的同一段理由）：
+    //   项目没有 `@/` 别名，写 `'@/core/balance'` 的话任何文件都写不出这个 import，
+    //   规则永不触发 —— 看着在守，实际没守。
+    files: ['src/components/**/*.{ts,vue}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: [
+                '**/../core/balance',
+                '**/../../core/balance',
+                '**/../../../core/balance',
+              ],
+              message:
+                '组件不得直接读战斗数值常量（ZOMBIE_HP / TOWER_STATS / HEARTS …）—— ' +
+                '它们是数值调优（Story 3.2）的对象，改动会牵动 balance-sim 的门槛数字。' +
+                '组件只从 State / Tower / Zombie 拿值，或调 core/ 里已封装好的纯函数' +
+                '（如 zombieHpRatio()）。这条边界的漂移风险是全项目最高的（[GA]:1029）。',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    // Story 1.10：`Tower.vue` / `Zombie.vue` 允许单词组件名。
+    //
+    // `vue/multi-word-component-names` 的目的是避免组件名与 HTML 原生元素
+    // 或同名全局产生歧义（`Button.vue` 撞 `<button>` 之类）。
+    // `Tower` 与 `Zombie` **都不是 HTML 元素**，也不与本项目任何其它组件重名，
+    // ⇒ 那条理由在这里不成立。
+    //
+    // ⚠️ 为什么不用改名绕过（`TowerUnit.vue` / `ZombieUnit.vue`）：
+    //   Story 1.10 的 AC 与 Dev Notes **逐字指定**了 `Tower.vue` / `Zombie.vue`
+    //   这两个路径，守卫 G17 / G18 与本文件其余注释都按那些路径引用。
+    //   为满足一条风格规则去改规格里写死的路径，是拿规格迁就 lint。
+    files: ['src/components/battle/Tower.vue', 'src/components/battle/Zombie.vue'],
+    rules: {
+      'vue/multi-word-component-names': 'off',
+    },
+  },
+  {
     // Story 1.2 / AC-10：音频解锁链路禁 await。
     //
     // 为什么不扩大到整个 src/services/：Story 1.14 的 save.ts 合理需要 await。

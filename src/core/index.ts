@@ -33,6 +33,10 @@ export {
   // 此前 types.ts 定义了它而 barrel 漏导出 —— 「唯一对外出口」不完整（[CR] P19）。
   assertGridIndex,
   assertInsideGrid,
+  // 📎 Story 1.10 / AC-12：「这一格能不能建」的唯一出处。组件只调不算，
+  //   否则 UI 显示的可建性会与 reducer 实际接受的分叉且无人察觉。
+  buildBlockedReason,
+  canBuildAt,
   cellKey,
   hasPassedHouse,
   hasReachedHouse,
@@ -80,6 +84,9 @@ export {
   assertZombieHp,
   createTower,
   createZombie,
+  // 📎 Story 1.10 / AC-9：血量条的**唯一**算术出处。见 types.ts 的函数注释 ——
+  //   它的存在是为了让组件里不出现 `z.hp / 100`，漂移风险标为「最高」。
+  zombieHpRatio,
 } from './types.js'
 
 export type {

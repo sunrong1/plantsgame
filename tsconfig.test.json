@@ -95,6 +95,23 @@
   // `const x: number = "s"`，`npm run typecheck` 立刻报
   // `src/content/schema.ts(n,m): error TS2322` —— 既证明它确实被 typecheck 覆盖，
   // 也证明 import src/content/ 没有把它挤出检查范围。
+  // ⚠️ `src/components/**`、`src/views/**`、`src/App.vue` 是 Story 1.10 加进来的
+  //   （实测阻断 TS6307）：组件测试要 `import BattleField from '.../BattleField.vue'`，
+  //   而本项目只 `references` 了 `tsconfig.core.json` —— `tsconfig.app.json` 里的
+  //   `.vue` 文件从本项目 import 时会报 TS6307。
+  //
+  //   为什么不改成把 `tsconfig.app.json` 加进 references（像 `src/content` 那样）：
+  //   那是 app 项目 noEmit，被引用项目不允许关闭 emit（TS6310）——
+  //   与上面 `src/services` 那段注释同一个理由。
+  //
+  //   ⚠️ 副作用（**不要「顺手修复」**，同 `src/content` 那段）：改完之后这三个
+  //   glob 同时属于 `tsconfig.app.json` 与本项目。两个项目都是 noEmit，
+  //   重叠是**允许**的；把它改回单归属会立刻撞回 TS6307。
+  //
+  //   ⚠️ 注意 `src/components/**` 这里**只列 `.vue`**：组件目录下的 `.ts`
+  //   归 `tsconfig.app.json`，而本项目已经通过 `src/app/**/*.ts` 与
+  //   `src/services/**/*.ts` 覆盖了 store 与 asset-url。多列不会报错，
+  //   但会让「谁拥有哪个文件」变得没法一眼看出来。
   "include": [
     "tests/**/*.ts",
     "vitest.config.ts",
@@ -103,7 +120,10 @@
     "scripts/**/*.ts",
     "src/services/**/*.ts",
     "src/app/**/*.ts",
-    "src/content/**/*.ts"
+    "src/content/**/*.ts",
+    "src/components/**/*.vue",
+    "src/views/**/*.vue",
+    "src/App.vue"
   ],
   // 测试会 import src/core/ 的被测对象。缺这条 reference 会报 TS6307。
   "references": [{ "path": "./tsconfig.core.json" }]

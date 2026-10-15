@@ -1,7 +1,7 @@
 /**
  * 网格规格与坐标换算（Story 1.4 / AC-2）。
  *
- * 本文件是网格尺寸的**唯一**定义处（架构 `:637`）。组件不得重定义 `ROWS` / `COLS` /
+ * 本文件是网格尺寸的**唯一**定义处（架构 `:642`）。组件不得重定义 `ROWS` / `COLS` /
  * `ZOMBIE_ROW` —— Story 1.10 的 CSS 网格读的是这里的常量。
  *
  * ── 索引基准（裁决 3，2026-10-13 用户拍板）─────────────────────────────────
@@ -15,11 +15,11 @@
  * 本文件零依赖（只 assert 整数），是被依赖最深的一层。
  */
 
-/** 行数。架构 `:493-496` 逐字锚点。 */
+/** 行数。架构 `:498-501` 逐字锚点。 */
 export const ROWS = 5
-/** 列数。架构 `:493-496` 逐字锚点。 */
+/** 列数。架构 `:498-501` 逐字锚点。 */
 export const COLS = 9
-/** 僵尸所在行索引（= 界面「第 3 行」）。架构 `:493-496` 逐字锚点。 */
+/** 僵尸所在行索引（= 界面「第 3 行」）。架构 `:498-501` 逐字锚点。 */
 export const ZOMBIE_ROW = 2
 
 /** 僵尸入场列索引 8 = 界面「第 9 列」（裁决 3）。 */
@@ -148,4 +148,71 @@ export function hasPassedHouse(col: number): boolean {
 export function hasReachedHouse(col: number): boolean {
   assertGridIndex(col, 'col')
   return col <= HOUSE_COL
+}
+
+// ── 塔位合法性（Story 1.10 / AC-12）───────────────────────────────────────────
+
+/**
+ * 这一格**位置上**能不能建塔？不可建时返回原因，可建时返回 `null`。
+ *
+ * ⚠️ **只管「位置」，不管「这一格现在有没有塔」「阳光够不够」** ——
+ *   后两条是 reducer 的运行时校验，依赖 `State`。本函数是**纯几何**的：
+ *   只看坐标，所以组件可以对任意一格调用它而不会碰到 `State`。
+ *
+ * ── 为什么放在 core/ 而不是组件里算（AC-12 逐字要求）──────────────────────
+ *   `reducer.ts` 的 `placeTowerIn` 已经拒绝了两列（`[CR]` 2026-10-14 补的）：
+ *     · `col === ZOMBIE_SPAWN_COL(8)` —— `inRange` 是**单边**的（只打自己左边的格），
+ *       建在那里的直射塔/减速塔**永远打不到任何东西**。孩子花 50 阳光买到一个
+ *       整局不动的塔，无报错、无红测试，症状只是「塔好像不打人」。
+ *     · `col === HOUSE_COL(0)` —— 僵尸走到这一格就已离场并丢心，塔在它脚下
+ *       **从未开过火**。白花阳光，不是取舍。
+ *   这两条硬编码在 reducer 里时，**组件无从知道「这一格能不能建」**：
+ *   `State.grid` 只说「这格有没有塔」，不说「这格能不能建」。
+ *   若组件自己写一份 `col !== 0 && col !== 8`，那么「UI 显示可建」与
+ *   「reducer 允许建」就是两份独立判断，改一处忘另一处时**界面上看不出任何异常**
+ *   —— 孩子点下去只会撞上一条报错。
+ *
+ * ── 为什么**不**改 reducer 去调它（本次的取舍，如实记录）─────────────────
+ *   最彻底的做法是让 `placeTowerIn` 也走这个函数，那样两份判断在结构上就不可能分叉。
+ *   本 story 没那么做，改为**保留 reducer 原样 + 加一条交叉断言**（见
+ *   `tests/core/buildable-cells.test.ts`）：逐格比对 `canBuildAt` 与
+ *   `placeTower` 的真实接受 / 拒绝。理由有二，都记在这里以便日后推翻：
+ *     ① reducer 那两条抛错消息是**给排查用的**（写了「射程单边」「踏上即离场」
+ *        这样的因果），走通用谓词会把它们压扁成一句笼统的「不能建」；
+ *     ② 「不要改任何战斗数值 / 战斗判定」是本 story 的硬边界（Dev Notes §6），
+ *        改 reducer 属于越过边界做重构，而交叉断言已经能挡住漂移。
+ *   ⇒ **漂移是被守住的，不是被消除的**。若日后 Story 1.12 真的要动 reducer，
+ *     应把两条抛错改成调用本函数并保留各自的消息，而不是各留一份判断。
+ */
+export function buildBlockedReason(row: number, col: number): string | null {
+  // ⚠️ 用 isInsideGrid 而不是 assertInsideGrid：本函数会被组件对**任意**坐标调用，
+  //   组件层不许 throw（架构 `:567-606`：边界断言放纯逻辑层，不放组件层）。
+  //   非整数与越界在这里统一回答「不可建」，而不是炸掉整个渲染。
+  if (!isInsideGrid(row, col)) {
+    return `格子 (${row}, ${col}) 不在 ${ROWS}×${COLS} 网格内`
+  }
+  if (col === HOUSE_COL) {
+    return (
+      `格子 (${row}, ${col}) 是房子格（界面第 ${HOUSE_COL + 1} 列）—— ` +
+      '僵尸走到这一格就已经离场并丢心，塔在它脚下从未开过火'
+    )
+  }
+  if (col === ZOMBIE_SPAWN_COL) {
+    return (
+      `格子 (${row}, ${col}) 是僵尸入场格（界面第 ${ZOMBIE_SPAWN_COL + 1} 列）—— ` +
+      '射程是单边的（只打自己左边的格子），建在这里的塔永远打不到任何东西'
+    )
+  }
+  return null
+}
+
+/**
+ * 这一格**位置上**能不能建塔 —— {@link buildBlockedReason} 的布尔版。
+ *
+ * 合法塔位因此是 `row ∈ [0, ROWS-1]` × `col ∈ [1, COLS-2]` = **35 格**，
+ * 不是 45 格。这是对 `[epics] AC:1013`「塔可种在任意空格」的**消歧，不是推翻**：
+ * 那句 AC 写下时 reducer 的这两条拦截还没进 `[CR]`。
+ */
+export function canBuildAt(row: number, col: number): boolean {
+  return buildBlockedReason(row, col) === null
 }

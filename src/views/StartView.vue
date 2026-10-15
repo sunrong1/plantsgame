@@ -5,30 +5,45 @@
  * AC-1 的验收对象：游戏名 + 页面最大、最易点的「开始游戏」按钮。
  *
  * 刻意不做的事（见 Story Dev Notes §10）：
- *   - 不引 vue-router —— 本 story 只有一个视图，view 切换属 Story 1.15
+ *   - 不引 vue-router —— 路由属 Story 1.15；1.10 走 store 的最小 `view` 态（裁决 1）
  *   - 不做任何选关 / 单元选择入口 —— FR59 / OUT-OF-SCOPE-5
  *   - 不含任何战斗规则计算 —— 架构硬约束 2（此文件零计算）
- *   - **不调 playPronunciation** —— 朗读的触发属 Story 1.10，由卡面出现时驱动
+ *   - **不调 playPronunciation** —— 朗读的触发属 Story 1.11，由卡面出现时驱动
  */
 
 // 视图只认识 app/：音频解锁的三步顺序是一条架构约束（FR2），
 // 写在 app/audio-unlock.ts 里肉眼可查，散在这里就退化成一句注释。
 // 直接 import '../services/pronunciation' 是跳过 app/ 的违规导入。
 import { unlockAudioSequence } from '../app/audio-unlock'
+import { enterLevel } from '../app/store'
 
 /**
- * 「开始游戏」：同步完成音频解锁（Web Audio + TTS 预热 + BGM 预解，三步之间无 await）。
+ * 「开始游戏」：同步完成音频解锁（Web Audio + TTS 预热 + BGM 预解，三步之间无 await），
+ * 然后**同步**切到战场视图。
  *
  * 不写 `async` + `await`：解锁必须在用户手势的同一个同步块里完成。
  * 解锁本身是「用户手势触发的、一次性、不可重放的资源初始化」，
  * 是「副作用只走 effects-runner」那条规则的唯一合法例外（它发生在第一局之前）。
  *
- * 刻意**不**引入 `starting` 状态、**不**禁用按钮：Story 1.15 之前 onStart 不切视图，
- * 按钮变灰之后没有任何东西会把它解开 —— 孩子点了按钮游戏却一动不动，看起来像坏了。
- * 防重复靠幂等（同一个 AudioContext / 只发一次预热 utterance），不靠禁用。
+ * ⚠️ **`unlockAudioSequence()` 必须在 `enterLevel()` 之前**（FR2）。
+ *   两者之间**不允许出现 `await`** —— 一旦让出事件循环，浏览器的
+ *   「用户手势已激活」上下文就可能失效，`AudioContext.resume()` 被拒，
+ *   而失败的表现是「第一局没声音」，界面上完全看不出原因。
+ *   ⚠️ **本文件没有 ESLint 兜底**：`no-restricted-syntax: AwaitExpression`
+ *   **有意不覆盖 `src/views/`** —— `eslint.config.js` 里那段注释逐字写着
+ *   「为什么不覆盖 src/views/StartView.vue：**有意为之**」，
+ *   「将来若要扩到 views/，那是 Story 1.13+ 的决定」。
+ *   ⇒ FR2 在本文件是**靠注释与审查**守着的，不是靠工具。Story 1.10
+ *   **不自行扩大那条规则的范围**（Dev Notes §12）。
+ *
+ * 刻意**不**引入 `starting` 状态、**不**禁用按钮：`enterLevel()` 是同步的，
+ * 切视图后本组件立刻被卸载，按钮随之消失 —— 不存在「按钮变灰之后
+ * 没有任何东西会把它解开」那个旧问题（那是因为 Story 1.15 之前 onStart 不切视图）。
+ * 防重复靠幂等（同一个 AudioContext / 只发一次预热 utterance）+ 组件卸载，不靠禁用。
  */
 function onStart(): void {
   unlockAudioSequence()
+  enterLevel()
 }
 </script>
 

@@ -15,7 +15,7 @@ import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
-import eslintConfig from '../../eslint.config.js'
+import { severityOf, patternStrings, optionsOf, rulesFor } from '../fixtures/eslint-rules'
 import vitestConfig from '../../vitest.config'
 
 const root = fileURLToPath(new URL('../../', import.meta.url))
@@ -29,21 +29,6 @@ const readJson = (relPath: string): unknown =>
       .filter((line) => !/^\s*\/\//.test(line))
       .join('\n'),
   )
-
-/** flat config 里单个 config 块的形状（只取这里用到的字段）。 */
-interface EslintBlock {
-  files?: string | string[]
-  rules?: Record<string, unknown>
-}
-
-/** 从 flat config 数组里找出命中 files 匹配的规则块（合并多块，同名后者覆盖前者）。 */
-const rulesFor = (fileGlob: string): Record<string, unknown> => {
-  const blocks = (eslintConfig as unknown as EslintBlock[]).filter(
-    (block) =>
-      !block.files || (Array.isArray(block.files) ? block.files : [block.files]).includes(fileGlob),
-  )
-  return Object.assign({}, ...blocks.map((block) => block.rules ?? {}))
-}
 
 describe('core/ 边界的工具链强制', () => {
   it('tsconfig.core.json 的 lib 不含 DOM，且 types 为空数组', () => {
@@ -91,14 +76,14 @@ describe('core/ 边界的工具链强制', () => {
     const rule = rulesFor('src/core/**/*.{ts,vue}')['no-restricted-imports']
 
     expect(rule, 'src/core 上没有 no-restricted-imports 规则').toBeDefined()
-    expect(Array.isArray(rule) ? rule[0] : rule).toBe('error')
+    expect(severityOf(rule)).toBe('error')
   })
 
   it('eslint 对 src/core 配了 no-restricted-globals，且严重级别是 error', () => {
     const rule = rulesFor('src/core/**/*.{ts,vue}')['no-restricted-globals']
 
     expect(rule, 'src/core 上没有 no-restricted-globals 规则').toBeDefined()
-    expect(Array.isArray(rule) ? rule[0] : rule).toBe('error')
+    expect(severityOf(rule)).toBe('error')
   })
 
   it('core/ 禁掉 DOM 全局：window / document / localStorage / speechSynthesis 都在名单里', () => {
@@ -116,18 +101,12 @@ describe('core/ 边界的工具链强制', () => {
 
   it('core/ 禁掉 vue 与向上依赖（app/ services/ components/）', () => {
     const rule = rulesFor('src/core/**/*.{ts,vue}')['no-restricted-imports']
-    interface Options {
-      paths?: { name?: string }[]
-      patterns?: (string | { group: string[] })[]
-    }
-    const options = (Array.isArray(rule) ? rule[1] : undefined) as Options | undefined
+    const options = optionsOf(rule)
 
     expect(options?.paths?.map((p) => p.name)).toContain('vue')
 
     // 项目没有 @/ 别名，patterns 必须覆盖相对导入的上跳形态，否则规则永不触发。
-    const patterns = (options?.patterns ?? []).flatMap((p: string | { group: string[] }) =>
-      typeof p === 'string' ? [p] : p.group,
-    )
+    const patterns = patternStrings(options)
     expect(patterns.some((p: string) => p.includes('../app/'))).toBe(true)
     expect(patterns.some((p: string) => p.includes('../services/'))).toBe(true)
     expect(patterns.some((p: string) => p.includes('../components/'))).toBe(true)

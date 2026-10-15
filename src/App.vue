@@ -1,15 +1,24 @@
 <script setup lang="ts">
 /**
- * 应用根组件 —— 直接渲染 <StartView />，不引路由。
- * view 切换属 Story 1.15（届时才建 src/app/router.ts）。
+ * 应用根组件 —— 按 `view` 条件渲染，**不引路由**。
  *
- * StartView 必须显式 import：script setup 不做全局组件解析，
- * 漏掉这行会渲染成一个没有内容的 <startview> 自定义元素 ——
- * 而且 vue-tsc 不报错，页面只是白着。
+ * ⚠️ **视图切换走 `app/store` 的最小 `view` 态**（Story 1.10 / 裁决 1），
+ *   **不提前建 `src/app/router.ts`** —— 那是 Story 1.15 的活。
+ *   1.10 必须让战场真的出现在屏幕上（`StartView.vue` 的注释逐字写着：
+ *   「孩子点了按钮游戏却一动不动，看起来像坏了」），所以这里做最小桥接；
+ *   1.15 建 router 时由它接管 store 的 `view` 即可，本文件不需要重构。
+ *
+ * ⚠️ 两个子组件都**必须显式 import**（Debug Log #4）：`script setup` 不做全局
+ *   组件解析，漏掉会渲染成没有内容的自定义元素，而 vue-tsc / build / test / lint
+ *   **全绿**，页面只是白着。`eslint.config.js` 的 `vue/no-undef-components` 守着它。
  */
+import { view } from './app/store'
+
+import LevelView from './views/LevelView.vue'
 import StartView from './views/StartView.vue'
 </script>
 
 <template>
-  <StartView />
+  <StartView v-if="view === 'start'" />
+  <LevelView v-else />
 </template>

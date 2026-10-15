@@ -451,8 +451,8 @@ AC-5 的兜底当场作废。**拿一个「可达的坏方案」换一条「错�
 |---|---|---|
 | 4.1 | **路径与命名**：`public/assets/towers/<towerType>.svg`（`direct` / `slow` / `aoe`）与 `public/assets/zombies/zombie.svg`；URL 为 `/assets/towers/<towerType>.svg`、`/assets/zombies/zombie.svg` | 🤖 |
 | 4.2 | **颜色来源**：SVG 里的色值必须是 `tokens.css` 的**字面副本**；**不许出现 token 之外的 hex** | 🤖 |
-| 4.3 | **加载方式**：`<img src>`，不 inline、不 base64 | 👁（由 Story 1.10 的实现承担） |
-| 4.4 | **错误降级**：SVG 加载失败记 `WARN` 并静默降级，**绝不阻断回合流转** | 👁（由 Story 1.10 的实现承担） |
+| 4.3 | **加载方式**：`<img src>`，不 inline、不 base64 | 🤖 `[DS]` Story 1.10：G16 守 BASE_URL 前缀 + 磁盘存在，`Tower.vue` / `Zombie.vue` 实测 `<img>` |
+| 4.4 | **错误降级**：SVG 加载失败记 `WARN` 并静默降级，**绝不阻断回合流转** | 🤖 `[DS]` Story 1.10：`tests/components/battle-field.test.ts` 触发 `error` 后断言换降级图且 `state` 未动 |
 | 4.5 | **形状差异的兑现位置** | 🤖 |
 | 4.6 | **同一塔型不同单词，图不变** | 🤖（由内容层 `towerType` 唯一决定） |
 

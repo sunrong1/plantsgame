@@ -37,6 +37,12 @@ lerna-debug.log*
 # TypeScript cache
 *.tsbuildinfo
 
+# vitest 的机器可读测试报告（`--reporter=json` 的落地目录）。
+# ⚠️ 2026-10-15 之前它没被忽略，于是一次跑测试就把 300KB+ 的 output.json
+#   连同「当时 3 条失败」的快照一起提交进了 main —— 每次跑测试它都会变，
+#   进历史只会制造无法审阅的 diff。要看测试结果看终端 / `npm run test`。
+.vitest/
+
 # Playwright
 test-results/
 playwright-report/

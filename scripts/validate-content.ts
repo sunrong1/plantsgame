@@ -89,14 +89,25 @@ export const ZOMBIE_ASSET_DIR = 'zombies'
  */
 export const ZOMBIE_ASSET_NAME = 'zombie.svg'
 
-/** 塔/僵尸的 URL 前缀。Story 1.10 拼 `<img src>` 时照此拼（迁移说明见 story §八）。 */
-export const TOWER_ASSET_URL_PREFIX = '/assets/towers'
-export const ZOMBIE_ASSET_URL = `/assets/${ZOMBIE_ASSET_DIR}/${ZOMBIE_ASSET_NAME}`
-
-/** 塔型的规范 URL。文件名 = `towerType` 字面量，**不带 `u1-` 单元前缀**（FR70：按塔型制作）。 */
-export function expectedTowerAssetUrl(towerType: string): string {
-  return `${TOWER_ASSET_URL_PREFIX}/${towerType}.svg`
-}
+/**
+ * ⚠️ **塔 / 僵尸的 URL 常量已迁走（Story 1.10 / AC-4 / 裁决 3）。**
+ *
+ * 原文这里是 `TOWER_ASSET_URL_PREFIX` / `ZOMBIE_ASSET_URL` / `expectedTowerAssetUrl()`
+ * 三个**导出**，注释写着「Story 1.10 拼 `<img src>` 时照此拼」，硬编码根路径
+ * `/assets/...` 而 `vite.config.ts:12` 的 base 是 `/plantsgame/` ⇒ 照抄即部署后全 404。
+ * 现已迁到 **`src/services/asset-url.ts`**（接 `import.meta.env.BASE_URL`），
+ * 那里是唯一出处；`Tower.vue` / `Zombie.vue` 从它取 URL。
+ *
+ * **[DS] 2026-10-15 的偏离（如实登记）**：AC-4 原文要求本文件「改为 import 它」，
+ * 实测**做不到** —— `tsx` 下 `import.meta.env` 是 `undefined`，读 `.BASE_URL` 直接抛
+ * `TypeError: Cannot read properties of undefined`，而本文件跑在 `pretest` / `prebuild`
+ * 的 `tsx` 里，import 即崩。经用户裁决改为：**删除死实现，不 import**。
+ * 依据是这三个导出**全仓零调用**（`grep` 确认），删掉不损失任何行为；
+ * base 的守卫由 `tests/assets/asset-url-guard.test.ts` 的 **G16** 承担
+ * （vitest 侧有 `vitest.config.ts` 的 `test.env.BASE_URL`，那里 import 得到）。
+ *
+ * ⇒ **本文件不 import `src/services/`，是实测结论而不是遗漏**，别「顺手修复」。
+ */
 
 /** 塔图应有的文件名集合。**由 `TOWER_TYPES` 推出**，不在此处硬编码三个字符串。 */
 export function expectedTowerAssetNames(): readonly string[] {
