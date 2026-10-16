@@ -44,9 +44,9 @@
 #   epics.md 的销项说明处理。
 
 generated: 2026-10-12
-last_updated: 2026-10-17  # 1-16 [DS] 完成 → review；下一任务按同一循环取下一个 ready-for-dev
+last_updated: 2026-10-17  # 1-17 [CS] 完成 → ready-for-dev；下一任务按同一循环取下一个
                         # 运行记录见各 story 文档的 Dev Agent Record
-                        # 1-16 的裁决与运行记录见 1-16-关卡流程-通关-失败与推进.md（R-42）
+                        # 1-17 的 13 条裁决见 1-17-调试工具与会话回放.md（R-42）
 project: plants-game
 project_key: NOKEY
 tracking_system: file-system
@@ -72,7 +72,7 @@ development_status:
   1-14-音效与-bgm-接入: review
   1-15-存档与断点续学: review
   1-16-关卡流程-通关-失败与推进: review
-  1-17-调试工具与会话回放: backlog
+  1-17-调试工具与会话回放: ready-for-dev
   1-18-目标平板落地-竖屏布局-离线与部署: backlog
   1-19-单元-1-首次试玩验证-epic-1-的生死线: backlog
   1-retrospective: optional
