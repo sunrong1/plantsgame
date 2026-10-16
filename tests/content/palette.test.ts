@@ -407,3 +407,78 @@ describe('AC-11 —— 描边色的两条判据（裁决 1 的兜底机制本身
     ).toBeGreaterThan(0.5)
   })
 })
+
+/**
+ * Story 1.13 新增的 `--color-hud-panel` —— 裁决 8 的推导在这条 describe 里**变成守卫**。
+ *
+ * ── 为什么推导必须落成测试 ────────────────────────────────────────────────
+ *   `tokens.css` 里那段推导是**注释**，而注释不会被任何人执行。
+ *   没有守卫的话，「把面板调亮一点让它更透气」是一次毫无阻挡的改动：
+ *   心红在调亮后的底上会直接跌破 3:1，而孩子看到的只是「HUD 变好看了」。
+ *
+ * ── 三条判据分别锁住推导的三个步骤 ────────────────────────────────────────
+ *   ① 面板必须**足够暗**：阳光黄要 3:1 ⇒ L ≤ 0.2008（实测 L = 0.0221）
+ *   ② 面板必须**不太暗**也不是草地色：否则 HUD 会从「暗底」退化成「另一种绿」，
+ *      而 `--color-sun` 的 `[CR]` 收窄注释正是按「深色底面」写的
+ *   ③ 前景三项在面板上全部达标（阳光 / 心 / 白字）
+ *
+ * ⚠️ 阈值写成 3.0（WCAG 1.4.11 非文本）/ 4.5（正文），不是当前实测值的逐位相等 ——
+ *   逐位相等会在「把面板调深一格」这种**无害**的改动上报红，久而久之逼着人松阈值，
+ *   而松掉的正是那条保护线（`tokens.css` 开头 `[CR] 2026-10-14` 记的就是这件事）。
+ */
+describe('Story 1.13 裁决 8 —— HUD 面板的三个前景在它上面都必须达标', () => {
+  it('面板存在且是不透明的 hex（半透明底板的对比度取决于背后是谁）', () => {
+    const panel = token('color-hud-panel')
+
+    expect(panel, 'HUD 面板必须是 6 位 hex —— rgba 的对比度会随背后的元素漂移').toMatch(
+      /^#[0-9a-f]{6}$/i,
+    )
+  })
+
+  it('面板足够暗：阳光黄在它上面 ≥ 3:1（推导步骤 ①）', () => {
+    const ratio = contrast(token('color-sun'), token('color-hud-panel'))
+
+    expect(ratio).toBeGreaterThanOrEqual(3)
+  })
+
+  it('心红在它上面 ≥ 3:1 —— 这条是整块面板深度的**决定性约束**（推导步骤 ②）', () => {
+    // ⚠️ 心红自身 L ≈ 0.198，要够 3:1 需面板 L ≤ 0.0328 ⇒ 面板必须是近黑。
+    //   这一条红了就说明面板被调亮了，而 `--color-heart` 是 AC-D3 点名的必用色。
+    const ratio = contrast(token('color-heart'), token('color-hud-panel'))
+
+    expect(
+      ratio,
+      `心红落在面板上只有 ${ratio.toFixed(2)}:1 —— AC-D3 要求 HUD 用 --color-heart，` +
+        '面板一旦调亮就跌破 WCAG 非文字 3:1。**不要为了「透气」把它调亮**。',
+    ).toBeGreaterThanOrEqual(3)
+  })
+
+  it('白字在它上面 ≥ 4.5:1（进度条标签走白字，走的是正文门槛）', () => {
+    const ratio = contrast('#ffffff', token('color-hud-panel'))
+
+    expect(ratio).toBeGreaterThanOrEqual(4.5)
+  })
+
+  it('面板与草地必须分得开（HUD 是压在草地上的，不是草地的延伸）', () => {
+    const ratio = contrast(token('color-hud-panel'), token('color-bg'))
+
+    expect(ratio, '面板与草地几乎同色 —— HUD 会与战场糊成一片').toBeGreaterThanOrEqual(3)
+  })
+
+  it('答对 / 答错色在面板上**不达标** —— 所以进度条不许用它们（裁决 8 的连带结论）', () => {
+    // ⚠️ 这是一条**反向**守卫：它记的是「这两个 token 在这块面板上不可用」。
+    //   将来若面板被调到足够亮，它们可能达标 —— 那时这条会红，
+    //   提示你「可以去改 ProgressBar 的配色了」，而不是默默放过一个仍在用的违规。
+    const correct = contrast(token('color-correct'), token('color-hud-panel'))
+    const wrong = contrast(token('color-wrong'), token('color-hud-panel'))
+
+    expect(correct).toBeLessThan(3)
+    expect(wrong).toBeLessThan(3)
+  })
+
+  it('🚨 探测棒自检：这三项在**别的**底色上确实会翻（否则上面几条可能恒真）', () => {
+    // 心红在卡面米色上 2.68:1、阳光黄在草地上 1.79:1 —— 都是真实存在的失败形态。
+    expect(contrast(token('color-heart'), token('color-path'))).toBeLessThan(3)
+    expect(contrast(token('color-sun'), token('color-bg'))).toBeLessThan(3)
+  })
+})

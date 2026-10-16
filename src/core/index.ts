@@ -139,3 +139,18 @@ export type { HandCard } from './build.js'
 //   规格要求它「随 core/ 提供」是因为本层同时满足零 DOM 与不引入副作用事实两条约束。
 //   下游一律从这里取，不要深路径 import `core/placeholder`。
 export { WORD_IMAGE_PLACEHOLDER_SVG } from './placeholder.js'
+
+// 📎 HUD 判据（Story 1.13 / AC-B1..AC-B7）。架构硬约束「组件只读 `state`，不得自行计算」
+//   的落点：关于「掉了几颗心 / 哪几位是心 / 跨局掌握到哪了」的问题**只能**问这里，
+//   组件里出现第二份判断即为架构漂移（守卫 G50a..G50d 会红）。
+//   ⚠️ 掉心动画与将来的掉心音效**必须**共用 `lostSlotIndexes`，
+//   否则画面与声音会各算各的，在一次掉 2 心时对不上。
+export {
+  advanceProgress,
+  heartSlots,
+  heartsLostBetween,
+  lostSlotIndexes,
+  progressDisplay,
+} from './hud.js'
+
+export type { Progress, ProgressDisplay } from './hud.js'

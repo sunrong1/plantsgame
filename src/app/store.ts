@@ -28,6 +28,7 @@ import { ref, type Ref } from 'vue'
 
 import { entriesOf } from '../content'
 import {
+  advanceProgress,
   cellKey,
   continueRound,
   createInitialState,
@@ -37,7 +38,7 @@ import {
   reduce,
   resolveRound,
 } from '../core'
-import type { Action, State } from '../core'
+import type { Action, Progress, State } from '../core'
 import { playPronunciation } from '../services/pronunciation'
 
 /**
@@ -86,6 +87,25 @@ function initialState(): State {
  * 而它让 Story 1.13 的 HUD、1.16 的关卡流程不必考虑「我这份 state 是深是浅」。
  */
 export const state: Ref<State> = ref(initialState())
+
+// ── 跨局进度（Story 1.13 / 裁决 3）────────────────────────────────────────
+//
+// ⚠️ **`progress` 与 `state` 是两个不同的生命周期**，这是它必须独立持有的原因：
+//   `restartLevel()` 重置的是 `State`（含 `masteredEntryIds`），
+//   而「孩子已经学会哪些词」不随重打消失 —— FR58「累计所得只增不减」。
+//   若把它塞进 `State`，`RESTART_LEVEL` 一执行进度就归零，孩子会发现
+//   「刚才答对的白答了」，而界面上没有任何东西指向原因。
+//
+// ⚠️ **`currentUnitIndex` 本 story 不推进** —— 单元推进 / 通关 / 失败判定
+//   属 Story 1.16（AC-H1 明令不许在本 story 动它）。它现在只是随 `Progress`
+//   原样带过，让 1.15 序列化时形状就已经是对的。
+//
+// ⚠️ **不入 `State`** —— 与 `view` / `selectedEntryId` 不同，`progress` 是
+//   **业务事实**而非 UI 态：它要被存档（1.15）。但它仍然不进 reducer，
+//   因为 reducer 的输入输出必须是一局之内的状态，而它是跨局的（架构决策 5）。
+
+/** 跨局进度。唯一的变更点是 {@link applyAction} 末尾那行 `advanceProgress`。 */
+export const progress: Ref<Progress> = ref({ currentUnitIndex: 1, masteredWordIds: [] })
 
 // ── 视图状态（Story 1.10 / 裁决 1）────────────────────────────────────────
 //
@@ -167,6 +187,13 @@ export function applyAction(action: Action): void {
   //   ⚠️ 这**不是**建塔成功那条路径的兜底：建塔后 `phase.kind` 仍是
   //   `'awaiting-build'`，这行不触发。成功那条见 `placeSelectedAt`（守卫 G42）。
   clearSelectionIfLeavingBuildPhase(next)
+  // ⚠️ **📎 Story 1.13 在这一步之后加了第二行**（AC-B3 / 裁决 3）：
+  //   把**新** state 的掌握记录并进跨局进度。
+  //   排在赋值**之后**是刻意的 —— 必须读 `next`，读 `prev` 就永远慢一拍。
+  //   ⚠️ `advanceProgress` 在**没有增量时返回入参本身**（AC-B3 第三条性质），
+  //     所以这一行在绝大多数 dispatch 上**不产生引用变更** ⇒ `ProgressBar`
+  //     不会每次 action 都重算。守卫 G54 正是靠这一点才有鉴别力。
+  progress.value = advanceProgress(progress.value, next)
 }
 
 // ── 建造交互的三个门面（Story 1.12 / AC-D5、AC-F2、AC-F3）─────────────────

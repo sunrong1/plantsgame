@@ -73,15 +73,39 @@ development_status:
   1-9-单元-1-词图-第二批: done
   # [CR] 2026-10-16 已完成：35 条发现 → 去重 28 → 17 patch 全落地 + 1 条用户裁决
   # （AC-11 跨层 import：改登记不改代码）。**故意留在 review，不转 done** ——
-  # AC-16 的「战场在浏览器里肉眼核对」与 §13.5 禁止用 headless 替代，
-  # 且 typecheck 在 main 上已红（34 条，非本 story 引入，已登记 deferred-work 第 5 条）。
+  # AC-16 的「战场在浏览器里肉眼核对」与 §13.5 禁止用 headless 替代。
+  # ⚠️ 此处原写「typecheck 在 main 上已红（34 条）」，已由 commit 83533c7 实测推翻：
+  #    那 34 条是陈旧 tsbuildinfo 产物，`--force` 重算后消失，main 源码是绿的。
   1-10-战场渲染与网格: review
   1-11-三种卡型与答题交互: done
   1-12-建造-阳光与射程可视化: done
   # [DS] 2026-10-16 开工：AC-A5 七条命令基线已实跑（见该 story 文档的 Debug Log）。
-  # ⚠️ typecheck 基线就是**红的**（34 条，`[CR]` Story 1.10 实测为 main 既有）——
-  # 本 story **如实记录这个红基线**，不当成自己引入的回归。
-  1-13-hud-阳光-心与进度: in-progress
+  # ✅ typecheck 基线是**绿的**（0 条）。此前这里写的「基线就是红的（34 条）」已被
+  #    commit 83533c7 实测推翻：那 34 条是 `node_modules/.tmp/*.tsbuildinfo` 里的
+  #    陈旧构建产物，`--force` 重算后即消失，main 源码本身无错。
+  #    教训：`git stash` 只能证「不是我的改动」，不能证「源码是红的」。
+  # [DS] 2026-10-16 追加裁决 8：HUD 需新增不透明 `--color-hud-panel: #1f2d11`
+  #    （AC-D3 允许「新增 token + 写推导」，推导与实测表见该 story 文档的裁决 8）。
+  #
+  # [DS] 2026-10-16 Story 1.13 交付 → review。落地：`src/core/hud.ts`（四个判据）
+  #    + `components/hud/{SunCounter,HeartRow,ProgressBar}.vue` + `app/store` 的
+  #    `progress` 内存态 + `LevelView` 的 `.hud` 容器 + `--color-hud-panel`。
+  #    测试：动手前实跑 31 文件 / 1235 条 ⇒ 现状 **33 文件 / 1304 条（+2 / +69）**。
+  #    ⚠️ 该 story 的 AC-A1 基线写的是「30 文件 / 1133 条」，与仓库对不上（已跟踪测试文件
+  #       本来就是 31 个），像是从上一条 story 抄来的 —— delta 一律以实跑值为准。
+  #    七条命令：test/typecheck/lint/validate:content/build/balance-sim 全 exit 0；
+  #    lint 剩 1 条既有 warning（OptionCard.vue 的 v-html）。
+  #    变异 M78–M103 **26 条全跑**：23 条有红（1–21 条），**M79 与 M84 首跑 0 红**
+  #    ⇒ 补了 G56 / G57 两条守卫，复跑各 1 红；M101 判为等价变异体（0 红是正确结果）；
+  #    M100 只让源码守卫红 —— 实测「连掉 2 心只动 1 颗」那句因果对 HeartRow 不成立，已如实更正。
+  #    AC-G1 十项真浏览器实测：HUD 768×43.19、三块各 43.19 高；scrollHeight 1280 = 视口
+  #    （**无纵向溢出**，含三颗心全掉光之后）；战场 45 格、首格 82.14×82.14 正方形、宽 768。
+  #    ⚠️ 两条如实降级：① `.battle-grid` 的 `scrollWidth 771`（实测与 HUD 无关，归 1.10）；
+  #    ② `/favicon.ico` 404（浏览器自动请求，仓库无此资产）⇒ AC-G1 的「零 404」不成立。
+  #    文档：deferred-work.md 追加 1.13 段 12 条；工具纪律留了 4 处痕（sed -n 读仓库文件 5 次、
+  #    sed -i 改 /tmp 脚本 1 次、grep -E 十几次、我曾打算写批量改仓库的脚本被分类器拦下）。
+  #    下一个该做的 story 是 1.14。
+  1-13-hud-阳光-心与进度: review
   1-14-音效与-bgm-接入: backlog
   1-15-存档与断点续学: backlog
   1-16-关卡流程-通关-失败与推进: backlog

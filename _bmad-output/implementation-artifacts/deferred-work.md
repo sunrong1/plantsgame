@@ -1025,6 +1025,9 @@ Story 1.12 之后的 `SunCounter` / `HeartRow` / `ProgressBar` 一类**尺寸类
 不受它管 —— 那类应该进 `palette.test.ts` 的实算集，或新建一条同形状的守卫，
 **而不是扩 G20 的选择器**（G20 的契约注释里已写明这条边界）。
 📎 恢复条件：Story 1.13 落 `hud/` 时同步决定。
+✅ **已由 Story 1.13 `[DS]` 决定（2026-10-16）**：HUD 三块**不进 G20** ——
+它们是内容撑开的（只有 `padding` / 字号 / 图标尺寸），钉死尺寸会与「不写死 HUD 高度」冲突；
+代替 G20 的护栏是 AC-G1 的真浏览器实测。详见下方 1.13 段第 11 条 ③。
 
 ### 4. `check-doc-consistency.sh` 被删时无人登记 —— 已在本 story 标注，根因未治
 
@@ -1078,6 +1081,165 @@ Story 1.12 之后的 `SunCounter` / `HeartRow` / `ProgressBar` 一类**尺寸类
 因为它让下一个人看到「已确认是既有问题」就不再查下去。
 📎 这条与第 4 条同源：**「一个门禁从绿变红」和「一条命令从有变无」都不会自己报警**，
 而**「我验证了 A 就当 B 也成立了」是这类误判最常见的入口**。
+
+## Deferred from: story-1-13-HUD-阳光-心与进度 `[DS]` (2026-10-16)
+
+### 1. `core/effects.ts` 与 `app/effects-runner.ts` 未建（裁决 1）—— 归 1.14
+
+- **本 story 刻意没建这两个文件，尽管仓库里 9 处文档写它属 1.13** ——
+  那是 story 重编号的残留（1.13 已被 HUD 占用，音效改号成 1.14）。
+  `app/store.ts` 的 `applyAction` 里留的是**显式空位注释**而不是空函数占位，
+  理由是「空函数会让『副作用已接上』看起来成立，而实际上一条音效都没播过」。
+  代价：掉心动画目前靠组件里的 `watch` + CSS class，与 action 链路无关。
+  —
+  `src/app/store.ts`, `docs/rules/process.md`, `epics.md`
+  **恢复条件**：Story 1.14 开工时，`runEffects(action, prev, next)` 必须排在
+  `state.value = next` **之前**，且掉心音效**必须调 `lostSlotIndexes`**（不许另算一遍）。
+
+### 2. 不引入 `sunEarned` 累计阳光字段（裁决 4）—— 归 1.16 或 1.17
+
+- FR66 / `gdd.md` 提到「累计所得只增不减」，本 story **只对掌握词条**实现了这一点
+  （`progress.masteredWordIds`），**没有**累计阳光字段。理由与 1.15 的存档形状有关：
+  现在加一个没人读、没人存的字段，等于造一个空占位（`store.ts` 自己批评过的那种）。
+  —
+  `_bmad-output/planning-artifacts/gdd.md`
+  **恢复条件**：若 1.15 存档格式要求「本存档累计获得多少阳光」，
+  或 1.17 的 DebugPanel 要显示它 ⇒ 走 `[CC]` 加字段，**不要**在 1.13 补。
+
+### 3. `progress` 是内存态，进度条在刷新页面后归零（裁决 3）—— 归 1.15
+
+- 形状逐字锁死为 `game-architecture.md` 决策 5 的 `SaveFile['progress']`：
+  `{ currentUnitIndex, masteredWordIds }` 两个键，**键名一个都不许改**。
+  现状是模块级 `ref`，不写 `localStorage` ⇒ **F5 之后进度回到 0/37**，
+  而 `state` 本身也是重开一局，所以「这一局」看不出差别；一旦 1.15 把 `state` 也存起来，
+  「进度保留、对局清空」这个组合才会显形。
+  —
+  `src/app/store.ts`, `src/core/hud.ts`
+  **恢复条件**：Story 1.15 加 `services/save.ts` 时，按 `schemaVersion` 序列化这两个键，
+  读取时**原样喂回** `progress` ref（不要在这里做版本迁移）。
+
+### 4. 新增 `src/core/hud.ts`（架构组件树未列）—— 归 1.16/1.18 的架构回写
+
+- 架构文档的组件树里没有 `core/hud.ts`，本 story 沿用 1.12 `core/build.ts` 的先例新建。
+  ⇒ **架构文档现在比代码少一个模块**。判据全部零 DOM / 零 Vue / 零随机 / 零时间，
+  与 `turn.ts` / `combat.ts` 同纪律，这条是它能被架构接受的前提。
+  —
+  `docs/rules/architecture.md`, `src/core/hud.ts`
+  **恢复条件**：下一次改架构文档（`[GA]`）时把 `core/hud.ts` 补进组件树/模块表。
+
+### 5. 本 story 不产出降级标志 —— 作废 `epics.md` 那两处「1.13」
+
+- `epics.md` 里说 1.13 要产出降级标志，实际 HUD 三个组件**没有任何外部依赖**
+  （心是 CSS 画的、阳光图标是 CSS 画的、进度条是纯 div）⇒ 没有可降级的东西。
+  那两处「1.13」同样是重编号残留。
+  —
+  `_bmad-output/planning-artifacts/epics.md`
+  **恢复条件**：无（作废声明）。若将来 HUD 引入词图或音频，降级方案随那个 story 一起出。
+
+### 6. 掉心动画不进 effects-runner（裁决 2）—— 归 1.14 的音效判据复用
+
+- 判据在 `core/hud.ts` 的 `lostSlotIndexes(prev, next)`，画面由 `HeartRow` 的
+  `watch(state, …, { flush: 'sync' })` 转成 class，CSS 负责动画。
+  ⇒ 1.14 的掉心音效**必须调同一个函数**（守卫 G55 / G55a 已经把两条恒等式钉住：
+  `lostSlotIndexes(...).length === heartsLostBetween(...)`，且逐位等于两帧 slots 的差集）。
+  —
+  `src/core/hud.ts`, `src/components/hud/HeartRow.vue`
+  **恢复条件**：1.14 写掉心音效时，先跑一遍 M103（把 `heartsLostBetween` 夹到 1）确认会红。
+
+### 7. `core/hud.ts` 持有 entryId 前缀形态的第二份知识（裁决 7 / 偏离 7）—— **无守卫**
+
+- `progressDisplay` 用 `id.startsWith('u' + unitNumber + '-')` 判「属于本单元」，
+  因为 `core/` 不得 import `content/`（`src/content/index.ts` 是静态 import JSON）。
+  ⚠️ **`eslint.config.js` 的 `src/core/**` 块只禁 `vue` / `app` / `services`，没有禁 `content`** ——
+  也就是说这条约定**当前没有任何工具强制**，将来 `content/` 与 `core/` 的 id 形态分叉时，
+  `core/` 这侧会**静默通过**。别去找一条不存在的守卫：它不存在。
+  —
+  `src/core/hud.ts`, `src/content/index.ts`, `eslint.config.js`
+  **恢复条件**：若单元 2 的 JSON 换了 id 前缀形态（例如去掉 `u{n}-`），
+  必须同步改 `progressDisplay` 并**新增**一条守卫（形如「真实 `entriesOf(n)` 的每个 id 都满足该前缀」），
+  否则进度条会恒显示 0 而不报错。
+
+### 8. `[DS]` 新增不透明 `--color-hud-panel: #1f2d11`（偏离 8）—— 归 1.18 真机校准
+
+- AC-D3 点名 `--color-sun` / `--color-heart`，却**没说 HUD 的底色是什么**，
+  而 `tokens.css` 把亮黄收窄成「只许落在深色底面」（草地绿上实测 1.79:1、卡面米色上 1.12:1）。
+  实测推导：阳光黄自身 L=0.7025，要够 3:1 需底 L ≤ 0.2008；心红 L=0.1984，要够 3:1 需底 L ≤ 0.0328
+  ⇒ 一个底色要同时满足两者只能压到近黑。取 α=0.75 罩在草地上 = `#1f2d11`（实测
+  阳光 10.43:1、心 3.44:1、白字 14.56:1、路径米 9.26:1）。
+  ⚠️ **不用 rgba 半透明**：0.75 罩在白卡上会变成 `#404040`，心只剩 2.45:1 ——
+  半透明面板的对比度取决于背后是什么，而 HUD 背后的东西会变。
+  同样因此，**`--color-correct`(2.84:1) 与 `--color-wrong`(2.21:1) 在这个底上都不到 3:1**，
+  所以进度条**不许**用它们（已写进 `ProgressBar.vue` 的注释）。
+  —
+  `src/styles/tokens.css`, `tests/content/palette.test.ts`
+  **恢复条件**：1.18 真机校准时复算三条（阳光 / 心 / 白字）；若要改 `--color-heart` 或
+  `--color-sun` 的值，**必须先跑 `palette.test.ts`**（那条 describe 就是为此建的）。
+
+### 9. `progress.masteredWordIds` 现在靠 `entryId === wordId` 成立 —— 分叉条件 = 走 `[CC]`
+
+- `[CS]` 实测 `unit-01.json` **37/37 条 `entryId === wordId`**（含 `u1-s-*` 的 6+1 条
+  response / keyword 卡），所以本 story 直接把 `entryId` 存进 `masteredWordIds`。
+  ⚠️ 但 `src/core/types.ts` 明确 `entryId` 与 `wordId` 是**不同概念**
+  （一个 response 卡的 entryId 与它朗读的词不是一回事），
+  而字段名被 `game-architecture.md` 锁死成 `masteredWordIds`。
+  ⇒ **这是今天成立、明天可能不成立的一条**。
+  —
+  `src/core/hud.ts`, `src/content/units/unit-01.json`, `src/core/types.ts`
+  **恢复条件**：单元 2 或任何一条内容出现 `entryId !== wordId` 的词条时，
+  **立即走 `[CC]`**：要么把字段改名成 `masteredEntryIds`（同时改架构文档），
+  要么引入 `entryId → wordId` 的映射表。**不许**继续把 `entryId` 塞进 `masteredWordIds`。
+
+### 10. `--dur-slow`（400ms）用于掉心动画的理由是一次性的，不是通用的 —— 归 1.18 复核
+
+- `--dur-feedback`（100ms）的注释明写「只许用于反馈类动画」，指的是「按下即回弹」；
+  掉心是「碎裂 + 退回」两拍叙事，100ms 播不完 ⇒ 取 `--dur-slow`。
+  ⚠️ 这是**本组件的判断**，不是「`--dur-slow` 就是给掉心用的」这条 token 约定。
+  真实时长是否让孩子看得清，只能在真机上定。
+  —
+  `src/components/hud/HeartRow.vue`, `src/styles/tokens.css`
+  **恢复条件**：1.18/1.19 真机录制里若「心碎了」看不见或拖沓，先调这里；
+  **只许改这一处**，改完复跑 AC-G1 第 9 项（computedStyle 里不许出现字面量毫秒）。
+
+### 11. AC-G1 实测留下的三件事：3px 横向溢出、favicon 404、G20 对 HUD 的适用范围
+
+- **① `.battle-grid` 的 `scrollWidth 771 > clientWidth 768`（3px）** ——
+  实测归属**不是** 1.13：同一个页面里把 `.hud` 设成 `display:none` 再量，仍是 771。
+  成因是 `repeat(9, 1fr)` 的列宽 82.14 × 9 = 739.27 加 8 个 4px 间距 = 771.27，
+  `1fr` 没把间距算进去。AC-G1 第 4 项的判据（战场宽 ≤ 768）实测 768 ⇒ 通过，
+  但这 3px 意味着**每一列的最右侧都可能被裁掉不足 1px**。
+  —
+  `src/components/battle/BattleField.vue`
+  **恢复条件**：1.18 真机落地时若发现右列贴边或有 1px 抖动，改列宽算法
+  （`minmax(0, 1fr)` 或把间距算进 `1fr`）——**不得**为此改 `.battle-grid` 的 `flex`
+  （1.10 实测过 `1 1 auto` 横向撑破到 1351px）。
+- **② `/favicon.ico` 404** —— AC-G1 的判据是「零 404」，实测**有 1 条**：
+  浏览器自动请求，仓库里没有这个资产，与本 story 无关。除此之外零 404、零 `pageerror`。
+  **恢复条件**：1.18 部署 PWA 时加一个 favicon（PWA 本来就要有图标），这条自动闭合。
+- **③ 1.10 段第 3 条「新增棋子类不受 G20 管辖」的恢复条件到期：答案是「HUD 不进 G20」** ——
+  `G20` 要求显式声明 `width` / `height`，而 HUD 三块是**内容撑开**的
+  （只有 `padding`、字号、图标尺寸），钉死尺寸反而会与「不写死 HUD 高度」冲突。
+  代替 G20 的护栏是 **AC-G1 的真浏览器实测**（第 1、3 项量高度与正方形、第 9 项量时长）。
+  ⇒ 这不是「没人管」，是**换了一种管法**；但它只在有人重跑实测时才存在。
+  —
+  `src/components/hud/SunCounter.vue`, `src/components/hud/HeartRow.vue`, `src/components/hud/ProgressBar.vue`
+  **恢复条件**：若将来 HUD 某一块引入了图片/词图（那时尺寸就由资源决定了），
+  回到本文件 1.10 段第 3 条，重新决定它归 G20 还是归 AC-G1 实测。
+
+### 12. 本 story 补的两条守卫只停在源码层 / store 集成层 —— 归 1.14/1.15 时可放宽
+
+- 变异实测逼出来的：**G56**（`heartSlots` 的循环上界必须引用 `HEARTS`）与
+  **G57**（`RESTART_LEVEL` 不得清空 `progress`）。两条都是**结构上没有更好的选择**：
+  M79（写死 3）在 `HEARTS === 3` 时与正确实现**完全等价**，任何行为断言都区分不了；
+  M84 改的是 `app/store.ts`，而 `reducer` 根本不碰 `progress`。
+  ⇒ 它们是「源码/集成层守卫」，不是「行为层守卫」，**不要**把它们当成行为已被证明。
+  另：**G53（`flush: 'sync'`）也只停在源码层** —— 实测 `'pre'` 与 `'sync'` 在本组件上
+  DOM 输出完全相同（`lostSlotIndexes` 按净差算），story 原文那句「连掉 2 心只动一颗」
+  对 `HeartRow` **不成立**。
+  —
+  `tests/components/hud.test.ts`, `src/core/hud.ts`, `src/components/hud/HeartRow.vue`
+  **恢复条件**：1.14 接上掉心音效后，音效的**起播时刻**与画面对齐才成为可观测事实 ——
+  那时可以用「同一 tick 内音效与 class 同时触发」把 G53 升级成行为守卫；
+  在那之前，**不许**把 G53 的源码守卫当成「已用行为证明过」。
 
 
 

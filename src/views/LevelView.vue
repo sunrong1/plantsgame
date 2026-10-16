@@ -1,16 +1,16 @@
 <script setup lang="ts">
 /**
- * LevelView —— 战场视图（Story 1.10 / AC-11）。
+ * LevelView —— 战场视图（Story 1.10 / AC-11；Story 1.13 / AC-C4 接入 HUD）。
  *
  * ── 职责边界 ──────────────────────────────────────────────────────────────
  * 只承载 `<BattleField />` 并负责**战场区域的布局**。它不含任何战斗逻辑，
  * 也不持有任何战场状态。
  *
  * ── 刻意不做的事 ──────────────────────────────────────────────────────────
- * · **不做 HUD**（阳光 / 心 / 进度）—— 属 Story 1.13。
- *   ⚠️ 本文件因此**刻意不写死战场区的高度**：布局是「flex 列 + 战场区 flex: 1」，
- *     1.13 的 HUD 落地时直接在这个 flex 列里加一块即可，不必回头重排战场
- *     （Dev Notes §10 对 1.13 的预留）。
+ * · **不做 HUD 的判据**（阳光怎么算 / 掉了几颗心 / 进度怎么来）——
+ *   全部在 `core/hud.ts`（Story 1.13 / AC-B1..AC-B7）。本视图只负责摆放三块组件，
+ *   **不持有任何 HUD 状态**，也从不算任何一个 HUD 数字。
+ * · **不写死 HUD 的高度**（AC-C4 / AC-C5）—— 见下方模板注释。
  * · **不做关卡流程**（开局 / 通关 / 失败 / 推进）—— 属 1.16。
  *   本视图**无条件**渲染战场：1.10 的题单交互尚未落地，`state.phase` 的六种
  *   变体里只有开局那一种有画面。若这里按 phase 分支，就会渲染出一片空白，
@@ -32,6 +32,8 @@
 //   漏掉这行会渲染成一个没有内容的 `<battlefield>` 自定义元素 ——
 //   而且 vue-tsc / build / test / lint **全绿**，页面只是白着。
 //   `eslint.config.js` 的 `vue/no-undef-components: 'error'` 为此设了守卫。
+import { computed } from 'vue'
+
 import BattleField from '../components/battle/BattleField.vue'
 // ⚠️ **必须显式 import**（同上面那条，`vue/no-undef-components: 'error'` 为此设了守卫）：
 //   漏掉这行会渲染成一个没有内容的自定义元素，而 vue-tsc / build / test / lint
@@ -40,16 +42,52 @@ import QuestionCard from '../components/quiz/QuestionCard.vue'
 // ⚠️ **必须显式 import**（同上面那条，`vue/no-undef-components: 'error'` 为此设了守卫）：
 //   手牌区在 Story 1.12 落地后是 `<QuestionCard />` 的**下一个兄弟**（AC-C1）。
 import HandDeck from '../components/hand/HandDeck.vue'
+// ⚠️ **必须显式 import**（同上面那条，`vue/no-undef-components: 'error'` 为此设了守卫）：
+//   HUD 三块组件（Story 1.13 / AC-C4）。漏掉任何一行都会渲染成没有内容的自定义元素，
+//   而 vue-tsc / build / test / lint **全绿**，页面只是少一块。
+import HeartRow from '../components/hud/HeartRow.vue'
+import ProgressBar from '../components/hud/ProgressBar.vue'
+import SunCounter from '../components/hud/SunCounter.vue'
+import { entriesOf } from '../content'
+import { state } from '../app/store'
+
+/**
+ * 本单元的词条总数 —— **进度条的分母**（AC-C3）。
+ *
+ * ⚠️ **分母必须由调用方传给 `<ProgressBar>`，组件里不许写死 37 / 60**：
+ *   `core/hud.ts` 的 `progressDisplay` 按裁决 7 的口径，`core/` 不得 import
+ *   `content/` ⇒ 分母只能是参数。而这一层是**唯一**同时看得见「单元号」与
+ *   「该单元词表」的地方（`entriesOf` 正是 `src/content/index.ts` 提供的查表门面）。
+ *
+ * ⚠️ 用 `computed` 而不是模板里直接调：模板每次重渲染都会重新求值，
+ *   而 `entriesOf` 会走一次查表。它是纯的，但没必要每次都算。
+ */
+const unitTotal = computed(() => entriesOf(state.value.unitNumber).length)
 </script>
 
 <template>
   <main class="level-view">
     <!--
-      📎 **给 Story 1.13 的 HUD 预留的位置**：这个 flex 列的第一个子元素之后
-         直接放 HUD 即可，战场区是 `flex: 1` 会自动让出高度。
-         现在刻意不放占位元素 —— 放一个空的灰色块会在 1.13 落地时变成要删的死代码，
-         而它在 1.10 的浏览器核对里也只会让人以为「这里本来该有东西」。
+      HUD（Story 1.13 / AC-C4）：**排在这个 flex 列的最上面**，三块横排。
+
+      ⚠️ **更正 1.10 留在这儿的注释**（AC-C5）：那段注释写的是
+        「战场区是 `flex: 1` 会自动让出高度」，而**实际 CSS 从来都是**
+        `flex: 0 0 auto`（见下方样式块）—— 那条注释是在给一个**不存在**的
+        弹性行为指路。真实机制是另一条：`.level-view` 是 `min-height: 100dvh`
+        而**不是** `height`，子项又全是 `flex: 0 0 auto`
+        ⇒ HUD 加进来是把战场**整体下推**，高度从页面底部的余量里扣。
+        ⇒ **HUD 太高时页面会滚动、战场可能被推出视口** ——
+        这是 AC-G1 必须在真浏览器里量的项，不是可以推断的项。
     -->
+    <div
+      class="hud"
+      data-testid="hud"
+    >
+      <SunCounter />
+      <HeartRow />
+      <!-- 分母来自内容层查表，不在组件里写死（见 script 里的注释）。 -->
+      <ProgressBar :unit-total="unitTotal" />
+    </div>
     <BattleField />
     <!--
       📎 **给 Story 1.12 的手牌区预留的位置**：卡面区在战场之下，
@@ -130,5 +168,35 @@ import HandDeck from '../components/hand/HandDeck.vue'
   flex: 0 0 auto;
   width: 100%;
   max-width: 100%;
+}
+
+/*
+ * HUD 容器（Story 1.13 / AC-C4）。
+ *
+ * ⚠️ **`flex: 0 0 auto` + 内容自然撑开，**一个 px 高度都不写**
+ *   —— 这是 1.10:629 与 1.11:905 两条结转项的原话。钉高度的后果：
+ *   1.16 的关卡条落地时必然回头重排战场，而重排战场布局意味着 45 格重新测一遍
+ *   （1.10 那个「横向撑破到 1351px」的坑就是这么来的）。
+ *
+ * ⚠️ **三块之间用 `flex: 1` 分摊余量，而不是固定宽度**：
+ *   阳光与进度是「会变长」的（余额可能涨到 4 位数，进度文本也可能折行），
+ *   给死宽度就会在某个数值下把文字挤掉。
+ *
+ * ⚠️ **`flex-wrap: wrap` 是有意的**：800×1280 的竖屏实测里，
+ *   三块若真的排不下，宁可折行也不许横向撑破 —— 横向撑破会把战场推出屏幕，
+ *   那正是 AC-G1 第 4 项要量的东西。折行后页面会变高 ⇒ 纵向溢出同样由 AC-G1 第 2 项量。
+ */
+.hud {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 8px;
+  flex: 0 0 auto;
+  margin-bottom: 8px;
+}
+
+.hud > * {
+  flex: 1 1 0;
+  min-width: 0;
 }
 </style>
