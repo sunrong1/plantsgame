@@ -1040,27 +1040,44 @@ Story 1.12 之后的 `SunCounter` / `HeartRow` / `ProgressBar` 一类**尺寸类
   **它只查 BMAD 产物与内容数据，不查「文档里写的命令还在不在」** ——
   也就是说这个缺口**当前没有任何工具能自动发现**。
 
-### 5. 🚨 `npm run typecheck` 在 `main` 上是**红的（34 条）**，且从绿变红时无人登记
+### 5. `npm run typecheck` 出现过一次**未能复现的 34 条假红** —— 判定与教训
 
-`vue-tsc -b` 当前 exit 非 0，34 条错误分布在 8 个文件：
-`src/app/store.ts`、`src/components/battle/BattleField.vue`、
-`src/components/hand/HandCard.vue`、`src/components/hand/HandDeck.vue`、
-`src/components/quiz/OptionCard.vue`、`tests/components/hand-build.test.ts`、
-`tests/core/build.test.ts`、`tests/core/placeholder.test.ts`。
+> ⚠️ **2026-10-16 更正**：本条原先写「`typecheck` 在 `main` 上是红的（34 条）」。
+> **那个判定已被 Story 1.13 `[DS]` 开工时的实测推翻。** 保留本条是因为
+> **「为什么会误判」比「误判了什么」更值得留下**。
 
-- **已确认不是本轮引入**：`git stash push -- src tests` 暂存 Story 1.10 `[CR]`
-  的全部代码改动后复跑，**仍是同样的 34 条**。
-- **形态**：Story 1.10 的 AC-16 要求收尾时逐条贴真实输出，而 `[DS]` 收尾记录里
-  typecheck 是**绿的** ⇒ **它是事后被别人改红的**，而没有任何 story 登记过这次转红。
-- **为什么没人发现**：AC-14 自己写着「**`npm run typecheck` 纳入每加一个组件就跑**」，
-  可 1.11 / 1.12 收尾时没人跑，或跑了但没把红的贴出来。
-- 📎 **恢复条件**：当作一个独立的小 story 处理（34 条跨 3 个 story 的类型错误，
-  **一个 story 不该吞另一个 story 的活**）。修完把 `baseline_tests` 一起更新。
-- ⚠️ **与第 4 条同源**：一个门禁**从绿变红**和一个命令**从有变无**，都不会自己报警。
-  根因是**没有任何东西把「收尾门槛的实测结果」与「上一次收尾门槛的实测结果」做差**。
-  候选机制：`check-execution-drift.py` 的 C 项（`baseline_tests` 对比）已经在做同类事，
-  可以扩成「四道门槛全跑一遍并与上次逐条对差」——
-  📎 但那是 BMAD 流程改造，**已登记不动**（见 §BMAD 模板侧的流程改造 §4）。
+**实测推翻的链条（全部可复跑）：**
+
+| # | 动作 | 结果 |
+|---|---|---|
+| 1 | Story 1.10 `[CR]` 收尾跑 `npm run typecheck` | **34 errors**，exit 1 |
+| 2 | 跑过一次 `npm run build`（= `vue-tsc -b --force && vite build`） | — |
+| 3 | 再跑 `npm run typecheck` | **0 errors**，exit 0 |
+| 4 | 删全部 `node_modules/.tmp/*.tsbuildinfo` 后增量跑 | **0**，exit 0 |
+| 5 | `npx vue-tsc -b --force` | **0**，exit 0 |
+| 6 | `git stash` 回 `beae1e6`（1.10 动手前的树）+ 删 tsbuildinfo + 增量跑 | **0**，exit 0 |
+
+第 1 条那 34 条里有
+「`WORD_IMAGE_PLACEHOLDER_SVG` 在 `node_modules/.tmp/core-types/src/core/index` 上不存在」，
+而**该导出在 `src/core/index.ts` 里真实存在**（逐字可查），
+报错路径指向的是 `node_modules/.tmp/` 下的**生成声明**而不是源码。
+
+- **判定**：`main` 的源码是**绿的**。那次红来自陈旧构建产物。
+- **⚠️ 但机制未能复现，如实记**：手工把 `.tmp` 里的 `.d.ts` 改旧后跑增量，
+  TypeScript **直接忽略**该文件并 exit 0，**不会**把它误报成 34 条。
+  即「陈旧 `.d.ts` → 误报」这条因果链**我验证不了**，只能说「发生过，`--force` 之后不再发生」。
+- 📎 **恢复条件**：若 typecheck 再出现**整批**、且**错误内容与源码对不上**的报错
+  （典型信号：报错指向 `node_modules/.tmp/...`），**先跑 `npx vue-tsc -b --force` 再下结论**。
+  ⚠️ 别把「`--force` 之后绿了」写成「源码没问题」—— 它只说明**增量产物**不是原因。
+
+**教训（本条真正的价值）：** 我当时用 `git stash push -- src tests` 复跑，
+确认「仍是同样 34 条」，就写下了「红在 `main` 上是既有的」——
+**那条验证只证明了「我的改动不是原因」，没有证明「源码是红的」。**
+两者之间隔着「构建产物」这一层，而我没查那一层。
+⇒ **归因到一个自己没验过的原因上，比不归因更坏** ——
+因为它让下一个人看到「已确认是既有问题」就不再查下去。
+📎 这条与第 4 条同源：**「一个门禁从绿变红」和「一条命令从有变无」都不会自己报警**，
+而**「我验证了 A 就当 B 也成立了」是这类误判最常见的入口**。
 
 
 

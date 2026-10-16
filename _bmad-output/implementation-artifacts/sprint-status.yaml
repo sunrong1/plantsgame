@@ -78,7 +78,10 @@ development_status:
   1-10-战场渲染与网格: review
   1-11-三种卡型与答题交互: done
   1-12-建造-阳光与射程可视化: done
-  1-13-hud-阳光-心与进度: ready-for-dev
+  # [DS] 2026-10-16 开工：AC-A5 七条命令基线已实跑（见该 story 文档的 Debug Log）。
+  # ⚠️ typecheck 基线就是**红的**（34 条，`[CR]` Story 1.10 实测为 main 既有）——
+  # 本 story **如实记录这个红基线**，不当成自己引入的回归。
+  1-13-hud-阳光-心与进度: in-progress
   1-14-音效与-bgm-接入: backlog
   1-15-存档与断点续学: backlog
   1-16-关卡流程-通关-失败与推进: backlog
