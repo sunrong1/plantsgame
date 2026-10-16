@@ -104,8 +104,20 @@ export const state: Ref<State> = ref(initialState())
 //   **业务事实**而非 UI 态：它要被存档（1.15）。但它仍然不进 reducer，
 //   因为 reducer 的输入输出必须是一局之内的状态，而它是跨局的（架构决策 5）。
 
-/** 跨局进度。唯一的变更点是 {@link applyAction} 末尾那行 `advanceProgress`。 */
-export const progress: Ref<Progress> = ref({ currentUnitIndex: 1, masteredWordIds: [] })
+/**
+ * 跨局进度。唯一的变更点是 {@link applyAction} 末尾那行 `advanceProgress`。
+ *
+ * ⚠️ `currentUnitIndex` 初值是 **0**，与裁决 3 逐字一致（「本 story 初值 0」）。
+ *   `[DS]` 交付时曾取 `1`，理由写作「AC-B5『1 起』」—— **AC-B5 全文没有「1 起」**
+ *   （它只讲键名逐字锁死与 `readonly` 宽窄）。那是 R-37 的凭记忆改判据。
+ *   `[CR]` 2026-10-16 已裁决**改回 0**，并同时删掉 `core/hud.ts` 里自加的「1 起」注释。
+ *   ⇒ 0 基还有一条独立佐证：裁决 3 逐字写「**不用** `progress.currentUnitIndex + 1`」，
+ *     那句话预设的正是 0 基。
+ *   ⚠️ 改这个数前先看 `docs/rules/range-and-balance.md`（R-20..R-24）——
+ *     它会被 1.15 **逐字序列化进存档**，基错了只能走迁移。
+ *   （显示路径不依赖它：`ProgressBar` 用 `state.value.unitNumber`，故此改动对 HUD 可见输出零影响。）
+ */
+export const progress: Ref<Progress> = ref({ currentUnitIndex: 0, masteredWordIds: [] })
 
 // ── 视图状态（Story 1.10 / 裁决 1）────────────────────────────────────────
 //

@@ -1241,6 +1241,37 @@ Story 1.12 之后的 `SunCounter` / `HeartRow` / `ProgressBar` 一类**尺寸类
   那时可以用「同一 tick 内音效与 class 同时触发」把 G53 升级成行为守卫；
   在那之前，**不许**把 G53 的源码守卫当成「已用行为证明过」。
 
+---
+
+## Deferred from: code review of story-1-13-HUD-阳光-心与进度 `[CR]` (2026-10-16)
+
+本轮 CR 只评审了 `83533c7..82cdaa4` 的 **src/ 8 文件**。以下 2 条 defer。
+另有 2 条 dismissed 未登记（见下），以及 13 条 patch 挂在 story 的 `### Review Findings`。
+
+- **`unitTotal` 的 computed 在渲染期可 throw（1.15 读档后的第一条失败链）** — `src/views/LevelView.vue:65`
+  `entriesOf(state.unitNumber)` → `src/content/index.ts:85` 的 `getUnit` 取不到单元就 **throw**（不是返回 `undefined`，这是内容层的刻意设计）。
+  今天 `state.unitNumber` 恒为 `FIRST_UNIT_NUMBER = 1`（`store.ts:49`），不会触发。
+  但 1.15 一旦按 `SaveFile.currentGame` 原样还原 `State`，`unitNumber` 就来自存档 —— 若内容回滚或存档来自别的内容版本，
+  这个 `computed` 会在**渲染期**抛错，Vue 让整个 `LevelView` 渲染失败（白屏），正撞 `game-architecture.md`「孩子面前永不出现技术错误」。
+  **更稳的形状**：让 `unitTotal` 对「取不到单元」退化成 `0` —— `progressDisplay` 已经为 `unitTotal === 0` 定义了 `ratio = 0`（`core/hud.ts:170-171`）——
+  把报错留给真正的开局路径 `store.ts:65` 的 `initialState()`，那里已有 try/catch 和人话提示。
+  ⚠️ 与 `deferred-work.md` 里已登记的「`progress` 要喂给存档」是同一批风险。
+
+- **`progress` 只是模块内存态，刷新即丢，进度条肉眼可见回退** — `src/app/store.ts:108`
+  本项目部署为 PWA。孩子学会 12 个词后进度条显示 `12/37`，随后任何一次刷新 / PWA 重启 / 页面重载 ⇒ 模块重新求值 ⇒
+  `progress` 回到 `{currentUnitIndex: 1, masteredWordIds: []}` ⇒ 进度条**倒退到 `0/37`**。
+  `ProgressBar.vue` 文件头写着「若出现回退，那不是动画该掩盖的事，是判据出了问题」——
+  即「只增不减」（FR58）在跨页面生命周期的尺度上今天并不成立，且没有任何持久化/重置入口来解释这次回退。
+  **这不是本 story 的缺陷**：in-memory 态是裁决 3 的既定设计，1.15 才加序列化。登记在此，1.15 落地时应一并解决回退观感。
+
+### 本轮 dismissed 的 2 条（不修，留档以免下游重复排查）
+
+- **`heartsLostBetween` 与 `lostSlotIndexes` 的「恒等式」在 `hearts` 越界时不成立**（盲审提出，构造输入 `prev.hearts=1, next.hearts=-1` ⇒ 前者返回 2、后者长度 1）。
+  **驳回**：`core/reducer.ts:306` 的 `Math.max(0, hearts - heartsLost)` 把心夹到 0，且 `reducer.ts:538` 的 `assertInvariants` 硬性要求 `hearts ∈ [0, HEARTS]` 整数 ⇒ 越界输入在合法状态空间内**不可达**。守卫 G55/G55a 成立。
+- **`progressDisplay` 的 `startsWith('u' + unitNumber + '-')` 是 entryId 形态的第二份知识，id 形态一变就静默归零**。
+  **驳回为重复**：实测 `unit-01.json` 全部 37 条 id 形如 `u1-*`，且 `u11-x` 不会误配 `u1-`（第 2 字符是 `1` 不是 `-`）⇒ 今天正确。
+  该判据**无守卫**这件事，已由本 story `[DS]` 段的第 7 条如实登记，此处不重复计。
+
 
 
 

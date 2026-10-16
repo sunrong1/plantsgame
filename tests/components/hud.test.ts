@@ -56,12 +56,26 @@ import levelViewSource from '../../src/views/LevelView.vue?raw'
 import progressBarSource from '../../src/components/hud/ProgressBar.vue?raw'
 import sunCounterSource from '../../src/components/hud/SunCounter.vue?raw'
 import typesSource from '../../src/core/types.ts?raw'
+import storeSource from '../../src/app/store.ts?raw'
+import balanceSource from '../../src/core/balance.ts?raw'
+import combatSource from '../../src/core/combat.ts?raw'
+import turnSource from '../../src/core/turn.ts?raw'
 import { stripComments as sharedStripComments } from '../helpers/contrast'
 
 enableAutoUnmount(afterEach)
 
 /** 剥注释后再做源码匹配（R-52）。照 `hand-build.test.ts:82` 的先例共用同一份实现。 */
 const stripComments = sharedStripComments
+
+/**
+ * `progress` 的**模块加载瞬间**初值快照。
+ *
+ * ⚠️ 必须在这里定格：各测试的 `reset()` 会把 `progress.value` 整个换掉，
+ *   而本文件是模块作用域求值一次 ⇒ 测试跑到哪都读得到「刚 import 进来」的那个值。
+ *   这正是 `[CR]` 那条基准守卫能读**运行时真实初值**（而不是自造对象）的原因 ——
+ *   读自造对象的话，断言就会跟着实现走，变成恒真。
+ */
+const FRESH_PROGRESS = Object.freeze({ currentUnitIndex: progress.value.currentUnitIndex })
 
 // ── 测试用的 state 组装（照 `hand-build.test.ts:126`）────────────────────────
 
@@ -104,7 +118,7 @@ function makeState(options: HudStateOptions = {}): State {
 /** 每个 `beforeEach` 都回到一份干净的 state + 空进度。 */
 function reset(options: HudStateOptions = {}): void {
   state.value = makeState(options)
-  progress.value = { currentUnitIndex: 1, masteredWordIds: [] }
+  progress.value = { currentUnitIndex: 0, masteredWordIds: [] }
 }
 
 /** 三个组件的源码（供源码型守卫使用）。 */
@@ -252,7 +266,104 @@ describe('AC-C2 / G44c —— HeartRow 的 DOM 逐位等于 heartSlots(state)', 
     expect(animatingSlots.sort()).toEqual([String(HEARTS - 2), String(HEARTS - 1)])
   })
 
-  it('G53：watch 必须是 flush: \'sync\'（删掉它一次掉 2 心只动 1 颗）', () => {
+  // ⚠️ 守卫名原先写「删掉它一次掉 2 心只动 1 颗」—— `[CR]` 2026-10-16 已更正：
+  //   story 自己的 Debug Log #6 实测推翻了这个因果句（「对 HeartRow 不成立」）：
+  //   `lostSlotIndexes` 按**净差**逐位比对 `heartSlots`（定长），一次掉 2 心本来就该动 2 位。
+  //   删掉 `flush:'sync'` 的真实后果是**掉心 class 晚一帧上屏**（以及 1.14 音效不同帧起播），
+  //   不是「只动一颗」。守卫名照抄旧句会让下一个人按错误的因果去理解它守的是什么。
+  //
+  // ══ 以下 5 条是 `[CR]` 2026-10-16 为本轮 5 处**行为**改动补的守卫 ══
+  // 每一条都对应一个具体 bug，改动前先读它要防的那个失败场景，别照名字猜。
+
+  it('[CR] 心数回升（重开）必须清掉未播完的碎裂记录', async () => {
+    // 🚨 失败场景：0 心时掉光播 400ms 动画，期内 `restart()` 把心带回 HEARTS。
+    //   判据 `lostSlotIndexes` 是**对的**（before 全 false、after 全 true ⇒ 返回空），
+    //   但组件若不清 `animating`，重开后的第一眼就是**一排满心在碎**
+    //   （`is-alive` 与 `is-lost` 同时为真，碎裂动画照播）。
+    //
+    // ⚠️⚠️ `[CR]` 变异验证 N3 首跑 **0 红 —— 是这条守卫自己空转**，已修：
+    //   首版直接 `reset({ hearts: 0 })` 然后 mount。**那样从未真正触发过掉心**，
+    //   `animating` 本来就是空的，于是「重开后不该有动画位」恒真。
+    //   ⇒ 必须**先让动画真的播起来**，再重开。下面的前置断言就是防这个回退的。
+    reset({ hearts: 1 })
+    const wrapper = mount(HeartRow)
+    state.value = makeState({ hearts: 0 })
+    await nextTick()
+
+    // 前置：碎裂**确实在播**。这一条若为 0，后面那条断言就恒真。
+    expect(wrapper.findAll('.is-lost').length, '前置失败：动画没起来，后面那条会恒真').toBeGreaterThan(0)
+
+    // 现在重开（`restart()` 走 `createInitialState`，心数回到 HEARTS）
+    state.value = makeState({ hearts: HEARTS })
+    await nextTick()
+
+    expect(
+      wrapper.findAll('.is-lost'),
+      '心数回升后还在播碎裂动画 —— 重开时孩子会看到一排满心在碎',
+    ).toHaveLength(0)
+  })
+
+  /*
+   * ⚠️ 这里**没有**「同一 slot 重复入列」的守卫，而且是**有据可依地没有**：
+   *   `animating` 那行确实带了 `new Set` 去重（2026-10-16 加的保险），
+   *   但在「心数回升清空」这条修复到位后，**该路径不可达**：
+   *     槽位 i 活 ⟺ `i < hearts`，所以 i 由活变死**只可能发生在心数跨过 i 的那一刻**；
+   *     此后心数只会更低 ⇒ 不经 `RESTART_LEVEL` 它永远死一次；
+   *     而经 `RESTART_LEVEL` 的那条路已被上面那条守卫清空了。
+   *   ⇒ 变异验证 N4（把 `new Set` 去掉）实测 **0 红** —— 这是**等价变异体**，
+   *     0 红是**正确结果**，不是假绿（与 M101 同型）。
+   *   ⇒ 保留 `new Set` 是**纯防御**：万一将来 `RESTART_LEVEL` 的清空被删掉，
+   *     这行还能兜住那份重复。给它硬造一条守卫反而会逼人写出模拟不出来的时序。
+   */
+
+  it('[CR] 正在碎的那一位必须仍是**实心**（孩子要看见「心碎了」）', async () => {
+    // 🚨 失败场景：`is-spent` 若不看 `is-lost`，掉心同帧就给那位上
+    //   `background-color: transparent`，`heart-break` 从**空心红圈**起播 ——
+    //   只看到红圈在抖，看不到碎。碎完 `animationend` 才该落回空心。
+    reset({ hearts: HEARTS })
+    const wrapper = mount(HeartRow)
+    state.value = makeState({ hearts: HEARTS - 1 })
+    await nextTick()
+
+    const lost = wrapper.findAll('.is-lost')
+    expect(lost).toHaveLength(1)
+    expect(
+      lost[0]?.classes(),
+      '正在碎的那位被标成了 is-spent —— 碎裂动画会从空心红圈起播，孩子看不到「碎」',
+    ).not.toContain('is-spent')
+  })
+
+  it('[CR] 心行必须有一条可访问文本，且数字取自 heartSlots（不许在组件里另算）', async () => {
+    // 🚨 失败场景：SunCounter 有可见文本、ProgressBar 有「第 N 单元 · x/y」，
+    //   只有 HeartRow 一个字都没有，且唯一的形状被 aria-hidden ⇒ 读屏听到
+    //   「阳光 50，**空白**，第 1 单元 3/37」，心数那一段彻底不存在。
+    reset({ hearts: 2 })
+    const wrapper = mount(HeartRow)
+    const label = wrapper.attributes('aria-label')
+
+    expect(label, 'HeartRow 没有 aria-label —— 读屏完全拿不到心数').toContain('2')
+
+    // 数字必须来自 `heartSlots` 的 true 数。HEARTS 变了它也得跟着变。
+    reset({ hearts: HEARTS })
+    expect(mount(HeartRow).attributes('aria-label')).toContain(String(HEARTS))
+  })
+
+  it('[CR] 碎裂动画的关键帧不许出现 opacity（0.6 会合成 1.95:1 的心红）', () => {
+    // ⚠️ 裁决 8 早就定了「耗尽的心不另造 token、**不用 opacity**，用**描边**」，
+    //   而 `[DS]` 在 `@keyframes heart-break` 的 35% 关键帧又用回了 `opacity: 0.6`
+    //   —— 把 3px inset 描边合成 `#963427`，实测 1.95:1，正是 tokens.css 逐字
+    //   写「远在红线以下」的同一个色。判据只校验了终态（3.44:1），没校验中间态。
+    const code = stripComments(heartRowSource)
+    const keyframes = /@keyframes\s+heart-break\s*\{[\s\S]*?\n\}/.exec(code)?.[0] ?? ''
+
+    expect(keyframes, '没找到 @keyframes heart-break —— 变异或重构时这条会静默空转').not.toBe('')
+    expect(
+      keyframes,
+      'heart-break 的关键帧里出现了 opacity —— 动画中间态会跌破 3:1（实测 0.6 ⇒ 1.95:1）',
+    ).not.toMatch(/opacity\s*:/)
+  })
+
+  it('G53：watch 必须是 flush: \'sync\'（删掉它掉心 class 会晚一帧上屏）', () => {
     const code = stripComments(heartRowSource)
 
     expect(code, "HeartRow 的 watch 没写 flush: 'sync' —— 同 tick 内的多次赋值会被合并成一次").toMatch(
@@ -291,7 +402,7 @@ function heartSlotsOf(s: State): readonly boolean[] {
 describe('AC-C3 / G50 —— ProgressBar 的文本逐项等于 progressDisplay 的实算值', () => {
   it('G50：文本逐项等于「第 N 单元 · x/y」', async () => {
     reset({ mastered: ['u1-hello', 'u1-goodbye'] })
-    progress.value = { currentUnitIndex: 1, masteredWordIds: ['u1-hello', 'u1-goodbye'] }
+    progress.value = { currentUnitIndex: 0, masteredWordIds: ['u1-hello', 'u1-goodbye'] }
     const wrapper = mount(ProgressBar, { props: { unitTotal: REAL_DECK.length } })
 
     const shown = progressDisplay(progress.value, state.value.unitNumber, REAL_DECK.length)
@@ -301,12 +412,12 @@ describe('AC-C3 / G50 —— ProgressBar 的文本逐项等于 progressDisplay �
   })
 
   it('🚨 AC-F5③：mastered=0 与 mastered>0 两个 fixture 的文本与宽度都不同', async () => {
-    progress.value = { currentUnitIndex: 1, masteredWordIds: [] }
+    progress.value = { currentUnitIndex: 0, masteredWordIds: [] }
     const empty = mount(ProgressBar, { props: { unitTotal: REAL_DECK.length } })
     const emptyText = empty.get('[data-testid="progress-label"]').text()
     const emptyWidth = empty.get('[data-testid="progress-fill"]').attributes('style')
 
-    progress.value = { currentUnitIndex: 1, masteredWordIds: ['u1-hello', 'u1-goodbye'] }
+    progress.value = { currentUnitIndex: 0, masteredWordIds: ['u1-hello', 'u1-goodbye'] }
     await nextTick()
     const some = mount(ProgressBar, { props: { unitTotal: REAL_DECK.length } })
     const someText = some.get('[data-testid="progress-label"]').text()
@@ -327,7 +438,7 @@ describe('AC-C3 / G50 —— ProgressBar 的文本逐项等于 progressDisplay �
   })
 
   it('分母由 props 传入：改 prop 文本跟着改（不在组件里写死 37）', async () => {
-    progress.value = { currentUnitIndex: 1, masteredWordIds: ['u1-hello'] }
+    progress.value = { currentUnitIndex: 0, masteredWordIds: ['u1-hello'] }
     const wrapper = mount(ProgressBar, { props: { unitTotal: 5 } })
 
     expect(wrapper.get('[data-testid="progress-label"]').text()).toBe('第 1 单元 · 1/5')
@@ -361,7 +472,7 @@ describe('AC-B3 / G54 —— progress 只在真的有增量时才变', () => {
 
   it('G54：同一个词答两次，第二次 progress 不变（幂等）', async () => {
     reset({ sun: 200 })
-    progress.value = { currentUnitIndex: 1, masteredWordIds: ['u1-hello'] }
+    progress.value = { currentUnitIndex: 0, masteredWordIds: ['u1-hello'] }
     const seen = await countProgressChanges(() => applyAction(answer(CORRECT_OPTION!)))
 
     // fixture 的 ENTRY 已在 mastered 里 ⇒ 这一次没有增量
@@ -399,6 +510,39 @@ describe('G50a —— HUD 组件源码不含任何战斗数值判据标识符（
     'resolveCombatRound',
   ] as const
 
+  /*
+   * ⚠️ 黑名单里的 19 项**不是同一类东西**，分两类断言才说得通：
+   *
+   *   ①「活判据」14 项 —— 在 `src/core/` 里**真实存在**，组件碰了就一定是绕过判据。
+   *   ②「幽灵项」5 项 —— 在 `src/core/` 里**本来就不存在**。它们之所以要进黑名单，
+   *      正是裁决 4「不引入第二阳光来源」：一旦某个组件自己造一个 `sunEarned`，
+   *      它就凭空造出了 core 里没有的第二个真相。这类项必须断言**持续不存在** ——
+   *      若哪天它们真的被加进 core，那不是「守卫变宽了」，是有人引入了第二阳光来源。
+   *
+   * ⚠️⚠️ `[CR]` 2026-10-16 —— **`累计` 起初被误归为「活判据」，被本组自检当场抓住**：
+   *   它在 `src/core/` 里**只出现在注释中**（`hud.ts:48` 的「跨局累计掌握的词条 id」
+   *   与 `hud.ts:127` 的「FR58『累计所得只增不减』」），代码里根本没有同名判据。
+   *   若不剥注释就 grep，「注释里提了一句」会被当成「判据存在」⇒ **又一条假绿**。
+   *   ⇒ 这也是下面 `CORE_SRC` 必须走 `stripComments` 的直接原因。
+   */
+  const PHANTOM_IDENTIFIERS = [
+    'SUN_START',
+    'sunEarned',
+    'totalEarned',
+    'sunTotal',
+    '累计',
+  ] as const
+
+  /**
+   * `src/core/` 的**可执行**源码拼盘 —— 必须先剥注释（R-52）。
+   *
+   * ⚠️ 不剥的话，「活判据存在性」会被注释里的同名字符串满足（`累计` 就是活例子），
+   *   这条守卫就会退化成它自己反对的那种假绿。
+   */
+  const CORE_SRC = stripComments(
+    [typesSource, balanceSource, combatSource, turnSource, hudSource].join('\n'),
+  )
+
   it('真实组件源码通过 G50a（不豁免任何一条）', () => {
     const defects: string[] = []
     for (const { name, source } of HUD_SOURCES) {
@@ -410,14 +554,53 @@ describe('G50a —— HUD 组件源码不含任何战斗数值判据标识符（
     expect(defects).toEqual([])
   })
 
-  it('🚨 判据自检：黑名单项在**别处**真的存在（否则这份名单是空转的）', () => {
-    // 这些标识符在 `core/balance.ts` 里真实存在 —— 若哪天它们被改名，
-    // 本守卫会静默退化成「什么都不检查」，所以必须有一条反证。
-    const code = stripComments(HEARTS.toString())
-    expect(typeof code).toBe('string')
+  it('🚨 判据自检：15 项「活判据」在 `src/core/` 里真的存在（否则这份名单是空转的）', () => {
+    /*
+     * ⚠️⚠️ `[CR]` 2026-10-16 —— 这一条原先**构造上恒真，是一条假绿**：
+     *   原实现只有四条断言，没有一条真的去 `core/` 验这些标识符存在：
+     *     const code = stripComments(HEARTS.toString())        // HEARTS 是数字 3 ⇒ 恒等于 "3"
+     *     expect(typeof code).toBe('string')                   // 恒真
+     *     expect(FORBIDDEN_VALUE_IDENTIFIERS.length).toBe(19) // 硬编码字面量自证
+     *     expect(...).toContain('costOf')                     // 只查数组含这个字符串
+     *   而它自己的注释却写着「若哪天它们被改名，本守卫会静默退化成『什么都不检查』」
+     *   —— **恰恰在被它点名的那个失效模式下，它依然全绿。**（R-51）
+     *
+     * ✅ 正解：真的去 `src/core/` 里把这些标识符**找出来**。每一项必须在某个 core
+     *   源文件中真实存在 —— 否则它要么拼错了，要么对应的判据已被删/改名。
+     */
+    const live = FORBIDDEN_VALUE_IDENTIFIERS.filter((id) => !PHANTOM_IDENTIFIERS.includes(id as never))
+    const missing = live.filter((id) => !CORE_SRC.includes(id))
+
+    expect(
+      missing,
+      `这 ${missing.length} 项活判据在 src/core/ 里一个都不存在 —— ` +
+        '它们要么拼错了，要么对应的判据已被删或改名。这份黑名单正在变成空转的假绿。',
+    ).toEqual([])
+
+    // 名单项数是被 [CS] 锁死的全集（AC-E1 共 19 项）；改动须先走 AC-A2。
     expect(FORBIDDEN_VALUE_IDENTIFIERS.length).toBe(19)
-    expect(FORBIDDEN_VALUE_IDENTIFIERS).toContain('costOf')
-    expect(FORBIDDEN_VALUE_IDENTIFIERS).toContain('resolveCombatRound')
+    expect(live.length + PHANTOM_IDENTIFIERS.length).toBe(19)
+  })
+
+  it('🚨 反向断言：4 项「幽灵项」在 `src/core/` 里必须**持续不存在**（裁决 4）', () => {
+    // 这几项进黑名单的理由与上面相反：它们**没有**对应判据，组件碰了就是凭空造真相。
+    // ⇒ 若哪天它们出现在 core 里，那不是「守卫变宽了」，是有人引入了第二阳光来源。
+    const leaked = PHANTOM_IDENTIFIERS.filter((id) => CORE_SRC.includes(id))
+
+    expect(
+      leaked,
+      `${leaked.join(' / ')} 出现在了 src/core/ —— 裁决 4 明令「不引入 sunEarned` +
+        '（第二阳光来源）」。core 里一旦有了它，「只增不减」就有了两个互不同步的来源。',
+    ).toEqual([])
+  })
+
+  it('🚨 反向探测棒：把真代码塞进组件源，本守卫必须能抓住', () => {
+    // ⚠️ 上两条证明「名单是活的」，这一条证明「名单真的会咬人」。三条缺一不可：
+    //   只有前两条，黑名单可能是一份没人验证的垃圾；只有这一条，名单可能全是错的却照样红。
+    const code = stripComments("import { HEARTS } from '../../core'\nconst x = HEARTS\n")
+    const hit = FORBIDDEN_VALUE_IDENTIFIERS.filter((id) => code.includes(id))
+
+    expect(hit).toEqual(['HEARTS'])
   })
 })
 
@@ -482,6 +665,40 @@ describe('G51 —— Progress 的键名集合恒为 {currentUnitIndex, masteredW
     expect(code, 'types.ts 出现了第二份 Progress —— 两个声明点会分叉').not.toMatch(/interface\s+Progress\b/)
     expect(code, 'types.ts 出现了第二份 Progress 类型别名').not.toMatch(/type\s+Progress\s*=/)
   })
+
+  /*
+   * ⚠️⚠️ `[CR]` 2026-10-16 新增 —— G51 只断言**键名集合**，不查**值**，这正是本轮
+   *   那个 P1 假绿的成因：`[DS]` 把 `currentUnitIndex` 初值写成 `1`（裁决 3 逐字是 `0`），
+   *   **全套守卫零红** —— 因为没有任何一条断言读它的值。
+   *   它会被 1.15 **逐字序列化进存档** ⇒ 基错了只能走迁移，而 `schemaVersion` 一旦发版。
+   *   ⇒ 这里把基准钉死，且**两条都断言**（0 基 ⇒ 不得出现 1 基的写法）。
+   */
+  it('[CR] store 的 `progress` 初值必须是 0 基（裁决 3 逐字「本 story 初值 0」）', () => {
+    // ⚠️ 必须读**模块真实的初值**，不能读测试自己造的对象 —— 否则又是一条自证的恒真断言。
+    expect(
+      FRESH_PROGRESS.currentUnitIndex,
+      'src/app/store.ts 的 progress 初值不是 0 —— 裁决 3 逐字写的是 0。' +
+        '这个字段会被 1.15 逐字序列化进存档，改前先看 docs/rules/range-and-balance.md',
+    ).toBe(0)
+  })
+
+  it('[CR] 反向探测棒：把初值改成 1 基，本守卫必须红', () => {
+    // ⚠️ 没有这一条，上面那条可能恒真（例如有人把断言写成跟着实现走）。
+    const mutated = { currentUnitIndex: FRESH_PROGRESS.currentUnitIndex + 1, masteredWordIds: [] }
+
+    expect(mutated.currentUnitIndex).not.toBe(0)
+  })
+
+  it('[CR] 源码守卫：store.ts 的 progress 初始化字面量就是 `{ currentUnitIndex: 0, ... }`', () => {
+    // 运行时那条靠 import 触发；这条直接看字面量，两者都坏时能指出是哪一层坏。
+    const code = stripComments(storeSource)
+
+    expect(code).toMatch(/currentUnitIndex:\s*0\b/)
+    expect(
+      code,
+      'store.ts 里的 currentUnitIndex 初值不是 0 —— [DS] 曾取 1 并引用了 AC-B5 里不存在的「1 起」',
+    ).not.toMatch(/currentUnitIndex:\s*1\b/)
+  })
 })
 
 describe('G52 —— 三个组件都被 LevelView 显式 import（漏 import = 白屏且全绿）', () => {
@@ -511,6 +728,24 @@ describe('G52 —— 三个组件都被 LevelView 显式 import（漏 import = �
       .replace(/<ProgressBar\b[^>]*\/>/g, '')
 
     expect(mutated, '这次变异没生效 —— 下面三条会因空匹配而全绿').not.toMatch(/<(SunCounter|HeartRow|ProgressBar)\b/)
+  })
+})
+
+describe('[CR] .hud 不得声明一条永远不可能生效的 flex-wrap（2026-10-16 死代码守卫）', () => {
+  it('.hud > * 是 `flex: 1 1 0` + `min-width: 0` ⇒ flex-wrap 不可能触发', () => {
+    const code = stripComments(levelViewSource)
+
+    // ⚠️ 为什么这条值得立：`.hud > *` 的假设主尺寸恒为 0 ⇒ 任何视口 ≥ 16px 都排成一行。
+    //   `[DS]` 交付时 `.hud` 带着 `flex-wrap: wrap`，而上方注释却写「`flex-wrap` 是有意的，
+    //   宁可折行也不许横向撑破」—— 注释在吹嘘一条**永不触发**的机制。
+    //   删掉那行死代码后，若有人照着旧注释再加回来，这个谎就复活了且没人会响。
+    expect(code).toMatch(/\.hud\s*>\s*\*\s*\{[^}]*flex:\s*1\s+1\s+0[^}]*\}/)
+
+    expect(
+      /flex-wrap\s*:\s*wrap/.test(/\.hud\s*\{[^}]*\}/.exec(code)?.[0] ?? ''),
+      '.hud 又声明了 flex-wrap: wrap —— 它下面的 flex-basis: 0 让它永远不可能触发。' +
+        '真要三块折行，先把 basis 换成 auto 并给一个 px 的 min-width 下限。',
+    ).toBe(false)
   })
 })
 

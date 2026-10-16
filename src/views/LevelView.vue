@@ -182,13 +182,21 @@ const unitTotal = computed(() => entriesOf(state.value.unitNumber).length)
  *   阳光与进度是「会变长」的（余额可能涨到 4 位数，进度文本也可能折行），
  *   给死宽度就会在某个数值下把文字挤掉。
  *
- * ⚠️ **`flex-wrap: wrap` 是有意的**：800×1280 的竖屏实测里，
- *   三块若真的排不下，宁可折行也不许横向撑破 —— 横向撑破会把战场推出屏幕，
- *   那正是 AC-G1 第 4 项要量的东西。折行后页面会变高 ⇒ 纵向溢出同样由 AC-G1 第 2 项量。
+ * ⚠️ **「不许横向撑破」靠的是 `min-width: 0` + 文字折行，不是 `flex-wrap`**
+ *   （`[CR]` 2026-10-16 更正）：此处原先写着「**`flex-wrap: wrap` 是有意的**：
+ *   三块若真的排不下，宁可折行也不许横向撑破」——**而下面 `.hud > *` 的
+ *   `flex: 1 1 0` 让那行 `flex-wrap` 永远不可能生效**。
+ *   flex 换行按**假设主尺寸**判定 = `flex-basis` 被 `min-width` 夹取；
+ *   此处 `flex-basis: 0` + `min-width: 0` ⇒ 三个子项的假设主尺寸**恒为 0**，
+ *   加上 16px gap，任何视口 ≥ 16px 都排成一行 ⇒ `flex-wrap` 是一句死代码。
+ *   ⇒ 已**删除该行**，注释改为描述真正在兜底的机制。
+ *   ⇒ 真实风险是**纵向**的：窄屏时标签折 2~3 行 ⇒ `.hud` 变高 ⇒ 战场被下推。
+ *     这由 AC-G1 第 2 项（`scrollHeight` vs 视口）量，1.13 实测 1280 = 1280 通过。
+ *   （若日后真要三块折行，须把 `flex-basis` 换成 `auto` 并给一个 px 的
+ *     `min-width` 下限让 wrap 能触发 —— 但那会引入本文件一贯拒绝的写死宽度。）
  */
 .hud {
   display: flex;
-  flex-wrap: wrap;
   align-items: stretch;
   gap: 8px;
   flex: 0 0 auto;
@@ -196,6 +204,7 @@ const unitTotal = computed(() => entriesOf(state.value.unitNumber).length)
 }
 
 .hud > * {
+  /* `flex-basis: 0` + `min-width: 0` = 允许缩到内容以下 ⇒ 文字折行而非横向撑破。 */
   flex: 1 1 0;
   min-width: 0;
 }

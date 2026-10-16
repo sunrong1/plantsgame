@@ -482,3 +482,69 @@ describe('Story 1.13 裁决 8 —— HUD 面板的三个前景在它上面都必
     expect(contrast(token('color-sun'), token('color-bg'))).toBeLessThan(3)
   })
 })
+
+/*
+ * ── [CR] 2026-10-16 ——「进度填充 vs 轨道」这一组，Story 1.13 交付时是**无人守**的 ──
+ *
+ * ⚠️ **它守的是什么违规**：上面那组只验「面板 vs 三个前景」，而进度条的填充与轨道
+ *   是**另一对相邻底色**。`[DS]` 交付时轨道误用了 `--color-path`（米色 `#d7ccc8`），
+ *   填充是 `--color-sun`（`#fdd835`），两者直接相邻，实测 **1.13:1** ——
+ *   而 `tokens.css` 早就逐字写死了「`--color-sun` 的适用面被 [CR] 2026-10-16 收窄：
+ *   它只许落在**深色底面**……实测亮黄落在卡面米色 `#d7ccc8` 上只有 **1.13:1**」。
+ *   **收窄注释把违规的色值都算出来了，却没人把它和进度条连起来。**
+ *   根因是裁决 8 的连带裁决亲手规定了「填充用 `--color-sun`」，而它默认轨道也是暗底。
+ *   ⇒ 没有守卫 = 这个修复会被下一次「换个更搭的颜色」静默改回去。
+ *
+ * ⚠️ **为什么必须配一条源码守卫**：光断言两个 token 的比值，挡不住
+ *   「有人把 ProgressBar 的 `background-color` 直接写成别的值」。
+ *   下面第 ④ 条查的正是**轨道那一行源码**。
+ */
+describe('[CR] 2026-10-16 —— 进度条：填充与轨道必须分得开（1.13 交付时无人守）', () => {
+  const progressBarSrc = readFileSync(
+    fileURLToPath(new URL('../../src/components/hud/ProgressBar.vue', import.meta.url)),
+    'utf8',
+  )
+
+  it('① 轨道用的 `--color-neutral-dark` 存在且是不透明的 6 位 hex', () => {
+    // 半透明轨道的对比度取决于背后是谁 —— 与面板同一条理由。
+    expect(token('color-neutral-dark')).toMatch(/^#[0-9a-f]{6}$/i)
+  })
+
+  it('② 🚨 阳光黄填充在轨道上 ≥ 3:1（WCAG 1.4.11 非文本图形硬门槛）', () => {
+    const ratio = contrast(token('color-sun'), token('color-neutral-dark'))
+
+    expect(
+      ratio,
+      `进度填充与轨道只有 ${ratio.toFixed(2)}:1 —— 低视力孩子看不出填充走到哪。` +
+        '`tokens.css` 的 `[CR]` 收窄注释已经点名 `#d7ccc8`（--color-path）只有 1.13:1。',
+    ).toBeGreaterThanOrEqual(3)
+  })
+
+  it('③ 🚨 探测棒自检：阳光黄压在**当初那个错色**（米色轨道）上确实不达标', () => {
+    // 没有这一条，上面②可能恒真 —— 例如 token 被改成一个两边都碰巧过线的值。
+    expect(
+      contrast(token('color-sun'), token('color-path')),
+      '这条若红了，说明 `--color-sun` 或 `--color-path` 改了 —— 收窄注释里的 1.13:1 需重跑',
+    ).toBeLessThan(3)
+  })
+
+  it('④ 🚨 源码守卫：ProgressBar 的轨道不许用 `--color-path`（米色）', () => {
+    // 挡住「token 比值达标、但组件根本没用那个 token」这种绕法。
+    const track = /--color-path/.test(
+      /\.progress-bar__track\s*\{[^}]*\}/.exec(progressBarSrc)?.[0] ?? '',
+    )
+
+    expect(
+      track,
+      '`.progress-bar__track` 里出现了 `--color-path` —— 那是米色轨道，' +
+        '与 `--color-sun` 填充实测 1.13:1，违反 tokens.css 的 [CR] 收窄约束',
+    ).toBe(false)
+  })
+
+  it('⑤ 源码守卫：轨道必须真的引用 `--color-neutral-dark`', () => {
+    // ④ 只挡「不许用错的那个」，这条挡「谁都不用、随手写个 hex」。
+    const trackBlock = /\.progress-bar__track\s*\{[^}]*\}/.exec(progressBarSrc)?.[0] ?? ''
+
+    expect(trackBlock).toContain('--color-neutral-dark')
+  })
+})

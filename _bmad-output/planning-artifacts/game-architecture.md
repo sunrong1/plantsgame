@@ -347,6 +347,14 @@ function onStartGameClick() {
 }
 ```
 
+> ⚠️ **上面那两个 `progress` 键名的唯一实现方是 `src/core/hud.ts` 的 `Progress` 接口。**
+> 该文件逐字锁死了键名（AC-B5 要求「在本文件与本节**互相点名**」），并由
+> `tests/components/hud.test.ts` 的 **G51** 断言键名集合 —— 改键名会先让那条红。
+> ⚠️ **`currentUnitIndex` 是 0 基**（Story 1.13 裁决 3 逐字「本 story 初值 0」；
+> `[CR]` 2026-10-16 实测发现 `[DS]` 曾取 `1`，已裁决改回）。本节原文只写
+> `number`、从未定义基准 —— **这是本节的一处真空，以裁决 3 与 `core/hud.ts` 为准。**
+> 改动前先看 `docs/rules/range-and-balance.md`（R-20..R-24）。
+
 **⚠️ 进度与对局是两套生命周期不同的数据，不可合并。**
 
 GDD 明确：一局结束**战场状态清空，不跨局保留**；而「第 3 单元 · 21/60」跨局累积且**只增不减**。

@@ -38,7 +38,8 @@ const props = defineProps<{
  * 展示口径。四项全部由 core 的判据给出，组件**一个数字都不自己算**。
  *
  * ⚠️ `progressDisplay` 返回的是 `ratio ∈ [0,1]` 的**数**；
- *   模板里要的是百分比字符串，故这里乘 100 并 `toFixed(0)` ——
+ *   模板里要的是百分比字符串，故这里乘 100 并 `Math.round` ——
+ *   （曾在此写 `toFixed(0)`，与代码不符；`[CR]` 2026-10-16 已更正为实际的 `Math.round`。）
  *   这是**单位换算**，不是判据（判据是 `ratio` 本身）。
  *   ⚠️ `total === 0` 时 `ratio` 是 0 而不是 `NaN`（AC-B4）：
  *   `NaN%` 会被 CSS **整条丢弃**，进度条退化成浏览器默认宽度 —— 不报错、不留痕。
@@ -100,14 +101,26 @@ const percent = computed(() => `${Math.round(shown.value.ratio * 100)}%`)
   color: var(--color-on-tower);
 }
 
-/* 轨道与填充：填充用 `--color-sun`（暗底上 10.43:1）。
-   ⚠️ **不用** `--color-correct`(2.84:1) / `--color-wrong`(2.21:1) ——
-   那两个在暗底上都不到 3:1（裁决 8 的实测表）。 */
+/*
+ * 轨道与填充：**填充用 `--color-sun`，轨道用 `--color-neutral-dark`**。
+ *
+ * ⚠️ `[CR]` 2026-10-16 —— 轨道**原来写的是 `--color-path`（米色 `#d7ccc8`）**，
+ *   与相邻的 `--color-sun` 填充实测只有 **1.13:1**，直接违反 `tokens.css` 里
+ *   「`--color-sun` 的适用面被 [CR] 2026-10-16 收窄：它只许落在**深色底面**」
+ *   的约束，也违反 WCAG 1.4.11 非文本图形 3:1。根因是裁决 8 的连带裁决
+ *   亲手规定了「填充用 `--color-sun`」，而它默认了轨道也是暗底 —— 轨道不是。
+ *   药方取自 `tokens.css` 收窄注释自己开的方：「浅底面上的对应需求改用深中性
+ *   `#424242`」。⇒ 改轨道，**不动填充**（填充在暗轨上实测 **7.20:1** —— `[CR]` 真浏览器实算）。
+ *   守卫见 `tests/content/palette.test.ts` 的「填充 vs 轨道」组。
+ *
+ * ⚠️ 仍**不用** `--color-correct` / `--color-wrong` 当填充色：
+ *   那两个连在暗底上都不到 3:1（裁决 8 的实测表）。
+ */
 .progress-bar__track {
   width: 100%;
   height: 8px;
   border-radius: 4px;
-  background-color: var(--color-path);
+  background-color: var(--color-neutral-dark);
 }
 
 .progress-bar__fill {
