@@ -71,6 +71,10 @@ development_status:
   1-7-塔与僵尸美术资产: done
   1-8-单元-1-词图-第一批: done
   1-9-单元-1-词图-第二批: done
+  # [CR] 2026-10-16 已完成：35 条发现 → 去重 28 → 17 patch 全落地 + 1 条用户裁决
+  # （AC-11 跨层 import：改登记不改代码）。**故意留在 review，不转 done** ——
+  # AC-16 的「战场在浏览器里肉眼核对」与 §13.5 禁止用 headless 替代，
+  # 且 typecheck 在 main 上已红（34 条，非本 story 引入，已登记 deferred-work 第 5 条）。
   1-10-战场渲染与网格: review
   1-11-三种卡型与答题交互: done
   1-12-建造-阳光与射程可视化: done

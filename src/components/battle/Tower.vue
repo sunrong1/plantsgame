@@ -92,11 +92,24 @@ function onImageError(): void {
   <span
     v-else
     class="tower tower--fallback"
+    role="img"
+    :aria-label="`${tower.towerType} 塔`"
     :data-tower="tower.id"
     :data-tower-type="tower.towerType"
     :data-fallback="true"
     :style="{ backgroundColor: TOWER_COLOR_TOKEN[tower.towerType] }"
   />
+  <!--
+    ⚠️ `[CR]` 2026-10-16：上面这个占位 `<span>` 原来无 role、无 aria-label
+      ⇒ `v-if` 把带 `alt` 的 `<img>` 整块换掉的那一刻，这株塔从**无障碍树里
+      整个消失**。而部署前缀配错导致全部 404 正是 G16 存在的那个场景 ——
+      也就是「占位路径被大面积触发」的场景。
+      给孩子看得见的色块，读屏用户此前什么都听不到。
+      ⇒ 补 `role="img"` + 与正常路径同一句 `aria-label`：**降级只换视觉，
+      不换语义**。守卫：`battle-field.test.ts` 的
+      `AC-8 —— 降级不改变语义` 那一条 describe（**不占 G 编号** ——
+      G21–G54a 已被 Story 1.12 / 1.13 预留，见各 story 的守卫表）。
+  -->
 </template>
 
 <style scoped>

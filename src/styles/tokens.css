@@ -63,9 +63,15 @@
      压暗与「变灰、不可用」的直觉一致。
 
      0.18 的取值：足以让格子在 85px 的边长上看出灰度差，又不至于盖掉
-     格子里已经画好的东西。⚠️ 若将来改成不透明，它就不再是「罩」而变成
-     「底色」，那时必须移进 `palette.test.ts` 的实算集 —— 见
-     `tests/components/battle-field.test.ts` 的 G14b。 */
+     格子里已经画好的东西。
+     ⚠️ `[CR]` 2026-10-16 更正：这段注释原来写着「若将来改成不透明……那时必须
+       移进 `palette.test.ts` 的实算集 —— 见 `tests/components/battle-field.test.ts`
+       的 **G14b**」。**G14b 从来不存在** —— 那个文件只有 G14 / G15 / G17 / G17b /
+       G18 / G19 / G20，grep 全仓只有本行这一个命中。指向一条从未写出的守卫，
+       比没有守卫更危险：读的人会以为这条约束有人在盯。
+       ⇒ 改成指向**真实存在**的断言 `palette.test.ts` 的「罩层 token 保持半透明」
+       那一条，并把 `--color-overlay-blocked` / `--color-overlay-inert`
+       两条一起纳入 —— 此前只有 `--color-overlay-range` 一条被断言。 */
   --color-overlay-blocked: rgba(0, 0, 0, 0.18);
 
   /* 非僵尸行压暗（Story 1.12，AC-E3 / AC-E5）。与上面那条**同族、不同深浅**：

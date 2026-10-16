@@ -120,7 +120,7 @@ function withTower(base: State, row: number, col: number): State {
  *   而本断言问的是「判据在那个阶段答什么」，与那个 state 是怎么来的无关。
  *   `{kind: 'level-complete'}` 是 `Phase` 联合的合法成员，类型上完全成立。
  *
- * ⚠️ 只有 `awaiting-build` 带镜像字段 —— 换到别的阶段时镜像字段本就���存在，
+ * ⚠️ 只有 `awaiting-build` 带镜像字段 —— 换到别的阶段时镜像字段本就不存在，
  *   所以这里**整个替换** `phase`，而不是逐字段改。
  */
 function atPhase(base: State, kind: State['phase']['kind']): State {

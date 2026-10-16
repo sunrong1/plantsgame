@@ -15,7 +15,15 @@ import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
-import { severityOf, patternStrings, optionsOf, rulesFor } from '../fixtures/eslint-rules'
+import {
+  PROBE_FILES,
+  isGloballyIgnored,
+  optionsOf,
+  patternStrings,
+  probeFilesExist,
+  rulesForFile,
+  severityOf,
+} from '../fixtures/eslint-rules'
 import vitestConfig from '../../vitest.config'
 
 const root = fileURLToPath(new URL('../../', import.meta.url))
@@ -72,23 +80,23 @@ describe('core/ 边界的工具链强制', () => {
   //   · 把规则的 files 挪到别的目录（别的块仍匹配那个正则）
   //   · 后面追加一个 rules: { 'no-restricted-imports': 'off' } 的块
   //   · 把 'error' 降成 'warn'（且 eslint . 没有 --max-warnings，不会让 lint 失败）
-  it('eslint 对 src/core 配了 no-restricted-imports，且严重级别是 error', () => {
-    const rule = rulesFor('src/core/**/*.{ts,vue}')['no-restricted-imports']
+  it('eslint 对 src/core 配了 no-restricted-imports，且严重级别是 error', async () => {
+    const rule = (await rulesForFile('src/core/balance.ts'))['no-restricted-imports']
 
     expect(rule, 'src/core 上没有 no-restricted-imports 规则').toBeDefined()
     expect(severityOf(rule)).toBe('error')
   })
 
-  it('eslint 对 src/core 配了 no-restricted-globals，且严重级别是 error', () => {
-    const rule = rulesFor('src/core/**/*.{ts,vue}')['no-restricted-globals']
+  it('eslint 对 src/core 配了 no-restricted-globals，且严重级别是 error', async () => {
+    const rule = (await rulesForFile('src/core/grid.ts'))['no-restricted-globals']
 
     expect(rule, 'src/core 上没有 no-restricted-globals 规则').toBeDefined()
     expect(severityOf(rule)).toBe('error')
   })
 
-  it('core/ 禁掉 DOM 全局：window / document / localStorage / speechSynthesis 都在名单里', () => {
+  it('core/ 禁掉 DOM 全局：window / document / localStorage / speechSynthesis 都在名单里', async () => {
     // 光断言「规则存在」不够 —— 把某个名字从名单里删掉，规则照样在，防线已经开口子。
-    const rule = rulesFor('src/core/**/*.{ts,vue}')['no-restricted-globals']
+    const rule = (await rulesForFile('src/core/grid.ts'))['no-restricted-globals']
     // ESLint 把每个受限全局写成 ['error', {name:'window'}, {name:'document'}, …]
     // —— 名单是尾部展开的元素数组，不是嵌套在 rule[1] 里的数组。
     const entries = (Array.isArray(rule) ? rule.slice(1) : []) as { name: string }[]
@@ -99,8 +107,8 @@ describe('core/ 边界的工具链强制', () => {
     )
   })
 
-  it('core/ 禁掉 vue 与向上依赖（app/ services/ components/）', () => {
-    const rule = rulesFor('src/core/**/*.{ts,vue}')['no-restricted-imports']
+  it('core/ 禁掉 vue 与向上依赖（app/ services/ components/）', async () => {
+    const rule = (await rulesForFile('src/core/balance.ts'))['no-restricted-imports']
     const options = optionsOf(rule)
 
     expect(options?.paths?.map((p) => p.name)).toContain('vue')
@@ -110,6 +118,27 @@ describe('core/ 边界的工具链强制', () => {
     expect(patterns.some((p: string) => p.includes('../app/'))).toBe(true)
     expect(patterns.some((p: string) => p.includes('../services/'))).toBe(true)
     expect(patterns.some((p: string) => p.includes('../components/'))).toBe(true)
+  })
+
+  /**
+   * ⚠️ `[CR]` 2026-10-16 补 —— 原查询模型的两个洞之一：`ignores` 是**全局排除**。
+   *
+   * 实测：把 `'src/components/**'` 加进 flat config 的 ignores ⇒ 受 lint 文件数
+   * 58 → 55，三个组件不再被 lint，而**所有守卫照绿**（lint 脚本是 `eslint .`，
+   * 没有 `--max-warnings`，被 ignore 的文件是静默跳过）。
+   *
+   * 这里不再问「哪些块声明了 ignores」，而是直接断言「**探针文件没有被排除**」——
+   * 因为若被排除，`calculateConfigForFile` 会返回一份空规则表，
+   * 上面几条 `toBeDefined()` 会以另一种方式红（而那条红是偶然的，不是设计出来的）。
+   */
+  it.each(PROBE_FILES)('%s 没有被 flat config 的全局 ignores 排除', (path) => {
+    expect(isGloballyIgnored(path), `${path} 被 eslint 的 ignores 排除了`).toBeUndefined()
+  })
+
+  it('全部探针文件在磁盘上真实存在（改名/移走会让查询悄悄落到兜底配置）', () => {
+    for (const { path, exists } of probeFilesExist()) {
+      expect(exists, `${path} 不在磁盘上，但它是规则的探针文件`).toBe(true)
+    }
   })
 })
 
@@ -124,12 +153,12 @@ describe('SFC 组件解析', () => {
     ).toBeGreaterThan(0)
   })
 
-  it('eslint 全局启用了 vue/no-undef-components（防「漏 import 组件 → 白屏」）', () => {
+  it('eslint 全局启用了 vue/no-undef-components（防「漏 import 组件 → 白屏」）', async () => {
     // Debug Log #4：<script setup> 漏 import 时 vue-tsc / build / test / lint 全绿，页面却是纯白。
-    const rule = rulesFor('**/*.vue')['vue/no-undef-components']
+    const rule = (await rulesForFile('src/components/battle/Tower.vue'))['vue/no-undef-components']
 
     expect(rule, '没开 vue/no-undef-components，白屏那一类 bug 无自动守卫').toBeDefined()
-    expect(Array.isArray(rule) ? rule[0] : rule).toBe('error')
+    expect(severityOf(rule)).toBe('error')
   })
 })
 

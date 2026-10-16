@@ -34,6 +34,9 @@
 import { mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it } from 'vitest'
 
+import { readdirSync, readFileSync } from 'node:fs'
+import { join, relative, resolve } from 'node:path'
+
 import { state } from '../../src/app/store'
 import BattleField from '../../src/components/battle/BattleField.vue'
 import {
@@ -48,7 +51,7 @@ import {
 } from '../../src/core'
 import type { State, Tower as TowerEntity, Zombie as ZombieEntity } from '../../src/core'
 import { makeSyntheticDeck } from '../fixtures/synthetic-deck'
-import { optionsOf, patternStrings, rulesFor, severityOf } from '../fixtures/eslint-rules'
+import { optionsOf, patternStrings, rulesForFile, severityOf } from '../fixtures/eslint-rules'
 
 // 组件**源码**用 Vite 的 `?raw` 导入 —— jsdom 下 `import.meta.url` 是 http:// URL，
 // `fileURLToPath()` 会抛 `TypeError: The URL must be of scheme file`。
@@ -57,6 +60,7 @@ import battleFieldSource from '../../src/components/battle/BattleField.vue?raw'
 import towerSource from '../../src/components/battle/Tower.vue?raw'
 import zombieSource from '../../src/components/battle/Zombie.vue?raw'
 import levelViewSource from '../../src/views/LevelView.vue?raw'
+import startViewSource from '../../src/views/StartView.vue?raw'
 
 /** 剥掉块注释与行注释，只留代码 —— 源码匹配的强制前置（同 asset-url-guard.test.ts）。 */
 function stripComments(source: string): string {
@@ -102,10 +106,45 @@ function emptyState(): State {
 // ══════════════════════════════════════════════════════════════════════════════
 
 /**
+ * 取出某个**具体选择器的规则块**里的声明文本。
+ *
+ * ⚠️ `[CR]` 2026-10-16 新增 —— **这一段存在的全部理由**是下面 G14 原判据的一个
+ *   硬伤：它用 `/aspect-ratio:\s*(\d+)\s*\/\s*(\d+)\s*;/.exec(code)` 取**第一个**
+ *   `aspect-ratio`，而 `BattleField.vue` 里有**两条**：
+ *
+ *   ```css
+ *   .battle-grid { … aspect-ratio: 9 / 5; }   ← :448，第一个
+ *   .battle-cell  { … aspect-ratio: 1 / 1; }   ← :453，第二个
+ *   ```
+ *
+ *   判据能对，**只是因为 `.battle-grid` 恰好写在前面**。CSS 规则块之间
+ *   **没有顺序依赖**，把两条对调是完全合法的重构 —— 而那时 G14 会拿 `1 / 1`
+ *   去比 `COLS/ROWS`，报出「格子就不是正方形」这种指向错误对象的假红。
+ *
+ *   同理 `box-sizing`：`.battle-grid` 的注释逐字写着 `content-box` 是**必需**的
+ *   （「实测：border-box 时格子 46.8×37.5，content-box 时 46.8×47.1」），
+ *   而原判据里根本没有这一项 —— 注释记着一次真机踩过的坑，守卫却管不着它。
+ *
+ * ⚠️ **本函数的能力边界（刻意不做得更宽）**：只处理**平铺**规则块，
+ *   遇到 `}` 即止。当前三个组件的 `<style scoped>` 里没有 `@media`，
+ *   这条前提一旦不成立（有人加了响应式断点），本函数会取到被截断的声明 ——
+ *   那时它会**读不到**目标声明并返回 `null`，判据随之报「读不到」而不是
+ *   静默放行（见 G14 里对 `null` 的处理）。失败方向是安全的那一侧。
+ */
+export function ruleBody(css: string, selector: string): string | null {
+  // 选择器里的 `.` 与 `-` 都不是正则元字符，但显式转义以免将来出现 `[` 之类
+  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const match = new RegExp(`(?:^|[},])\\s*${escaped}\\s*\\{([^}]*)\\}`, 'm').exec(stripComments(css))
+
+  return match === null ? null : match[1] ?? null
+}
+
+/**
  * G14 的判据 —— **真守卫与 M42 共用同一份**。
  *
  * 判据：`.battle-grid` 上的 `grid-template-columns: repeat(N, 1fr)` 里 `N === COLS`，
- * 且 `aspect-ratio: A / B` 里 `A === COLS`、`B === ROWS`。
+ * 且 `aspect-ratio: A / B` 里 `A === COLS`、`B === ROWS`，
+ * 且 `.battle-grid` 带 `box-sizing: content-box`、`.battle-cell` 带 `aspect-ratio: 1 / 1`。
  *
  * ⚠️ 为什么必须同时校验 `A` 与 `B`：容器宽高比若写反（`5 / 9`），格子会变成竖条，
  *   而**单看分母**（`ROWS === 9` 不成立）会红、单看 `repeat` 却全绿 ——
@@ -117,8 +156,13 @@ function emptyState(): State {
  */
 export function g14Violation(css: string, cols: number, rows: number): string | null {
   const code = stripComments(css)
+  const grid = ruleBody(code, '.battle-grid')
 
-  const repeatMatch = /grid-template-columns:\s*repeat\(\s*(\d+)\s*,\s*1fr\s*\)/.exec(code)
+  if (grid === null) {
+    return '读不到 .battle-grid 的规则块 —— G14 无从取值（CSS 结构变了？）'
+  }
+
+  const repeatMatch = /grid-template-columns:\s*repeat\(\s*(\d+)\s*,\s*1fr\s*\)/.exec(grid)
   if (repeatMatch === null) {
     return '读不到 .battle-grid 的 grid-template-columns: repeat(N, 1fr) —— G14 无从取 N'
   }
@@ -127,13 +171,39 @@ export function g14Violation(css: string, cols: number, rows: number): string | 
     return `repeat() 的重复次数 ${n} ≠ COLS ${cols} —— 改了 src/core/grid.ts 的 COLS 而没同步这里，战场会静默错位`
   }
 
-  const ratioMatch = /aspect-ratio:\s*(\d+)\s*\/\s*(\d+)\s*;/.exec(code)
+  const ratioMatch = /aspect-ratio:\s*(\d+)\s*\/\s*(\d+)\s*;/.exec(grid)
   if (ratioMatch === null) {
     return '读不到 .battle-grid 的 aspect-ratio: A / B —— 格子无法保持正方形，塔与僵尸会被拉伸'
   }
   const [a, b] = [Number(ratioMatch[1]), Number(ratioMatch[2])]
   if (a !== cols || b !== rows) {
     return `aspect-ratio ${a} / ${b} 应当是 ${cols} / ${rows}（列 / 行）—— 写反了格子就不是正方形`
+  }
+
+  // ⚠️ `[CR]` 2026-10-16：`content-box` 是这条 AC 在真浏览器上踩出来的
+  //   （border-box 时格子 46.8×37.5，非正方形 ⇒ 塔与僵尸被拉伸），
+  //   而仓库全局是 `border-box`。改成 border-box 全绿，只在真机上现形。
+  if (!/box-sizing:\s*content-box/.test(grid)) {
+    return (
+      '`.battle-grid` 上没有 `box-sizing: content-box` —— 仓库全局是 border-box，' +
+      '那样格子会被 padding-bottom 挤成 48.81×42.6 的非正方形，塔与僵尸被拉伸。' +
+      '本条是 AC-16 真浏览器核对实测出来的'
+    )
+  }
+
+  // ⚠️ `.battle-cell` 的 `1 / 1` 同样没人守：它改成 `2 / 1` 时，
+  //   上面的容器判据全部照绿（容器没动），而格子已经不是正方形了。
+  const cell = ruleBody(code, '.battle-cell')
+  if (cell === null) {
+    return '读不到 .battle-cell 的规则块 —— 无法确认格子是否正方形'
+  }
+  const cellRatio = /aspect-ratio:\s*(\d+)\s*\/\s*(\d+)\s*;/.exec(cell)
+  if (cellRatio === null) {
+    return '`.battle-cell` 上没有 `aspect-ratio: A / B` —— 格子尺寸由内容决定，非正方形'
+  }
+  const [ca, cb] = [Number(cellRatio[1]), Number(cellRatio[2])]
+  if (ca !== cb) {
+    return `.battle-cell 的 aspect-ratio ${ca} / ${cb} 不是 1 : 1 —— 塔与僵尸是 512×512 正方形画布，会被拉伸`
   }
 
   return null
@@ -176,8 +246,15 @@ describe('G14 —— .battle-grid 的重复次数与 aspect-ratio 与网格常�
 // G15 —— 组件不得直接读战斗数值（ESLint 规则的内容）
 // ══════════════════════════════════════════════════════════════════════════════
 
-/** `src/components/**` 上 `no-restricted-imports` 的实际 glob。 */
-const COMPONENT_GLOB = 'src/components/**/*.{ts,vue}'
+/**
+ * 组件层的探针文件 —— **真实路径，不是 glob**。
+ *
+ * ⚠️ `[CR]` 2026-10-16：原来这里是一个 glob 字符串常量（形如 `src/components/` + 两星一斜杠 + `*.{ts,vue}`），
+ *   而查询函数拿它去和 config 块的 `files` 数组做 `includes` —— 于是「哪个块命中这个文件」
+ *   被替换成了「哪个块的名字恰好等于这个字符串」。见 `fixtures/eslint-rules.ts` 里的实测。
+ * ⇒ 现在传真实文件路径，由 ESLint 自己的解析器判定。
+ */
+const COMPONENT_PROBE = 'src/components/battle/Tower.vue'
 
 /**
  * G15 的判据 —— **真守卫与 M46 共用同一份**。
@@ -205,16 +282,16 @@ export function g15Violation(rule: unknown): string | null {
 }
 
 describe('G15 —— 组件不得直接读战斗数值', () => {
-  it('src/components/** 上禁掉了 core/balance，且严重级别是 error', () => {
-    const rule = rulesFor(COMPONENT_GLOB)['no-restricted-imports']
+  it('src/components/** 上禁掉了 core/balance，且严重级别是 error', async () => {
+    const rule = (await rulesForFile(COMPONENT_PROBE))['no-restricted-imports']
 
     expect(g15Violation(rule)).toBeNull()
   })
 
-  it('M46：把 core/balance 从禁列里去掉，G15 必须红', () => {
+  it('M46：把 core/balance 从禁列里去掉，G15 必须红', async () => {
     // 从**真实规则**出发，把禁 core/balance 的那几条 pattern 删掉 ——
     // 问的还是同一个 g15Violation。
-    const rule = rulesFor(COMPONENT_GLOB)['no-restricted-imports']
+    const rule = (await rulesForFile(COMPONENT_PROBE))['no-restricted-imports']
     const options = optionsOf(rule)
     const stripped = {
       ...options,
@@ -232,12 +309,12 @@ describe('G15 —— 组件不得直接读战斗数值', () => {
     expect(g15Violation(['error', stripped])).toContain('禁列里没有 core/balance')
   })
 
-  it('M46 的反向：把 error 降成 warn，G15 必须红', () => {
+  it('M46 的反向：把 error 降成 warn，G15 必须红', async () => {
     // `eslint .` 不带 `--max-warnings`，所以 warn 在 CI 上**不会**让 lint 失败。
     // `[CR]` 把它列为三条真实回归之一。
-    expect(g15Violation(['warn', optionsOf(rulesFor(COMPONENT_GLOB)['no-restricted-imports'])])).toContain(
-      '严重级别',
-    )
+    const rule = (await rulesForFile(COMPONENT_PROBE))['no-restricted-imports']
+
+    expect(g15Violation(['warn', optionsOf(rule)])).toContain('严重级别')
   })
 
   it('反向：规则整个不存在，G15 必须报「没有规则」而不是通过', () => {
@@ -403,7 +480,7 @@ describe('G18 —— 房子在最左列、入场在最右列（空间位置即�
     }
   })
 
-  it('僵尸永远落在 ZOMBIE_ROW 那��行（Zombie 类型没有 row 字段可读）', () => {
+  it('僵尸永远落在 ZOMBIE_ROW 那一行（Zombie 类型没有 row 字段可读）', () => {
     const state_ = makeState([], [createZombie({ id: 'z1', col: 4, hp: 100 })])
     const wrapper = mountBattleFieldWith(state_)
 
@@ -429,13 +506,42 @@ describe('G18 —— 房子在最左列、入场在最右列（空间位置即�
 // G19 —— 组件里不出现战斗规则算术
 // ══════════════════════════════════════════════════════════════════════════════
 
-/** 组件源码里不许出现的血量算术形态。 */
+/**
+ * 组件源码里不许出现的血量算术形态。
+ *
+ * ⚠️ `[CR]` 2026-10-16 放宽：**原五条全部要求 `hp` 紧邻运算符或紧跟一个点**，
+ *   于是 `hp * 0.01` / `hp / 50` / `ZOMBIE_HP * 2` / `z.hp - 10 < 0`
+ *   这类**完全等价**的常见写法一条都不匹配。实测：把血条宽度改成
+ *   `(zombie.hp / 500) * 100` —— G19 全绿。
+ *   而 AC-14 自己写着这条边界的漂移风险是**全项目最高**。
+ *   ⇒ 判据从「五种字面形态」改成「`hp` 这个标识符在任何地方参与算术或比较」。
+ *
+ * ⚠️ **`(?![\w-])` 这一段不是可有可无的**：它把 `hp` 与 `hp-bar`（CSS 类名）、
+ *   `hp_ratio`（snake_case 变体）区分开。去掉它的实测后果 —— 首版就是没有它，
+ *   `Zombie.vue` 的 `.hp-bar {` 当场误报（`hp` 后面跟 `-`，`\b` 成立，
+ *   而紧跟着的 `-` 又正好被算术运算符分支吃掉）。
+ *   「判据放宽」和「判据放宽到误伤」之间只差一个 lookahead。
+ *
+ * ⚠️⚠️ **这条守卫的契约到此为止，别把它当更强的守卫宣传**（`[CR]` 2026-10-16 实测边界）：
+ *   它是**词法**判据，只抓「`hp` 这个标识符与运算符**直接相邻**」。
+ *   实测三种它**抓不到**、且刻意不打算抓的形态：
+ *     · `(z.hp ?? 0) / 100` —— `hp` 与 `/` 之间隔着 `?? 0`，无词法邻接
+ *     · `const h = z.hp; const pct = h * 1` —— 中间隔了一次赋值
+ *     · 任何代数等价重排
+ *   想抓这些需要的是**值流分析**，那是另一个量级的东西，不是一条正则。
+ *   ⇒ 这里把契约写准（而不是把判据堆到误报为止），并在上面那条
+ *   「扫真实目录」上集中火力 —— **覆盖面**才是这条守卫本轮真正的改进，
+ *   词法精度不是。写别的文档引用 G19 时，请照抄这个上限，别抄成「组件里不许算血量」。
+ */
 const HP_ARITHMETIC = [
-  /\.hp\s*\/\s*\d+/,
-  /\.hp\s*\*\s*/,
-  /hp\s*\/\s*ZOMBIE_HP/,
-  /ZOMBIE_HP\s*\/\s*/,
-  /hp\s*<=\s*0/,
+  // hp 在运算符**左侧**（含前导点：`zombie.hp` / `props.zombie.hp`）
+  /\b\w*\.?hp\b(?![\w-])\s*[*/+\-]/,
+  // hp 在运算符**右侧**
+  /[*/+\-]\s*\b\w*\.?hp\b(?![\w-])/,
+  // 比较判定（hp <= 0 / hp > 0 / hp === maxHp …）
+  /\b\w*\.?hp\b(?![\w-])\s*(?:<=|>=|===|!==|==|!=|<|>)/,
+  // 战斗数值常量参与算术（与 G33b 的标识符黑名单同向，但覆盖全仓 .vue）
+  /\b(?:ZOMBIE_HP|TOWER_STATS|HEARTS)\b\s*[*/+\-]/,
 ]
 
 /** G19 的判据 —— 真守卫与变异共用。 */
@@ -447,14 +553,58 @@ export function g19Violation(source: string): string | null {
   return null
 }
 
+/**
+ * 受检的组件源码 —— **扫真实目录**，不是硬编码名单。
+ *
+ * ⚠️ `[CR]` 2026-10-16：原实现是 `it.each([['BattleField.vue', …], ['Tower.vue', …],
+ *   ['Zombie.vue', …], ['LevelView.vue', …]])` 四元素字面量。实测：往
+ *   `src/views/StartView.vue` 注入 `z.hp / 100` ⇒ **全仓 840 条测试全绿、eslint exit 0**。
+ *   新增组件是**默认出_guard** 的 —— 而 `RangeOverlay.vue` / `HandCard.vue` /
+ *   HUD 组件都是后续 story 落的，它们一律不在射程内。
+ *
+ * ⇒ 改成扫 `src/` 下全部 `.vue`。判据仍是同一份 `g19Violation`，
+ *   只是被问到的文件集合从「手写的四个」变成「磁盘上真实存在的那些」。
+ */
+const allVueSources = (): Array<[string, string]> => {
+  const root = resolve(process.cwd(), 'src')
+  const found: Array<[string, string]> = []
+  const walk = (dir: string): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name)
+      if (entry.isDirectory()) {
+        walk(full)
+      } else if (entry.name.endsWith('.vue')) {
+        found.push([relative(process.cwd(), full), readFileSync(full, 'utf8')])
+      }
+    }
+  }
+  walk(root)
+  return found
+}
+
 describe('G19 —— 组件里不出现血量算术', () => {
-  it.each([
-    ['BattleField.vue', battleFieldSource],
-    ['Tower.vue', towerSource],
-    ['Zombie.vue', zombieSource],
-    ['LevelView.vue', levelViewSource],
-  ])('%s 源码不含裸的血量算术', (_name, source) => {
-    expect(g19Violation(source)).toBeNull()
+  it('src/ 下每个 .vue 的源码都不含裸的血量算术（扫真实目录，不是手写名单）', () => {
+    const files = allVueSources()
+
+    // 先断言清单非空 —— 否则「扫到了 0 个文件」会是一轮漂亮的空绿
+    expect(files.length, 'src/ 下一个 .vue 都没扫到 —— 目录扫描本身坏了').toBeGreaterThan(0)
+
+    for (const [path, source] of files) {
+      expect(g19Violation(source), `${path} 里有裸的血量算术`).toBeNull()
+    }
+  })
+
+  it('扫出来的清单确实覆盖了那四个手写名单里的文件（防止目录扫描悄悄跑偏）', () => {
+    const paths = allVueSources().map(([p]) => p.replace(/\\/g, '/'))
+
+    for (const expected of [
+      'src/components/battle/BattleField.vue',
+      'src/components/battle/Tower.vue',
+      'src/components/battle/Zombie.vue',
+      'src/views/LevelView.vue',
+    ]) {
+      expect(paths, `目录扫描漏掉了 ${expected}`).toContain(expected)
+    }
   })
 
   it('Zombie.vue 确实用了 zombieHpRatio()（证明上面那条不是「文件里什么都没有」的空绿）', () => {
@@ -464,9 +614,13 @@ describe('G19 —— 组件里不出现血量算术', () => {
     expect(code).toContain('hpRatio')
   })
 
-  it('反向：把 zombieHpRatio(zombie) 展开成 zombie.hp / 100，G19 必须红', () => {
-    const mutated = 'const hpRatio = zombie.hp / 100'
-
+  it.each([
+    ['zombie.hp / 100（原判据能抓的那条）', 'const hpRatio = zombie.hp / 100'],
+    ['hp * 0.01（原判据漏）', 'const pct = hp * 0.01'],
+    ['hp / 50（原判据漏）', 'const pct = hp / 50'],
+    ['z.hp - 10 < 0（原判据漏）', 'const dead = z.hp - 10 < 0'],
+    ['ZOMBIE_HP * 0.3 派生阈值（原判据漏）', 'const HURT_AT = ZOMBIE_HP * 0.3'],
+  ])('反向：%s 必须被 G19 抓住', (_label, mutated) => {
     expect(g19Violation(mutated)).toContain('血量算术')
   })
 
@@ -496,8 +650,27 @@ describe('G19 —— 组件里不出现血量算术', () => {
  * ⚠️ 判据为什么不是「有没有写 width」而是「有没有写 `auto`」：
  *   `width: 100%`、`width: 88%`、`width: 10px` 都不会触发这个 bug；
  *   触发它的**精确**形态就是 `auto`。拦 `auto` 不会误伤正确写法。
+ *
+ * ⚠️⚠️ **上面那段论证只证明了一半** —— 而漏掉的另一半正好是本守卫的真漏洞。
+ *   `[CR]` 2026-10-16 实测：把 `.tower` 的 `width: 88%; height: 88%;`
+ *   **两行整行删掉**（保留 `object-fit: contain`），本守卫 **38 条全绿**；
+ *   真实 Chromium 实测同一份 CSS（`.cell` 49×49、`inset: 6%`、无 width/height）：
+ *
+ *   ```
+ *   GOOD tower .tower : IMG 43x43
+ *   MUT  tower no w/h : IMG 0x0      ← 整只塔消失
+ *   ```
+ *
+ *   原因是「`auto` 只是触发条件之一，**没有显式尺寸**才是真正的成因」：
+ *   绝对定位 + 四边 inset + 过约束 ⇒ `right` 被吃掉、宽度塌成 0。
+ *   而「删掉那两行」比「写成 auto」更像是手滑，也更不容易被 code review 看见。
+ *   ⇒ 判据改成**正向**的：目标规则块里**必须**出现 `width:` 与 `height:`
+ *   的显式值。原「拦 auto」降级为其中一条子判据。
  */
 const REPLACED_AUTO_SIZING = /\b(?:width|height)\s*:\s*auto\b/g
+
+/** `<img>` 所在的规则块选择器 —— 尺寸必须写在这两个块里，不是文件里随便哪里。 */
+const IMAGE_RULE_SELECTORS = ['.tower', '.zombie'] as const
 
 export function g20Violation(source: string): string | null {
   const code = stripComments(source)
@@ -509,6 +682,28 @@ export function g20Violation(source: string): string | null {
       '资产会整只画到格子外面去。要写显式百分比并配 object-fit。'
     )
   }
+
+  // ⚠️ `[CR]` 2026-10-16 补的正向判据：显式尺寸必须在**目标规则块里**。
+  //   「文件里某处有 width」不算 —— `.hp-bar__fill` 有 width 而 `.tower` 没有，
+  //   那条断言会照样绿（这正是删除 `width: 88%` 后原守卫全绿的原因）。
+  for (const selector of IMAGE_RULE_SELECTORS) {
+    const body = ruleBody(code, selector)
+    if (body === null) {
+      continue // 该组件不画这个形状，跳过（下面的「确实画了 <img>」会兜住）
+    }
+    for (const axis of ['width', 'height'] as const) {
+      const declared = new RegExp(`(?:^|[;{\\s])${axis}\\s*:\\s*(?!auto)[^;}]+`).test(body)
+      if (!declared) {
+        return (
+          `\`${selector}\` 的规则块里没有显式的 \`${axis}:\` —— ` +
+          '`<img>` 是替换元素，绝对定位 + 四边 inset + 没有显式尺寸 ⇒ ' +
+          '**过约束，`right` 被吃掉、该轴塌成 0，整只图渲染成 0×0（塔彻底消失）**。' +
+          '这不是 `auto` 独有的坑，删掉那行也一样中招（本条是实测出来的）。'
+        )
+      }
+    }
+  }
+
   return null
 }
 
@@ -569,6 +764,54 @@ describe('AC-8 —— 塔图加载失败时静默降级为 CSS 占位形状，�
     expect(state.value.grid[cellKey(ZOMBIE_ROW, 3)]).toBe('t1')
   })
 
+  /**
+   * ⚠️ `[CR]` 2026-10-16 新增 —— 「降级」不等于「消失」。
+   *
+   * 塔的占位块原来是一个**自闭合的 `<span />`**：无文本、无 role、无 aria-label。
+   * `v-if` 把带 `alt` 的 `<img>` 整块换掉的那一刻，这株塔**从无障碍树里整个消失**。
+   * 而部署前缀配错导致全站 404 正是 AC-8 守的那个场景 ——
+   * 也就是「占位路径被大面积触发」的场景：孩子看得见色块，读屏用户什么都听不到。
+   *
+   * ⇒ **降级只换视觉，不换语义。** 塔与僵尸、房子三处都要有可命名的角色。
+   */
+  it('AC-8 —— 降级不改变语义：塔的占位块仍可被读屏命名', async () => {
+    state.value = makeState([createTower({ id: 't1', towerType: 'direct', wordId: 'u1-dog', row: ZOMBIE_ROW, col: 3 })], [])
+    const wrapper = mount(BattleField)
+    await wrapper.find('[data-tower="t1"]').trigger('error')
+
+    const fallback = wrapper.find('[data-tower="t1"][data-fallback]')
+
+    expect(fallback.attributes('role'), '占位块没有可命名的 role —— 读屏会跳过它').toBe('img')
+    expect(
+      fallback.attributes('aria-label'),
+      '占位块没有 aria-label —— 它替掉了带 alt 的 <img>，语义就此丢失',
+    ).toBe('direct 塔')
+  })
+
+  it('AC-8 —— 降级不改变语义：僵尸的占位块仍可被读屏命名', async () => {
+    state.value = makeState([], [createZombie({ id: 'z1', col: 4, hp: 50 })])
+    const wrapper = mount(BattleField)
+    await wrapper.find('[data-zombie="z1"]').trigger('error')
+
+    const fallback = wrapper.find('[data-zombie="z1"][data-fallback]')
+
+    expect(fallback.attributes('role')).toBe('img')
+    expect(fallback.attributes('aria-label')).toBe('僵尸')
+  })
+
+  it('房子是 CSS 画的图形，也必须有可命名的 role（aria-label 挂在裸 div 上会被忽略）', () => {
+    state.value = makeState([], [])
+    const wrapper = mount(BattleField)
+    const house = wrapper.find('[data-house]')
+
+    expect(house.exists()).toBe(true)
+    expect(
+      house.attributes('role'),
+      'aria-label 挂在没有 role 的 div 上，多数 AT 直接忽略 —— 房子对读屏用户等于不存在',
+    ).toBe('img')
+    expect(house.attributes('aria-label')).toBe('房子')
+  })
+
   it('僵尸图加载失败同样降级，且血条仍在（血量信息不许一起丢）', async () => {
     state.value = makeState([], [createZombie({ id: 'z1', col: 4, hp: 50 })])
     const wrapper = mount(BattleField)
@@ -580,6 +823,203 @@ describe('AC-8 —— 塔图加载失败时静默降级为 CSS 占位形状，�
     // 否则一次资产 404 就同时抹掉「血量可见」这条 AC。
     expect(wrapper.find('[data-hp-ratio]').exists()).toBe(true)
     expect(state.value.zombies).toHaveLength(1)
+  })
+})
+
+// ══════════════════════════════════════════════════════════════════════════════
+// 本轮 [CR] 新增的三条 —— **刻意不占 G 编号**
+// ══════════════════════════════════════════════════════════════════════════════
+//
+// G21–G54a 已被 Story 1.12 / 1.13 在各自的守卫表里**预留**（见各 story 文档），
+// 而本文件原来那份「G14b」指针（`tokens.css` 指向它）**从来不存在** ——
+// 这正是「注释指向一条从未写出的守卫比没有守卫更危险」的现场。
+// ⇒ 新断言挂在它们服务的 AC 下，沿用本文件已有的 `AC-8 —— …` 那种 describe 形态，
+//   不新造编号，也就不会与后续 story 的预留号撞车。
+
+/**
+ * AC-12 —— 「组件只调不算」。
+ *
+ * `src/core/grid.ts` 的 `buildBlockedReason` 花了整段论证「若组件自己写一份
+ * `col !== 0 && col !== 8`，两边分叉时界面上看不出任何异常」。
+ * 而实测：把 `isBuildable: canBuildAt(row, col)` 换成内联判断 ⇒ **全仓 840 条测试全绿**。
+ * 原因是 `buildable-cells.test.ts` 守的是 `canBuildAt()` **函数本身**，
+ * 守不到「组件调了它」；而 `is-buildable` 这个 class 在 1.10 既没有 CSS 规则
+ * 也没有任何断言，纯装饰。
+ */
+describe('AC-12 —— 组件只调 core 的建塔判据，不自己算一份', () => {
+  it('BattleField.vue 的 isBuildable 来自 canBuildAt()，不是内联判断', () => {
+    const code = stripComments(battleFieldSource)
+
+    expect(
+      code,
+      'BattleField.vue 里没有 isBuildable: canBuildAt( —— 组件自己算了一份可建性，' +
+        '与 core/buildBlockedReason 分叉时界面上看不出任何异常（AC-12 原话）',
+    ).toMatch(/isBuildable:\s*canBuildAt\(/)
+  })
+
+  it('反向：换成内联判断必须被这条抓住', () => {
+    const mutated = stripComments(battleFieldSource).replace(
+      /isBuildable:\s*canBuildAt\([^)]*\)/,
+      `isBuildable: col !== ${HOUSE_COL} && col !== ${ZOMBIE_SPAWN_COL}`,
+    )
+
+    expect(mutated, '这次变异没生效 —— 正则没匹配上，测试会因下面的 toMatch 而空绿').not.toMatch(
+      /isBuildable:\s*canBuildAt\(/,
+    )
+  })
+
+  it('canBuildAt 确实被从 core 导入（证明上面那条不是「靠正则凑出来的」）', () => {
+    expect(stripComments(battleFieldSource)).toMatch(/import\s*\{[^}]*\bcanBuildAt\b[^}]*\}\s*from\s*'[^']*core'/)
+  })
+})
+
+/**
+ * 组件里引用的每一个 `var(--color-*)` 都必须在 `tokens.css` 里真的定义。
+ *
+ * ⚠️ 这条来自一次**真实交付过的 P0 级 bug**：`Story 1.10` 的 `Tower.vue` 曾写
+ *   `` var(--color-tower-${tower.towerType}) ``，而塔型字面量是 `direct`、
+ *   色板 token 叫 `--color-tower-shooter`（1.6 的历史命名）⇒ 拼出一个
+ *   **不存在的** `--color-tower-direct`，`background-color` 在 computed-value
+ *   时刻回落到 `transparent`。真实 Chromium 实测（49×49 格子）：
+ *   ```
+ *   GOOD fb shooter bg : rgb(9, 66, 140)
+ *   MUT  fb direct bg  : rgba(0, 0, 0, 0)      ← 占位块完全透明
+ *   ```
+ *   即「塔图 404 → 降级占位」这条 AC-8 承诺的「塔型仍能看出」对 `direct` 不成立。
+ *
+ *   Story 1.12 把它改成了显式映射表 —— 但**没有任何东西守着那张表**，
+ *   而且 `Tower.vue` / `HandCard.vue` / `asset-geometry.test.ts` 各存了一份，
+ *   测试那份还是独立副本（压根不守组件那份）。
+ * ⇒ 这里不查「映射表几份」（那是 R-37，另一件事），只查**最致命的那一环**：
+ *   组件写出来的 token 名必须是 `tokens.css` 里真实存在的那个。
+ */
+describe('组件引用的 CSS token 必须真实存在于 tokens.css', () => {
+  const tokensCss = readFileSync(resolve(process.cwd(), 'src/styles/tokens.css'), 'utf8')
+  const definedTokens = new Set(
+    [...tokensCss.matchAll(/^\s*(--[a-z0-9-]+)\s*:/gim)].map((m) => m[1] as string),
+  )
+
+  it('tokens.css 至少定义了 20 个 token（防止上面那个正则整体失灵）', () => {
+    expect(
+      definedTokens.size,
+      '从 tokens.css 里只解析出这么少 token —— 正则与文件格式对不上了，' +
+        '下面每条都会变成「扫不到任何引用 ⇒ 空绿」',
+    ).toBeGreaterThanOrEqual(20)
+  })
+
+  it.each(allVueSources())('%s 引用的每个 var(--color-*) 都有定义', (path, source) => {
+    const used = [...stripComments(source).matchAll(/var\(\s*(--color-[\w-]+)/g)].map(
+      (m) => m[1] as string,
+    )
+
+    // ⚠️ 这个文件一个 color token 都没引用时，下面是「扫到 0 个」的恒真。
+    //   本仓所有组件都引用了，所以这里断言「全仓至少有一个组件确实用到了」，
+    //   把空绿的可能堵在入口，而不是每条都加一条「本文件非空」（那会误伤未来的纯逻辑组件）。
+    for (const token of used) {
+      expect(
+        definedTokens.has(token),
+        `${path} 引用了 ${token}，但 tokens.css 里没有 —— ` +
+          'CSS 变量未定义时在 computed-value 时刻回落到 transparent/初始值，' +
+          '**不报任何错**，元素静默变透明。塔型字面量与色板 token 名不同源' +
+          '（direct vs shooter）正是踩这个坑的实例',
+      ).toBe(true)
+    }
+  })
+
+  it('确实扫到了引用（防止上面 it.each 的每一行都是「扫到 0 个」的恒真）', () => {
+    const total = allVueSources().reduce(
+      (sum, [, source]) =>
+        sum + [...stripComments(source).matchAll(/var\(\s*--color-[\w-]+/g)].length,
+      0,
+    )
+
+    expect(total, '全仓一个 var(--color-*) 都没有 —— 扫描正则与源码格式对不上了').toBeGreaterThan(5)
+  })
+
+  it('反向：`--color-tower-direct` 确实不在 tokens.css 里（证明判据有牙齿）', () => {
+    // ⚠️ 这一条不是「编一个假 token 试试」，而是**钉住这次真实 bug 的现场**：
+    //   塔型字面量是 `direct`、色板 token 叫 `--color-tower-shooter`，
+    //   所以「按塔型拼 token 名」必然拼出一个不存在的名字。
+    //   Story 1.12 改成显式映射表之后，这个名字本该在仓库里**彻底消失** ——
+    //   若哪天有人图省事改回模板字符串，这条会先于那条一起红。
+    expect(
+      definedTokens.has('--color-tower-direct'),
+      'tokens.css 里竟然定义了 --color-tower-direct —— 塔型字面量与色板 token 名' +
+        '两套命名并存正是 asset-url.ts 注释里点名要避免的易混点',
+    ).toBe(false)
+
+    expect(
+      definedTokens.has('--color-tower-shooter'),
+      'tokens.css 里没有 --color-tower-shooter —— 那上面那条的「两套命名」前提变了',
+    ).toBe(true)
+  })
+})
+
+/**
+ * 「点开始游戏 → 进战场」这条主链路不许凭空消失。
+ *
+ * ⚠️ 实测：把 `StartView.vue` 的 `enterLevel()` 调用与 import **同时删掉** ⇒
+ *   `eslint .` exit 0、**全仓 840 条测试全绿**。而症状是
+ *   「孩子点了按钮游戏却一动不动，看起来像坏了」——
+ *   没有报错、没有白屏、没有红测试，`StartView.vue` 的注释里逐字写着
+ *   「已经被坑过一次」。
+ *
+ *   本仓库没有 `@vue/test-utils` 之外的端到端挂载入口，也没有路由；
+ *   挂 `App` 会连带真实的 AudioContext 与手势上下文，取而代之的是一条
+ *   源码级判据 —— **廉价、且足以挡住「整条链路被删」这种形态**。
+ */
+describe('主链路 —— 点开始游戏一定切到战场', () => {
+  it('StartView.vue 的 onStart 调了 enterLevel()', () => {
+    const code = stripComments(startViewSource)
+    const body = /function onStart\(\)[^{]*\{([\s\S]*?)\n\}/.exec(code)?.[1] ?? ''
+
+    expect(body, 'StartView.vue 里读不到 onStart 的函数体').not.toBe('')
+    expect(
+      body,
+      'onStart 没有调 enterLevel() —— 解锁音频跑完但 view 永远是 start，' +
+        '孩子点了按钮游戏一动不动，且没有任何报错或红测试',
+    ).toMatch(/\benterLevel\(\)/)
+  })
+
+  it('enterLevel 是从 app/store 导入的（不是本地定义的同名函数）', () => {
+    expect(stripComments(startViewSource)).toMatch(
+      /import\s*\{[^}]*\benterLevel\b[^}]*\}\s*from\s*'[^']*app\/store'/,
+    )
+  })
+
+  it('反向：把 enterLevel() 调用删掉必须被抓住', () => {
+    const mutated = stripComments(startViewSource).replace(/\n\s*enterLevel\(\)/, '')
+
+    expect(mutated, '这次变异没生效 —— 会因下面 toMatch 空绿').not.toMatch(/\benterLevel\(\)/)
+  })
+
+  // ⚠️ `[CR]` 2026-10-16 补：上面三条只守住了「StartView 会切 view」，
+  //   **没守住「切过去之后真的有画面」** —— 上一组三条全绿而战场一片空白的形态是：
+  //   `LevelView.vue` 把 `<BattleField />` 整块删掉（或改错组件名），
+  //   于是 `view` 正确变成 `'level'`、`App.vue` 也正确条件渲染了 `<LevelView />`，
+  //   而**屏幕上什么也没有** —— 没有报错、没有红测试。
+  //   上一组 describe 的注释里写着的那个症状（「孩子点了按钮游戏却一动不动」）
+  //   有**两种**同因的形态，这里守的是第二种。
+  it('LevelView.vue 真的渲染了 <BattleField />，且是显式 import 进来的', () => {
+    const code = stripComments(levelViewSource)
+
+    expect(code, 'LevelView.vue 的模板里找不到 <BattleField /> —— view 切过去也只会是空白页').toMatch(
+      /<BattleField\b/,
+    )
+    expect(
+      code,
+      // ⚠️ 这一条不是形式主义：`script setup` 漏 import 时组件会按**原生自定义元素**
+      //   渲染（Debug Log #4），vue-tsc / build / test / lint 全绿而页面白着。
+      //   本判据与 `eslint.config.js` 的 `vue/no-undef-components` 是**两道独立的闸**：
+      //   ESLint 那道可以被 ignores 关掉（见 `eslint-rules.ts` 记录的实测），这道不会。
+      'BattleField 必须是显式 import 的（漏 import ⇒ 白屏且全套工具全绿）',
+    ).toMatch(/import\s+\w*\s*BattleField\b\s+from\s*'[^']*BattleField\.vue'/)
+  })
+
+  it('反向：把 LevelView 的 <BattleField /> 删掉必须被抓住', () => {
+    const mutated = stripComments(levelViewSource).replace(/<BattleField\b[^>]*\/?>/g, '')
+
+    expect(mutated, '这次变异没生效 —— 会因下面 toMatch 空绿').not.toMatch(/<BattleField\b/)
   })
 })
 

@@ -354,11 +354,17 @@ watch(selectedEntryId, () => {
       @animationend="onCellAnimationEnd"
     >
       <!-- 房子（第 1 列 = 内部 col 0）。CSS 画，不新增 SVG 资产 ——
-           守卫 G1 断言塔/僵尸目录里的文件集合「恰好等于」预期，多一个文件就红。 -->
+           守卫 G1 断言塔/僵尸目录里的文件集合「恰好等于」预期，多一个文件就红。
+
+           ⚠️ `[CR]` 2026-10-16：`aria-label` 原来挂在一个**没有 role 的 div** 上 ——
+             通用 div 在无障碍树里没有可命名角色，绝大多数 AT 直接忽略这个属性，
+             于是「那是我要守的东西」对读屏用户等于不存在。补 `role="img"`
+             （它是 CSS 画的图形，与上面塔/僵尸的降级占位同一形态）。 -->
       <div
         v-if="cell.isHouse"
         class="house"
         data-house
+        role="img"
         aria-label="房子"
       />
 

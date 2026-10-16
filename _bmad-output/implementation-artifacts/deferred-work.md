@@ -983,5 +983,85 @@ G21 / G23 / G25 / G29 四条源码守卫都靠它。
 **注释里描述违规形态，正则会命中注释。**
 
 
+## Deferred from: story-1-10-战场渲染与网格 `[CR]` (2026-10-16)
+
+### 1. G19 是词法守卫，抓不到「绕一道变量的算术」——要堵它需要值流分析
+
+G19 断言组件源码里不出现裸血量/伤害算术。本轮已把它从「四个手写文件名」改成
+递归扫 `src/`（M50：往 `StartView.vue` 注入裸算术，修前 0 红 → 修后 1 红），
+但它的**射程有上限**，且这个上限是刻意写进守卫契约注释的，不是遗漏：
+
+| 形态 | G19 抓得到？ |
+|---|---|
+| `zombie.hp / 100` | ✅ |
+| `100 - zombie.hp` | ✅ |
+| `zombieHpRatio(zombie)` | ✅（已封装成 core 纯函数） |
+| `const ratio = hp / ZOMBIE_HP`（把算术藏进局部变量） | ❌ |
+| `towers.filter(t => t.hp * 2 > 10)` | ❌ |
+
+实测试过两版（`zombieHpRatio(...)`、`(x?.hp ?? 0) / 100`）都**正确地保持全绿**。
+**处置**：把上限写进守卫自己的注释，而不是继续扩正则把假红造出来。
+要真正堵住需要值流分析（把 `hp` 追溯到 `zombie.hp`），**那不是本 story 该买的东西**。
+📎 恢复条件：若将来 `src/components/` 里真的出现第 5 行那种写法，
+或某次 AI 漂移是靠局部变量藏起来的，就该上值流分析（可从 `zombieHpRatio`
+与 `TOWER_COLOR_TOKEN` 的「单一导出 + 交叉断言」模式扩展）。
+
+### 2. Debug Log #6（战场横向撑破容器）与 #3（格子变扁）无源码化守卫
+
+两个都是**布局类** bug（`flex: 0 0 auto`、`box-sizing: content-box`），
+jsdom 没有布局引擎 ⇒ 测不出来。本轮给可源码化的那一半补了守卫
+（M48 `content-box`、M49 `1:1`，各 0 红 → 1 红），
+但「列轨的最小宽度 = 行高」那一条**没有任何测试能守**。
+
+- **恢复条件**：Story 1.19 真机复核时若再出现战场撑破容器，需要重新想一种
+  能在 jsdom 或纯函数层表达这条约束的方式（或接受它只能靠真机核对）。
+- 本 story 已在 `BattleField.vue` 与 `LevelView.vue` 的 CSS 旁写明
+  「为什么不能写成另一个值」，让下一个人不必再踩第二次 —— **但注释不是守卫**。
+
+### 3. 新增棋子类不受 G20 管辖
+
+G20（塔 / 僵尸必须显式声明 `width` 与 `height`）只覆盖 `.tower` / `.zombie` 两个类。
+Story 1.12 之后的 `SunCounter` / `HeartRow` / `ProgressBar` 一类**尺寸类 HUD 组件**
+不受它管 —— 那类应该进 `palette.test.ts` 的实算集，或新建一条同形状的守卫，
+**而不是扩 G20 的选择器**（G20 的契约注释里已写明这条边界）。
+📎 恢复条件：Story 1.13 落 `hud/` 时同步决定。
+
+### 4. `check-doc-consistency.sh` 被删时无人登记 —— 已在本 story 标注，根因未治
+
+`d353e62` 用 `scripts/check-execution-drift.py` 替换了
+`scripts/check-doc-consistency.sh`，但**没有任何 story 登记过这次删除**，
+而至少 6 处文档（含 Story 1.10 的 AC-1 / AC-16 与两份已归档的 1.8 / 1.9）
+仍把它列为收尾命令。本 story 已按「AC 正文不改、只标注」处理，
+但**根因是「新引入一条收尾命令时没有回头扫描既有文档」**。
+
+- 📎 恢复条件：任何 `package.json` script 或 `scripts/` 下门禁的增删，
+  都应回头 grep `_bmad-output/` 与 `docs/` 并逐处登记。
+- **注意**：`scripts/check-execution-drift.py` 自己是 pre-push 钩子，
+  **它只查 BMAD 产物与内容数据，不查「文档里写的命令还在不在」** ——
+  也就是说这个缺口**当前没有任何工具能自动发现**。
+
+### 5. 🚨 `npm run typecheck` 在 `main` 上是**红的（34 条）**，且从绿变红时无人登记
+
+`vue-tsc -b` 当前 exit 非 0，34 条错误分布在 8 个文件：
+`src/app/store.ts`、`src/components/battle/BattleField.vue`、
+`src/components/hand/HandCard.vue`、`src/components/hand/HandDeck.vue`、
+`src/components/quiz/OptionCard.vue`、`tests/components/hand-build.test.ts`、
+`tests/core/build.test.ts`、`tests/core/placeholder.test.ts`。
+
+- **已确认不是本轮引入**：`git stash push -- src tests` 暂存 Story 1.10 `[CR]`
+  的全部代码改动后复跑，**仍是同样的 34 条**。
+- **形态**：Story 1.10 的 AC-16 要求收尾时逐条贴真实输出，而 `[DS]` 收尾记录里
+  typecheck 是**绿的** ⇒ **它是事后被别人改红的**，而没有任何 story 登记过这次转红。
+- **为什么没人发现**：AC-14 自己写着「**`npm run typecheck` 纳入每加一个组件就跑**」，
+  可 1.11 / 1.12 收尾时没人跑，或跑了但没把红的贴出来。
+- 📎 **恢复条件**：当作一个独立的小 story 处理（34 条跨 3 个 story 的类型错误，
+  **一个 story 不该吞另一个 story 的活**）。修完把 `baseline_tests` 一起更新。
+- ⚠️ **与第 4 条同源**：一个门禁**从绿变红**和一个命令**从有变无**，都不会自己报警。
+  根因是**没有任何东西把「收尾门槛的实测结果」与「上一次收尾门槛的实测结果」做差**。
+  候选机制：`check-execution-drift.py` 的 C 项（`baseline_tests` 对比）已经在做同类事，
+  可以扩成「四道门槛全跑一遍并与上次逐条对差」——
+  📎 但那是 BMAD 流程改造，**已登记不动**（见 §BMAD 模板侧的流程改造 §4）。
+
+
 
 

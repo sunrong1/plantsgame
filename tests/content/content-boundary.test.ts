@@ -23,22 +23,21 @@ import { describe, expect, it } from 'vitest'
 
 import { TOWER_TYPES } from '../../src/core/balance'
 import { TowerTypeSchema } from '../../src/content/schema'
-import eslintConfig from '../../eslint.config.js'
+import { rulesForFile, severityOf } from '../fixtures/eslint-rules'
 
-/** flat config 里单个 config 块的形状（只取这里用到的字段）。 */
-interface EslintBlock {
-  files?: string | string[]
-  rules?: Record<string, unknown>
-}
-
-/** 从 flat config 数组里找出命中 files 的规则块（合并多块，同名后者覆盖前者）。 */
-const rulesFor = (fileGlob: string): Record<string, unknown> => {
-  const blocks = (eslintConfig as unknown as EslintBlock[]).filter(
-    (block) =>
-      !block.files || (Array.isArray(block.files) ? block.files : [block.files]).includes(fileGlob),
-  )
-  return Object.assign({}, ...blocks.map((block) => block.rules ?? {}))
-}
+/**
+ * ⚠️ `[CR]` 2026-10-16 删除 —— **这里原来还有第三份 `rulesFor` 副本。**
+ *
+ * `tests/fixtures/eslint-rules.ts` 存在的全部理由就是「一份实现，多处共用」，
+ * 而本文件当时没跟上，于是：
+ *   · 副本 1：`core-boundary.test.ts`（原始）
+ *   · 副本 2：`audio-unlock-guard.test.ts`（1.2 抽出 fixture 后的受益者）
+ *   · 副本 3：**本文件，一份从未被抽取的、无人知道的副本**
+ *
+ * 三份各自演化、各自带洞。三份都在「只认 `files` 数组里含有该 glob 字符串的块」，
+ * 都看不见更窄 glob 的覆盖，也都从不读 `ignores`。
+ * ⇒ 删掉本地的，全部走 `rulesForFile()`（ESLint 自己的解析器，见 fixture 里的说明）。
+ */
 
 /** schema 的塔型枚举取值集合（从 schema 的元信息取，不另抄一份字面量）。 */
 function towerTypesFromSchema(): readonly string[] {
@@ -61,10 +60,10 @@ describe('AC-7 / M11 —— 塔型的单一事实源', () => {
     ).toEqual([...TOWER_TYPES].sort())
   })
 
-  it('content/ 上 no-restricted-imports 同时禁 vue 与 core（两条边界都要真被守）', () => {
+  it('content/ 上 no-restricted-imports 同时禁 vue 与 core（两条边界都要真被守）', async () => {
     // 若哪天有人图省事改成 `z.enum(TOWER_TYPES)`，内容校验就会依赖战斗层模块加载成功。
     // 这条断言把那个选择挡在外面：要改成 import，必须先改这条测试并说明理由。
-    const rule = rulesFor('src/content/**/*.{ts,vue}')['no-restricted-imports']
+    const rule = (await rulesForFile('src/content/schema.ts'))['no-restricted-imports']
     expect(rule, 'content/ 上没有 no-restricted-imports 规则').toBeDefined()
 
     const shape = (Array.isArray(rule) ? rule[1] : rule) as {
@@ -112,19 +111,21 @@ describe('AC-7 / M11 —— 塔型的单一事实源', () => {
 })
 
 describe('AC-30 的副作用 —— content/ 的 DOM 边界由 ESLint 守', () => {
-  it('src/content 配了 no-restricted-globals，且严重级别是 error', () => {
-    const rule = rulesFor('src/content/**/*.{ts,vue}')['no-restricted-globals']
+  it('src/content 配了 no-restricted-globals，且严重级别是 error', async () => {
+    const rule = (await rulesForFile('src/content/schema.ts'))['no-restricted-globals']
 
     expect(
       rule,
       'src/content 上没有 no-restricted-globals —— 内容层落在 app 项目（有 DOM）里，' +
         'core 的零 DOM 红线对它不生效，没有这条就完全没有守卫',
     ).toBeDefined()
-    expect(Array.isArray(rule) ? rule[0] : rule).toBe('error')
+    expect(severityOf(rule)).toBe('error')
   })
 
-  it('禁掉的是 DOM 全局（window / document / localStorage）', () => {
-    const rule = JSON.stringify(rulesFor('src/content/**/*.{ts,vue}')['no-restricted-globals'])
+  it('禁掉的是 DOM 全局（window / document / localStorage）', async () => {
+    const rule = JSON.stringify(
+      (await rulesForFile('src/content/schema.ts'))['no-restricted-globals'],
+    )
 
     for (const name of ['window', 'document', 'localStorage']) {
       expect(rule, `content/ 的 DOM 边界没禁住 ${name}`).toContain(name)

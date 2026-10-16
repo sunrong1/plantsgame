@@ -69,9 +69,18 @@ function onImageError(): void {
     :data-zombie-col="zombie.col"
     @error="onImageError"
   >
+  <!--
+    ⚠️ `[CR]` 2026-10-16：与 `Tower.vue` 同一处缺陷的同一个修法 ——
+      占位块原来无 role、无 aria-label，`v-if` 换掉 `<img>` 的那一刻
+      这只僵尸从**无障碍树里整个消失**。补 `role="img"` + 同一句 `alt`。
+      守卫：`battle-field.test.ts` 的 `AC-8 —— 降级不改变语义` 那一条
+      （塔与僵尸同一条，不占 G 编号 —— G21–G54a 已被 1.12 / 1.13 预留）。
+  -->
   <span
     v-else
     class="zombie zombie--fallback"
+    role="img"
+    aria-label="僵尸"
     :data-zombie="zombie.id"
     :data-zombie-col="zombie.col"
     :data-fallback="true"

@@ -17,6 +17,7 @@ import { resolve } from 'node:path'
 import { Linter } from 'eslint'
 
 import eslintConfig from '../../eslint.config.js'
+import { rulesForFile, severityOf } from '../fixtures/eslint-rules'
 
 interface EslintBlock {
   files?: string | string[]
@@ -64,17 +65,14 @@ const matchesGlob = (pattern: string, file: string): boolean => {
   return new RegExp(`^${regex}$`).test(file)
 }
 
-/** 从 flat config 数组里找出命中 files 的规则块（合并多块，同名后者覆盖前者）。 */
-const rulesFor = (fileGlob: string): Record<string, unknown> => {
-  const blocks = (eslintConfig as unknown as EslintBlock[]).filter((block) => {
-    if (!block.files) {
-      return true
-    }
-    const patterns = Array.isArray(block.files) ? block.files : [block.files]
-    return patterns.some((pattern) => matchesGlob(pattern, fileGlob))
-  })
-  return Object.assign({}, ...blocks.map((block) => block.rules ?? {}))
-}
+/**
+ * ⚠️ `[CR]` 2026-10-16 删除 —— 这里原来还有**第二份** `rulesFor`。
+ *
+ * 它比 fixture 里那份更聪明一点（用了 `matchesGlob`），但**同样看不见 `ignores`**，
+ * 同样会把「更窄 glob 在后面覆盖掉这条规则」的情形漏掉 —— 本文件第 152 行那条
+ * `ignores` 断言正是为此而加，说明作者当时已经知道这个洞，却只补了 `ignores` 一半。
+ * ⇒ 统一走 `fixtures/eslint-rules.ts` 的 `rulesForFile()`（ESLint 自己的解析器）。
+ */
 
 /** 配了 no-restricted-syntax 的全部 files 模式。 */
 const guardedPatterns = (): string[] =>
@@ -90,17 +88,17 @@ const UNLOCK_CHAIN = [
 ]
 
 describe('音频解锁链路禁 await（AC-10）', () => {
-  it.each(UNLOCK_CHAIN)('%s 上配了 no-restricted-syntax，且严重级别是 error', (file) => {
-    const rule = rulesFor(file)['no-restricted-syntax']
+  it.each(UNLOCK_CHAIN)('%s 上配了 no-restricted-syntax，且严重级别是 error', async (file) => {
+    const rule = (await rulesForFile(file))['no-restricted-syntax']
 
     expect(rule, `${file} 上没有 no-restricted-syntax 规则`).toBeDefined()
     // 'warn' 不会让 `npm run lint` 失败（没有 --max-warnings），等于没守
-    expect(Array.isArray(rule) ? rule[0] : rule).toBe('error')
+    expect(severityOf(rule)).toBe('error')
   })
 
-  it('禁的正是 AwaitExpression（不是别的表达式，也不是空禁列）', () => {
+  it('禁的正是 AwaitExpression（不是别的表达式，也不是空禁列）', async () => {
     for (const file of UNLOCK_CHAIN) {
-      const rule = rulesFor(file)['no-restricted-syntax']
+      const rule = (await rulesForFile(file))['no-restricted-syntax']
       const options = (Array.isArray(rule) ? rule[1] : undefined) as
         | { selector?: string }
         | undefined
