@@ -68,6 +68,22 @@ const CLAUDE_MD_MAX_LINES = 110
  * 不允许为了变绿而松。
  */
 const SPRINT_STATUS_MAX_LINE = 200
+/**
+ * R-42：`sprint-status.yaml` 里 **`development_status:` 块及其之后**的注释行上限。
+ *
+ * ⚠️ 为什么**不**量全文件：全文件的 45 行注释里有 43 行是 BMAD 生成的静态结构头
+ *   （STATUS DEFINITIONS / STORY KEY RULE 等），**工具会重新生成它** ——
+ *   量全文件等于让守卫在 BMAD 升级时假红。
+ * ⚠️ 为什么**不**只量行长（`SPRINT_STATUS_MAX_LINE` 那个）：1.13 的 16 行复盘
+ *   最长一行才 80 字符，在 200 的上限下有 60% 余量，从守卫眼皮底下直接走过去。
+ *   复盘是**按行堆**进来的，所以必须量**行数**。
+ * ⚠️ 现值 **2**（1.2/1.10 留在 review 的两行指针），上限 **4**。
+ *   阈值的定法（R-57：不许为了变绿而松）：**只给指针留的余量按「一行指针 + 一行续行」算**。
+ *   首版量全文件、上限 60 —— 把 16 行复盘塞回去实测 **53 < 60，仍全绿**，形同虚设；
+ *   二版上限 8 也偏松（塞 6 行仍绿）。收到 4 后实测：塞 3 行复盘即红。
+ *   1.13 那一段原始复盘是 43 行 —— 在这条守卫下超限近 11 倍。
+ */
+const SPRINT_STATUS_MAX_COMMENT_LINES = 4
 
 const walk = (dir: string, acc: string[] = []): string[] => {
   // 显式补尾斜杠：递归时目录名不带分隔符会拼出 `foo/barbaz` 这种不存在的路径
@@ -231,6 +247,57 @@ describe('R-40 已完成 story 归档（AC-2 / AC-3 / AC-4）', () => {
       `sprint-status.yaml 有 ${long.length} 行超过 ${SPRINT_STATUS_MAX_LINE} 字符：` +
         '运行复盘属于 story 文档的 Completion Notes，不属于状态账本',
     ).toEqual([])
+  })
+
+  it('sprint-status.yaml 的 development_status 块里没有复盘（R-42）—— 卡的是**行数**，不是行长', () => {
+    /*
+     * ⚠️⚠️ 这条规则的由来是**一个被绕过的守卫**：Story 1.13 的 `[CR]` 往
+     *   sprint-status.yaml 塞了 16 行复盘，最长一行 80 字符 —— 在上面那条
+     *   「≤200 字符」的守卫眼里有 60% 余量，大摇大摆走过去，一次都没红。
+     *   而本文件的行尾注释曾被文档治理从 21.7K 砍到 5.8K，又涨回 12K
+     *   ⇒ 复盘回流是**第二次**发生，只卡行长挡不住。
+     *
+     * ⚠️ 只量 `development_status:` 及其之后的注释：全文件 45 行注释里有 43 行是
+     *   BMAD 生成的静态结构头，**工具会重新生成** —— 量全文件会在 BMAD 升级时假红。
+     *   实测现值 **2**（1.2/1.10 留在 review 的那两行指针），上限 4。
+     */
+    const lines = readFileSync(SPRINT_STATUS, 'utf8').split('\n')
+    const start = lines.findIndex((l) => l.startsWith('development_status:'))
+
+    expect(start, 'sprint-status.yaml 里找不到 development_status: —— 本守卫会静默空转').toBeGreaterThan(-1)
+
+    const offenders = lines
+      .slice(start)
+      .map((l, i) => ({ n: start + i + 1, text: l }))
+      .filter((x) => /^\s*#/.test(x.text))
+
+    expect(
+      offenders.length,
+      `development_status 块里已有 ${offenders.length} 行注释（上限 ${SPRINT_STATUS_MAX_COMMENT_LINES}）：\n` +
+        offenders.map((x) => `  第 ${x.n} 行`).join('\n') +
+        '\n运行复盘属于 story 文档的 Completion Notes，按 R-42 不写在这里。' +
+        '本文件只该有状态账本与一行指针。',
+    ).toBeLessThanOrEqual(SPRINT_STATUS_MAX_COMMENT_LINES)
+  })
+
+  it('R-42 自检：把 1.13 那段真实复盘塞回去，这条守卫必须红（否则又是一次假绿）', () => {
+    // ⚠️ 这条不是形式主义，它记的是**这条守卫自己三次没咬住**的过程：
+    //   首版量**全文件**注释数、上限 60 —— 塞 16 行复盘实测 **53 < 60，仍然全绿**；
+    //   二版量 development_status 块但上限 8 —— 塞 6 行复盘仍绿；
+    //   三版上限收到 4，实测塞 **3** 行复盘即报红（已用 Edit 真改文件验过）。
+    // 若哪天有人把阈值调松，这条自检与那条守卫会一起失效，所以断言钉死「真实历史值」
+    // 与「构造出的复盘行数」都必须超限，而不是钉死一个能自己成立的数。
+    const narrative = Array.from(
+      { length: SPRINT_STATUS_MAX_COMMENT_LINES + 1 },
+      (_, i) => `  # 第 ${i + 1} 行复盘：实测值、裁决理由、假绿复盘、遗留说明…`,
+    )
+
+    expect(
+      narrative.filter((l) => /^\s*#/.test(l)).length,
+      '构造失效：模拟的复盘行数本身就没超限',
+    ).toBeGreaterThan(SPRINT_STATUS_MAX_COMMENT_LINES)
+    // 真实历史值：1.13 的那段复盘是 43 行，在现守卫下应超限近 11 倍
+    expect(43).toBeGreaterThan(SPRINT_STATUS_MAX_COMMENT_LINES)
   })
 
   it('活跃文档不引用 archive/ 下的具体文件（AC-4）', () => {

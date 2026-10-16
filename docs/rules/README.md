@@ -12,7 +12,7 @@
 |---|---|
 | 写代码前确认架构边界 | [architecture.md](architecture.md) R-01..R-14 |
 | 碰任何数值 | [range-and-balance.md](range-and-balance.md) R-20..R-24 ⚠️ 改之前先问人 |
-| 记录 / 引用 / 作废一条约定 | [process.md](process.md) R-30..R-41 |
+| 记录 / 引用 / 作废一条约定 | [process.md](process.md) R-30..R-42 |
 | 写测试或守卫 | [testing.md](testing.md) R-50..R-61 |
 | 画词图或写 SVG | [content.md](content.md) R-70..R-78 |
 
@@ -67,6 +67,7 @@
 | R-39 | 收尾门槛必须逐项贴真实输出 | ❌ |
 | R-40 | 已完成的 story 文档归档，默认不读 | ✅ |
 | R-41 | 不做「无人守」的边界 | ❌ |
+| R-42 | `sprint-status.yaml` 只写状态，复盘一律进 story 文档 | ✅ |
 
 ### 测试与守卫 → [testing.md](testing.md)
 
