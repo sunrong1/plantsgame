@@ -25,9 +25,20 @@
  *     竖屏平板，压根没有 hover；拖拽是另一套交互，本 story 不做。
  *   ⚠️ **不用任何延迟/防抖代替选中态**（`epics.md:1114`）：防误触靠**看得见的高亮**。
  *
- *   ⚠️ GDD `:296/:310` 残留的「圆形射程」**本 story 不改**（裁决 1）：
- *     覆盖层画的是 `coverCellsAt` 的**真实伤害形状**（范围塔 = 同行 3 格），
- *     而 GDD 正文仍写着圆。改文档要走 `[CC]`，登记见 AC-H2。
+ *   ⚠️ 覆盖层画的是 `coverCellsAt` 的**真实伤害形状**（范围塔 = 同行 3 格），
+ *     而**不是**「半径 3 的圆（含斜向）」。裁决 1 记录了这个三方冲突，
+ *     但**冲突只消解了一半**，别把本段读成「文档与代码已经完全一致」：
+ *       · `gdd.md` —— rev 5 **已改**，改成「同行单向窗口 / 范围塔横向 3 格」，
+ *         依据正是 `turn.ts` 里「相邻行的塔整局不开火」这条事实。
+ *       · `epics.md` 的 AR43 与 `game-architecture.md` —— **仍然写着圆**
+ *         （原文：「范围塔须能同时画两套形状：放置覆盖（半径 3 的圆，与直射塔一致）」）。
+ *     ⚠️ 而 `CLAUDE.md` 写明「epics 的 AC 正文才是事实源」⇒ 这是一处**仍开着的**
+ *       文档债，登记在 `deferred-work.md`。裁决 6 之后非僵尸行整行不可建，
+ *       「斜向覆盖」连讨论价值都没有了，但**那是 story 之外的文档裁决**，
+ *       不由本文件顺手改掉。
+ *     ⚠️ 引规划文档时**用原文句子，不要写行号**：原写的是 `gdd.md:296/:310`，
+ *       而行号随 revision 漂移即失效 —— 1.4 那条引用正是这么栽的
+ *       （Story 1.12 已实测更正，见 `deferred-work.md`）。
 
  *
  * ── 索引基准 ──────────────────────────────────────────────────────────────
@@ -255,6 +266,31 @@ function onCellPointerUp(cell: Cell): void {
 }
 
 /**
+ * 🚨 `pointercancel` —— 指针被**中止**，而不是「抬起」。
+ *
+ * ⚠️ **不能用 `pointerleave` 代替**（第一稿想过，是错的）：拖拽预览**依赖**
+ *   「手指从一个格滑到另一个格再松开」。`pointerup` 落在新格上时，
+ *   `onCellPointerUp` 靠 `candidate` 里**记着的旧指向格**来判断「是不是同一格」。
+ *   若 `pointerleave` 就把 `candidate` 清掉，`pointerup` 一进来
+ *   `point === null` 直接早退 ⇒ **预览从此不再跟随手指**，
+ *   而那正是 AC-E1 的逐字要求（「落在别处 ⇒ 只移动预览，不种」）。
+ *
+ *   `pointercancel` 不同：它意味着**不会有 `pointerup` 跟来**
+ *   （系统手势接管、来电、元素被移除、浏览器判定为滚动）。
+ *   此时残留的 `candidate` 永远等不到收束 ⇒ 屏幕上留着一片
+ *   「这里能放」的绿光，而松手什么也没发生 —— 与 `onCellPointerUp`
+ *   注释里描述的那个「无从判断哪一步出的问题」是同一个症状。
+ */
+function onCellPointerCancel(cell: Cell): void {
+  // 只有「正指着这一格」时才需要清：手指若已滑到别的格子上，
+  // 那一格自己会发出 pointercancel/pointerup，不该在这里连坐清掉它的状态。
+  const point = candidate.value
+  if (point !== null && (point.row !== cell.row || point.col !== cell.col)) return
+  candidate.value = null
+  refusedKey.value = null
+}
+
+/**
  * AC-D2②：点**网格之外**的空白取消选中。
  *
  * ⚠️ `.self` 修饰符：事件目标必须**就是** `.battle-grid` 容器本身。
@@ -314,6 +350,7 @@ watch(selectedEntryId, () => {
       :data-col="cell.col"
       @pointerdown="onCellPointerDown(cell)"
       @pointerup="onCellPointerUp(cell)"
+      @pointercancel="onCellPointerCancel(cell)"
       @animationend="onCellAnimationEnd"
     >
       <!-- 房子（第 1 列 = 内部 col 0）。CSS 画，不新增 SVG 资产 ——
@@ -351,15 +388,26 @@ watch(selectedEntryId, () => {
         v-if="coveredKeys.has(cell.key)"
         variant="range"
       />
-      <!-- ② 非第 3 行整行压暗：选中卡时，第 1/2/4/5 行。 -->
-      <RangeOverlay
-        v-else-if="showInertRows && cell.row !== ZOMBIE_ROW"
-        variant="inert"
-      />
-      <!-- ③ 拒绝闪：按在不能放的格上。与 ① 互斥（能放的格不会走到压暗闪）。 -->
+      <!-- ② 拒绝闪：按在不能放的格上。 -->
+      <!-- 🚨 [CR] 2026-10-16：**原来这条排在压暗之下，是个静默失效**。
+             旧的顺序是「压暗 → 拒绝闪」，而 `showInertRows` 在选中卡时恒为真
+             ⇒ **非僵尸行的每一格永远命中压暗**，`refusedKey` 在那儿根本没机会渲染。
+             孩子按在非僵尸行上，看到的永远是那片静态的灰，**从来没有闪过**。
+             旧注释写「与 ① 互斥（能放的格不会走到压暗闪）」—— 推理本身是错的：
+             真正的遮挡者不是 ①，是 ②。
+             [CR] 裁决 6 之后非僵尸行整行不可建，它们成了孩子最常按错的格子，
+             这个顺序错误从「瑕疵」升级为「主路径失效」，故必须换。 -->
       <RangeOverlay
         v-else-if="refusedKey === cell.key"
         variant="refused"
+      />
+      <!-- ③ 非第 3 行整行压暗：选中卡时，第 1/2/4/5 行。
+           排在拒绝闪**之后**：压暗是**常驻的环境态**（一直告诉你这四行不行），
+           拒绝闪是**瞬时反馈**（你刚按了这一下）。瞬时应盖过常驻，
+           闪完 `refusedKey` 被清掉，压暗自然回到原样 —— 两者不打架。 -->
+      <RangeOverlay
+        v-else-if="showInertRows && cell.row !== ZOMBIE_ROW"
+        variant="inert"
       />
     </div>
   </div>
@@ -460,7 +508,16 @@ watch(selectedEntryId, () => {
   inset: 0;
   z-index: 2;
   pointer-events: none;
-  border: 3px solid var(--color-sun);
+  /* [CR] 2026-10-16：`var(--color-sun)` → `#424242`。亮黄描边落在草地绿
+     `#7cb342` 上只有 **1.80:1**，落在更浅的格底上更差 —— 而「手指落在哪一格」
+     是本条描边**存在的全部理由**（见上方注释：任何时候都要看得见）。
+     `#424242` 在草地绿上 **4.01:1**，格子底色上都过 AA。 */
+  /* [CR] 2026-10-16：`var(--color-sun)` → `#424242`。亮黄描边落在草地绿
+     `#7cb342` 上只有 **1.80:1**（落在更浅的路径米色上也才 1.12:1）——
+     而「手指落在哪一格」是本条描边**存在的全部理由**（见上方注释：
+     任何时候都要看得见）。`#424242` 在草地绿上 **4.01:1**、路径米色上
+     **6.39:1**，都过 WCAG 1.4.11 非文字的 3:1 门槛。守卫：G30b。 */
+  border: 3px solid #424242;
 }
 
 /* 入场格在**最右**列：给它一条指向左侧的入场标记，

@@ -180,15 +180,35 @@ function onSelect(): void {
  *   `disabled` 时是恒真的（1.11 的 M54 实测），所以两条都要有。
  */
 .hand-card.is-unaffordable {
-  /* alpha 压暗：叠在卡面底色之上，与两枚 overlay 罩同族。 */
-  background-image: linear-gradient(rgba(0, 0, 0, 0.38), rgba(0, 0, 0, 0.38));
+  /* alpha 压暗：叠在卡面底色之上，与两枚 overlay 罩同族。
+     ⚠️ 0.45 不是随手挑的 —— 见 tokens.css 的 `--color-overlay-unaffordable`
+        那段注释：0.38 时卡面底落到 #857e7c，罩下的白字只有 3.98:1，
+        达不到正文 4.5:1；0.45 时升到 4.87:1。 */
+  background-image: var(--color-overlay-unaffordable), var(--color-overlay-unaffordable);
+  color: var(--color-on-tower);
+}
+
+/*
+ * ⚠️ [CR] 2026-10-16 补：这一条**原来不存在**，而它是「不可买」态读不出字的直接原因。
+ *   `.hand-card.is-unaffordable` 与 `.is-unaffordable .hand-card__cost` 都写了
+ *   `color: var(--color-on-tower)`，唯独**卡面单词**那条规则只有自己的
+ *   `--color-tower-aoe`，没有对应覆盖 ⇒ 「整张卡统一走白」的意图**只实现了一半**，
+ *   单词继续用深橙落在被压暗的卡面上：未压暗 5.85:1，罩到 0.45 后只剩 **1.88:1**。
+ *   症状是「买不起的卡看不清上面写的是哪个词」—— 对一个 4~8 岁、正在学认字的孩子，
+ *   这恰好是最不该看不清的那部分。
+ */
+.hand-card.is-unaffordable .hand-card__label {
   color: var(--color-on-tower);
 }
 
 /* 选中态高亮（AC-D1）：靠**看得见**区分，不靠任何输入延迟或防抖 ——
    `epics.md:1114`：「防误触靠选中态高亮，不靠输入延迟」。 */
 .hand-card.is-selected {
-  border-color: var(--color-sun);
+  /* [CR] 2026-10-16：`var(--color-sun)` → `#424242`，理由同 `.hand-card__cost`
+     —— 亮黄描边落在米色卡面上只有 1.12:1，**看不见的选中态等于没有选中态**，
+     而 `epics` 的防误触判据正是「靠选中态高亮」。深中性 6.39:1。
+     守卫：G30b 实算 WCAG 对比度（判据 3.0，WCAG 1.4.11 非文字门槛）。 */
+  border-color: #424242;
 }
 
 .hand-card__image {
@@ -254,7 +274,13 @@ function onSelect(): void {
 .hand-card__cost {
   font-size: var(--text-body);
   line-height: 1;
-  color: var(--color-sun);
+  /* [CR] 2026-10-16：由 `var(--color-sun)` 改为深中性 `#424242`。
+     实测 `--color-sun`(#fdd835) 落在卡面底 `#color-path`(#d7ccc8) 上只有
+     **1.12:1** —— 远低于 WCAG AA 正文 4.5:1，孩子在卡上根本看不见这个数字。
+     `#424242` 在同一底色上 **6.39:1**，且仍是中性色，不与「阳光」这个
+     资源色相撞。`--color-sun` 保留给**深色底面**（塔、HUD 数字）—— 见
+     `tokens.css` 里那条被收窄的「例外」注释。守卫：G30b 实算 WCAG 对比度。 */
+  color: #424242;
 }
 
 /* 不可买时造价数字跟着压暗，避免它在灰卡上仍是全卡最亮的东西。 */

@@ -4,7 +4,8 @@
  * ── 这个文件守什么 ────────────────────────────────────────────────────────
  * · **`canBuildAt()` 与 `reducer.placeTower` 的真实接受 / 拒绝逐格一致** ——
  *   这是本 story 最重要的一条**漂移守卫**，理由见下。
- * · `canBuildAt()` 的真值表：合法塔位恰好 **35 格**，不是 45 格。
+ * · `canBuildAt()` 的真值表：合法塔位恰好 **7 格**，不是 45 格
+ *   （[CR] 2026-10-16 裁决 6 之前是 35 格，见下方 describe 的注释）。
  * · `buildBlockedReason()` 对每一类不可建给出可区分的原因。
  * · `zombieHpRatio()` 的取值与钳位。
  *
@@ -33,6 +34,7 @@ import {
   HOUSE_COL,
   ROWS,
   ZOMBIE_HP,
+  ZOMBIE_ROW,
   ZOMBIE_SPAWN_COL,
   buildBlockedReason,
   canBuildAt,
@@ -55,18 +57,37 @@ function everyCell(): readonly { row: number; col: number }[] {
   return cells
 }
 
-describe('AC-12 —— 合法塔位恰好 35 格，不是 45 格', () => {
-  it('canBuildAt 为真的格子数 === 5 行 × 7 列 = 35', () => {
+describe('AC-12 —— 合法塔位恰好 7 格，不是 45 格', () => {
+  // ⚠️ [CR] 2026-10-16 裁决 6：数字从 **35 改成 7**。这不是把守卫放松成「随它变」，
+  //   是一次**已裁决的放置规则变更**，理由与代价写在 `src/core/grid.ts`
+  //   `buildBlockedReason` 的行拦截注释里：非僵尸行的塔整局不开火，
+  //   原本「能建但不能打」。守卫的**探测力不变** —— 它照样钉死真值表的形状，
+  //   照样能把「悄悄少掉几格」变成红灯。改的是判据，不是松紧。
+  it('canBuildAt 为真的格子数 === 1 行（僵尸行）× 7 列 = 7', () => {
     const buildable = everyCell().filter((c) => canBuildAt(c.row, c.col))
 
-    expect(buildable).toHaveLength(35)
-    expect(buildable).toHaveLength(ROWS * (COLS - 2))
+    expect(buildable).toHaveLength(7)
+    expect(buildable).toHaveLength(COLS - 2)
   })
 
-  it('房子列与入场列的每一格都不可建，且只有这两列不可建', () => {
+  it('僵尸行上只有两列不可建，其余行全部不可建', () => {
     for (const c of everyCell()) {
-      const expected = c.col !== HOUSE_COL && c.col !== ZOMBIE_SPAWN_COL
+      // 三条拦截（行 + 两列）在本文件里**独立枚举**，不走被测代码的同一份判断 ——
+      // 否则「实现和守卫同时改错」会一起变绿。
+      const expected =
+        c.row === ZOMBIE_ROW && c.col !== HOUSE_COL && c.col !== ZOMBIE_SPAWN_COL
       expect(canBuildAt(c.row, c.col), `格子 (${c.row}, ${c.col}) 的可建性与预期不符`).toBe(expected)
+    }
+  })
+
+  it('非僵尸行的每一格都不可建，且**原因文案点明「整局不会开火」**', () => {
+    // 这条是裁决 6 的正面守卫：孩子点非僵尸行时，reason 必须说清楚为什么，
+    // 而不是笼统一句「不能建」（AC-B2 的逐条因果要求）。
+    for (const c of everyCell()) {
+      if (c.row === ZOMBIE_ROW) continue
+      const reason = buildBlockedReason(c.row, c.col)
+      expect(reason, `格子 (${c.row}, ${c.col}) 竟然可建`).not.toBeNull()
+      expect(reason).toContain('不会开火')
     }
   })
 
@@ -154,21 +175,32 @@ describe('AC-12 漂移守卫 —— canBuildAt 与 placeTower 的真实接受 / 
     ).toEqual([])
   })
 
-  it('反向：reducer 确实拒绝了房子格与入场格（证明上面那条不是「两边都答 true」的恒真）', () => {
-    expect(reducerAccepts(2, HOUSE_COL)).toBe(false)
-    expect(reducerAccepts(2, ZOMBIE_SPAWN_COL)).toBe(false)
-    expect(reducerAccepts(2, 4)).toBe(true)
+  it('反向：reducer 确实拒绝了房子格、入场格与非僵尸行（证明上面那条不是「两边都答 true」的恒真）', () => {
+    expect(reducerAccepts(ZOMBIE_ROW, HOUSE_COL)).toBe(false)
+    expect(reducerAccepts(ZOMBIE_ROW, ZOMBIE_SPAWN_COL)).toBe(false)
+    expect(reducerAccepts(ZOMBIE_ROW, 4)).toBe(true)
+    // 裁决 6 的行拦截同样走 reducer（`placeTowerIn` ③' 调 `buildBlockedReason`）。
+    for (const row of [0, 1, 3, ROWS - 1]) {
+      expect(reducerAccepts(row, 4), `非僵尸行 (${row}, 4) 竟然被 reducer 接受`).toBe(false)
+    }
   })
 
-  it('反向：reducer 恰好拒掉 10 格（5 行 × 2 列），既不是全拒也不是全收', () => {
+  it('反向：reducer 恰好拒掉 38 格（4 非僵尸行 × 9 列 + 僵尸行 × 2 列），既不是全拒也不是全收', () => {
     // 这一条是上面那条 45 格比对的**前置**：如果探测棒恒答 false，
-    // 上面那条会比对出 35 条「不一致」——看起来是守卫报警，其实是探测棒坏了。
-    // 把真值表的形状在这里钉死（恰 10 拒 / 35 收），坏法就被限死在
-    // 「某一列整体翻转」这一种。
+    // 上面那条会比对出 7 条「不一致」——看起来是守卫报警，其实是探测棒坏了。
+    // 把真值表的形状在这里钉死（恰 38 拒 / 7 收），坏法就被限死在
+    // 「某一行或某一列整体翻转」这两种。
+    // ⚠️ [CR] 裁决 6 之前是「恰 10 拒 / 35 收 = 5 行 × 2 列」；
+    //   多出的 28 拒正是新增的**行**拦截（4 行 × 7 个中间列）。
     const rejected = everyCell().filter((c) => !reducerAccepts(c.row, c.col))
 
-    expect(rejected).toHaveLength(ROWS * 2)
-    expect(new Set(rejected.map((c) => c.col))).toEqual(new Set([HOUSE_COL, ZOMBIE_SPAWN_COL]))
+    expect(rejected).toHaveLength(ROWS * COLS - (COLS - 2))
+    // 拒掉的格子恰好 = 全部非僵尸行 + 僵尸行的两列，两部分互不重叠。
+    expect(rejected.filter((c) => c.row !== ZOMBIE_ROW)).toHaveLength((ROWS - 1) * COLS)
+    expect(rejected.filter((c) => c.row === ZOMBIE_ROW).map((c) => c.col)).toEqual([
+      HOUSE_COL,
+      ZOMBIE_SPAWN_COL,
+    ])
   })
 })
 

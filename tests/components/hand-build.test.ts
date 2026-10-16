@@ -59,6 +59,7 @@ import {
   state,
 } from '../../src/app/store'
 import BattleField from '../../src/components/battle/BattleField.vue'
+import Tower from '../../src/components/battle/Tower.vue'
 import HandCard from '../../src/components/hand/HandCard.vue'
 import HandDeck from '../../src/components/hand/HandDeck.vue'
 
@@ -68,16 +69,17 @@ import towerSourceRaw from '../../src/components/battle/Tower.vue?raw'
 import handDeckSource from '../../src/components/hand/HandDeck.vue?raw'
 import handCardSource from '../../src/components/hand/HandCard.vue?raw'
 import typesSource from '../../src/core/types.ts?raw'
+import { contrastMsg, contrastRatio, cssDecl, declValue, extractColor, overBlack, resolveColor, rgbaAlpha, stripComments as sharedStripComments, tokenValue } from '../helpers/contrast'
 
 enableAutoUnmount(afterEach)
 
-/** 剥掉块注释、行注释与 HTML 注释，只留代码 —— 源码匹配的强制前置。 */
-function stripComments(source: string): string {
-  return source
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/^\s*\/\/.*$/gm, '')
-    .replace(/<!--[\s\S]*?-->/g, '')
-}
+/**
+ * 剥掉块注释、行注释与 HTML 注释，只留代码 —— 源码匹配的强制前置（R-52）。
+ * 📎 [CR] 2026-10-16：实现移入 `tests/helpers/contrast.ts`，与 `quiz-card.test.ts`
+ *   共用同一份。原先三个文件各抄一份，而其中一份还与另两份行为不同
+ *   （删空串 vs 换行），那种分歧会以「误导性报错」的形式冒出来。
+ */
+const stripComments = sharedStripComments
 
 // ── 测试用的 state 组装 ──────────────────────────────────────────────────────
 
@@ -473,12 +475,16 @@ describe('G35 —— 阳光不足 ⇒ 变灰且不可点', () => {
 describe('G30 —— 射程覆盖层逐格 === coverCellsAt', () => {
   const cells = buildableCells()
 
-  it('战场恰好 35 个可建格（矩阵规模本身就是判据的一部分）', () => {
-    expect(cells).toHaveLength(35)
+  it('战场恰好 7 个可建格（矩阵规模本身就是判据的一部分）', () => {
+    // ⚠️ [CR] 2026-10-16 裁决 6：35 → 7（非僵尸行整行不可建）。
+    //   这条断言的**作用**不是「记住 35」，而是「可建格的规模不会悄悄漂移」——
+    //   所以它跟着裁决走，但仍然是硬钉死的数字。理由见
+    //   `src/core/grid.ts` 的 `buildBlockedReason` 行拦截注释。
+    expect(cells).toHaveLength(COLS - 2)
   })
 
   for (const towerType of ['direct', 'slow', 'aoe'] as const) {
-    it(`${towerType}：全部 35 个可建格的覆盖集合 === coverCellsAt`, async () => {
+    it(`${towerType}：全部 7 个可建格的覆盖集合 === coverCellsAt`, async () => {
       for (const towerTypeKey of [towerType]) {
         for (const { row, col } of cells) {
           reset({ sun: 1000, unlocked: [ENTRY_OF[towerTypeKey]] })
@@ -491,6 +497,172 @@ describe('G30 —— 射程覆盖层逐格 === coverCellsAt', () => {
       }
     })
   }
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // 🚨 G30b —— 手牌与战场在**浅色底面**上的可见性（`[CR]` 2026-10-16 修的 2 个 P0）
+  //
+  // 与 1.11 的 G30 同一个洞（R-41 的「无守卫 + 不在人工清单」双重漏网），
+  // 只是这次在 1.12 的三个位置上复发：
+  //   · `.hand-card__cost` 的造价数字 `var(--color-sun)` 落在卡面米色 `--color-path`
+  //     上只有 **1.13:1** —— 孩子看不见这张卡要多少钱。
+  //   · `.hand-card.is-selected` 的选中描边同一个颜色同一个底 ⇒ 同样 1.13:1。
+  //     而「防误触靠选中态高亮」是 `epics` 的正面判据 ⇒ **看不见的选中态
+  //     等于没有选中态**，比造价数字更严重。
+  //   · `.battle-cell.is-candidate::after` 的指向描边落在草地绿 `--color-bg`
+  //     上只有 **1.80:1** —— 而「手指落在哪一格」是这条描边存在的全部理由。
+  //
+  // 根因是同一个：`tokens.css` 把 `--color-sun` 写成「对比度 3:1 的唯一例外」，
+  // 那句「例外」被当成了「哪儿都能用」的通行证。三处都是**浅色底面**上的错用。
+  //
+  // 判据与 1.11 相同：**实算 WCAG 对比度**，不检查颜色字面量是否「合法」——
+  // 上一版 `#fdd835` 每一条形式检查都会放行。
+  // ════════════════════════════════════════════════════════════════════════════
+
+  /** 卡面底色：`.hand-card` 自己的 `background-color`。 */
+  function handCardBg(): string {
+    return resolveColor(
+      declValue(cssDecl(handCardSource, '.hand-card {'), 'background-color') ?? '#ffffff',
+    )
+  }
+
+  /**
+   * 指向描边可能落在**两种**格子底色上：草地 `--color-bg`（`.battle-cell` 自己的底色）
+   * 与浅土路径 `--color-path`（僵尸行 —— 而**可建格全部在僵尸行**，所以这一次
+   * 恰恰是孩子最常看到指向描边的那种底）。
+   * ⚠️ 只查一种就是假绿 —— 与 1.11「必须逐级回退」同款纪律。
+   *
+   * ⚠️ 僵尸行是**手算 `:nth-child` 下标**选出来的（见 `BattleField.vue` 的注释），
+   *   不是 class。这里必须跟着它一起变，改了下标而这里没跟上是会静默漏查的漂移。
+   */
+  function cellBackgrounds(): readonly string[] {
+    const PATH_ROW = '.battle-cell:nth-child(n + 19):nth-child(-n + 27) {'
+    return [
+      cssDecl(battleFieldSource, '.battle-cell {'),
+      cssDecl(battleFieldSource, PATH_ROW),
+    ].map((b) => resolveColor(declValue(b, 'background-color') ?? '#ffffff'))
+  }
+
+  it('🚨 造价数字在卡面上 ≥ 4.5:1（改之前是 1.13:1）', () => {
+    const fg = resolveColor(declValue(cssDecl(handCardSource, '.hand-card__cost {'), 'color') ?? '')
+    const bg = handCardBg()
+    const ratio = contrastRatio(fg, bg)
+    expect(ratio, contrastMsg('手牌造价数字', fg, bg, ratio, 4.5)).toBeGreaterThanOrEqual(4.5)
+  })
+
+  it('🚨 造价数字不得复用 `--color-sun`（它在浅底面上只有 1.13:1）', () => {
+    // 上一条锁住的是**比值**；这一条锁住**根因**：`--color-sun` 的「例外」
+    // 条款被当成了通行证，换一个恰好也过 4.5 的亮色来用，守卫会静默放过。
+    // 语义上造价也不该用「阳光」这个资源色 —— 它在 HUD 里表示的是阳光本身。
+    const fg = declValue(cssDecl(handCardSource, '.hand-card__cost {'), 'color') ?? ''
+    expect(fg, '造价数字复用了 --color-sun，在浅色卡面上不可见').not.toContain('--color-sun')
+  })
+
+  it('🚨 选中态描边在卡面上 ≥ 3:1，且不得复用 `--color-sun`（改之前是 1.12:1）', () => {
+    const fg = resolveColor(
+      declValue(cssDecl(handCardSource, '.hand-card.is-selected {'), 'border-color') ?? '',
+    )
+    expect(fg, '选中态描边复用了 --color-sun，孩子点了看不出任何变化').not.toContain('--color-sun')
+    const bg = handCardBg()
+    const ratio = contrastRatio(fg, bg)
+    // 📎 **3.0 是 WCAG 1.4.11 对非文字（UI 组件/图形）的门槛**，不是 4.5。
+    //   第一稿这里写的是 4.5 —— 那是**正文的**门槛，被我顺手套到了描边上。
+    //   留 3.0 有两个理由：① 判据要能被引用和复核，自己另立一个更严的数
+    //   会让后来人以为存在某条 4.5 的规范要求；② 余量仍然很大
+    //   （实测 6.39:1，超出门槛一倍多），真要降也不会悄悄跌破。
+    expect(ratio, contrastMsg('手牌选中态描边', fg, bg, ratio, 3)).toBeGreaterThanOrEqual(3)
+  })
+
+  it('🚨 指向格描边在**两种格子底色**上都 ≥ 3:1（改之前草地绿上只有 1.80:1）', () => {
+    // `border` 是简写（`3px solid #424242`），宽度与样式要剥掉才是颜色。
+    const fg = resolveColor(
+      extractColor(declValue(cssDecl(battleFieldSource, '.battle-cell.is-candidate::after {'), 'border') ?? ''),
+    )
+    expect(fg, '指向格描边复用了 --color-sun，在草地上只有 1.80:1').not.toContain('--color-sun')
+    for (const bg of cellBackgrounds()) {
+      const ratio = contrastRatio(fg, bg)
+      // ⚠️ **这一条第一稿要求 4.5，是我自己写错了** —— 4.5 是正文门槛，
+      //   描边属非文字，适用 1.4.11 的 3.0。实测草地绿上 4.01、路径米色上 6.39，
+      //   两者都过 3.0 且有实余量；写 4.5 会让守卫在**正确实现**上报红，
+      //   而一条会对正确代码报红的守卫比没有守卫更坏。
+      expect(ratio, contrastMsg('战场指向格描边', fg, bg, ratio, 3)).toBeGreaterThanOrEqual(3)
+    }
+  })
+
+  /**
+   * 「买不起」态的实际底色 = 卡面底色 ⊕ 压暗罩。
+   * 罩取自 token（组件不许写死 rgba），alpha 由 token 的值算出。
+   */
+  function unaffordableBg(): string {
+    return overBlack(handCardBg(), rgbaAlpha(tokenValue('--color-overlay-unaffordable')))
+  }
+
+  it('🚨 罩下的「买不起」态：卡面单词与造价数字都 ≥ 4.5:1（改之前单词只有 1.88:1）', () => {
+    // 「买不起」的卡是被一层黑罩压暗的，**卡面底色本身没变**。
+    // 算对比度必须把罩合成进底色 —— 拿未压暗的 `--color-path` 去算会得到
+    // 5.85:1 的漂亮数字，而真实值是 1.88:1，守卫于是对着一版看不见的代码放行。
+    const dimmed = unaffordableBg()
+
+    // 罩下所有卡面文字都必须走白（`--color-on-tower`）——
+    // 压暗只会让**深色**文字更难读，深橙在变暗的底上从 5.85 掉到 1.88。
+    for (const [what, selector] of [
+      ['卡面单词', '.hand-card.is-unaffordable .hand-card__label {'],
+      ['造价数字', '.hand-card.is-unaffordable .hand-card__cost {'],
+    ] as const) {
+      const fg = resolveColor(declValue(cssDecl(handCardSource, selector), 'color') ?? '')
+      const ratio = contrastRatio(fg, dimmed)
+      expect(ratio, contrastMsg(`「买不起」卡上的${what}`, fg, dimmed, ratio, 4.5)).toBeGreaterThanOrEqual(4.5)
+    }
+  })
+
+  it('M76：把罩下的单词颜色改回深橙必须红（守卫自证不是恒绿）', () => {
+    // 直接复现「罩住深橙」那一版，证明上面那条不是恒绿。
+    // ⚠️ 1.88 这个数是**当前 token（alpha 0.45）**下的值。
+    //   改动之前组件里写死的是 0.38，那时同一处错误是 2.31:1 ——
+    //   罩更深一点，文字更看不清一点，两个数都是同一件事的症状。
+    const dimmed = unaffordableBg()
+    expect(contrastRatio('#7a3200', dimmed)).toBeCloseTo(1.88, 2)
+    expect(
+      contrastRatio('#7a3200', handCardBg()),
+      '未压暗时本该好看 —— 否则上面那条守卫的前提（是罩压垮了它）就错了',
+    ).toBeCloseTo(5.85, 2)
+  })
+
+  it('M75：把造价数字改回 `var(--color-sun)` 必须红（守卫自证不是恒绿）', () => {
+    // 变异验证：把**真实源码**换成改动之前那一版，上面的断言必须抓住。
+    // ⚠️ 必须**真的改动源码字符串**，不能在本文件里重算一遍 —— 那是「反向夹具
+    //   连着真组件都没有」的经典假绿（1.11 的 M57 实测）。
+    //
+    // 🚨 **第一稿这里用的是 `handCardSource.replace('color: #424242;', …)`，
+    //   而它是错的 —— 而且错得极安静**：全文里 `color: #424242;` 出现**两次**
+    //   （`.hand-card.is-selected` 的 `border-color: #424242;` 也包含这个子串，
+    //   且它在文件里靠前）。`String.replace` 只换第一处 ⇒ 被改的是**选中态描边**，
+    //   造价规则原封不动 ⇒ 算出来的比值是改**之后**的 6.39，而不是 1.13。
+    //   若当时只是断言「小于 4.5」，这个假变异照样绿 —— 它绿得毫无道理。
+    //   所以下面的写法要**先证明锚点唯一**，再按位置替换。
+    const code = stripComments(handCardSource)
+    const anchor = 'color: #424242;'
+    const ruleAt = code.indexOf('.hand-card__cost {')
+    expect(ruleAt, '源码里找不到 .hand-card__cost 规则').toBeGreaterThan(-1)
+    const anchorAt = code.indexOf(anchor, ruleAt)
+    expect(anchorAt, '.hand-card__cost 规则里没有锚点 ⇒ 变异会空转').toBeGreaterThan(ruleAt)
+    expect(
+      code.slice(ruleAt, anchorAt),
+      '锚点在到达 .hand-card__cost 之前就出现了 ⇒ replace 会改到别的规则上',
+    ).not.toContain(anchor)
+
+    const mutated =
+      code.slice(0, anchorAt) + 'color: var(--color-sun);' + code.slice(anchorAt + anchor.length)
+    expect(mutated, '变异没有改变源码').not.toBe(code)
+
+    // 复现的必须是**改动之前的实测值**：守卫若对那一版放行，上面两条就是装饰。
+    const fg = resolveColor(declValue(cssDecl(mutated, '.hand-card__cost {'), 'color') ?? '')
+    expect(contrastRatio(fg, handCardBg())).toBeCloseTo(1.12, 2)
+    // 顺带确认另一条规则**没被这次变异碰到** —— 上面那个坑的直接反证。
+    expect(
+      declValue(cssDecl(mutated, '.hand-card.is-selected {'), 'border-color'),
+      '变异误伤了选中态描边 ⇒ 替换锚点不唯一',
+    ).toBe('#424242')
+  })
 
   it('M57：把「覆盖挂在指向格」改成「选中即铺满所有可建格」必须红', async () => {
     reset({ sun: 1000, unlocked: [ENTRY_OF.direct] })
@@ -726,6 +898,118 @@ describe('AC-D3 —— 无效点击一律不响应、不抛错', () => {
 })
 
 // ══════════════════════════════════════════════════════════════════════════════
+// 🚨 [CR] 2026-10-16 —— 三条覆盖层/指针的修复各自的回归守卫
+//
+// **上一段所有 `is-refused` 用例用的都是僵尸行**（`row: ZOMBIE_ROW`）。
+// 而僵尸行**永远不会命中压暗分支** —— 于是「压暗排在拒绝闪之前」这个顺序错误
+// 在整整 1158 条用例里**没有一条能看见**。它不是被守卫放过的，是**守卫够不着**。
+// 换句话说：AC-D3「任何不能建的格都要闪」在非僵尸行上从来就没有被验证过。
+// ══════════════════════════════════════════════════════════════════════════════
+
+describe('[CR] 覆盖层顺序 —— 拒绝闪必须盖过非僵尸行压暗', () => {
+  /** 非僵尸行里任意一格（裁决 6 之后它整行不可建）。 */
+  const INERT_ROW = 0
+
+  it('🚨 按非僵尸行 ⇒ 闪「拒绝」，而不是只有一片静态压暗', async () => {
+    reset({ sun: 1000, unlocked: [ENTRY_OF.direct] })
+    const field = mountField()
+    selectTowerCard(ENTRY_OF.direct)
+    // ⚠️ 必须等一拍：压暗是 `showInertRows` 这个 computed 驱动的，选中那一刻才出现。
+    await nextTick()
+    // 先确认压暗**本来就在**（否则这条会在压暗整体坏掉时假绿）。
+    // ⚠️ 类名是 `.is-inert-row` 不是 `.is-inert`（RangeOverlay 的 `VARIANT_CLASS` 表）。
+    expect(cellAt(field, INERT_ROW, 4).find('.is-inert-row').exists()).toBe(true)
+
+    await cellAt(field, INERT_ROW, 4).trigger('pointerdown')
+    expect(
+      cellAt(field, INERT_ROW, 4).find('.is-refused').exists(),
+      '按了不能建的格子却没有闪 ⇒ 拒绝闪被压暗分支吃掉了',
+    ).toBe(true)
+    // 同一格上两者**互斥**：闪的同时不该还挂着常驻压暗
+    expect(cellAt(field, INERT_ROW, 4).find('.is-inert-row').exists()).toBe(false)
+  })
+
+  it('闪播完之后，常驻压暗回到原样（不打架、不留残影）', async () => {
+    reset({ sun: 1000, unlocked: [ENTRY_OF.direct] })
+    const field = mountField()
+    selectTowerCard(ENTRY_OF.direct)
+    await cellAt(field, INERT_ROW, 4).trigger('pointerdown')
+    expect(field.findAll('.is-refused')).toHaveLength(1)
+    await cellAt(field, INERT_ROW, 4).trigger('animationend')
+    expect(field.findAll('.is-refused')).toHaveLength(0)
+    expect(cellAt(field, INERT_ROW, 4).find('.is-inert-row').exists()).toBe(true)
+  })
+
+  it('闪只影响被按的那一格，别的非僵尸行仍然是压暗', async () => {
+    reset({ sun: 1000, unlocked: [ENTRY_OF.direct] })
+    const field = mountField()
+    selectTowerCard(ENTRY_OF.direct)
+    await cellAt(field, INERT_ROW, 4).trigger('pointerdown')
+    expect(field.findAll('.is-refused')).toHaveLength(1)
+    expect(cellAt(field, INERT_ROW, 5).find('.is-inert-row').exists()).toBe(true)
+  })
+})
+
+describe('[CR] pointercancel —— 指针被中止时不留残影，且不破坏拖拽预览', () => {
+  it('🚨 pointercancel ⇒ 指向预览与拒绝闪一并收掉', async () => {
+    reset({ sun: 1000, unlocked: [ENTRY_OF.direct] })
+    const field = mountField()
+    selectTowerCard(ENTRY_OF.direct)
+    await cellAt(field, ZOMBIE_ROW, 3).trigger('pointerdown')
+    expect(inRangeKeys(field).length).toBeGreaterThan(0)
+    // `is-candidate` 是**格子自己身上的** class，不是它的子节点。
+    expect(cellAt(field, ZOMBIE_ROW, 3).classes()).toContain('is-candidate')
+
+    await cellAt(field, ZOMBIE_ROW, 3).trigger('pointercancel')
+    // `pointercancel` 意味着**不会有 pointerup 跟来**，残留预览永远等不到收束。
+    expect(inRangeKeys(field), 'pointercancel 后射程预览还留着 ⇒ 屏幕上是一片骗人的绿光').toHaveLength(0)
+    expect(cellAt(field, ZOMBIE_ROW, 3).classes()).not.toContain('is-candidate')
+  })
+
+  it('🚨 pointercancel 也清掉拒绝闪', async () => {
+    reset({ sun: 1000, unlocked: [ENTRY_OF.direct] })
+    const field = mountField()
+    selectTowerCard(ENTRY_OF.direct)
+    await cellAt(field, ZOMBIE_ROW, HOUSE_COL).trigger('pointerdown')
+    expect(field.findAll('.is-refused')).toHaveLength(1)
+    await cellAt(field, ZOMBIE_ROW, HOUSE_COL).trigger('pointercancel')
+    expect(field.findAll('.is-refused')).toHaveLength(0)
+  })
+
+  it('🚨 从 A 滑到 B 再松开 ⇒ 预览**跟着走**（不能用 pointerleave 实现 pointercancel）', async () => {
+    // 这一条是「为什么不用 `pointerleave`」的正面守卫：
+    //   `pointerup` 靠 `candidate` 里记的旧指向格判断「是不是同一格」。
+    //   若离开一格就清 candidate，这里会直接早退 ⇒ 预览再也不跟随手指，
+    //   而 AC-E1 明写「落在别处 ⇒ 只移动预览，不种」。
+    reset({ sun: 1000, unlocked: [ENTRY_OF.direct] })
+    const field = mountField()
+    selectTowerCard(ENTRY_OF.direct)
+    await cellAt(field, ZOMBIE_ROW, 3).trigger('pointerdown')
+    const before = inRangeKeys(field)
+
+    await cellAt(field, ZOMBIE_ROW, 5).trigger('pointerup')
+
+    expect(cellAt(field, ZOMBIE_ROW, 5).classes()).toContain('is-candidate')
+    expect(cellAt(field, ZOMBIE_ROW, 3).classes()).not.toContain('is-candidate')
+    expect(inRangeKeys(field), '预览没有跟随手指移到 B 格').not.toEqual(before)
+    // 只移动预览、不种：两格都仍然没有塔
+    expect(field.findAllComponents(Tower).length, '预览移动却顺手种下了塔').toBe(0)
+  })
+
+  it('pointercancel 落在**别的**格上时，不该连坐清掉当前指向', async () => {
+    // 手指已滑到 B，此时 A 发出的 pointercancel 不应清掉 B 上的指向。
+    reset({ sun: 1000, unlocked: [ENTRY_OF.direct] })
+    const field = mountField()
+    selectTowerCard(ENTRY_OF.direct)
+    await cellAt(field, ZOMBIE_ROW, 3).trigger('pointerdown')
+    await cellAt(field, ZOMBIE_ROW, 5).trigger('pointerup')
+    expect(cellAt(field, ZOMBIE_ROW, 5).classes()).toContain('is-candidate')
+    await cellAt(field, ZOMBIE_ROW, 3).trigger('pointercancel')
+    expect(cellAt(field, ZOMBIE_ROW, 5).classes()).toContain('is-candidate')
+  })
+})
+
+// ══════════════════════════════════════════════════════════════════════════════
 // AC-D6 —— 高价值：任何输入组合下要么不 dispatch，要么 dispatch 之后状态自洽
 // ══════════════════════════════════════════════════════════════════════════════
 
@@ -798,12 +1082,13 @@ describe('AC-D6 —— placeSelectedAt 在任何输入组合下都不产生技�
     //     ① 有选中        —— 去掉一半            ⇒ 剩 1620 组候选
     //     ② awaiting-build —— 只有这一个相位放行 ⇒ 剩  540
     //     ③ 阳光 ≥ 50     —— 0 与 49 都被挡     ⇒ 剩  180（阳光 1000 那一档）
-    //     ④ 该格可建且未被占 —— 45 格里只有 35 可建（房子列 5 + 入场格 5 = 10 不可建）
-    //        · 占用=false：35 组可种
-    //        · 占用=true：(2,3) 被占              ⇒ 34 组可种
-    //   ⇒ 35 + 34 = 69
+    //     ④ 该格可建且未被占 —— 45 格里只有 7 可建
+    //        （[CR] 裁决 6：4 个非僵尸行 × 9 = 36，加僵尸行两列 2，合计 38 不可建）
+    //        · 占用=false：7 组可种
+    //        · 占用=true：(2,3) 被占              ⇒ 6 组可种
+    //   ⇒ 7 + 6 = 13
     expect(compared).toBe(3240)
-    expect(placed).toBe(69)
+    expect(placed).toBe(13)
   })
 })
 
@@ -1019,10 +1304,23 @@ describe('G33a / G33b —— 组件不得自带战斗数值判据', () => {
   })
 
   it('注释里出现该词不算违规（AC-G2：反向用例）', () => {
+    // 🚨 `[CR]` 2026-10-16 —— 锚点原本写的是 `"const VARIANT_CLASS"`，
+    //   而**那个字符串在 `HandCard.vue` 里一次都没出现**（它在 `RangeOverlay.vue:64`）。
+    //   `String.replace` 找不到锚点是**静默**的 ⇒ `commented === handCardSource`
+    //   ⇒ 一行注释都没插进去 ⇒ 下面那条「剥了注释所以不算违规」**因为错误的原因而绿**，
+    //   零鉴别力。与 1.11 的 M56 / G28b 第一稿同型。
+    //   改用 HandCard.vue 里**确实存在**的锚点，并在插入后断言「确实变了」——
+    //   否则这个夹具下一次退化时还是绿的。
+    const anchor = '{{ card.cost }}'
+    expect(handCardSource, `锚点 ${anchor} 在 HandCard.vue 里不存在，replace 会静默空转`).toContain(anchor)
     const commented = handCardSource.replace(
-      "const VARIANT_CLASS",
-      "/* 这里本来会写 costOf 与 TOWER_STATS，但它只是注释 */\nconst VARIANT_CLASS",
+      anchor,
+      '/* 这里本来会写 costOf 与 TOWER_STATS，但它只是注释 */\n' + anchor,
     )
+    expect(commented, 'replace 没有生效 ⇒ 本用例没有真的插入注释').not.toBe(handCardSource)
+    expect(commented).toContain('costOf')
+
+    // 现在才轮到断言：注释里有 costOf，但剥掉注释后不该算违规
     expect(g33bViolation([{ name: 'x', source: commented }])).toEqual([])
   })
 
@@ -1030,6 +1328,73 @@ describe('G33a / G33b —— 组件不得自带战斗数值判据', () => {
     for (const { name, source } of COMPONENT_SOURCES) {
       expect(stripComments(source), name).not.toMatch(/from '.*core\/balance'/)
     }
+  })
+})
+
+describe('[CR] G43 —— 组件不得自己「选中」卡（可清空，但不可置为非空）', () => {
+  /**
+   * 🚨 这条守卫堵的是 R-41 说的那条**零执行力的边界**：
+   *   `selectedEntryId` 在 `app/store.ts` 里是 `export const … = ref(null)`，
+   *   也就是说它在类型层面就是**可写的**。组件 `import` 进来就能写。
+   *   而「写 null」与「写入一个 entryId」是**性质完全不同**的两件事：
+   *     · 写 `null` —— 清空。store 自己也这么干（`placeSelectedAt` / `applyAction`），
+   *       组件清空不会产生任何 store 之外不知道的状态。
+   *     · 写入非空 —— **绕过门面选中一张卡**。`selectTowerCard` 身上带着
+   *       「再点同一张则取消」这个 toggle 语义（AC-D2①），绕过去写就把它丢了；
+   *       更要紧的是它把「哪些地方有权改选中态」从「只有 store」放宽成
+   *       「任何 import 到它的组件」，而没有任何东西挡着。
+   *   ⇒ 判据只禁后者，**不动 AC-D5 冻结的三门面清单**（加第四个门面
+   *     属于改 story 规格，不是本 story 该顺手做的）。
+   */
+  function g43Violation(sources: readonly { readonly name: string; readonly source: string }[]): string[] {
+    const bad: string[] = []
+    for (const { name, source } of sources) {
+      const code = stripComments(source)
+      // 抓「赋值」，不抓读取：`selectedEntryId.value === null` 是判断，必须放过。
+      // ⚠️ 排除 `===` / `!==`：`=` 的正则若不设边界，`===` 会被误判成赋值。
+      const m = /selectedEntryId\.value\s*=(?!=)/.exec(code)
+      if (m === null) continue
+      const after = code.slice(m.index + m[0].length)
+      if (/^\s*null\b/.test(after)) continue
+      bad.push(`${name}: 组件把 selectedEntryId 置成了非空 —— 选中态只能经 store 的 selectTowerCard`)
+    }
+    return bad
+  }
+
+  it('真实组件源码通过 G43', () => {
+    expect(g43Violation(COMPONENT_SOURCES)).toEqual([])
+  })
+
+  it('前置：白名单（写 `null`）真的存在于真实源码里，否则这条守卫是空转', () => {
+    // 反向夹具必须**先证明那个放行的形态确实存在** ——
+    // 否则「全部合法」可能只是因为源码里一处赋值都没有。
+    const clears = COMPONENT_SOURCES.filter((s) => /selectedEntryId\.value\s*=\s*null\b/.test(stripComments(s.source)))
+    expect(clears.map((c) => c.name).sort(), '白名单里一处都没有 ⇒ 前置条件不成立').not.toEqual([])
+    expect(g43Violation(clears)).toEqual([])
+  })
+
+  it('M77：组件把选中态写成非空必须红', () => {
+    // 🚨 变异必须**真的插进源码字符串**，且锚点要证明唯一 ——
+    //   `selectedEntryId.value = null` 在两个组件里各有一处，
+    //   `replace` 不加区分就会只改第一个（1.11 的 M57 同款坑）。
+    const anchor = 'function onGridBlank(): void {\n  selectedEntryId.value = null\n}'
+    expect(battleFieldSource, '锚点不存在 ⇒ 变异会空转').toContain(anchor)
+    const bad = battleFieldSource.replace(
+      anchor,
+      'function onGridBlank(): void {\n  selectedEntryId.value = state.value.unlocked[0] ?? null\n}',
+    )
+    expect(bad).not.toBe(battleFieldSource)
+    expect(g43Violation([{ name: 'battle/BattleField.vue', source: bad }])).not.toEqual([])
+  })
+
+  it('M77：读 `=== null` 不该被当成赋值（守卫不能误报）', () => {
+    const probe = [
+      'const x = selectedEntryId.value',
+      'if (selectedEntryId.value === null) return',
+      'if (selectedEntryId.value !== null) return',
+      'const y = selectedEntryId.value ? 1 : 0',
+    ].join('\n')
+    expect(g43Violation([{ name: 'probe.ts', source: probe }])).toEqual([])
   })
 })
 

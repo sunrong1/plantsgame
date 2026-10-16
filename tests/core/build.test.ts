@@ -220,12 +220,16 @@ describe('AC-B2 契约 —— placementBlockedReason 返回 null ⇔ reduce 不�
     expect(disagreements.slice(0, 10), `共 ${disagreements.length} 组不一致`).toEqual([])
     expect(compared).toBe(6 * 45 * 2 * 4 * 2)
     // 🚨 **矩阵既不是全拒也不是全收**（探测棒没坏）。
-    // 精确账：只有 `awaiting-build` 且解锁充足的两档阳光能过；空战场 35 格 /
-    // 已占一格 34 格（被占的那格是 (2,4)，恰好在可建区内）。
-    //   2 档阳光(COST / COST+1) × (35 + 34) = 138
+    // 精确账：只有 `awaiting-build` 且解锁充足的两档阳光能过；空战场 7 格 /
+    // 已占一格 6 格（被占的那格是 (2,4)，恰好在可建区内）。
+    //   2 档阳光(COST / COST+1) × (7 + 6) = 26
     // 其余五个相位、以及阳光不足的两档、未解锁的一档，恒被拒。
-    expect(accepted).toBe(138)
-    expect(compared - accepted).toBe(4320 - 138)
+    // ⚠️ [CR] 2026-10-16 裁决 6：空战场 35 格 → **7 格**（非僵尸行整行不可建），
+    //   于是接受数 138 → **26**。守卫的探测力不变 —— 它照样把「可建矩阵悄悄
+    //   变大或变小」变成红灯，改的是**已裁决的判据**，不是断言的松紧。
+    //   理由与代价见 `src/core/grid.ts` 的 `buildBlockedReason` 行拦截注释。
+    expect(accepted).toBe(26)
+    expect(compared - accepted).toBe(4320 - 26)
   })
 
   it('反向：矩阵既不是「全拒」也不是「全收」（探测棒没坏）', () => {
@@ -239,9 +243,9 @@ describe('AC-B2 契约 —— placementBlockedReason 返回 null ⇔ reduce 不�
       if (reducerAccepts(state, row, col)) accepted += 1
       else rejected += 1
     }
-    // 阳光充足、全部解锁、战场为空 ⇒ 只有两列不可建 ⇒ 恰 35 收 / 10 拒。
-    expect(accepted).toBe(35)
-    expect(rejected).toBe(ROWS * 2)
+    // 阳光充足、全部解锁、战场为空 ⇒ 只有僵尸行的 7 格可建 ⇒ 恰 7 收 / 38 拒。
+    expect(accepted).toBe(COLS - 2)
+    expect(rejected).toBe(ROWS * COLS - (COLS - 2))
 
     // 而「未解锁」「阳光不足」这两个维度各自都能独立翻面。
     expect(placementBlockedReason(baseBuildState(COST + 1, []), ENTRY_ID, ZOMBIE_ROW, 4)).toContain('尚未解锁')

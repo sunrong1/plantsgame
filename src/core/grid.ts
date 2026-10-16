@@ -197,6 +197,26 @@ export function buildBlockedReason(row: number, col: number): string | null {
   if (!isInsideGrid(row, col)) {
     return `格子 (${row}, ${col}) 不在 ${ROWS}×${COLS} 网格内`
   }
+  // ⚠️ [CR] 2026-10-16 裁决 6 —— 本条是**改放置规则**（不是消歧）。
+  //   事实基础：`turn.ts` 的 `resolveCombatRound` 只让 `row === ZOMBIE_ROW` 的塔开火，
+  //   所以第 1/2/4/5 行的塔**整局一枪不开**；`coverCellsAt` 对它们返回空集合。
+  //   在此之前，非僵尸行的格子是「能建、不能打」—— 孩子花 50~75 阳光买一座
+  //   永远不会开火的塔，界面上没有任何提示，`coverCellsAt` 的空覆盖还要靠
+  //   「整行压暗」反向解释。与「房子格」「入场格」两条同型（都是「能建但没意义」）。
+  //   故与其让 UI 解释它，不如从规则上禁掉：**非僵尸行不可建塔**。
+  //   GDD rev 5 已经把射程描述改成「同行单向窗口 / 范围塔横向 3 格」，
+  //   本条与之一致；它禁掉的是 GDD 同时描述着、却从未成立的机制。
+  //   ⚠️ **代价（已如实记录，不得当小事抹掉）**：合法塔位从 35 格降到 **7 格**
+  //   （只剩第 3 行 × 第 2~7 列）。这**改动关卡平衡**，`tests/core/build.test.ts`
+  //   与 `tests/core/buildable-cells.test.ts` 的逐格黄金值已随之更新并在
+  //   Story 1.12 的 [CR] 记录里写明原因。要放宽回多行建塔，前提是让相邻行开火
+  //   —— 那是战斗判定变更（见 [CC] / 1.19 重验），不是改一行谓词。
+  if (row !== ZOMBIE_ROW) {
+    return (
+      `格子 (${row}, ${col}) 不在僵尸行（第 ${ZOMBIE_ROW + 1} 行）—— ` +
+      '僵尸只走中间那一行，别的行建出来的塔整局不会开火'
+    )
+  }
   if (col === HOUSE_COL) {
     return (
       `格子 (${row}, ${col}) 是房子格（界面第 ${HOUSE_COL + 1} 列）—— ` +
@@ -215,9 +235,14 @@ export function buildBlockedReason(row: number, col: number): string | null {
 /**
  * 这一格**位置上**能不能建塔 —— {@link buildBlockedReason} 的布尔版。
  *
- * 合法塔位因此是 `row ∈ [0, ROWS-1]` × `col ∈ [1, COLS-2]` = **35 格**，
- * 不是 45 格。这是对 `[epics] AC:1013`「塔可种在任意空格」的**消歧，不是推翻**：
- * 那句 AC 写下时 reducer 的这两条拦截还没进 `[CR]`。
+ * 合法塔位因此是 `row === ZOMBIE_ROW` × `col ∈ [1, COLS-2]` = **7 格**，
+ * 不是 45 格，也不是原先的 35 格。分两次落定：
+ *   · 两条**列**拦截（房子列 / 入场列）是对 `[epics] AC:1013`「塔可种在任意空格」的
+ *     **消歧，不是推翻** —— 那句 AC 写下时这两条拦截还没进 `[CR]`。落定时 35 格。
+ *   · **行**拦截（非僵尸行）是 `[CR] 2026-10-16` 裁决 6 的**规则变更**，35 → 7。
+ *     它禁掉的是「能建但整局不开火」的格子，理由见 `buildBlockedReason` 里的注释。
+ * 两者性质不同，勿混为一谈：**把行拦截加回来＝改放置规则与关卡平衡**，
+ * 属 1.19 重验的范围，不是 UI 层的自由度。
  */
 export function canBuildAt(row: number, col: number): boolean {
   return buildBlockedReason(row, col) === null

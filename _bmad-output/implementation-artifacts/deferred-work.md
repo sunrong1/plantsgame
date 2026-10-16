@@ -689,15 +689,71 @@
   后者从记忆正文删掉、只留一句指向 `docs/rules/`。
 - **注意**：改记忆文件不产生 git 记录，**改完没有 review 能看见** ⇒ 需单独留痕。
 
-### BMAD 模板侧的流程改造（§4，独立 QD）
+### BMAD 模板侧的流程改造（§4）—— 2026-10-16 已评估：**不做**
 
-`.claude/skills/` 与 `_bmad/` 下 GDS 技能的 step 文件里，
-**仍然写着「把约定原样抄进下一份 story 文档」这类指引** —— R-37 要消除的复制链，
-源头就在这些模板里。本次不改（spec 的 Never 边界已写明「BMAD 模板改造是下一个独立 story」）。
+**结论**：`gds-quick-dev` 2026-10-16 走完整套取证后判定**不实施**。本条销项，
+但下面的取证结论与落点地图保留 —— 那是这次唯一的实际产出。
 
-- **要做什么**：走 `bmad-customize`（或直接改模板）把 step 文件里的
-  「复述既有约定」改成「引用 R-ID」，并让 `[DS]` 的产出模板带 R-ID 字段。
-- **风险**：`_bmad/` 是安装器管理的，改动可能被升级覆盖 ⇒ 需要先确认覆盖策略。
+**更正本条此前的两处失实**（文档治理留下的活错信息，性质同 R-37 漂移表）：
+
+- 原文写「`.claude/skills/` 与 `_bmad/` 下 GDS 技能的 step 文件」——
+  **`_bmad/` 下一个 step 文件都没有**（实测 `find _bmad -name 'step-*.md'` 返回 0）。
+  工作流正文只存在于 `.claude/skills/`。
+- 原文写「`_bmad/` 是安装器管理的，改动可能被升级覆盖 ⇒ 需要先确认覆盖策略」。
+  覆盖策略已确认，且结论是**双向的**：`_bmad/` 侧只有配置进 git，
+  **`.claude/skills/` 整个目录被 `.gitignore` 忽略**（注释写「BMAD 安装器复制的技能（可重装再生）」）⇒ 直接改 step 文件不留任何 git 记录，评审看不见，升级即抹掉。
+  顺带查出：现有 R-37 守卫的 `SKIP_DIRS` 含 `_bmad`（注释「BMAD 安装器管理，不归本项目规则管」），
+  即 R-37 对 `_bmad/custom/` **完全失明** —— 我们自己写的覆盖文件不在它的检查面内。
+
+**可行的唯一载体是 `persistent_facts`，但它没有牙齿**：
+
+- BMAD 有 3 层 customize，第 2 层 `_bmad/custom/<skill>.toml` 被 git 跟踪
+  （`_bmad/custom/.gitignore` 只忽略 `*.user.toml`），机制**已实测跑通**
+  —— `gds-dev-story.toml` 现有的测试纪律 fact 能被 `resolve_customization.py` 合并出来。
+- 但它就是**一段交给 agent 读的散文**。BMAD 自己对超出暴露面的意图，
+  `bmad-customize` Step 3 的原话是「offer `persistent_facts` as approximations」—— 它承认这是近似手段。
+- 「让 `[DS]` 的产出模板带 R-ID 字段」**根本做不到**：模板交换（`*_template`）只对 11 个技能开放，
+  `list_customizable_skills.py` 实测 `gds-create-story` / `gds-dev-story` 都不在其中。
+
+**不做的四条理由**（按分量排序）：
+
+1. **改坏会长期生效**。override 文件跨每一次 BMAD 运行活着。fact 写歪了不是当次 story 的问题，
+   是之后每个 story 都被喂一句歪指令。而这四段散文**没有守卫** ——
+   守卫只能查「有没有抄规则正文」，查不了「说得对不对」。
+2. **治的是症状不是那条链**。真正的源头是默认指令
+   `Store extracted project rules as {{project_rules}} for embedding in the story file`
+   → `Populate the Project Context Rules section with ALL extracted`。
+   加一条相反的散文，默认指令并没有消失；两者打架时 agent 听谁的没有保证。
+3. **守卫价值有限**。「override 里不该有规则正文」是真检查，但只可能在自己抄错时红；
+   「4 个覆盖文件得有 fact」是守刚写的文件，防的是将来有人删。都不是「改造有效」的证据。
+4. **铺开四个工作流时「四段措辞必须互不相同」只有人工能验** ——
+   照抄四遍就是用模板治理的外壳复活这条规则要消灭的复制链。
+
+**不做也不闷声**：复制链今后若重新长出誊抄段，R-37 守卫会红、评审会发现。
+可见但不主动 —— 这是可接受的现状。
+
+**誊抄落点地图（取证所得，留给下一个要写 story 的人手写规避）**：
+
+| 技能 | 落点小节 | 触发它的默认指令（可 grep） |
+|---|---|---|
+| `gds-create-story` | 模板的 `### Project Context Rules` | `Populate the Project Context Rules section with ALL extracted` |
+| `gds-create-story` | `## Dev Notes` | `Testing standards summary` |
+| `gds-dev-story` | `Dev Agent Record → Implementation Plan` | `Document technical approach and decisions in Dev Agent Record` |
+| `gds-quick-dev` | spec 的 `**Always:** INVARIANT_RULES` | 模板三段约束占位，无对应反誊抄条款 |
+| `gds-code-review` | finding 的 `detail` 自由散文 | 风险最低 —— finding 格式天然是 `[file:line]` 引用式 |
+
+两处**已存在的反誊抄条款**（唯一的两处）：
+
+- `gds-quick-dev/compile-epic-context.md` 有 `No full copies.` 与
+  `Describe by purpose, not by source.` —— 但作用域**只覆盖 `epic-<N>-context.md`**，
+  同技能的 spec 本体（`**Always:**` 那段）无对应约束。这是一个不对称。
+- `gds-quick-dev/spec-template.md` 的 frontmatter `context: []` 注释写
+  「only what isn't already distilled into the spec body」——
+  这是现成的引用钩子，写 R-ID 清单放这里最自然。
+
+**恢复条件**：① BMAD 上游给 GDS 工作流开模板交换（届时 `[DS]` 模板字段可真正加 R-ID 列）；
+或 ② 誊抄段在真实 story 文档里重新出现两次以上（说明散文式覆盖顶不住）。
+两者都不满足就不要重开 —— 重开一次仍会以同样的四条理由退回。
 
 ### 评审转来：Story 1.13 文档的 AC / 守卫设计问题（5 条，非本次治理对象）
 
@@ -727,6 +783,67 @@
 **要做什么**：把路径改到 `_bmad-output/archive/1-5-…`，或直接删掉这条授权
 （下次 `[DS]` 用到时会让工具重新提示授权）。**注意仓库里没有任何测试会发现这类失效路径** ——
 CI 不读 `.claude/`，守卫的 `SKIP_DIRS` 也跳过了它。
+
+## Deferred from: story-1-12-建造-阳光与射程可视化 `[CR]` (2026-10-16)
+
+### 1. 🚨 `epics.md` AR43 与 `game-architecture.md` 仍写着「半径 3 的圆」——**冲突未消解**
+
+GDD rev 5 已经在 `[DS]` 阶段把自己的三处射程描述改掉了，**但另外两份没有**：
+
+- `epics.md` 的 **AR43**：「范围塔须能同时画两套形状：放置覆盖（**半径 3 的圆**，
+  与直射塔一致）与实际伤害（横向 3 格条带）」
+- `game-architecture.md`：「**放置覆盖**：半径 3 的圆（与直射塔一致）」
+
+而 `CLAUDE.md` 写明「**epics 的 AC 正文才是事实源**」⇒ 这是一处**仍然开着**的冲突，
+不是「文档追认事实」能覆盖掉的（AR43 是 AC，不是正文描述）。
+
+**[CR]` 裁决 6 之后这件事更尖锐了**：非僵尸行整行不可建，
+「斜向覆盖到中间行」连讨论价值都没有 —— 塔只可能在僵尸行上，
+而僵尸行的射程必然是**同行**的。AR43 要求画的第二个形状，
+在当前的放置规则下**不存在**。
+
+**为什么 `[CR]` 不顺手改**：改 AR43 是改 AC，本仓库对 AC 的改动要走 `[CC]`，
+而 `[CR]` 的边界是评审交付物里的缺陷。**改 AC 混进一次 CR，
+下一次就分不清「这条 AC 是设计定的还是评审顺手删的」。**
+
+**建议的下一步**（需用户裁决）：AR43 是要**作废**（射程只有一套形状，
+因为「放置覆盖」与「实际伤害」在同行规则下本就重合），
+还是**保留**并附条件（「若将来让相邻行开火，则需两套形状」）？
+后者与「相邻行能不能开火」这个更大的问题绑在一起，属 1.19 重验范围。
+
+### 2. 裁决 6 的平衡后果需要 1.19 复核
+
+合法塔位从 **35 格降到 7 格**。`assertions.test.ts` 的 5 条数值断言与
+`balance-sim` 此刻仍全绿（因为战斗判定一个字没改，太阳经济也没动），
+但**可建格的稀缺本身就是一个新的难度维度**：
+7 格意味着每回合几乎只能放一座塔，而僵尸是持续推进的。
+
+⚠️ 本条**不阻塞** 1.19，但 1.19 验难度曲线时必须知道
+「35 → 7」这条已经被裁决锁死了，不要在验曲线时把它当成 bug 顺手「修回去」。
+
+### 3. 「G33b 偶发假红」——**未复现，未解决**
+
+Acceptance Auditor 报告「15 次完整运行里有 1 次 G33b 假红」。本次 `[CR]` 的处置：
+
+- 连跑 **12 次完整测试套件，全绿**，未能复现。
+- `g33bViolation` 是**纯函数**（入参是模块级 `?raw` 字符串，无共享可变状态、无缓存），
+  唯一的可疑机制（`?raw` 在并行 transform 下返回空串）
+  会让 `code.includes(identifier)` 更少命中 ⇒ **造成假绿，不是假红**。
+- ⇒ 原归因（「`?raw` transform 缓存竞态」）与症状方向**对不上**，存疑。
+
+**不宣称已修复。** 若再见到，优先查是不是**别的**用例红了而被误记到 G33b 名下
+（该文件有 79 条用例）。这条留给下一次真的撞上的人。
+
+### 4. `tokens.css?raw` 在 Vitest 下返回空串 —— 已修，但值得记住
+
+`tests/components/palette.test.ts` 读 `tokens.css` 用的是 `readFileSync`，
+而**别的文件用 `?raw` import** 会拿到**空字符串**（Vitest 5，node 环境实测）。
+症状极具误导性：字面 hex 一路正常，只有 `var(--x)` 分支炸，
+报错是「找不到 token」，与「你 import 到了空串」毫无字面关联。
+
+📎 1.11 的 G30 之所以从没暴露，是因为它解的 `color` **全是字面 hex**，
+`var()` 分支**一次都没被执行过**。
+⇒ 「一个从没被执行过的分支」和「一段坏代码」在测试全绿时长得一模一样。
 
 ## Deferred from: story-1-11-三种卡型与答题交互 `[CR]` (2026-10-16)
 

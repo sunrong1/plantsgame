@@ -2,6 +2,9 @@
 # [CS] Story 1.12 → ready-for-dev（2026-10-15）。运行记录见该 story 文档的 Completion Notes。
 # [DS] Story 1.9 → review（2026-10-15）。运行记录见该 story 文档的 Completion Notes。
 # [CR] Story 1.11 → done（2026-10-16）。运行记录见该 story 文档的 Dev Agent Record。
+# [CR] Story 1.12 → done（2026-10-16）。运行记录见该 story 文档的 Dev Agent Record。
+#   ⚠️ 其中**裁决 6 改了放置规则与关卡平衡**（非僵尸行不可建，合法塔位 35 → 7），
+#   已登记 deferred-work.md，1.19 验难度曲线时不要当 bug 修回去。
 # [CR] Story 1.11 → review（2026-10-16）。运行记录见该 story 文档的 Completion Notes。
 # project: plants-game
 # project_key: NOKEY
@@ -51,7 +54,7 @@ generated: 2026-10-12
 # [DS] Story 1.11 → review（2026-10-15）。运行记录见该 story 文档的 Completion Notes。
 # [DS] Story 1.12 → review（2026-10-15）。运行记录见该 story 文档的 Completion Notes。
 # [CS] Story 1.13 → ready-for-dev（2026-10-15）。运行记录见该 story 文档的 Completion Notes。
-last_updated: 2026-10-15  # 运行记录见各 story 文档的 Completion Notes
+last_updated: 2026-10-16  # 运行记录见各 story 文档的 Dev Agent Record
 project: plants-game
 project_key: NOKEY
 tracking_system: file-system
@@ -70,7 +73,7 @@ development_status:
   1-9-单元-1-词图-第二批: done
   1-10-战场渲染与网格: review
   1-11-三种卡型与答题交互: done
-  1-12-建造-阳光与射程可视化: review
+  1-12-建造-阳光与射程可视化: done
   1-13-hud-阳光-心与进度: ready-for-dev
   1-14-音效与-bgm-接入: backlog
   1-15-存档与断点续学: backlog

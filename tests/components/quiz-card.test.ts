@@ -78,7 +78,7 @@ import answerFeedbackSource from '../../src/components/quiz/AnswerFeedback.vue?r
 // G30（题面可见性）要**跨组件**算对比度：文字色在 QuestionCard、底色在
 // LevelView、token 值在 tokens.css。少任何一个都算不出「实际落在什么底上」。
 import levelViewSource from '../../src/views/LevelView.vue?raw'
-import tokensSource from '../../src/styles/tokens.css?raw'
+import { contrastRatio, cssDecl, resolveColor, stripComments as sharedStripComments } from '../helpers/contrast'
 
 /**
  * 剥掉块注释、行注释与 HTML 注释，只留代码。
@@ -93,10 +93,12 @@ import tokensSource from '../../src/styles/tokens.css?raw'
  *   「职责边界 + 刻意不做的事」（`Tower.vue:3-25` 同型），而 AC-E3 要求组件
  *   「不 throw、不写 assert」⇒ dev 必然在文件头写一句
  *   `// 组件层不 throw、不写 assert` ⇒ **G29 立刻红，而代码完全正确。**
+ *
+ * 📎 [CR] 2026-10-16：实现已移入 `tests/helpers/contrast.ts`，本文件改为 import。
+ *   三处各留一份的话，其中一份迟早与另两份行为不同（本次就是「删空串」与
+ *   「换行」的差别），而那种分歧的症状是**误导性的报错**，排查它比写它更费时间。
  */
-function stripComments(source: string): string {
-  return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '').replace(/<!--[\s\S]*?-->/g, '')
-}
+const stripComments = sharedStripComments
 
 /** `quiz/` 三个组件的「文件 → 源码」表。四条源码守卫共用它。 */
 const quizSources: readonly (readonly [string, string])[] = [
@@ -849,57 +851,20 @@ describe('AC-D1 / AC-D2 —— 点击 → dispatch → 反馈，组件内零判�
 //
 // 判据：**实算 WCAG 对比度**，不做「源码里写了什么颜色」的形式检查 ——
 // 后者恰好是能放行上面那版白字白底代码的那种检查。
+//
+// 📎 [CR] 2026-10-16：下面四个工具函数已提取到 `tests/helpers/contrast.ts`，
+//   因为 Story 1.12 的手牌/战场对比度守卫要用**同一份**实现 —— 两处各抄一份
+//   的话，改一边就会让两边的守卫对同一个 token 给出不同结论，那比没有守卫更坏。
+// ══════════════════════════════════════════════════════════════════════════════
+
+/** 本文件已 import 的 `tokens.css` 原文 —— `resolveColor` 解 `var(--x)` 要靠它。 */
+function colorOf(value: string): string {
+  return resolveColor(value)
+}
 // ══════════════════════════════════════════════════════════════════════════════
 
 /** WCAG 相对亮度。 */
-function relLuminance(hex: string): number {
-  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim())
-  if (m === null) throw new Error(`不是 6 位十六进制色：${hex}`)
-  const v = parseInt(m[1], 16)
-  const chan = (c: number): number => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4)
-  return (
-    0.2126 * chan((v >> 16) & 0xff) +
-    0.7152 * chan((v >> 8) & 0xff) +
-    0.0722 * chan(v & 0xff)
-  )
-}
 
-/** WCAG 对比度，保留两位小数。 */
-function contrastRatio(a: string, b: string): number {
-  const l1 = relLuminance(a)
-  const l2 = relLuminance(b)
-  return Math.floor(((Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05)) * 100) / 100
-}
-
-/**
- * 从源码里取出 `selector { … }` 的声明体。
- *
- * 🚨 **先 `stripComments`** —— 这不是保险，是本仓库对全部源码匹配型守卫的
- *   强制前置（R-52）。第一稿漏了它，守卫立刻抓到我自己的违规：
- *   `OptionCard.vue` 的边框那段长注释里**逐字写着** `border: 3px solid transparent`
- *   （解释「改之前是什么样」），`indexOf('.option-card {')` 命中的是那条注释之前的
- *   位置，再找 `{` 就跳进注释里 ⇒ 取出来的「声明体」是**注释正文**，
- *   断言于是对着自己写的说明文字报错。**注释里描述违规形态，正则会命中注释。**
- */
-function cssDecl(source: string, selector: string): string {
-  const code = stripComments(source)
-  const idx = code.indexOf(selector)
-  if (idx === -1) throw new Error(`源码里找不到选择器 ${selector}`)
-  const open = code.indexOf('{', idx)
-  const close = code.indexOf('}', open)
-  return code.slice(open + 1, close)
-}
-
-/** 解析 `var(--x)`（去 `tokens.css` 取值）或 `#abc`（直接返回）。 */
-function resolveColor(value: string): string {
-  const v = value.trim()
-  const m = /^var\(\s*(--[a-z0-9-]+)\s*\)$/i.exec(v)
-  if (m === null) return v
-  const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})\s*;?$/i.exec(cssDecl(tokensSource, m[1]).trim())
-  if (hex === null) throw new Error(`token ${m[1]} 的值不是十六进制色`)
-  const h = hex[1]
-  return h.length === 3 ? `#${h[0]}${h[0]}${h[1]}${h[1]}${h[2]}${h[2]}` : `#${h}`
-}
 
 describe('G30 —— 题面文字在真浏览器里看得见（jsdom 看不见，只能实算对比度）', () => {
   it('卡面区必须有自己的底色 —— 改之前它没有，于是白字落在白页上', () => {
@@ -916,13 +881,13 @@ describe('G30 —— 题面文字在真浏览器里看得见（jsdom 看不见�
   })
 
   it('🚨 题面文字与其实际底色的 WCAG 对比度 ≥ 4.5:1（改之前是 1.00:1）', () => {
-    const color = resolveColor(/color:\s*([^;]+);/i.exec(cssDecl(questionCardSource, '.question-card__prompt {'))?.[1] ?? '')
+    const color = colorOf(/color:\s*([^;]+);/i.exec(cssDecl(questionCardSource, '.question-card__prompt {'))?.[1] ?? '')
     // 底色依次取：卡面区自己的背景 → 整页背景 → 浏览器默认白。
     // ⚠️ 必须**逐级回退**：改之前卡面区与整页都没有背景，
     //   判据若只看卡面区就会因为「找不到背景」而无法复现那个 1.00:1。
     const panel = /background-color:\s*([^;]+);/i.exec(cssDecl(questionCardSource, '.question-card {'))?.[1]
     const page = /background-color:\s*([^;]+);/i.exec(cssDecl(levelViewSource, '.level-view {'))?.[1]
-    const background = resolveColor(panel ?? page ?? '#ffffff')
+    const background = colorOf(panel ?? page ?? '#ffffff')
 
     const ratio = contrastRatio(color, background)
     // 📎 4.5 是 WCAG AA **正文**门槛；题面是大字号（--text-prompt），
@@ -932,8 +897,8 @@ describe('G30 —— 题面文字在真浏览器里看得见（jsdom 看不见�
   })
 
   it('选项卡文字与其底色的对比度 ≥ 4.5:1', () => {
-    const color = resolveColor(/color:\s*([^;]+);/i.exec(cssDecl(optionCardSource, '.option-card__text {'))?.[1] ?? '')
-    const bg = resolveColor(/background:\s*([^;]+);/i.exec(cssDecl(optionCardSource, '.option-card {'))?.[1] ?? '#ffffff')
+    const color = colorOf(/color:\s*([^;]+);/i.exec(cssDecl(optionCardSource, '.option-card__text {'))?.[1] ?? '')
+    const bg = colorOf(/background:\s*([^;]+);/i.exec(cssDecl(optionCardSource, '.option-card {'))?.[1] ?? '#ffffff')
     expect(contrastRatio(color, bg)).toBeGreaterThanOrEqual(4.5)
   })
 
@@ -949,7 +914,7 @@ describe('G30 —— 题面文字在真浏览器里看得见（jsdom 看不见�
     expect(borderColor, '选中态复用了战场射程罩，语义跨域且在白底上不可见').not.toContain('--color-overlay-range')
 
     if (/^#[0-9a-f]{3,6}$/i.test(borderColor)) {
-      const bg = resolveColor(/background:\s*([^;]+);/i.exec(cssDecl(optionCardSource, '.option-card {'))?.[1] ?? '#ffffff')
+      const bg = colorOf(/background:\s*([^;]+);/i.exec(cssDecl(optionCardSource, '.option-card {'))?.[1] ?? '#ffffff')
       // 3:1 是「非文本的图形对象（UI 组件边界）」的 WCAG 门槛
       expect(contrastRatio(borderColor, bg), `选中态边框 ${borderColor} 在 ${bg} 上只有 ${contrastRatio(borderColor, bg)}:1`).toBeGreaterThanOrEqual(3)
     } else {
