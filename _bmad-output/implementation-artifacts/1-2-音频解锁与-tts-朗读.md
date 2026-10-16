@@ -77,6 +77,21 @@ So that 我能先听懂再选，而不是靠猜。
 
 ### AC-3 朗读的触发与「无限次重听」语义
 
+> ⚠️ **2026-10-12 `[CR]` 补注 / 2026-10-16 `[CR]` 落地 —— 本 AC **不由本 story 交付**，移交 Story 1.11。**
+> epics 把 FR1「每题卡面出现时自动播放一次 TTS 朗读；卡面可点击无限次重听」
+> 映射给了 **Story 1.11「三种卡型与答题交互」**（epics.md 里该 story 的「📎 覆盖」列 FR1；
+> Story 1.10「战场渲染与网格」覆盖的是 FR42–FR47，不含 FR1）。
+> 交付本 story 时 `src/components/quiz/` 只有 `.gitkeep`，`StartView.vue` 的 `onStart`
+> 里**没有**任何 `playPronunciation` 调用 —— 这是**不越界**（Dev Notes §2、AC-9），不是漏做。
+>
+> **本 story 交付的是它依赖的那一半**：重入安全性（后一次调用完整接管发声权）、
+> `playPronunciation(text, entryId?)` 的接口契约、以及 `speakWithTts` / `playRecording`
+> 两条通路的代次隔离 —— 这些是接口契约的一部分，所以在本 story 内实现并测试。
+>
+> ⚠️ **史实更正（2026-10-16）**：本文件此前把该 AC 的移交对象写成 Story 1.10，
+> 共 9 处。那是**旧编号**；按 R-32「以 epics.md 的 AC 正文为准」，正确值是 **Story 1.11**。
+> 已全部更正（`src/views/StartView.vue` 头部注释早在 2026-10-15 就已写成 1.11，是本文件落后）。
+
 **Given** 音频已解锁
 **When** 任意一题的卡面出现
 **Then** 自动播放一次该题 TTS 朗读
@@ -102,7 +117,7 @@ So that 我能先听懂再选，而不是靠猜。
 > 所以准确表述是：**「有 `entryId` → 降级到录音；无 `entryId` 且 TTS 也失败 → 无声但不阻断。」**
 > 「不阻断回合」这半句仍然成立且是硬要求；「必有兜底音频」这半句**只对传了 `entryId` 的调用方成立**。
 > 这一前提已写成 `playPronunciation` 的显式契约（见该函数注释）并由测试钉住；
-> Story 1.10 起**必须**为每个朗读调用传入 `entryId`。
+> Story 1.11 起**必须**为每个朗读调用传入 `entryId`。
 
 **Given** `speechSynthesis` 完全不可用，或某次 `speak` 抛错
 **When** 需要发音
@@ -113,6 +128,17 @@ So that 我能先听懂再选，而不是靠猜。
 ### AC-6 参数常量、起声预算与 cancel 时机
 
 **And** TTS 点击后 ≤ 500ms 起声（NFR4）
+> ⚠️ **2026-10-16 `[CR]` 批注 —— 这一条**未验证**，且在当前工具链下不可验证。**
+> 仓库里**没有任何测试度量这个时间上界**（实测：`grep -rn "起声" tests/` 与
+> `grep -rn "500" tests/` 均无命中）。原因不是遗漏而是环境：
+> `vitest.config.ts` 全局 `environment: 'node'`（R-60），Node 里没有真实的
+> `SpeechSynthesisUtterance`，没有可计时的 `start` 事件；而 §13.5 明令禁止用
+> headless 浏览器代替真机。
+> ⇒ 按 R-41「要么给守卫，要么明确记为暂不实现」，登记进 `deferred-work.md`。
+> **恢复条件**：与 AC-8 的真机验收同批执行（拿到平板 + Chrome 后一起做），
+> 届时若超标，`SPEECH_RATE_WORD` 与分块参数是调节手段。
+> **代码侧该做的已经做了**：`playPronunciation` 全程同步、不引入额外 RTT，
+> 录音主通路用预生成 mp3（起声与设备 TTS 引擎冷启动无关）。
 **And** 朗读参数为可配置常量：单词 `rate 0.85 / pitch 1.05`，长句 `rate 0.9`（起点，Epic 3 现场调）
 **And** `speechSynthesis.cancel()` 仅在 `speechSynthesis.speaking === true` 时被调用 —— 用于避开 `cancel()` 吞掉紧随其后的 `speak()` 的竞争窗口（Chromium issue 41436964）
 
@@ -123,6 +149,15 @@ So that 我能先听懂再选，而不是靠猜。
 **Then** 按句切块、逐块 `speak()`、用 `onend` 链式推进，**单块上限 200 字符**
 **And** 每块与整个播放都**有超时兜底** —— Chrome 的 ~15 秒截断 bug 会**静默中断**（不触发 `onend`，也不触发 `onerror`，`speaking` 仍为 `true`）
 **And** `rate` 不得超过 2.0（超过会让 Chrome 事件系统挂死，需 `cancel()` 恢复）
+> ⚠️ **2026-10-16 `[CR]` 批注 —— 这一条已被 Dev Notes §13.4 **降级为社区约定 (B)**，
+> 请勿按 AC 字面验收。**
+> §13.4 的原文：「规范只规定 `rate` 取值 0.1–10，没有 2.0 这个上限 ——
+> 2.0 是社区约定而非规范约束，所以这条只当护栏、不当契约」，
+> 且「Epic 3 现场调语速时也无需守住 2.0」。
+> **此前这段正文没有任何批注**，于是按 AC 逐条对账会判 AC-7 未达成、按 Dev Notes 判会判已达成 ——
+> 两份文档各说各话，正是 R-37 说的单一裁决源被绕开。
+> ⇒ **正文不改**（AC 原文不得删改），改为在此加批注并说明判据以 §13.4 为准。
+> 当前实现取 `0.85` / `0.9`，距任何口径都极远；仓库里也没有守卫钉这个字面量。
 
 ### AC-8 真机验收标准（「有声音」不算通过）
 
@@ -140,7 +175,7 @@ So that 我能先听懂再选，而不是靠猜。
 
 ### AC-9 不越界（本 story 明令不做的事）
 
-**And** `src/components/quiz/` 下**没有**任何组件 —— 卡面「出现即朗读」与「点击重听」的 UI 属 Story 1.10
+**And** `src/components/quiz/` 下**没有**任何组件 —— 卡面「出现即朗读」与「点击重听」的 UI 属 Story 1.11
 **And** **没有**创建 `src/app/effects-runner.ts` / `src/core/effects.ts` —— 副作用编排属 Story 1.13
 **And** `public/assets/audio/` 下**没有**任何音频资源文件 —— BGM 与音效资源属 Story 1.13
 **And** **没有**创建任何调试面板 UI —— 降级状态仅通过日志与返回值暴露，UI 属 Story 1.16
@@ -314,6 +349,18 @@ So that 我能先听懂再选，而不是靠猜。
 
 ### Review Findings
 
+> ⚠️ **2026-10-16 `[CR]` 补：本节所有方括号里的 `文件:行号` 是「**当时**的行号」，现已普遍漂移。**
+> 本节是**历史审查记录**（第一、二轮），写它们当时那些行号是对的，
+> 后续 story 的改动已把它们全部推走 —— 实测抽样：
+> 「`pronunciation.ts:251-256`」现在指的是 `selectVoice`（实际已挪到别处）、
+> 「`audio.ts:112-118`」**该文件只有 68 行**、「`guard.test.ts:1005-1010`」
+> **该文件不足 200 行**。这正是 [R-31](../../docs/rules/process.md) 说的那件事。
+> **本轮刻意没有逐条改写成符号引用** —— 那是 30 余处的手工搬运，
+> 且每处都要重新核实「当时到底指哪一行」，改错的风险高于收益。
+> ⇒ 按 R-31「以原文句子为准」的读法：**读本节时把行号整段忽略**，
+> 需要定位当前代码时请按函数名去找。`deferred-work.md` 里指向本 story 的条目
+> 已在本轮全部改成了函数名，因为那是**活的任务清单**，按图索骥必须能找到代码。
+
 > `[CR]` 2026-10-12 三层对抗审查（Blind Hunter / Edge Case Hunter / Acceptance Auditor）。
 > 分诊结果：17 条可自动修复、2 条延后、3 条判为噪声（其中 2 条为用户裁决）。
 > **P1–P3 是同一个设计缺陷的三个症状**（`speakChunkAt` 内既管 cancel 又管 onerror 推进、且无跨调用代次隔离），
@@ -431,7 +478,7 @@ So that 我能先听懂再选，而不是靠猜。
 - [x] [Review][Patch] **AC-3 在 Dev Agent Record 里既无达成证据也无移交声明** ——
   AC-3 要求「任意一题的卡面出现即自动朗读」+「点击卡面无限次重听」，
   但 `src/components/quiz/` 仍只有 `.gitkeep`、`StartView.vue` 的 `onStart` 无任何 `playPronunciation` 调用
-  （不越界是对的，Dev Notes §2 已声明 UI 属 Story 1.10）。
+  （不越界是对的，Dev Notes §2 已声明 UI 属 Story 1.11）。
   然而 Completion Notes 与 Change Log 的「未完成」清单只列了 7.4–7.7 真机项，
   **AC-3 没有任何一行说明** —— 评审无法判断是「做了」还是「漏了」。
   [_bmad-output/implementation-artifacts/1-2-音频解锁与-tts-朗读.md:898-917]
@@ -534,7 +581,7 @@ So that 我能先听懂再选，而不是靠猜。
   `*` 是通配符，用它当判别式是选错靶子（首版就栽在这里，绿的）。
   **变异已验证**：把 `.` 从转义字符类里去掉 → 该用例变红。
 
-- [x] [Review][Patch] **AC-3 段落未随 `[CC]` 纠偏标注移交 Story 1.10** ——
+- [x] [Review][Patch] **AC-3 段落未随 `[CC]` 纠偏标注移交 Story 1.11** ——
   AC-6 的理由更正至少在 spec 里有「Dev Notes §4.1 有显式豁免说明」这句指引，
   AC-3 段落（spec 第 55–60 行）**没有任何同类批注**，移交声明只写在 Completion Notes 里。
   下一轮 `[IR]`/`[CR]` 只能靠翻 Completion Notes 才知道这是有意不交付。
@@ -554,7 +601,9 @@ So that 我能先听懂再选，而不是靠猜。
   — deferred, pre-existing
 
 - [x] [Review][Defer] `RECORDING_BASE_PATH` 是绝对根路径，未接 `import.meta.env.BASE_URL` —
-  [src/services/pronunciation.ts:148] ——
+  [src/services/pronunciation.ts] 的 `RECORDING_BASE_PATH` ——
+  ✅ **已由 Story 1.3 / AC-11 修好**（接 `import.meta.env.BASE_URL` + `vite.config.ts` 配 base），
+  见 `deferred-work.md`。本条留档作历史记录。
   当前 `vite.config.ts` 未设 `base`（默认 `/`），根路径部署下没问题；
   但若部署到 GitHub Pages 项目站或任何带前缀的 CDN，**每个录音都会 404**，
   整条主通路静默降级成设备 TTS。属部署拓扑尚未决定的连带风险，不在本 story 的修正范围。
@@ -568,7 +617,10 @@ So that 我能先听懂再选，而不是靠猜。
 
 - [x] [Review][Defer] 五条「已处理但无测试」的分支：① `AudioContext` 不存在 ② `new Audio()` 抛错
   ③ `synth.cancel()` 抛错 ④ `new SpeechSynthesisUtterance()` 抛错 ⑤ `getVoices()` 返回非数组 —
-  [src/services/audio.ts:112-118]、[src/services/pronunciation.ts:209-228,568-570] ——
+  [src/services/audio.ts] 的 `unlockAudioSession()` / `prewarmBgm()`、
+  [src/services/pronunciation.ts] 的 `playRecording()` / `readVoices()` ——
+  ⚠️ **2026-10-16 `[CR]` 更新：③ 与 ④ 已有守卫，且顺带把两处真的补了 try/catch。**
+  剩下的 ①②⑤ 仍零覆盖，见 `deferred-work.md`。
   这些路径都有 try/catch 或 typeof 守卫兜着，逻辑是对的，只是零覆盖。
   其中 ③④⑤ 违反的是本文件自己声明的「绝不把异常抛出去」契约
   （`audio-unlock.ts` 明确**不**在外层兜异常），一旦破约，第③步 `prewarmBgm()` 根本执行不到。
@@ -584,6 +636,167 @@ So that 我能先听懂再选，而不是靠猜。
   spy 确实生效。
 - ❌ 「仓库里残留 `tests/scaffold/__tmp-probe.test.ts`」—— 该文件是审查子代理自建的探针，已删除。
 
+#### 第三轮 `[CR]` 2026-10-16（三层并行审查：Blind Hunter / Edge Case Hunter / Acceptance Auditor）
+
+**35 条原始发现 → 去重 30 条 → 判定：10 条 patch（已全部落地）、7 条文档订正（已落地）、
+7 条判为噪声、6 条延后（进 `deferred-work.md`）。**
+
+⚠️ **本轮最重的一条不是修的 bug，是挖出来的假绿** —— 而且它守的正是
+**第一轮 `[CR]` 的头号修复**（P2 跨调用代次隔离）。
+
+##### 挖出来的假绿（M80）
+
+两条用例自述「删掉 generation 判据会红」，其中一条还把这句写进了注释当理由。
+**实测：删掉 `speakChunkAt` 里的 `generation !== playbackGeneration`，76 个用例全绿。**
+
+根因是**测试 fake 把这条路径建没了**：默认 fake 的 `cancel()` **同步**对在途
+utterance 派发 `error('canceled')` → 旧链走 canceled 分支的 `finish()` →
+`settled` 置位、兜底定时器被 `clearTimeout` 掉。旧链在被测到的每条路径上
+都**先于定时器**收敛了，于是 generation 判据成了永远走不到的死代码。
+
+而真实设备上恰恰存在「cancel 不派发 error」的形态（Safari、部分 WebView），
+那时兜底定时器活到 20 秒，**只剩代次判据能拦住复活**。
+
+⇒ 已补一条用**那个形态**的用例（把 `synth.cancel` 换成不派发 error 的实现）。
+**同一变异从「76 全绿」变成 2 红。**
+
+> 📌 **这是本仓库第四次「假绿」，也是最贵的一次**：
+> 前三次守的是不存在的规则或写错的断言，这一次守的是**一轮 `[CR]` 的头号成果**，
+> 而且那条成果的用例注释里**逐字写着「删掉判据会红」**。
+> **教训：注释里写「我实测过会红」不构成证据，红数要能被复算出来。**
+
+##### P1 缺陷（3 条，均已修 + 配守卫）
+
+- [x] [Review][Patch] **代次自检写在自增之前 ⇒ 每次正常接管都打一条假 WARN** ——
+  `playPronunciation` 的入口顺序是「`takeOverPlayback()`（内含 `cancel()`）→ 分派」，
+  而 `playbackGeneration += 1` 藏在 `speakWithTts` / `playRecording` **内部**。
+  于是 `cancel()` 派发的 `error('canceled')` 到达 `onerror` 时
+  `generation` **仍等于** `playbackGeneration`，旧链把它判成「本链没被接管却挨了取消」——
+  与该分支注释写的「被新的 playPronunciation 接管 —— 正常路径，不记日志」**正好相反**。
+  ⇒ 孩子每点一次卡面，真机调试面板就多一条「朗读被打断」。
+  **更要紧的是**它让代次隔离**依赖事件派发时机**：真实浏览器里 `cancel()` 的 error
+  是异步派发的（此时代号已自增，判据恰好成立），而测试 fake 与 Safari 那种形态走另一条路。
+  **修法**：在 `playPronunciation` 入口统一作废代号，两种时机下判据都成立。
+  变异 M81 → 1 红。
+
+- [x] [Review][Patch] **`new SpeechSynthesisUtterance()` 与逐字段赋值在 try 之外** ——
+  `speakWithTts` 只把 `synth.speak(utterance)` 包进 try，构造与赋值全在裸奔；
+  `speakSilentWarmup` 里的 `new Ctor(' ')` 同样裸奔。
+  对照 `playRecording` **把 `new AudioCtor` 包进了 try** —— 这个不对称说明是遗漏不是设计。
+  残缺 polyfill 上构造抛错 → 异常一路冒到 `store.ts` 的 `speakQuestion()`
+  （它**刻意不加 try/catch**，逐字引用着本文件「绝不向调用方抛」的契约）→ **回合卡死**。
+  变异 M92 → 1 红。
+
+- [x] [Review][Patch] **`takeOverPlayback()` 全裸，是文件里唯一没有兜底的路径，且在每次发音最前面** ——
+  `stopActiveRecording()` 的 `pause()` / `currentTime = 0` 与 `synth.cancel()` 都没有 try。
+  任一抛错都把「这一声念不出来」升级成「回合卡死」。
+  变异 M89 → 1 红。
+
+##### P2 缺陷（4 条，均已修 + 配守卫）
+
+- [x] [Review][Patch] **预热被 `cancel()` 掐掉后，幂等锁永久焊死** ——
+  序列：点「开始游戏」→ 1 秒内点卡面 → `takeOverPlayback` 把在途的预热 utterance cancel 掉
+  → 预热**从未生效** → 而 `warmupStarted` 仍是 true，此后**永不重试**。
+  对 4–8 岁孩子，「开始游戏后立刻点卡面」是最常见的操作序列之一。
+  ⚠️ **修法只动一半**：不解开 `preheated` —— AC-2 的字面是「`onend` / `onerror`
+  二者之一触发即标记预热完成」，`canceled` 是 `onerror` 的一种 error code，
+  不置 `preheated` 就是违反已登记的 AC，且既有守卫直接钉着这一条。
+  **真正无人管、只有这里能管的是幂等锁焊死**。变异 M88 → 1 红。
+
+- [x] [Review][Patch] **`ensureVoices` 的早退条件把冷却重试自己关掉了** ——
+  早退条件判的是 `voices.length > 0`，而 `PROBE_RETRY_MS` 要救的正是
+  「设备先吐出本地语言默认音色、英文引擎稍后才起、且**不派发 voiceschanged`**」那类 WebView。
+  那种设备上 `voices.length` 一直是 1（一个中文音色），闸门把补救关掉了。
+  ⇒ 判据改为「**英文音色**到货」。附带：重读之后必须更新 `lastProbeAt`，
+  否则 `playPronunciation → speakChunkAt → ensureVoices` 这条不经 `probeTts` 的路径
+  **每一块分块都重读一次 `getVoices`**。变异 M85 → 1 红。
+
+- [x] [Review][Patch] **守卫测试看不见 `ignores` ⇒ FR2 的机器判定可被一行配置关掉** ——
+  flat config 的 `ignores` 是全局排除，命中后 ESLint 连 lint 都不做；
+  而 `rulesFor` / `guardedPatterns` 只遍历 `rules` 块，**从不读 `ignores`**。
+  实测：往 `eslint.config.js` 的 ignores 加一行 `'src/services/pronunciation.ts'`，
+  **本文件 13 条断言全部照绿**，而 `npx eslint` 报 `File ignored because of a matching ignore pattern`；
+  且 lint 脚本是 `eslint .`，被 ignore 的文件是**静默跳过**，连警告都没有。
+  ⇒ 补两条守卫：`ignores` 里不得有这三个文件 + `Linter.verify` 真跑一次（不只看规则对象）。
+  变异 M93 → 2 红。
+
+- [x] [Review][Patch] **字段残缺的音色会让 `normalizeLang` 抛到解锁三步之外** ——
+  `readVoices` 防了 `getVoices()` **抛错**，却没防它**返回畸形元素**。
+  精简 WebView 返回 `{ name:'X', lang: undefined }` 时，TypeError 从 `probeTts`
+  → `speakSilentWarmup` 第一行 → `unlockAudioSequence()` **第二步**冒出去，
+  **第三步 `prewarmBgm()` 根本执行不到**。
+  ⇒ 新增 `soundVoices()` 剔除字段残缺项。变异 M87 → 1 红。
+
+##### P3 与文档订正（已修）
+
+- [x] [Review][Patch] `onerror` 的「已被接管」分支是裸 `return`，20 秒兜底定时器不清 ——
+  与同一函数下一段「『不推进』不等于『不收敛』」的自我告诫**自相矛盾**。
+  孩子连点是常态，于是每次接管都为旧链白留一个 20 秒句柄。改为走 `finish(() => {})`。
+- [x] [Review][Patch] 录音的 `error` 分支不清 `activeRecording` ——
+  与 `ended` 分支**不对称**，而录音 404 恰是本项目当前最频繁的路径。
+  `ended` 那条专门解释了「白留一个 HTMLAudioElement 与其解码缓冲不释放」。
+- [x] [Review][Patch] `playPronunciation` 对非字符串 `text` 直接抛（`entryId` 反而有 `typeof` 门）——
+  两边防御强度不一致；补上门。
+- [x] [Review][Patch] **`takeOverPlayback` 的注释过度断言「竞争窗口就不存在了」** ——
+  实际上 `cancel()` 与紧随的 `synth.speak()` 仍在同一个同步块内，相邻关系没被拆开。
+  真正消掉的是「重复判断」与「每块一次」两点，不是 issue 41436964 的成因本身。
+  **改注释而不是改结构** —— 该 issue 描述的是 Windows SAPI 路径，
+  本项目跑在 Android Chrome 上，**是否命中未实测**。
+- [x] [Review][Patch] **AC-3 的移交批注从未落地** —— 第二轮 `[CR]` 打了这条 patch 并**勾上了**，
+  但 AC-3 正文实测仍无任何批注（AC-5 有）。⇒ 本轮补上，并按 R-32 把编号
+  「Story 1.10」更正为 **Story 1.11**（epics 把 FR1 映射给 Story 1.11）。
+- [x] [Review][Patch] **AC-6「≤500ms 起声」与 AC-7「rate ≤ 2.0」两份文档各说各话** ——
+  前者零验证且从未登记延后，后者已被 Dev Notes §13.4 降级为社区约定 (B) 但正文无批注。
+  ⇒ 两条都在 AC 正文**加批注**（不改原文），并登记进 `deferred-work.md`。
+- [x] [Review][Patch] **File List 用例数第三次失实、且漏列 5 个交付时改过的文件** ——
+  写「58 / 113」，实测交付时已是 76 / 99。**连续三轮都是同一处**，
+  说明手写数字这条路不可靠 ⇒ 改口径为「只写可复算的实测命令」。
+  File List 此前漏列 `deferred-work.md` 与 4 份 `[CC]` 改动的规划产物。
+
+##### 本轮判为噪声的 7 条（留档，避免下一轮重复讨论）
+
+- ❌ 「`chunkText` 会丢字符 / 粘连 / 超长块」—— Edge Case Hunter 实跑了 **20 万次 fuzz**，
+  丢失 0 例、粘连 0 例、块首尾空白 0 例。**该说法的每一半都被实测否掉。**
+  （唯一的真实差异：增补平面字符下硬切按码点计长、其余分支按 UTF-16 计长，
+  口径不一致但不影响 AC-7。）
+- ❌ 「emoji 码点测试是恒真断言」—— **这个批评本身是对的**（200 是偶数、该词从偏移 0 开始），
+  但它不构成缺陷：用例注释**已经如实写明**了这一点。
+  要真正守住需要「非零起点 + 奇数边界」的输入，而硬切分支目前只从 offset 0 开始
+  —— 那不是缺陷，是当前实现的性质。**已知且已如实标注 → 不动。**
+- ❌ 「`onvoiceschanged` 用赋值覆盖会顶掉别人的订阅」—— Story 1.16 尚未实现，
+  不存在第二个消费方。**证据不足，不改。**
+- ❌ 「`audioCtx` 没有 `close()` 路径」—— 单视图下无害，且释放语义属 Story 1.15 的视图切换。**越界。**
+- ❌ 「`isEnglish` 不认裸 `en`」—— 缺「某真实引擎返回该形态」的实测。**证据不足。**
+- ❌ 「录音 `ended` 之后若再派发 `error` 会重念一遍」—— 缺「该事件序列在真实浏览器上可达」的实测。
+- ❌ 「AC-9 越界了」—— 逐项实测交付时（`ff14483..cf6f75e`）**七条禁令全部守住**：
+  `src/core/` 零改动、`src/components/quiz/` 只有 `.gitkeep`、`package.json` 无音频库。
+  今日那些组件与 mp3 来自 Story 1.11 / 1.3，**不是 1.2 越界**。
+
+##### 本轮 12 项变异验证（全部贴实测红数，不写「应该会红」）
+
+| # | 变异 | 实测红数 |
+|---|---|---|
+| M80 | 删 `speakChunkAt` 的 generation 判据（**修复前的状态**） | **0（76 全绿）← 这就是假绿的证据** |
+| M82 | 同上，**补完守卫之后** | 2 |
+| M81 | 入口 `playbackGeneration += 1` 改成 `+= 0` | 1 |
+| M83 | 早退条件改回 `voices.length > 0` | 1 |
+| M84 | `utterance.volume = 1` 改成 `0` | 1 |
+| M85 | 删重读路径的 `lastProbeAt = Date.now()` | 1 |
+| M86 | 删 `else { utterance.lang = DEFAULT_LANG }` | 1 |
+| M87 | 删 `soundVoices()` 过滤 | 1 |
+| M88 | `warmupStarted = false` 改成 `true` | 1 |
+| M89 | 删 `takeOverPlayback` 的 cancel 那层 try | 1 |
+| M91 | 删 `playPronunciation` 的 `typeof text` 门 | 1 |
+| M92 | 把 `new Ctor(chunk)` 提到 try 之外 | 1 |
+| M93 | 往 `eslint.config.js` 的 ignores 注入解锁链路文件 | **2（修复前是 13 全绿）** |
+
+⚠️ **两条首版守卫自己也是假绿，是变异验证把它们揪出来的**：
+① 「`lastProbeAt` 必须置位」那条首版配了**有英文音色**的样本 ——
+那种情况下早退分支直接命中，重读路径根本走不到，该行是死代码，删了不红。
+② 「畸形音色被剔除」那条首版样本里留了个能命中优先级链的 `Samantha` ——
+`selectVoice` 先走六档 name 匹配就 return 了，根本到不了后面的 `normalizeLang`。
+**两条都靠「改坏 → 没红 → 改夹具 → 再改坏 → 红了」才收口。**
+
 ---
 
 ## Dev Notes
@@ -598,7 +811,7 @@ So that 我能先听懂再选，而不是靠猜。
 
 1.2 只依赖 1.1，**与 1.3 并列、互不依赖**。但它是**下游 16 个 story 的地基**：
 
-- Story 1.10 的「卡面出现自动朗读 / 点击重听」调的是本 story 的 `playPronunciation(text)`
+- Story 1.11 的「卡面出现自动朗读 / 点击重听」调的是本 story 的 `playPronunciation(text)`
 - Story 1.13 的 `runEffects` 返回的 TTS 副作用执行的是本 story 的服务
 - Story 3.4 的音色/语速校准改的是本 story 定义的常量
 - Story 1.18（Epic 1 生死线）里「音效与 BGM 正常播放，不出现静默失败」的门禁，判据就落在本 story 建立的三步解锁上
@@ -670,7 +883,7 @@ function onStart(): void {
 加进 `runEffects` 反而会制造伪影：它在 `reduce()` 之前不可能被调用。
 
 **同时注意边界：** 本 story 之后，`StartView.vue` 里**不得**出现任何 `playPronunciation()` 调用。
-朗读的触发在 Story 1.10（卡面出现时由 `runEffects` 驱动）—— 别提前写进启动按钮。
+朗读的触发在 Story 1.11（卡面出现时由 `runEffects` 驱动）—— 别提前写进启动按钮。
 
 ### 3. 🚨 `AudioContext.resume()` 返回 Promise，但这里**不能 await**
 
@@ -1070,7 +1283,7 @@ tests/scaffold/audio-unlock-guard.test.ts
 
 | 不做 | 理由 |
 |---|---|
-| **不建任何 quiz / 卡面组件** | 卡面「出现即朗读」「点击重听」的 UI 属 Story 1.10。本 story 只交付**服务能力** |
+| **不建任何 quiz / 卡面组件** | 卡面「出现即朗读」「点击重听」的 UI 属 Story 1.11。本 story 只交付**服务能力** |
 | **不创建 `effects-runner.ts` / `core/effects.ts`** | 副作用编排属 Story 1.13。`[IR]` 明确「不得引入前向依赖」 |
 | **不建任何音频资源文件** | BGM 与 7 个音效属 Story 1.13（AR38） |
 | **不做 TTS 语速 / 音色品质校准** | Epic 3 / Story 3.4（AR34、AR38）。本 story 只定起点值 |
@@ -1254,7 +1467,7 @@ composite 项目，**不要去「修复」它**，一改就撞回 TS6307。
 最初 `playPronunciation` 从模块级 `voices` 取音色，而 `voices` 只在 `probeTts()` 里填充。
 测试「同时设置 voice 与 lang」直接失败（voice 为 null）。
 根因不是测试写错，而是**发声的可用性依赖了一条隐式的调用顺序** ——
-Story 1.10 会在任意时机第一次调 `playPronunciation`，那里若没先探测过就会无音色可用。
+Story 1.11 会在任意时机第一次调 `playPronunciation`，那里若没先探测过就会无音色可用。
 修法：抽出 `ensureVoices()`，`probeTts()` 与 `playPronunciation()` 都从它取，
 音色只拉一次（`voicesHooked` 守卫），`voiceschanged` 到达时清缓存重判。
 
@@ -1326,7 +1539,7 @@ Story 1.10 会在任意时机第一次调 `playPronunciation`，那里若没先�
   硬切按码点迭代（不劈开代理对）。另：兜底定时器在收敛时被 `clearTimeout`，
   不再每块各挂 20 秒。
 - **AC-3 的归属（原本没写在这里，`[CR]` 补）**：AC-3「卡面出现即朗读 + 点击无限次重听」
-  **属于 Story 1.10，本 story 只交付它依赖的服务能力**。`src/components/quiz/` 仍只有 `.gitkeep`，
+  **属于 Story 1.11，本 story 只交付它依赖的服务能力**。`src/components/quiz/` 仍只有 `.gitkeep`，
   `StartView.vue` 的 `onStart` 里没有任何 `playPronunciation` 调用 —— 这是**不越界**，
   不是漏做。朗读链的**重入安全性**（后一次调用完整接管发声权）在本 story 内已实现并测试，
   因为它是 `playPronunciation` 接口契约的一部分。
@@ -1366,28 +1579,49 @@ Story 1.10 会在任意时机第一次调 `playPronunciation`，那里若没先�
 
 ### File List
 
+> ⚠️ **2026-10-16 `[CR]` 全面更正 —— 本节此前三处失实，且都是本 story 前两轮 `[CR]` 已经打过一次的地方。**
+> 用例数此前写「58 / 113」，实测交付提交时（`cf6f75e`）`pronunciation.test.ts` 已经是 **76**；
+> 收尾核对段写「1-2 自身的 113 个用例」，实测是 **99**（76 + 10 + 13）。
+> **连续三轮都是同一处**（第一轮「Dev Agent Record 用例数失实」、第二轮「Change Log 的用例数再次失实」、
+> 本轮第三次），说明**手写数字这条路本身不可靠**。
+> ⇒ 从本轮起改口径：**只写可复算的实测命令，不写手写数字**。
+> 复算命令：`npx vitest run tests/services/pronunciation.test.ts --reporter=dot`
+>
+> ⚠️ 本节还**漏列了 5 个交付时实际改过的文件**（改了 4 份规划产物 + `deferred-work.md`，
+> 一份没写进来）。下一轮 `[CR]` 按 File List 对账会整段漏掉这 5 个文件的审查。
+
 **新增**
 
 - `src/services/pronunciation.ts` —— TTS 引擎 + `playPronunciation` 统一发音接口
 - `src/services/audio.ts` —— AudioContext 会话 + BGM 预解骨架
 - `src/app/audio-unlock.ts` —— 三步同步块（对架构目录的有意扩展，理由见 §1）
-- `tests/services/pronunciation.test.ts` —— 58 个用例（50 TTS + 8 录音主通路，后者为 `[CC]` 纠偏新增）
-- `tests/services/audio.test.ts` —— 10 个用例
-- `tests/scaffold/audio-unlock-guard.test.ts` —— 禁 await 守卫的回归测试 + `matchesGlob` 自测（13 个用例）
+- `tests/services/pronunciation.test.ts` —— **实测 92 个用例**（交付时 76 + 本轮 `[CR]` 新增 16）
+- `tests/services/audio.test.ts` —— **实测 10 个用例**（未变）
+- `tests/scaffold/audio-unlock-guard.test.ts` —— **实测 16 个用例**（交付时 13 + 本轮 `[CR]` 新增 3）
 
 **修改**
 
 - `src/services/pronunciation.ts` —— **`[CC]` 纠偏后新增录音主通路**：`playPronunciation(text, entryId?)` 先试预生成录音，失败降级设备 TTS；新增 `playRecording` / `stopActiveRecording` / `ENTRY_ID_PATTERN` / `RECORDING_BASE_PATH`；原 TTS 主体抽为 `speakWithTts`
-- `tests/services/pronunciation.test.ts` —— 新增 8 个录音主通路用例（50 → 58）；另修 2 处断言（降级日志措辞随纠偏变更）
+- `tests/services/pronunciation.test.ts` —— 新增录音主通路用例；另修 2 处断言（降级日志措辞随纠偏变更）
 - `tsconfig.test.json` —— `include` 纳入 `src/services/**` 与 `src/app/**`（TS6307 实测阻断项）
 - `eslint.config.js` —— 新增解锁链路的 `no-restricted-syntax`（禁 `AwaitExpression`）
 - `src/views/StartView.vue` —— `onStart` 接上 `unlockAudioSequence()`，头注释同步更新
 - `_bmad-output/implementation-artifacts/sprint-status.yaml` —— 1-2 状态流转
 
+**⚠️ 以下 5 个文件交付时也改了，此前漏列（本轮补上）**
+
+- `_bmad-output/implementation-artifacts/1-2-音频解锁与-tts-朗读.md` —— 本文件
+- `_bmad-output/implementation-artifacts/deferred-work.md` —— 新建，`[CR]` 延后项的登记处
+- `_bmad-output/planning-artifacts/epics.md` —— `[CC]` 纠偏（主备对调）
+- `_bmad-output/planning-artifacts/game-architecture.md` —— `[CC]` 纠偏（决策 7）
+- `_bmad-output/planning-artifacts/gdds/gdd-plants-game-2026-10-11/gdd.md` 与
+  `_bmad-output/planning-artifacts/sprint-change-proposal-2026-10-12.md` —— `[CC]` 的依据与提案
+
 ### Change Log
 
 | 日期 | 变更 |
 |---|---|
+| 2026-10-16 | **`[CR]` 三层对抗审查（第三轮）**：Blind Hunter / Edge Case Hunter / Acceptance Auditor 并行，35 条原始发现 → 去重 30 条 → **10 条 patch 已全部落地**、**7 条文档订正**、7 条判为噪声（留档）、6 条延后进 `deferred-work.md`。<br>**本轮最重的一条不是修的 bug，是挖出来的假绿 —— 而它守的正是第一轮 `[CR]` 的头号修复（P2 跨调用代次隔离）。** 首轮那条用例的注释里逐字写着「删掉 generation 判据会红」，**实测：删掉后 76 个用例全绿**。根因是测试 fake 的 `cancel()` **同步**派发 `error('canceled')`，旧链在被测到的每条路径上都先于 20 秒兜底定时器收敛，判据成了永远走不到的死代码；而 Safari 与部分 WebView 的 `cancel()` **不派发**该 error，那里只剩代次判据能拦住复活。⇒ 补一条非派发形态的用例，**同一变异从 76 全绿变成 2 红**。<br>**代码修复**：① 代次作废从 `speakWithTts`/`playRecording` **内部**上移到 `playPronunciation` **入口**（原先排在接管之后，`cancel()` 的 error 到达时代号还没自增 ⇒ 每次正常重入都打一条假 WARN，且让隔离依赖事件派发时机）；② `new SpeechSynthesisUtterance()` 与逐字段赋值包进 try（原先裸奔，构造抛错会冒到 `store.ts` 那个**刻意不加 try/catch** 的 `speakQuestion()` ⇒ 回合卡死）；③ `takeOverPlayback()` 全裸的两处（`pause()`/`cancel()`）逐个兜住 —— 它在**每次发音最前面**，是文件里唯一无兜底的路径；④ 预热被 `canceled`/`interrupted` 掐掉时解开幂等锁（**刻意不动 `preheated`**：AC-2 字面是「`onend`/`onerror` 二者之一触发即标记预热完成」，不动即违反已登记 AC）；⑤ `ensureVoices` 早退条件由「有任意音色」改为「**有英文音色**」（原判据把 `PROBE_RETRY_MS` 自己要救的那类 WebView 挡在门外），并在重读后补 `lastProbeAt`（否则每块分块重读一次 `getVoices()`）；⑥ 新增 `soundVoices()` 剔除字段残缺的音色（`readVoices` 防了 `getVoices()` **抛错**却没防**返回畸形元素** —— TypeError 会从 `probeTts` → `unlockAudioSequence()` 第二步冒出去，第三步 `prewarmBgm()` 根本执行不到）；⑦ `onerror` 的「已被接管」分支由裸 `return` 改走 `finish(() => {})`（孩子连点是常态，每次接管原本都白留一个 20 秒句柄）；⑧ 录音 `error` 分支与 `ended` 分支**对称地**放开 `activeRecording`；⑨ 补 `typeof text` 门。<br>**守卫修复**：`audio-unlock-guard.test.ts` 的 FR2 静态守卫存在**结构性假绿出口** —— 它只遍历 `rules` 块、**从不读 flat config 的 `ignores`**，而 `ignores` 是全局排除。实测：往 `eslint.config.js` 注入一行 `'src/services/pronunciation.ts'`，**本文件 13 条断言全部照绿**，而 `eslint .` 因脚本无 `--max-warnings` 对被 ignore 的文件**静默跳过**。⇒ 补 3 条（`ignores` 扫描 + 名单文件真实存在于磁盘 + `Linter.verify` 真跑一次证明规则真的触发），13 → 16 条。<br>**文档订正**：AC-3 的移交批注（第二轮打了 patch 却从未落地）、AC-6「≤500ms 起声」零验证、AC-7「rate ≤ 2.0」已被 §13.4 降级为社区约定 (B) 但正文无批注、9 处 `Story 1.10` → **1.11**（R-32，epics 把 FR1 映射给 Story 1.11）、File List 连续三轮用例数失实 ⇒ **改口径为「只写可复算的实测命令」**、Review Findings 整节加 R-31 行号漂移总批注（不逐条改，30+ 处手改风险高于收益）。<br>**12 项变异验证全部贴实测红数**（M80 修复前 0 / 修复后 2；M93 修复前 13 全绿 / 修复后 2；其余 10 项各 1）。⚠️ **其中两条本轮新写的守卫首版自己也是假绿**，靠「改坏 → 没红 → 改夹具 → 再改坏 → 红了」才收口，详见 Dev Agent Record。<br>⚠️ **状态仍为 `review`，未置 `done`** —— AC-8 真机验收（Task 7.4–7.7）仍未达成，§13.5 禁止 headless 代做，理由与 2026-10-13 那条一致，本轮不重复论证。 |
 | 2026-10-13 | **收尾核对：状态 `in-progress` → `review`（未置 `done`）**。全量回归 185 用例全绿、零回归。<br>本次**未改动任何产品代码**，只动 story 文件：① 补勾那条被撤回的 `[Review][Patch]`（结论是「无需改动」，此前留 `[ ]` 会被下一轮 `[CR]` 当漏做的活重报）；② 状态推进到 `review`；③ 头部说明与本条 Change Log 显式标注 **AC-8 仍未达成**。<br>⚠️ **为什么是 `review` 而不是 `done`**：AC-8「有声音不算通过」是硬性验收，Task 7.4–7.7 需目标平板真机执行，§13.5 禁止用 headless 代替 —— 代码侧无法代做。用户在 2026-10-13 已决策延后平板真机验收。拿不到真机音色名就置 `done`，等于把未验证的东西记成已验证；仓库先例是 Story 1.1，真机回填后才闭环（`673d91a`）。<br>⚠️ **`VOICE_PRIORITY` 刻意没动**：桌面预验已证实英式优先在该类设备上静默失效（设备有 `Google UK English Female`，而优先链精确匹配 `'Google UK English'` 不中，直接落到第二档美音），但**改法取决于真机音色名**（改优先级链 vs 改前缀匹配 vs 别的），拿桌面名单猜平板会白改一轮，还可能把英/美取向改反。<br>**不阻塞下游**：`playPronunciation` 契约完备，后续 story 照常开发；AC-8 的产物（音色名 + Chrome 版本号）是 Story 3.4 的输入。 |
 | 2026-10-12 | **`[CC]` 纠偏：朗读主备对调**（架构决策 7）。引入 MiniMax 预生成录音（`speech-2.8-hd` + `English_LovelyGirl` 英式女童声，一次性 ≈ ¥5），把「设备 TTS 主路 / 录音降级」反转为「**录音主路 / 设备 TTS 辅路**」。<br>**理由**：设备 TTS 的发音取决于设备装了哪些引擎（架构已记录 EMUI 可能 0 voices、Android WebView 完全不支持原生 TTS），跨设备不可复现；而认读质量是本作核心。录音让发音成为产品常量而非设备偶然产物。<br>**代码改动刻意极小**：接口从 `playPronunciation(text)` 扩为 `playPronunciation(text, entryId?)`；原 TTS 主体**整体抽为 `speakWithTts` 不改逻辑**；新增 `playRecording` 走 `new Audio()` + `error` 事件 + `play()` rejected 三路收敛。全局**无 await**（禁 await 规则未被绕过）。<br>**原 44 个 TTS 用例全部保持通过** —— 因为 TTS 仍是辅路。另补 **8 个录音主通路用例**（录音优先、路径命名、无 id 不猜路径、404 降级、autoplay 被拒降级、重入打断、id 路径注入拒绝、两条通路皆失效不抛）。<br>**三条反向验证均确认会红**：① 关闭录音分支 → 5 红；② 移除 `ENTRY_ID_PATTERN` → 1 红；③ 移除重入打断 → 1 红。<br>⚠️ 一条顺带修正：`fallbackToRecording` 的名字已与实际语义不符（它现在是「两条通路都失败」的终点，不是「降级到录音」）。改名会波及既有断言，故保留名字并在注释里说明现状 —— 记为后续可清理项。 |
 | 2026-10-12 | **`[CR]` 二轮三层审查（纠偏后复审）**：又一轮 Blind Hunter / Edge Case Hunter / Acceptance Auditor，共 48 条原始发现 → 去重 36 条 → 判为噪声 4 条、延后 4 条、需决策 2 条、修补 10 条。<br>**两条决策已裁决**：AC-5 的契约裂缝选 (a) 承认现状（AC-5 段落加 `[CC]` 纠偏批注，「必须传 entryId」写成 `playPronunciation` 的显式契约 + 3 条用例钉住）；AC-8 未完成选 (b) **故事保持 `in-progress`**，等平板真机数据回填再收口。<br>**头号缺陷：发声权接管不对称** —— `stopActiveRecording()` 只在 `playRecording` 内、`synth.cancel()` 只在 `speakWithTts` 内，两个机制各自够用却漏掉 2×2 的交叉格，TTS→录音与录音→TTS 两个方向都**两声重叠**。抽出 `takeOverPlayback()` 作为唯一入口，在 `playPronunciation` 分派之前把两个音源都掐掉。另有：录音链接上 `playbackGeneration`（此前全文件只写不读，陈旧 404 会劫持新播放念出上一个词）、`onerror` 的 `canceled`/`interrupted` 改走 `finish()`（此前裸 return 把 20 秒兜底定时器留在原地，链被复活）、`entryId` 补 `typeof` 门（`RegExp.test` 会把 `null` 强制转成 `"null"` 绕过校验）、`selectVoice` 优先级链补判 `isEnglish`、录音播完放开 `activeRecording` 引用、顶层 `beforeEach` 从文件中部移到顶部。<br>测试 **95 → 113**，新增 5 组共 18 条用例。<br>⚠️ **本轮最重要的一条不是修的 bug，是撤回的一条 patch**：有审查方报「AC-1 时序断言测不出第③步被延后」，实测三种延后写法（`queueMicrotask` / `setTimeout` / `.then()`）**都会让旧断言当场变红** —— 建议的补丁抓不到任何旧断言抓不到的东西，已撤回，只在用例注释里留下变异记录。**教训：反向验证没做就采信「这条断言有洞」，代价是往套件里塞一条永远不会失败的断言。**<br>⚠️ 本轮全部 6 处修复均做了**变异验证**（改坏 → 确认用例变红 → 复原），其中 P3 的首版用例是**假绿**（测试文本 34 字符 < `MAX_CHUNK_CHARS` 200，根本没分块），改用超长文本后才真正抓住。 |

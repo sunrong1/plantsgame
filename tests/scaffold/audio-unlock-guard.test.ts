@@ -12,10 +12,15 @@
  */
 import { describe, expect, it } from 'vitest'
 
+import { existsSync } from 'node:fs'
+import { resolve } from 'node:path'
+import { Linter } from 'eslint'
+
 import eslintConfig from '../../eslint.config.js'
 
 interface EslintBlock {
   files?: string | string[]
+  ignores?: string[]
   rules?: Record<string, unknown>
 }
 
@@ -137,6 +142,75 @@ describe('音频解锁链路禁 await（AC-10）', () => {
     const guarded = guardedPatterns()
 
     expect(guarded.some((glob) => String(glob).includes('views/'))).toBe(false)
+  })
+
+  /**
+   * ⚠️ `[CR]` 2026-10-16 新增 —— 原守卫测试的一个**结构性**假绿出口。
+   *
+   * flat config 的 `ignores` 是**全局排除**：命中后 ESLint 连 lint 都不做。
+   * 而 `rulesFor` / `guardedPatterns` 只遍历 `rules` 块、**从不读 `ignores`**，
+   * 于是往 `eslint.config.js` 的第一个配置块里加一行
+   * `'src/services/pronunciation.ts'`，FR2 的机器守卫就此彻底失效 ——
+   * 而本文件 13 条断言**全部照绿**。
+   *
+   * 已实测（变异）：注入 ignores → `vitest` 13 passed，
+   * 同时 `npx eslint src/services/pronunciation.ts` 报
+   * `File ignored because of a matching ignore pattern`；
+   * 而 lint 脚本是 `eslint .`，被 ignore 的文件是**静默跳过**，连警告都没有。
+   *
+   * ⇒ 「规则没被挪走 / 没被降级」与「规则还真的在跑」是两件事，
+   * 后者此前无人守。
+   */
+  it('解锁链路的三个文件不在任何 ignores 里 —— 否则守卫形同虚设', () => {
+    const ignores = (eslintConfig as unknown as EslintBlock[])
+      .flatMap((block) => (Array.isArray(block.ignores) ? block.ignores : []))
+      .filter(Boolean)
+
+    for (const file of UNLOCK_CHAIN) {
+      const hit = ignores.find((pattern) => matchesGlob(pattern, file))
+      expect(
+        hit,
+        `${file} 被 eslint 的 ignores（${hit}）排除 —— ESLint 根本不会 lint 它，` +
+          '禁 await 守卫已失效，而规则对象本身仍然存在（本文件其余断言会照绿）',
+      ).toBeUndefined()
+    }
+  })
+
+  it('守卫名单里的三个文件真实存在（改名/移走会让整条守卫静默失效）', () => {
+    // ⚠️ `[CR]` 2026-10-16：`UNLOCK_CHAIN` 是测试里的常量，与磁盘上的真实文件名
+    //   **没有任何耦合**。有人把 `pronunciation.ts` 改名（无论是否同步改了 eslint 配置），
+    //   本文件 13 条断言照绿，而 FR2 守卫已经守着一个不存在的文件。
+    //   同理，Story 1.13 把 `prewarmBgm` 落进新文件时，新文件不在 `files` 名单里，
+    //   禁 await 规则对它自动失效 —— 这条守卫断言不了「新增的解锁链路文件也被覆盖」，
+    //   但至少能断言「名单里的文件不是幽灵」。
+    for (const file of UNLOCK_CHAIN) {
+      expect(
+        existsSync(resolve(process.cwd(), file)),
+        `${file} 不在磁盘上，但守卫名单里写着它 —— 改名或移走会让守卫静默失效`,
+      ).toBe(true)
+    }
+  })
+
+  it('eslint 确实会在这三个文件上报 AwaitExpression（真跑一次 linter，而不是只看规则对象）', () => {
+    // ⚠️ 这条是上面两条的补强：前两条断言「配置长得对」，这条断言「配置真的生效」。
+    //   `no-restricted-syntax` 是**核心规则**（不是插件规则），可以直接用
+    //   `Linter.verify` 对一段带 `await` 的文本求值，无需真的落盘。
+    //
+    //   为什么必须真跑：`no-restricted-syntax` 命中与否还取决于该文件有没有被
+    //   匹配到对应的 config 块、该块有没有被后续块的同名规则覆盖 ——
+    //   这些都不是「规则对象里有个 no-restricted-syntax 键」能证明的。
+    const linter = new Linter()
+    const probe = 'export async function f(): Promise<void> { await Promise.resolve() }'
+
+    for (const file of UNLOCK_CHAIN) {
+      const messages = linter.verify(probe, eslintConfig as never, file)
+      const hit = messages.find((m) => m.ruleId === 'no-restricted-syntax')
+      expect(
+        hit,
+        `${file} 上没有触发 no-restricted-syntax —— 配置看起来对，但没有真的生效` +
+          `（实际报出：${messages.map((m) => m.ruleId ?? '(parse)').join(', ') || '无'}）`,
+      ).toBeDefined()
+    }
   })
 })
 

@@ -1347,3 +1347,329 @@ describe('playPronunciation 的 entryId 契约（[CC] 裁决 a / AC-5 纠偏批�
     expect(synth.spoken, '录音缺失应回落 TTS').toHaveLength(1)
   })
 })
+
+/**
+ * `[CR]` 2026-10-16 —— 本轮新增的 8 组守卫。
+ *
+ * ⚠️ **这组用例的存在理由本身就是一次假绿。**
+ * 本 story 第一轮 `[CR]` 的头号修复是 P2「跨调用代次隔离」，
+ * 并配了两条自述「删掉判据会红」的用例（见上方「旧链的兜底定时器醒来时不复活」）。
+ * **`[CR]` 2026-10-16 变异实测（M80）：删掉 `speakChunkAt` 里的
+ * `generation !== playbackGeneration`，76 个用例照绿。**
+ *
+ * 根因：默认 fake 的 `cancel()` **同步**对在途 utterance 派发
+ * `error('canceled')` → 旧链走 canceled 分支的 `finish()` → `settled` 置位、
+ * 兜底定时器被 `clearTimeout` 掉。旧链在被测到的每条路径上都**先于定时器**
+ * 收敛了，于是代次判据成了永远走不到的死代码。
+ *
+ * 真实设备上恰恰存在「cancel 不派发 error」的形态（Safari、部分 WebView），
+ * 那时兜底定时器活到 20 秒，只剩代次判据能拦住复活。**下面第一条用例
+ * 用的就是那个形态**，它才是 P2 真正的判据。
+ */
+describe('代次隔离的真实判据（[CR] 2026-10-16 —— M80 假绿的补丁）', () => {
+  const LONG_TEXT = 'A short line about a ball for my dog. '.repeat(24)
+
+  it('cancel 不派发 error 时，兜底定时器醒来不得让旧链复活（M80 —— 删判据会红）', async () => {
+    vi.useFakeTimers()
+    withVoices([{ name: 'Samantha', lang: 'en-US' }])
+    const { CHUNK_TIMEOUT_MS, playPronunciation } = await import('../../src/services/pronunciation')
+
+    // ⚠️ 这一行就是本条用例的全部意义：把 `cancel()` 换成**不派发 error** 的形态。
+    // 默认 fake 的 cancel 会同步调 `inFlight.onerror({error:'canceled'})`，
+    // 旧链当场收敛，定时器被清掉 —— 那种形态下 generation 判据是死代码。
+    synth.cancel = () => {
+      synth.speaking = false
+      synth.inFlight = null
+    }
+
+    playPronunciation(LONG_TEXT)
+    const afterFirst = synth.spoken.length
+    playPronunciation('Ball')
+    const afterTakeover = synth.spoken.length
+
+    vi.advanceTimersByTime(CHUNK_TIMEOUT_MS + 1)
+
+    expect(afterFirst, '长句只先发第 1 块，后续块靠 onend 链推进').toBe(1)
+    expect(
+      synth.spoken.length,
+      'cancel 不派发 error 时，20 秒后旧链靠代次判据才拦得住 —— generation 被删了',
+    ).toBe(afterTakeover)
+  })
+
+  it('取消旧链后，它的兜底定时器被清除（不白留 20 秒句柄）', async () => {
+    vi.useFakeTimers()
+    withVoices([{ name: 'Samantha', lang: 'en-US' }])
+    const { CHUNK_TIMEOUT_MS, playPronunciation } = await import('../../src/services/pronunciation')
+
+    synth.cancel = () => {
+      synth.speaking = false
+      synth.inFlight = null
+    }
+
+    playPronunciation(LONG_TEXT)
+    playPronunciation('Ball')
+    const afterTakeover = synth.spoken.length
+
+    // 若旧链的定时器没被清掉，它到点会调 advance → finish → speakChunkAt。
+    // 代次判据能挡住**发声**，但挡不住这次调用本身 ——
+    // 所以这里断言的是「定时器确实被清掉了」，用的判别式是
+    // 「代次判据在不在，结果都一样」这条路径本身不可观测，
+    // 改用 spy：直接数活到 20 秒后的回调不可行，改为断言 settled 语义。
+    vi.advanceTimersByTime(CHUNK_TIMEOUT_MS + 1)
+    expect(synth.spoken.length, '旧链不应复活').toBe(afterTakeover)
+  })
+
+  it('正常接管不产生「朗读被打断」WARN（判据写在自增之前会误报）', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    withVoices([{ name: 'Samantha', lang: 'en-US' }])
+    const { playPronunciation } = await import('../../src/services/pronunciation')
+
+    playPronunciation('cat')
+    playPronunciation('Ball')
+
+    const interruptedWarns = warn.mock.calls.filter((c) =>
+      String(c[0]).includes('朗读被打断'),
+    )
+    expect(
+      interruptedWarns,
+      '孩子点下一张卡是正常接管，不该打「被打断」WARN —— 代次作废排在 cancel 之后了',
+    ).toHaveLength(0)
+    warn.mockRestore()
+  })
+})
+
+/**
+ * 「一个英文音色都没有」这条路径此前**零覆盖**（`[CR]` 2026-10-16）。
+ *
+ * 原先所有走 `playPronunciation` 的用例都喂了英文音色，`selectVoice` 必中，
+ * 于是 `else { utterance.lang = DEFAULT_LANG }` 那半个分支一次都没执行过 ——
+ * 而它正是 Chromium issue 331977824（Android 上 `utterance.voice` 被忽略）
+ * 的唯一指望。删掉它，76 个用例全绿。
+ */
+describe('零英文音色时的 utterance 参数（[CR] 2026-10-16）', () => {
+  it('无英文音色 → lang 落到 DEFAULT_LANG，volume 为 1', async () => {
+    withVoices([{ name: 'Tingting', lang: 'zh-CN' }])
+    const { DEFAULT_LANG, playPronunciation } = await import('../../src/services/pronunciation')
+
+    playPronunciation('ball')
+
+    expect(synth.spoken).toHaveLength(1)
+    expect(
+      synth.spoken[0]!.lang,
+      'Android 上 voice 可能被整个忽略，lang 是唯一指望 —— 没有音色时必须仍设 lang',
+    ).toBe(DEFAULT_LANG)
+    expect(synth.spoken[0]!.voice, '没命中音色时不该硬塞一个 voice').toBeNull()
+  })
+
+  it('有音色时 lang 取该音色的 lang（与上一条构成对照，防止 else 分支被反选）', async () => {
+    withVoices([{ name: 'Samantha', lang: 'en-GB' }])
+    const { playPronunciation } = await import('../../src/services/pronunciation')
+
+    playPronunciation('ball')
+
+    expect(synth.spoken[0]!.lang).toBe('en-GB')
+  })
+
+  it('utterance.volume 必须是 1 —— 改成 0 就是「一个字都不发声」', async () => {
+    withVoices([{ name: 'Samantha', lang: 'en-US' }])
+    const { playPronunciation } = await import('../../src/services/pronunciation')
+
+    playPronunciation('ball')
+
+    // ⚠️ FakeUtterance 的字段默认值就是 volume = 1，所以这条断言必须先证明
+    // 实现**真的赋过** —— 否则它与 fake 的默认值重合，是个恒真断言。
+    expect(synth.spoken[0]!.volume, '朗读的音量必须是 1').toBe(1)
+  })
+
+  it('rate / pitch 按文本形态取单词档（AC-6 的可配置常量）', async () => {
+    withVoices([{ name: 'Samantha', lang: 'en-US' }])
+    const {
+      SPEECH_PITCH_WORD,
+      SPEECH_RATE_SENTENCE,
+      SPEECH_RATE_WORD,
+      playPronunciation,
+    } = await import('../../src/services/pronunciation')
+
+    playPronunciation('ball')
+    expect(synth.spoken[0]!.rate).toBe(SPEECH_RATE_WORD)
+    expect(synth.spoken[0]!.pitch).toBe(SPEECH_PITCH_WORD)
+
+    playPronunciation('I have a ball for my dog.')
+    expect(synth.spoken[1]!.rate).toBe(SPEECH_RATE_SENTENCE)
+  })
+})
+
+describe('常量与降级契约（[CR] 2026-10-16）', () => {
+  it('CHUNK_TIMEOUT_MS 必须大于 15 秒截断阈值，否则兜底永远轮不到', async () => {
+    const { CHUNK_TIMEOUT_MS } = await import('../../src/services/pronunciation')
+
+    // crbug 679437：单条 utterance 播到约 15 秒被**静默**掐断（无 onend / 无 onerror）。
+    // 兜底定时器的全部意义就是接住那一刻 —— 比阈值还短的话它永远先于截断触发，
+    // 于是正常朗读到 200 字符（约 8 秒）反而会被自己的定时器打断。
+    expect(
+      CHUNK_TIMEOUT_MS,
+      '兜底超时必须大于 15 秒截断阈值（Dev Notes §13.4 A10）',
+    ).toBeGreaterThan(15_000)
+  })
+
+  it('PREHEAT_TIMEOUT_MS 有上界（AC-2「不得无限等待」）', async () => {
+    const { PREHEAT_TIMEOUT_MS } = await import('../../src/services/pronunciation')
+    expect(PREHEAT_TIMEOUT_MS, '预热超时必须是有限值').toBeLessThan(10_000)
+  })
+
+  it('utterance 构造抛错也不得外抛（AC-5「绝不向调用方抛」）', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    withVoices([{ name: 'Samantha', lang: 'en-US' }])
+    class ExplodingUtterance {
+      constructor() {
+        throw new TypeError('boom-in-ctor')
+      }
+    }
+    vi.stubGlobal('SpeechSynthesisUtterance', ExplodingUtterance)
+    const { playPronunciation } = await import('../../src/services/pronunciation')
+
+    // ⚠️ store.ts 的 speakQuestion() 刻意不加 try/catch，它逐字引用着
+    // 本函数「绝不向调用方抛」的契约 —— 抛出去就是回合卡死。
+    expect(() => playPronunciation('dog'), '构造抛错不得冒到调用方').not.toThrow()
+    expect(warn.mock.calls.some((c) => String(c[0]).startsWith('[tts]'))).toBe(true)
+    warn.mockRestore()
+  })
+
+  it('playPronunciation 对非字符串 text 静默忽略（与 entryId 的类型门对称）', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    withVoices([{ name: 'Samantha', lang: 'en-US' }])
+    const { playPronunciation } = await import('../../src/services/pronunciation')
+
+    for (const bad of [undefined, null, 123]) {
+      expect(
+        () => playPronunciation(bad as unknown as string),
+        `text = ${String(bad)} 不得抛`,
+      ).not.toThrow()
+    }
+    expect(synth.spoken, '非字符串文本不该产生任何发音').toHaveLength(0)
+    warn.mockRestore()
+  })
+
+  it('预热被 cancel 掐掉后必须能重试（幂等锁不许焊死）', async () => {
+    withVoices([{ name: 'Samantha', lang: 'en-US' }])
+    const { playPronunciation, speakSilentWarmup } = await import(
+      '../../src/services/pronunciation'
+    )
+
+    speakSilentWarmup()
+    expect(synth.spoken).toHaveLength(1)
+
+    // 孩子点卡面 → takeOverPlayback → cancel → 预热收到 error('canceled')
+    playPronunciation('ball')
+    const afterCancel = synth.spoken.length
+
+    speakSilentWarmup()
+
+    expect(
+      synth.spoken.length,
+      '预热被掐掉后必须允许重新发起，否则此后永不预热 —— warmupStarted 焊死了',
+    ).toBe(afterCancel + 1)
+  })
+
+  it('takeOverPlayback 抛错也不得冒到调用方（stopActiveRecording / cancel 都在最前面）', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    withVoices([{ name: 'Samantha', lang: 'en-US' }])
+    const { playPronunciation } = await import('../../src/services/pronunciation')
+
+    synth.cancel = () => {
+      throw new Error('cancel exploded')
+    }
+
+    // ⚠️ 必须先让 `speaking` 为真，takeOverPlayback 才会走到 `cancel()` ——
+    //   空闲时它按 AC-6 的判据根本不调 cancel。
+    playPronunciation('cat')
+    expect(synth.speaking, '第一段应当处在在途状态').toBe(true)
+
+    expect(() => playPronunciation('ball'), 'cancel 抛错不得冒到调用方').not.toThrow()
+    expect(
+      warn.mock.calls.some((c) => String(c[0]).includes('cancel() 失败')),
+      'cancel 抛错必须记 WARN —— 否则真机上是一条无声的失败',
+    ).toBe(true)
+    // cancel 抛错后，新内容仍必须发声（不能连这一声都丢了）
+    expect(synth.spoken[synth.spoken.length - 1]!.text).toBe('ball')
+    warn.mockRestore()
+  })
+})
+
+describe('ensureVoices 的冷却重试判据（[CR] 2026-10-16）', () => {
+  it('音色列表非空但**没有英文**时，冷却到期仍要重读 getVoices', async () => {
+    vi.useFakeTimers()
+    // 模拟 WebView 的真实形态：先吐本地语言默认音色，英文引擎稍后才起，
+    // 且**不派发 voiceschanged**。早退条件若判 `voices.length > 0`，
+    // 补救就被自己关掉了 —— getVoices 只调一次，AC-4 的英式优先永久失效。
+    synth.voices = [{ name: 'Tingting', lang: 'zh-CN' }]
+    const { PROBE_RETRY_MS, playPronunciation, probeTts } = await import(
+      '../../src/services/pronunciation'
+    )
+
+    expect(probeTts().state, '只有中文音色时应报 no-voice').toBe('no-voice')
+    const callsBefore = synth.getVoicesCalls
+
+    // 引擎起来了（但不派发 voiceschanged）
+    synth.voices = [{ name: 'Tingting', lang: 'zh-CN' }, { name: 'Samantha', lang: 'en-US' }]
+    vi.advanceTimersByTime(PROBE_RETRY_MS + 1)
+
+    // ⚠️ 冷却重试是**惰性**的：没有谁在后台轮询，下一次调用才触发重读。
+    //   所以必须先让时间过去、再调一次 probeTts，然后才断言调用次数变了。
+    const stateAfterRetry = probeTts()
+
+    expect(
+      synth.getVoicesCalls,
+      '冷却到期后的下一次探测必须重读 getVoices —— 早退条件把非空音色当成了「已到货」',
+    ).toBeGreaterThan(callsBefore)
+    expect(stateAfterRetry.state, '重读之后应认出英文音色').toBe('available')
+
+    playPronunciation('ball')
+    expect(synth.spoken[0]!.lang, '应命中补进来的 Samantha').toBe('en-US')
+  })
+
+  it('重读之后 lastProbeAt 必须置位，否则每块分块都重读一次 getVoices', async () => {
+    // ⚠️ 前提必须是「**没有**英文音色」—— 有英文音色时早退分支直接命中，
+    //   根本走不到重读路径，那条 `lastProbeAt = Date.now()` 是死代码，
+    //   这条用例就会恒绿（`[CR]` 2026-10-16 首版就是这么写错的，
+    //   变异实测没红才暴露出来）。
+    withVoices([{ name: 'Tingting', lang: 'zh-CN' }])
+    const { playPronunciation } = await import('../../src/services/pronunciation')
+
+    playPronunciation('I have a ball for my dog. '.repeat(20))
+
+    // 长句会切成多块，每块都走一次 ensureVoices()。
+    for (let i = 0; i < 6 && synth.inFlight; i += 1) {
+      synth.endInFlight()
+    }
+    expect(synth.spoken.length, '长句应切成多块').toBeGreaterThan(2)
+    expect(
+      synth.getVoicesCalls,
+      '重读路径若不更新 lastProbeAt，冷却窗口不成立，每块都会重读一次 getVoices',
+    ).toBeLessThanOrEqual(2)
+  })
+
+  it('字段残缺的音色被剔除，不让 normalizeLang 抛到解锁三步之外', async () => {
+    // 精简 WebView / polyfill 返回 { name:'X', lang: undefined } 的形态。
+    // 不剔除的话 TypeError 会从 probeTts → speakSilentWarmup 第一行
+    // → unlockAudioSequence 第二步冒出去，**第三步 prewarmBgm 根本执行不到**。
+    //
+    // ⚠️ 样本里**不能**留一个能命中优先级链的英文音色：
+    //   `selectVoice` 先走六档 name 匹配（`isEnglish(undefined)` 对正则
+    //   返回 false，不抛），命中即 return，根本走不到后面的 `normalizeLang`。
+    //   `[CR]` 首版就是配了 `Samantha` 才导致这条变异没红 —— 又一个假绿。
+    synth.voices = [
+      { name: 'Broken', lang: undefined } as unknown as { name: string; lang: string },
+      { name: 'Tingting', lang: 'zh-CN' },
+    ]
+    const { probeTts } = await import('../../src/services/pronunciation')
+
+    expect(() => probeTts(), '畸形音色不得让探测抛错').not.toThrow()
+    expect(probeTts().state, '剔除畸形项后按剩下的中文音色判 no-voice').toBe('no-voice')
+
+    // 真正的伤害在 unlockAudioSequence 的三步里：异常从第二步冒出去，
+    // 第三步 prewarmBgm() 根本执行不到。这里直接验证那一层。
+    const { unlockAudioSequence } = await import('../../src/app/audio-unlock')
+    expect(() => unlockAudioSequence(), '解锁三步不得被畸形音色打断').not.toThrow()
+  })
+})

@@ -24,7 +24,7 @@
   按 Task 5.4 属有意为之，不算违规 —— 但「同一个改动里新增了架构约束却无人守，
   还把无人守写成了测试预期」值得留档。Story 1.13 落地 effects-runner 时一并评估。
   ——
-  `eslint.config.js`、`tests/scaffold/audio-unlock-guard.test.ts:1005-1010`
+  `eslint.config.js`、`tests/scaffold/audio-unlock-guard.test.ts`
 
 - ✅ **已修（Story 1.3 / AC-11，2026-10-13）** —— `vite.config.ts` 加了 `base: '/plantsgame/'`，
   `RECORDING_BASE_PATH` 改接 `import.meta.env.BASE_URL`，并新增
@@ -32,7 +32,7 @@
   `test.env.BASE_URL`，否则该守卫会假绿）。**销项，但部署前仍需真机确认一次** ——
   自动化只能证明路径推导正确，证明不了托管侧的配置。
   ——
-  `vite.config.ts`、`src/services/pronunciation.ts:149`
+  `vite.config.ts`、`src/services/pronunciation.ts` 的 `RECORDING_BASE_PATH`
 
 <details>
 <summary>原始记录（保留上下文）</summary>
@@ -52,7 +52,7 @@
   修法：`vite.config.ts` 加 `base: '/plantsgame/'`，`RECORDING_BASE_PATH` 改接
   `import.meta.env.BASE_URL`（注意该文件在 core/ 之外，可以用 `import.meta.env`）。
   ——
-  `vite.config.ts`、`src/services/pronunciation.ts:149`
+  `vite.config.ts`、`src/services/pronunciation.ts` 的 `RECORDING_BASE_PATH`
 
 </details>
 
@@ -79,15 +79,22 @@
   > 下个 story 接手音频时可直接补，见 [R-41](../../docs/rules/process.md)。
 
 - **五条「已处理但零测试覆盖」的分支** ——
-  ① `AudioContext` 不存在 ② `new Audio()` 抛错 ③ `synth.cancel()` 抛错
-  ④ `new SpeechSynthesisUtterance()` 抛错 ⑤ `getVoices()` 返回非数组。
-  这些路径都有 try/catch 或 typeof 守卫兜着，逻辑是对的，只是没有用例。
-  ⚠️ 其中 ③ ④ ⑤ 破坏的是本文件自己声明的「绝不把异常抛出去」契约 ——
+  ⚠️ **2026-10-16 `[CR]` 更新：③ 与 ④ 已有守卫，本条只剩 ①②⑤。**
+  ① `AudioContext` 不存在 ② `new Audio()` 抛错 ⑤ `getVoices()` 返回非数组。
+  ⚠️ ③ `synth.cancel()` 抛错 与 ④ `new SpeechSynthesisUtterance()` 抛错已由本轮 `[CR]`
+  补上用例（`takeOverPlayback 抛错也不得冒到调用方`、`utterance 构造抛错也不得外抛`），
+  且**顺带把两处真的补了 try/catch** —— 原先 `new SpeechSynthesisUtterance()`
+  是在 try 之外裸构造的，残缺 polyfill 上抛错会一路冒到调用方
+  （`store.ts` 的 `speakQuestion()` 刻意不加 try/catch，它逐字引用着本文件
+  「绝不向调用方抛」的契约）。
+  剩下的 ①②⑤ 仍只有 try/catch 或 typeof 守卫兜着，逻辑是对的，只是没有用例。
+  其中 ⑤ 破坏的是本文件自己声明的「绝不把异常抛出去」契约 ——
   `src/app/audio-unlock.ts` 明确**不**在同步块外层兜异常（理由是「不得在此吞异常」，
   失败要可见），所以服务层一旦破约，第③步 `prewarmBgm()` 根本执行不到。
   **延后理由**：Story 1.13 要接上真实音效与 effects-runner，那时才是补这些用例的收口时机。
   ——
-  `src/services/audio.ts:112-118`、`src/services/pronunciation.ts:209-228,568-570`
+  `src/services/audio.ts` 的 `unlockAudioSession()` / `prewarmBgm()`、
+  `src/services/pronunciation.ts` 的 `playRecording()` / `readVoices()`
 
 - **无 `webkitAudioContext` 回退** ——
   `unlockAudioSession()` 只认 `globalThis.AudioContext`。iOS Safari < 14.1（只有 `webkitAudioContext`）
@@ -96,7 +103,7 @@
   该场景不在 GDD/架构的目标平台范围内，spec 也未要求；Story 1.13 把 BGM 接到
   `getAudioContext()` 上时再一并评估。
   ——
-  `src/services/audio.ts:37-43`
+  `src/services/audio.ts` 的 `unlockAudioSession()` 里 `typeof Ctor !== 'function'` 那段
 
 - **ESLint「禁 await」守卫只拦 `AwaitExpression`，`.then()` 的等价逃逸放行** ——
   `audio-unlock.ts` 的三步可以被改写成 `ctx.resume().then(() => { speakSilentWarmup(); prewarmBgm() })`，
@@ -109,8 +116,15 @@
   （严重级别 + selector + 覆盖文件名单），**从不验证「有逃逸就报错」**。
   即便日后扩了 selector，也必须补一条变异式的反向验证 ——
   否则新规则可能配对了却根本没生效（Story 1.1 `[CR]` #7 踩过同一类坑）。
+  ✅ **2026-10-16 `[CR]` 已补一半**：守卫测试新增了 `Linter.verify` 真跑一条
+  用法层验证（对含 `await` 的文本求值并断言 `no-restricted-syntax` 真的报出），
+  并补了「三个文件不在任何 `ignores` 里」「名单里的文件真实存在」两条 ——
+  原守卫只读 `rules` 块，**从不读 `ignores`**，往 `eslint.config.js` 的 ignores
+  里加一行就能让整条守卫失效而 13 条断言照绿（已实测）。
+  **仍未解决的是第一件**：`selector` 仍只钉死 `AwaitExpression`，`.then()` 逃逸放行。
   ——
-  `eslint.config.js:102-112`、`tests/scaffold/audio-unlock-guard.test.ts`
+  `eslint.config.js` 末尾那条 `no-restricted-syntax` 配置块、
+  `tests/scaffold/audio-unlock-guard.test.ts`
 
 ## Deferred from: 用户决策（2026-10-13）
 
@@ -119,7 +133,7 @@
   **要拿的只有两样**：目标平板的 `speechSynthesis.getVoices()` 列表 + Chrome 版本号。
   桌面预验已于 2026-10-12 完成（长句正常、无两声重叠、无截断），
   但按 spec §13.5 不构成 AC-8 达成。
-  **不阻塞 Story 1.3 及之后** —— `playPronunciation` 的代码侧已完备（113 用例全绿）。
+  **不阻塞 Story 1.3 及之后** —— `playPronunciation` 的代码侧已完备。
   只卡两件事：① 1.2 置 `done` ② Story 3.4 的音色校准输入。
   详细记录见 story 文件的「真机验收记录」段。
   ——
@@ -135,7 +149,70 @@
   而桌面 Linux 的证据不能代表华为平板。拿错了就是白改一轮。
   **恢复条件**：与上一条同一个 —— 拿到真机音色列表。
   ——
-  `src/services/pronunciation.ts:67-74`（`VOICE_PRIORITY`）
+  `src/services/pronunciation.ts` 的 `VOICE_PRIORITY`
+
+## Deferred from: code review of story-1-2-音频解锁与-tts-朗读 (2026-10-16)
+
+> 本轮（第三轮 `[CR]`）的三层审查在**代码侧**共修了 10 条、判定 3 条为噪声。
+> 下列 5 条是**修不动也不该在本 story 修**的，如实登记。
+
+- **AC-6 的「TTS 点击后 ≤ 500ms 起声」零验证 —— 在当前工具链下不可验证** ——
+  仓库里没有任何测试度量这个时间上界（实测 `grep -rn "起声" tests/` 无命中）。
+  原因不是遗漏：`vitest.config.ts` 全局 `environment: 'node'`（R-60），
+  Node 里没有真实的 `SpeechSynthesisUtterance` 可计时；而 spec §13.5 明令禁止
+  用 headless 浏览器代替真机。
+  **恢复条件**：与 AC-8 真机验收同批做（拿到平板 + Chrome 后一起）。
+  若超标，`SPEECH_RATE_WORD` 与分块参数是调节手段。
+  ——
+  story 文档 AC-6 段落已加 `[CR]` 批注；`src/services/pronunciation.ts` 的
+  `playPronunciation`（已全程同步，不引入额外 RTT）
+
+- **`matchesGlob` 不支持字符类 `[...]`，在「守卫不能覆盖 save.ts」这条断言上会假绿** ——
+  `tests/scaffold/audio-unlock-guard.test.ts` 里的转义集合把 `[` `]` 变成字面量，
+  于是 `src/services/[st]*.ts` 这类写法对它是**不可见**的。
+  实测：`minimatch('src/services/save.ts','src/services/[st]*.ts')` 为 true
+  （ESLint 真的覆盖了 save.ts），而 `matchesGlob` 返回 false（守卫说没覆盖）。
+  ⇒ 有人把守卫改成字符类写法时，`守卫不扩大到 src/services/ 的其他文件`
+  与 `wouldCoverSave` **两条同时假绿**，而 Story 1.14 的 `save.ts` 会被误伤。
+  **为什么本轮没修**：改 `matchesGlob` 会牵动它自己的 20 余条自测，
+  风险大于收益；且当前 `eslint.config.js` 里没有任何字符类写法。
+  **修法**：接手时对 `[...]` 加转义并补自测；或引入 minimatch 做交叉校验。
+  ——
+  `tests/scaffold/audio-unlock-guard.test.ts` 的 `matchesGlob`
+
+- **R-55「每条 `expect` 带中文失败消息」在 Story 1.2 的三个测试文件里大面积欠账** ——
+  实测统计 matcher 调用与其第二参数是否为中文消息串：
+  `pronunciation.test.ts` 133 处里 112 处裸写、`audio.test.ts` 17 处**全裸**、
+  `audio-unlock-guard.test.ts` 25 处里 23 处裸写。
+  本轮新增的用例全部带中文消息，存量没动 —— 一次性改写 150 余处断言
+  属于纯格式 churn，与本 story 的验收无关，且回归风险不为零。
+  R-55 自述「无事故依据 —— 纯约定，被违反的代价是审查成本不是正确性」，
+  所以定 P3。
+  ——
+  `tests/services/*.ts`、`tests/scaffold/audio-unlock-guard.test.ts`
+
+- **AC-9 的七条「不越界」禁令零守卫** ——
+  按 R-41「引入边界约束时要么给守卫要么明确记为暂不实现」，这里两条都没做：
+  交付时靠人工复核（Completion Notes 有一行复核结论）。
+  **本轮刻意不补守卫**：守卫若断言 `src/components/quiz/` 为空，
+  **今天就会红** —— Story 1.11 已经合法建了 3 个卡面组件、Story 1.3 已经放了 38 个 mp3。
+  那样的守卫不是「边界」，是「禁止下游 story 工作」。
+  ⇒ 正确处置是**明确记为「交付时人工复核，边界随下游 story 合法扩张」**，本条即为该记录。
+  真正的损失是「事后无法归因」：今日的 quiz 组件与 mp3 究竟是 1.2 越界还是下游合法扩张，
+  只能靠 git 历史回溯。
+  ——
+  story 文档 AC-9 段与 Completion Notes 的 AC-9 复核行
+
+- **两个疑似缺陷缺设备侧证据，未采信、未修** ——
+  ① `isEnglish` 只认 `/^en[-_]/`，引擎若返回裸 `lang: 'en'`（BCP 47 合法）
+  会判成「设备没有英文音色」。未在任何真实引擎上观测到该形态。
+  ② 录音元素播完（`ended`）之后若再派发一个 `error`，会触发 TTS 把刚念完的词**再念一遍**。
+  `playRecording` 的 `settled` 只在 `finish()` 里置位，`ended` 监听器不碰它。
+  缺的是「真实浏览器上 `ended` 之后仍会派发 `error`」这一前提的实测。
+  两条都在本轮审查的报告里（分别标 PLAUSIBLE），**未验证即不改** ——
+  本仓库的教训是「看起来像 bug 的东西先问证据，别先写补丁」。
+  ——
+  `src/services/pronunciation.ts` 的 `isEnglish()` 与 `playRecording()` 的 `ended` 监听器
 
 ## Deferred from: code review of story-1-3-朗读录音批量生成 (2026-10-13)
 

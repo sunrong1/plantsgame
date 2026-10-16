@@ -227,6 +227,16 @@ function playRecording(entryId: string, onUnplayable: () => void): boolean {
 
   el.addEventListener('error', () => {
     // 404 / 解码失败 / 无权限 —— 全落在这里。这是录音缺失时的正常路径，不是异常。
+    //
+    // ⚠️ `[CR]` 2026-10-16：与下面的 `ended` 监听器**对称地**放开引用。
+    //   本文件 `:141` 亲口写着「当前该目录为空，`playRecording` 的 error
+    //   事件会走降级到这里 —— 属预期路径」，而 `ended` 那条专门解释了
+    //   「白留一个 HTMLAudioElement 与其解码缓冲不释放」——
+    //   录音 404 恰是本项目当前**最频繁**的路径，不清引用等于每次
+    //   失败都在攒一个死元素。
+    if (activeRecording === el) {
+      activeRecording = null
+    }
     finish()
   })
 
@@ -286,16 +296,33 @@ function stopActiveRecording(): void {
  * ② 每块都重新判断一次 `speaking`，会正面撞上「cancel 吞掉紧随的 speak」
  *    （Chromium issue 41436964）。浏览器在 `onend` 回调期间仍可能把 `speaking`
  *    报成 true（队列尚未清空），而那恰恰是最容易命中的一步。
- *    在入口只判一次，链内部不再 cancel，窗口就不存在了。
+ *    在入口只判一次，链内部不再 cancel。
+ *    ⚠️ **别把这条读成「竞争窗口已消除」**（`[CR]` 2026-10-16 更正）：
+ *    本函数里 `cancel()` 与紧随其后的 `synth.speak()` 仍在**同一个同步块**内，
+ *    相邻关系并没有被拆开。真正被消掉的是「重复判断」与「每块一次」这两点，
+ *    不是 issue 41436964 的成因本身。该 issue 描述的是 Windows SAPI 路径，
+ *    本项目跑在 Android Chrome 上，**是否命中未实测**。
  *
  * 判据仍然是 `speaking === true` —— 为了「防止 cancel 破坏刚解锁的音频会话」
  * 这个理由查无证据（AC-6），真正要避的是上面那条竞争。
  */
 function takeOverPlayback(): void {
-  stopActiveRecording()
-  const synth = getSynthesis()
-  if (synth?.speaking) {
-    synth.cancel()
+  // ⚠️ 本文件对外声明「绝不向调用方抛」，而这里处在**每一次发音的最前面** ——
+  //   `pause()` 对未加载成功的元素、某些引擎上的 `currentTime` 赋值、
+  //   以及残缺 polyfill 的 `cancel()` 都不是零风险。任一抛错都会把
+  //   「这一声念不出来」升级成「回合卡死」。逐个兜住。
+  try {
+    stopActiveRecording()
+  } catch (err) {
+    console.warn('[tts] 停止上一段录音失败，忽略', err)
+  }
+  try {
+    const synth = getSynthesis()
+    if (synth?.speaking) {
+      synth.cancel()
+    }
+  } catch (err) {
+    console.warn('[tts] cancel() 失败，旧朗读可能继续', err)
   }
 }
 
@@ -337,11 +364,31 @@ function readVoices(synth: SpeechSynthesis): readonly VoiceLike[] {
     return []
   }
   try {
-    return synth.getVoices()
+    return soundVoices(synth.getVoices())
   } catch (err) {
     console.warn('[tts] getVoices() 失败，按无音色处理', err)
     return []
   }
+}
+
+/**
+ * 剔除字段残缺的音色（`[CR]` 2026-10-16）。
+ *
+ * `readVoices` 防了 `getVoices()` **抛错**，却没防它**返回畸形元素**：
+ * 某个精简 WebView / polyfill 返回 `{ name: 'X', lang: undefined }` 时，
+ * `isEnglish` 走正则不抛，但 `normalizeLang` 里的 `lang.replace` 会抛 TypeError ——
+ * 从 `probeTts` 冒到 `speakSilentWarmup` 第一行，再从 `unlockAudioSequence()`
+ * 冒到 `onStart`，**第三步 `prewarmBgm()` 根本执行不到**。
+ * 与本函数上方注释宣称的「精简 WebView / 隐私模式下只暴露部分 API」正是同一种环境。
+ */
+function soundVoices(raw: readonly VoiceLike[]): readonly VoiceLike[] {
+  return raw.filter(
+    (voice) =>
+      voice !== null &&
+      typeof voice === 'object' &&
+      typeof voice.name === 'string' &&
+      typeof voice.lang === 'string',
+  )
 }
 
 /**
@@ -363,13 +410,25 @@ function ensureVoices(): readonly VoiceLike[] {
   }
 
   if (voicesHooked) {
-    // 已有音色时只在 voiceschanged 后更新（缓存命中，不重复轮询）。
-    if (voices.length > 0 || Date.now() - lastProbeAt < PROBE_RETRY_MS) {
+    // ⚠️ `[CR]` 2026-10-16：早退条件原来判的是 `voices.length > 0`，
+    //   而 `PROBE_RETRY_MS` 要救的正是「设备先吐出本地语言默认音色、
+    //   英文引擎稍后才起、且**不派发 voiceschanged**」那类 WebView。
+    //   那种设备上 `voices.length` 一直是 1（一个中文音色），
+    //   于是这个闸门把补救**自己关掉了** —— `getVoices()` 永远只调一次，
+    //   `probeTts()` 永远报 `no-voice`，AC-4 的英式优先形同虚设。
+    //   判据应当是「**英文音色**到货」，不是「有任何音色」。
+    const hasEnglish = selectVoice(voices) !== null
+    if (hasEnglish || Date.now() - lastProbeAt < PROBE_RETRY_MS) {
       return voices
     }
     voices = readVoices(synth)
-    if (voices.length > 0) {
-      // 音色到货后原先的判定作废，缓存清掉让下一次 probeTts 重算。
+    // ⚠️ 重读之后**必须**置位，否则冷却窗口不成立：
+    //   `playPronunciation` → `speakChunkAt` → `ensureVoices()` 这条路径
+    //   不经过 `probeTts()`，不会有人替我们更新 `lastProbeAt`，
+    //   于是每一块分块都会重读一次 getVoices()。
+    lastProbeAt = Date.now()
+    if (selectVoice(voices) !== null) {
+      // 英文音色到货后原先的判定作废，缓存清掉让下一次 probeTts 重算。
       probeCache = null
     }
     return voices
@@ -456,8 +515,17 @@ export function speakSilentWarmup(): void {
     return
   }
 
-  const warmup = new Ctor(' ')
-  warmup.volume = 0
+  // ⚠️ 构造与赋值同样在 try 之外 —— 残缺 polyfill 上 `new Ctor` 抛错会让异常
+  //   从 `unlockAudioSequence()` 的**第二步**冒出去，第三步 `prewarmBgm()`
+  //   根本执行不到（`[CR]` 2026-10-16，与 speakChunkAt 里那处同因）。
+  let warmup: SpeechSynthesisUtterance
+  try {
+    warmup = new Ctor(' ')
+    warmup.volume = 0
+  } catch (err) {
+    console.warn('[tts] 预热 utterance 构造失败', err)
+    return
+  }
 
   // 收敛标志：onend / onerror / 超时三路竞争中谁先到算谁。
   // 不用 clearTimeout —— 定时器是一次性的，第二次触发是 no-op，
@@ -472,7 +540,32 @@ export function speakSilentWarmup(): void {
   }
 
   warmup.onend = settle
-  warmup.onerror = settle
+
+  // ⚠️ `[CR]` 2026-10-16：这里原来直接 `warmup.onerror = settle`，且**只**有 settle。
+  //   `cancel()` 会对在途 utterance 派发 `error('canceled')`，而
+  //   `takeOverPlayback()` 在预热还在途时就会 cancel 它。
+  //   失败序列（已实测）：点「开始游戏」→ 1 秒内点卡面
+  //   → 预热被 cancel 掉（**从未生效**）→ 而 `warmupStarted` 仍是 true，
+  //   再调一次直接 return，**此后永不重试**。
+  //   对 4–8 岁孩子，「开始游戏后立刻点卡面」是最常见的操作序列之一。
+  //
+  //   ⚠️ **刻意只修「永不重试」这半，不动 `preheated`**：
+  //   AC-2 的字面是「`onend` / `onerror` 二者之一触发即标记预热完成」，
+  //   `canceled` / `interrupted` 是 `onerror` 的两种 error code，
+  //   不置 `preheated` 就是违反 AC-2（既有守卫也直接钉着这一条）。
+  //   且 Review Findings 的 D1 裁决已认定 `isPrewarmed()` 是
+  //   「预热流程已收敛」而非「TTS 已就绪」—— 超时兜底同样会置它 true，
+  //   被 cancel 置 true 与那条裁决的口径一致。
+  //   真正无人管、且只有这里能管的是**幂等锁焊死**。
+  warmup.onerror = (event): void => {
+    const reason = event?.error ?? 'unknown'
+    settle()
+    if (reason === 'canceled' || reason === 'interrupted') {
+      // 预热被别的音源掐掉了 —— 解开幂等锁，让下一次点击能真正重试。
+      warmupStarted = false
+      console.warn(`[tts] 预热被取消（${reason}），下次点击将重新预热`)
+    }
+  }
 
   try {
     synth.speak(warmup)
@@ -590,13 +683,31 @@ function pickParams(text: string): { rate: number; pitch: number } {
  * Story 1.10 起所有朗读调用都必须传入词条 id。
  */
 export function playPronunciation(text: string, entryId?: string): void {
+  // ⚠️ 守卫与 `entryId` 的 `typeof` 门对称（`[CR]` 2026-10-16）：
+  // `playPronunciation` 是被 store 无保护直接调用的入口，而 `store.ts` 的注释
+  // 逐字引用着本函数「绝不向调用方抛」的契约。契约是契约，两边都守。
+  if (typeof text !== 'string') {
+    console.warn(`[tts] 朗读文本不是字符串，已忽略：${String(text)}`)
+    return
+  }
   const trimmed = text.trim()
   if (!trimmed) {
     return
   }
 
+  // ⚠️ **代次作废必须排在 takeOverPlayback() 之前**（`[CR]` 2026-10-16 修）。
+  //   原先这个 `+= 1` 藏在 `speakWithTts` / `playRecording` 内部，而接管发生在
+  //   它们之前，于是 cancel 派发的 `error('canceled')` 到达 `onerror` 时
+  //   `generation` 仍等于 `playbackGeneration` —— 旧链把它当成「本链没被接管
+  //   却挨了取消」，于是**每一次正常的重入都打一条 `[tts] 朗读被打断` WARN**，
+  //   与该分支注释写的「正常路径，不记日志」正好相反。
+  //   更要紧的是它让代次隔离**依赖事件派发时机**：真实浏览器里 `cancel()` 的
+  //   error 是异步派发的（此时代号已自增，判据恰好成立），而测试 fake 与
+  //   Safari / 部分 WebView 那种「cancel 不派发 error」的形态会走另一条路。
+  //   在入口统一作废，两种时机下判据都成立。
+  playbackGeneration += 1
+
   // 接管发声权：**在任何分派之前**，把上一段（录音或 TTS）掐掉。
-  // 这行必须留在最前面 —— 放晚了就会出现「先起新声、再停旧声」的重叠窗口。
   takeOverPlayback()
 
   // 主通路：有词条 id 就先试预生成录音。录音缺失/加载失败时回调 speakWithTts。
@@ -641,20 +752,36 @@ function speakWithTts(text: string): void {
     }
 
     const chunk = chunks[index]!
-    const utterance = new Ctor(chunk)
-    utterance.rate = params.rate
-    utterance.pitch = params.pitch
-    utterance.volume = 1
 
-    const voice = selectVoice(ensureVoices())
-    if (voice) {
-      utterance.voice = voice as SpeechSynthesisVoice
-      utterance.lang = voice.lang
-    } else {
-      // Android 上 utterance.voice 可能被整个忽略并回落默认 en-US
-      // （Chromium issue 331977824，Won't Fix），所以 lang 必须**也**设一次。
-      // 注意：设了 lang 就不一定不回落 —— 那是社区共识 (B) 级，不是已解决的问题。
-      utterance.lang = DEFAULT_LANG
+    // ⚠️ `[CR]` 2026-10-16：构造与逐字段赋值**原来在 try 之外**，只有
+    //   `synth.speak(utterance)` 被包着。残缺 polyfill / 精简 WebView 上
+    //   `new SpeechSynthesisUtterance()` 抛错时，异常会一路冒到
+    //   `playPronunciation` 的调用方 —— 而 `store.ts` 的 `speakQuestion()`
+    //   刻意不加 try/count（它逐字引用着本文件「绝不向调用方抛」的契约），
+    //   于是孩子点卡面时回合直接卡死。
+    //   对照 `playRecording`：它把 `new AudioCtor(...)` 包进了 try。
+    //   这个不对称说明是遗漏，不是设计。
+    let utterance: SpeechSynthesisUtterance
+    try {
+      utterance = new Ctor(chunk)
+      utterance.rate = params.rate
+      utterance.pitch = params.pitch
+      utterance.volume = 1
+
+      const voice = selectVoice(ensureVoices())
+      if (voice) {
+        utterance.voice = voice as SpeechSynthesisVoice
+        utterance.lang = voice.lang
+      } else {
+        // Android 上 utterance.voice 可能被整个忽略并回落默认 en-US
+        // （Chromium issue 331977824，Won't Fix），所以 lang 必须**也**设一次。
+        // 注意：设了 lang 就不一定不回落 —— 那是社区共识 (B) 级，不是已解决的问题。
+        utterance.lang = DEFAULT_LANG
+      }
+    } catch (err) {
+      console.warn('[tts] utterance 构造失败，降级到预置录音路径', err)
+      fallbackToRecording(chunk)
+      return
     }
 
     /**
@@ -699,6 +826,14 @@ function speakWithTts(text: string): void {
 
       if (generation !== playbackGeneration) {
         // 被新的 playPronunciation 接管 —— 正常路径（孩子点了另一张卡），不记日志。
+        //
+        // ⚠️ `[CR]` 2026-10-16：这里原来也是**裸 return**，与本函数下一段
+        //   「『不推进』不等于『不收敛』」的自我告诫自相矛盾 —— 20 秒的兜底
+        //   定时器留在原地，到点照样触发 `advance`（虽然 `speakChunkAt` 会被
+        //   代次挡住不发声，但句柄要挂满 20 秒）。
+        //   AC-3 说「点击卡面可无限次重听」，孩子连点是常态，
+        //   于是每次接管都为旧链白留一个 20 秒句柄。
+        finish(() => {})
         return
       }
 
