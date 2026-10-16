@@ -33,9 +33,10 @@
 
 import { ref, type Ref } from 'vue'
 
-import { entriesOf } from '../content'
+import { entriesOf, UNITS } from '../content'
 import {
   advanceProgress,
+  advanceUnit,
   assertInvariants,
   cellKey,
   continueRound,
@@ -45,6 +46,7 @@ import {
   placeTower,
   reduce,
   resolveRound,
+  restartLevel as restartLevelAction,
 } from '../core'
 import type { Action, Progress, State } from '../core'
 import { playPronunciation } from '../services/pronunciation'
@@ -62,7 +64,7 @@ import { runEffectsFromStore, startBgmIfReady } from './effects-runner'
 const FIRST_UNIT_NUMBER = 1
 
 /**
- * 组装初始 state。
+ * 组装**指定单元**的初始 state。失败时抛出带上下文的错。
  *
  * ⚠️ **try/catch 归 app 层，这是本文件存在它的唯一理由。**
  *   `createInitialState` 会抛两种错，两种都指向**内容数据**而不是战斗逻辑：
@@ -74,22 +76,30 @@ const FIRST_UNIT_NUMBER = 1
  *
  * 这里**包了再抛**，不加前缀消音：包一层是为了把「app 层在开局组装」这条
  * 上下文写进消息，而不是把原错误换成一个笼统的「开局失败」。
+ *
+ * 📎 **Story 1.16（裁决 10）把它拆成了带 `unitNumber` 参数的一份**：
+ *   「进关时用哪个单元」不再等于 `FIRST_UNIT_NUMBER`。
+ * ⚠️ **调用点决定要不要降级**：模块求值期（{@link initialState}）**让它抛** ——
+ *   那是内容数据坏了，必须炸出来；而 {@link restoreFromSave} 的调用点
+ *   **必须接住并降级**（NFR13：孩子点「开始游戏」不许白屏）。
  */
-function initialState(): State {
+function buildStateFor(unitNumber: number): State {
   try {
-    return createInitialState({
-      unitNumber: FIRST_UNIT_NUMBER,
-      deck: entriesOf(FIRST_UNIT_NUMBER),
-    })
+    return createInitialState({ unitNumber, deck: entriesOf(unitNumber) })
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error)
     throw new Error(
-      `[app] 组装单元 ${FIRST_UNIT_NUMBER} 的初始 state 失败：${reason}。` +
+      `[app] 组装单元 ${unitNumber} 的初始 state 失败：${reason}。` +
         '这一层错误几乎总是内容数据的问题（单元 JSON 缺失 / 词条为空 / 该单元未填数值档位），' +
         '先跑 `npm run validate:content`。',
       { cause: error },
     )
   }
+}
+
+/** 模块求值期那份 state —— 恒为 `FIRST_UNIT_NUMBER`（见该常量的注释）。 */
+function initialState(): State {
+  return buildStateFor(FIRST_UNIT_NUMBER)
 }
 
 /**
@@ -176,14 +186,17 @@ export function enterLevel(): void {
 /**
  * 从存档恢复跨局进度与当前这一局（AC-D1）。
  *
- * ⚠️ **为什么在 `enterLevel()` 而不是模块求值期**（裁决 3）：`state` 在模块求值期就建好了，
+ * ⚠️ **为什么在 `enterLevel()` 而不是模块求值期**（1.15 裁决 3）：`state` 在模块求值期就建好了，
  *   读档要**替换** `state.value`；放模块顶层会让 `initialState()` 白跑一次，
  *   且把内容层的校验错误提到读档之前，排查时两件事混在一行代码上。
  *
  * ⚠️ **顺序不可换：先 `progress` 后 `state`** —— 两者是两套生命周期独立的数据（FR60 / R-06）。
  *
- * ⚠️ **`currentGame` 为 `null` 时不动 `state`**：那是一局打完了（局末清空），
- *   重进应当回到该单元起点，而不是把一个终态 state 塞回战场。
+ * 📎 **Story 1.16 裁决 10 改了 `currentGame === null` 那一支的语义**：
+ *   1.15 逐字是「不动 `state`」（回到该单元起点）；现在是
+ *   **按 `progress.currentUnitIndex + 1` 重新组装** ⇒ 通关 → 回开始 → 再进关，
+ *   进的是**下一个单元**而不是重打单元 1。
+ *   `currentGame !== null` 那一支（断点续学）**一个字都没改** —— FR60 优先于单元推进。
  */
 function restoreFromSave(): void {
   const saveFile = readSave()
@@ -197,6 +210,7 @@ function restoreFromSave(): void {
 
   const restored = saveFile.currentGame
   if (restored === null) {
+    restoreNextUnit(saveFile.progress)
     return
   }
 
@@ -214,6 +228,52 @@ function restoreFromSave(): void {
     progress.value = { currentUnitIndex: 0, masteredWordIds: [] }
     console.warn(
       `[save] 存档里的对局不合法，已退回从头开始（进度也一并重置）：${describeRestore(err)}`,
+    )
+  }
+}
+
+/**
+ * 🔥 局末清空（`currentGame === null`）时按进度重新组装战场 —— Story 1.16 裁决 10。
+ *
+ * ⚠️ **`+1` 是基的换算，不是「往后挪一格」**：`currentUnitIndex` 是 **0 基**
+ *   （1.13 裁决 3），`State.unitNumber` 是 **1 基** ⇒ 推进后 `index + 1`
+ *   恰好是下一个单元的 1 基单元号。`core/hud.ts` 的 `advanceUnit` 注释逐字记着同一条。
+ *
+ * ⚠️ **Epic 1 里这一支是恒等变换**（`UNITS.length === 1`，`currentUnitIndex` 恒 0）
+ *   ⇒ 真机上永远组装出同一个单元 1。守卫 **G95** 因此**必须喂非零 `currentUnitIndex`**
+ *   才不是装饰守卫（R-51）。
+ *
+ * ⚠️ **降级而不是崩**（NFR13）：目标单元取不到 / 内容校验不过时退回
+ *   「打开页面时那份 state 原样不动」并记一条 WARN。
+ *   「不回头的推进」是**静默丢数据** —— `currentUnitIndex` 留在指向一个不存在的单元的
+ *   数值上，而 `advanceUnit` 只在通关时推进 ⇒ 它会**永远卡住**，
+ *   界面上没有任何东西指向原因 ⇒ 必须留 WARN 让 1.17 的面板能显示。
+ */
+function restoreNextUnit(savedProgress: Progress): void {
+  const targetUnitNumber = savedProgress.currentUnitIndex + 1
+
+  // ⚠️ **先问「录了没有」再组装**，而不是 try/catch 兜住 `entriesOf` 的抛错 ——
+  //   「存档指向一个没录的单元」是**存档坏了 / 内容回滚了**，不是开局失败。
+  const hasNextUnit = UNITS.some((unit) => unit.unitNumber === targetUnitNumber)
+  if (!hasNextUnit) {
+    // ⚠️ **保持打开页面时那份 state 原样不动**，并记 WARN（AC-C5 判据 3）。
+    //   ⚠️ 别和 Epic 1 的正常结局搞混：`currentUnitIndex` 恒 0 时 `+1` 恒为 1，
+    //     而单元 1 录了 ⇒ **正常结局根本走不到这一支**（AC-C4 的「不 bump」
+    //     是 `advanceUnit` 那一侧的事）。走到这里 = 进度指向了一个不存在的单元。
+    console.warn(
+      `[save] 存档指向单元 ${targetUnitNumber}（progress.currentUnitIndex = ` +
+        `${savedProgress.currentUnitIndex}），该单元未录入；已保持当前战场，进度**不回退**`,
+    )
+    return
+  }
+
+  try {
+    state.value = buildStateFor(targetUnitNumber)
+  } catch (err) {
+    console.warn(
+      `[save] 存档指向单元 ${targetUnitNumber}（progress.currentUnitIndex = ` +
+        `${savedProgress.currentUnitIndex}），但组装失败，已保持当前战场：` +
+        describeRestore(err),
     )
   }
 }
@@ -271,6 +331,25 @@ function clearSelectionIfLeavingBuildPhase(next: State): void {
 export function applyAction(action: Action): void {
   const prev = state.value
   const next = reduce(prev, action)
+  // 🔥 **Story 1.16 裁决 11（AC-C2）：先把「本局结算后的进度」算出来，两处共用。**
+  //
+  // ⚠️ **为什么要提前算**：写盘（第 3 步）此前拿的是**旧**的 `progress.value`，
+  //   因为 `advanceProgress` 排在它后面 —— 那是 1.15 的**偏离 3**，
+  //   实测症状是「答完一题立刻关页面，盘上少一个词」（守卫 G96 逐条记着这个差值）。
+  //   词条靠下一次 dispatch 补得回来；**`currentUnitIndex` 补不回来** ——
+  //   它只在通关那一次 dispatch 里推进一次，关掉页面就永远停在上一个单元。
+  //
+  // ⚠️ **1.13 AC-B3 的「理由」一个字没被推翻**：那条 AC 的理由逐字是
+  //   「**必须读 `next`，读 `prev` 就永远慢一拍**」。`next` 在上面第 2 步就有了，
+  //   这里读的正是 `next` ⇒ 理由完整保留；被改的只是「**排在赋值之后**」这条
+  //   **字面口径**。按 R-57 这属于「改判据」，留痕记在 story 文档的偏离表里，
+  //   而 1.13 的 story 文档已归档、按 R-40 不去动它。
+  //
+  // ⚠️ **`advanceProgress` / `advanceUnit` 各只调一次** —— 不是「算两次对得上」。
+  // ⚠️ **`hasNextUnit(next)` 只在 `next.phase.kind === 'level-complete'` 时为 `true`**，
+  //   其余相位恒 false ⇒ 两条纯函数的「无增量返回入参本身」性质被绝大多数
+  //   dispatch 保住，`progress.value` 的引用只在真有变化时才变（守卫 G54 的鉴别力）。
+  const nextProgress = advanceUnit(advanceProgress(progress.value, next), hasNextUnit(next))
   // 📎 **Story 1.14 接上的第三步**（AC-E2）：拿 `(action, prev, next)` 三个快照去播音效。
   //
   // ⚠️ **位置不可换** —— 它读的是 prev/next 两个快照，排在 `state.value = next`
@@ -278,22 +357,11 @@ export function applyAction(action: Action): void {
   // ⚠️ 这一层**只负责调用**，判据（该播哪条 cue）全在 `core/effects.ts` 的
   //   `runEffects` 里，播放实现在 `services/audio.ts` —— 三层各司其职，
   //   store 不碰「播什么」，也不碰「怎么播」。
-  // 📎 **Story 1.15 把第 4 参 `progress.value` 传了进去**（AC-C4）：
-  //   存档要写两样东西 —— `currentGame` 来自 `next`（判据已编进 `SAVE` effect），
+  // 📎 **Story 1.15 把第 4 参传了进去**（AC-C4）：存档要写两样东西 ——
+  //   `currentGame` 来自 `next`（判据已编进 `SAVE` effect），
   //   而跨局进度是 store 里的独立 ref，`(action, prev, next)` 算不出来。
-  //
-  // ⚠️🚨 **传的是此刻的「旧」`progress`，不是 `advanceProgress` 之后的值。**
-  //   原因是 `advanceProgress` 排在 `state.value = next` **之后**（1.13 AC-B3 逐字：
-  //   「排在赋值之后是刻意的 —— 必须读 `next`，读 `prev` 就永远慢一拍」），
-  //   而这一步排在**它之前** ⇒ 落盘的 `progress` 少一条本次答对的词。
-  //   **这不是 bug，也不打算调换两步**：调换会逐字违反 1.13 的 AC-B3，
-  //   而那条 AC 的理由（读 prev 就永远慢一拍）在 1.15 同样成立 ——
-  //   `progress` 与 `next` 里的 `masteredEntryIds` 是同一份事实的两个面，
-  //   谁先谁后就必须读谁，不能凭空造一个中间态。
-  //   ⇒ **下一回合的 `awaiting-build` 写盘点会补上这一条**（裁决 6 的表里那一行），
-  //     所以最坏情况是「答完最后一题立刻关页面丢一个词」，不是「关页面丢一整局」。
-  //   （登记为**偏离 3**：AC-C4 逐字写的就是这个取舍，实现照办，不改判据。）
-  runEffectsFromStore(action, prev, next, progress.value)
+  //   🔥 **1.16 把它从 `progress.value` 换成了 `nextProgress`**（见上面的裁决 11）。
+  runEffectsFromStore(action, prev, next, nextProgress)
   state.value = next
   // ⚠️ **📎 Story 1.12 在这一步之后加了一行**（AC-D4）：相位离开 `awaiting-build`
   //   时清掉选中态。排在赋值**之后**是刻意的 —— 判据必须读**新**相位。
@@ -302,11 +370,29 @@ export function applyAction(action: Action): void {
   clearSelectionIfLeavingBuildPhase(next)
   // ⚠️ **📎 Story 1.13 在这一步之后加了第二行**（AC-B3 / 裁决 3）：
   //   把**新** state 的掌握记录并进跨局进度。
-  //   排在赋值**之后**是刻意的 —— 必须读 `next`，读 `prev` 就永远慢一拍。
   //   ⚠️ `advanceProgress` 在**没有增量时返回入参本身**（AC-B3 第三条性质），
   //     所以这一行在绝大多数 dispatch 上**不产生引用变更** ⇒ `ProgressBar`
   //     不会每次 action 都重算。守卫 G54 正是靠这一点才有鉴别力。
-  progress.value = advanceProgress(progress.value, next)
+  //   🔥 **1.16 把它与单元推进合并成一次赋值**（AC-C2）：算一次、赋一次。
+  progress.value = nextProgress
+}
+
+/**
+ * 通关了之后有没有**下一个单元** —— {@link advanceUnit} 的那条判据。
+ *
+ * ⚠️ **只在 `level-complete` 时为 `true`**：重打（`RESTART_LEVEL`）把相位推成
+ *   `awaiting-answer`，而「重打」逐字是**同单元内的再来一次**（FR52）
+ *   ⇒ 任何非通关的相位都不得推进单元号，否则「重打一次」会把孩子推到下一个单元，
+ *   而他一个词都还没答。
+ *
+ * ⚠️ **用 `UNITS.some` 而不是 `getUnit` + try/catch**：内容层「这个单元没录」
+ *   抛错是刻意设计，不是失败路径 —— 用异常表达一个**预期状态**，
+ *   会把正常结局记成降级（1.17 的面板会给孩子报一个不存在的故障）。
+ */
+function hasNextUnit(next: State): boolean {
+  if (next.phase.kind !== 'level-complete') return false
+  const targetUnitNumber = next.unitNumber + 1
+  return UNITS.some((unit) => unit.unitNumber === targetUnitNumber)
 }
 
 // ── 建造交互的三个门面（Story 1.12 / AC-D5、AC-F2、AC-F3）─────────────────
@@ -402,6 +488,54 @@ export function startRound(): void {
  */
 function currentPhaseKind(): State['phase']['kind'] {
   return state.value.phase.kind
+}
+
+// ── 关卡流程的两个门面（Story 1.16 / AC-C1、AC-D3）────────────────────────
+//
+// ⚠️ **它们的存在理由与上面三个建造门面同款**：组件**只调门面**，不 import
+//   `core/actions`，也不直接改 `state` / `view`。
+//   孩子点一下撞上一条抛错，界面上白着而没有任何东西指向原因（架构 `:563`
+//   「孩子面前永不出现技术错误」）—— 门面就是那层「不响应 / 静默」。
+
+/**
+ * 重打本单元（Story 1.16 / AC-C1）—— **失败画面上那个按钮的唯一入口**。
+ *
+ * ⚠️ **绝不调 `enterLevel()`**（裁决 4(a)）。`enterLevel()` 内部会
+ *   {@link restoreFromSave}，而盘上这一刻存着的正是刚 `level-failed` 的那份 state
+ *   ⇒ 走它等于把刚失败的那一局原样读回来，重打按钮**什么也没做**。
+ *   这是本 story 最贵的一个「看起来等价」（两个入口都是「重新开始这一局」）。
+ *
+ * ⚠️ **走 `applyAction` 而不是直接调 `reduce`**：四步顺序不可绕（R-04）——
+ *   `restartLevel` 是 1.15 新增的第 6 个**写盘点**（`core/effects.ts` 块 ④），
+ *   绕开 `applyAction` 就绕开了写盘 ⇒ 重打的结果不落盘，
+ *   症状是「孩子重打后关页面，重进又回到失败画面」。
+ *
+ * ⚠️ **相位守卫与 {@link startRound} 同款**：reducer 在非 `level-failed`
+ *   相位下对 `RESTART_LEVEL` **抛错**（NFR12），而按钮按 AC-D1 只在失败态出现
+ *   —— 门面仍要自己挡一次，否则将来接线接错就是白屏。
+ *   守卫 **G93** 钉住「本门面是 `RESTART_LEVEL` 的唯一调用点」。
+ */
+export function restartLevel(): void {
+  if (currentPhaseKind() !== 'level-failed') return
+  applyAction(restartLevelAction())
+}
+
+/**
+ * 回开始界面（Story 1.16 / AC-D3）—— **通关画面上那个按钮的唯一入口**。
+ *
+ * ⚠️ **只做 `view.value = 'start'` 一件事**：不清 `selectedEntryId`
+ *   （它在本就由 {@link clearSelectionIfLeavingBuildPhase} 清空了）、
+ *   **不读档、不写盘、不停 BGM**。BGM 停止策略属 1.14 / 1.18，本 story 不碰。
+ *
+ * ⚠️ **不落盘**是有意的：孩子的进度与战场刚刚由通关那一次 dispatch 落过盘
+ *   （`core/effects.ts` 块 ④ 的 `level-complete` 行存 `null`）。
+ *   在这里再写一次只会把同一份内容写两遍，并让「写盘点有几个」这个问题多一个答案。
+ *
+ * ⚠️ **不扩 `view` 联合、不建 `router.ts`**（AC-D3）：1.15 裁决 5 已推翻
+ *   「建 router」的原口径，且 GDD 无选关自由（见 {@link FIRST_UNIT_NUMBER}）。
+ */
+export function backToStart(): void {
+  view.value = 'start'
 }
 
 /**

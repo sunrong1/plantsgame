@@ -233,11 +233,42 @@ describe('G61 —— runEffects 排在 `state.value = next` 之前（AC-E2）', 
     ).toBe(true)
   })
 
-  it('清选中与进度合并仍在赋值之后（AC-E2：这两步读新 state，不许动）', () => {
+  it('清选中仍在赋值之后，进度计算被 1.16 提到赋值之前（两条判据的方向相反）', () => {
     const body = store.slice(store.indexOf('export function applyAction'))
     const assignAt = body.indexOf('state.value = next')
+
+    // ① 1.12 AC-D4：`clearSelectionIfLeavingBuildPhase` 判据必须读**新**相位
+    //    ⇒ 仍在赋值之后。这条一个字没动。
     expect(body.indexOf('clearSelectionIfLeavingBuildPhase(next)')).toBeGreaterThan(assignAt)
-    expect(body.indexOf('advanceProgress(progress.value, next)')).toBeGreaterThan(assignAt)
+
+    // ② 📎 **Story 1.16 裁决 11 把 `advanceProgress` 提到了赋值之前** ——
+    //    原判据是 `toBeGreaterThan(assignAt)`，现改为 `toBeLessThan(assignAt)`。
+    //    ⚠️ **这是「改判据」，不是「放宽判据」**（R-57 必须留痕，故记在这里）：
+    //    · **被改的字面口径**：1.13 AC-B3 逐字「`advanceProgress` 排在 `state.value = next`
+    //      **之后**是刻意的」；1.16 要它排在 `runEffectsFromStore` **之前**，
+    //      否则写盘看到的 `progress` 少一次单元推进（关掉页面永远补不回来）。
+    //    · **被改的判据方向**：由「必须在之后」改为「必须在之前」。
+    //    · **没被推翻的是那条 AC 的**理由**逐字**：「必须读 `next`，读 `prev` 就永远慢一拍」
+    //      —— `next` 在第 2 步就有了，下面 ③ 就在守它。
+    //    · 1.13 的 story 文档已归档，按 R-40 本 story 不去动它；
+    //      这条「已归档 story 的判据被后续 story 改写」记在 `deferred-work.md` 的 1.16 段。
+    expect(body.indexOf('advanceProgress(progress.value, next)')).toBeLessThan(assignAt)
+
+    // ③ 读的是 `next` 而不是 `prev` —— 1.13 AC-B3 的**理由**，一个字没被推翻。
+    //    ⚠️ 这条不许改成 `prev`：`prev` 里的掌握记录永远慢一拍，
+    //    而守卫 G96 会在下一次 dispatch 才拿到补偿 ⇒ 判据立刻红。
+    expect(
+      body,
+      '进度必须从 `next` 读（AC-B3 的理由逐字：「必须读 next，读 prev 就永远慢一拍」）',
+    ).toMatch(/advanceProgress\(\s*progress\.value\s*,\s*next\s*\)/)
+
+    // ④ 算一次、赋一次：赋值的**右边**必须就是那个提前算出来的对象，
+    //    不是重新调一遍纯函数（AC-C2 明令「各只调一次」）。
+    expect(
+      body,
+      'progress 的赋值必须是 `progress.value = nextProgress` —— ' +
+        '重新调一遍纯函数会让两次调用之间夹进别的 dispatch',
+    ).toMatch(/progress\.value\s*=\s*nextProgress/)
   })
 })
 

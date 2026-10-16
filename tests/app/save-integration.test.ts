@@ -153,10 +153,13 @@ describe('🔥 store → runner 那一步的实参（偏离 3 守护）', () => 
     //   ⇒ `applyAction` 到底传了哪个对象，此前没有任何东西守着 ——
     //   而那正是本 story 唯一一处「跨模块传错对象还全绿」的缝。
     //
-    // ⚠️ 这里断言的是「**逐字等于 store 落笔前那份**」，而不是「等于某个具体数字」：
-    //   偏离 3 决定了落盘比内存态少一条本次新掌握的词（`advanceProgress` 排在
-    //   `runEffects` 之后，1.13 AC-B3 逐字要求），所以拿 `store.progress.value`
-    //   —— 那是**已经前进过**的那份 —— 去比必然失败。判据要比的是**传进去的那份**。
+    // 📎 **1.16 裁决 11 把比对的对象换了**（R-57 留痕）：要旨一个字没变
+    //   （落盘的那份必须来自 store 的 `progress`，不是硬编码字面量），
+    //   换的是「与谁比」—— 从 dispatch **之前**那一份改成 dispatch **之后**那一份。
+    //   理由：1.16 把 `advanceProgress` 提到了 `runEffectsFromStore` **之前**，
+    //   而同一个 `nextProgress` 既递进 runner 又赋给 `progress.value`
+    //   ⇒ 落盘的那份与 `store.progress.value` 是**同一个对象**，口径比原来更强
+    //   （顺带钉住 AC-C2 第 1 条「写盘看到的是结算后的那份」）。
     const progressAtDispatch = { ...store.progress.value }
 
     store.applyAction(core.answer(correctIdOfCurrentQuestion()))
@@ -164,11 +167,24 @@ describe('🔥 store → runner 那一步的实参（偏离 3 守护）', () => 
     const saved = readRawSave()
     expect(
       JSON.stringify(saved.progress),
-      '落盘的 progress 必须逐字等于 dispatch 那一刻 store 里的那一份（M97：传字面量空对象）',
-    ).toBe(JSON.stringify(progressAtDispatch))
+      '落盘的 progress 必须逐字等于 store 落笔后的那一份（M97：传字面量空对象）',
+    ).toBe(JSON.stringify(store.progress.value))
+    expect(
+      JSON.stringify(saved.progress),
+      '1.16 裁决 11：落盘的那份与 dispatch 前的「旧」那一份只差在这次结算的增量上 —— ' +
+        '若两者逐字相同，说明这次 dispatch 本该有增量而没有（夹具失效）',
+    ).not.toBe(JSON.stringify(progressAtDispatch))
   })
 
-  it('⚠️ 落盘比内存态少一条本次新掌握的词 —— 偏离 3 的实测钉子', () => {
+  it('🔥 落盘 = 内存态，且**包含**本次新掌握的词 —— 1.16 裁决 11 消解了偏离 3', () => {
+    // 📎 **1.16 `[CS]` 裁决 11 改写了这条判据**（原写「落盘比内存少一条」，R-57 留痕）。
+    //   原判据记录的是 1.15 的**偏离 3**：写盘排在 `advanceProgress` 之前，
+    //   实测症状是「答完一题立刻关页面，盘上少一个词」。
+    //   ⇒ 现在反过来钉：**答题这一次 dispatch 之后，盘上就已经有这个词**。
+    //
+    // ⚠️ 这条判据的**全部鉴别力**在于「答题之后立刻查盘」——
+    //   再多跑一次 `startRound()`，`awaiting-build` 那个写盘点就会把它补上，
+    //   判据随即恒绿（1.16 `[DS]` 实测过这个形态，见 `tests/app/level-flow.test.ts` 的 G96）。
     const before = store.progress.value.masteredWordIds.length
 
     store.applyAction(core.answer(correctIdOfCurrentQuestion()))
@@ -180,8 +196,8 @@ describe('🔥 store → runner 那一步的实参（偏离 3 守护）', () => 
     ).toBe(before + 1)
     expect(
       readRawSave().progress.masteredWordIds.length,
-      '落盘的词数 = 内存里的词数 − 1（advanceProgress 排在 runEffects 之后，1.13 AC-B3）',
-    ).toBe(store.progress.value.masteredWordIds.length - 1)
+      '落盘的词数必须已经等于内存里的词数 —— 不许「等下一次 dispatch 再补」',
+    ).toBe(store.progress.value.masteredWordIds.length)
   })
 })
 

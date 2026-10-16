@@ -28,7 +28,10 @@
  *   1.15 存档恢复到 `awaiting-build` 时反馈条会消失 —— 组件是空的。
  *   **这是正确的**：重启本来就不该停在「刚刚答完」的反馈上。
  *   `lastQuestion` **不进 `State`、不存档、不参与 `reduce`**；
- *   局末由 1.16 的 `RESTART_LEVEL` 走同一条重置路径清掉（FR51）。
+ *   FR51 要求的「战场每局清空」由 1.16 的 `RESTART_LEVEL` 加上裁决 7 的收窄共同保证 ——
+ *   重打必定落在 `awaiting-answer`，那一帧 `lastQuestion` 被**当前题**覆盖；
+ *   裁决 7 之后它**只在 `awaiting-build` 兜底**，而失败/通关两帧都不渲染卡面，
+ *   所以「上一局的题还留在屏幕上」这件事已经不存在了。
  */
 
 import { computed, ref, watch } from 'vue'
@@ -57,10 +60,27 @@ const spokenEntryId = ref<string | null>(null)
  *   结果是**整个 story 的交付物在浏览器里是空的**，而且 FR1 的自动朗读也永不触发
  *   —— 症状是 G24 / G26 / G28 全红，红得像是「分派写错了」。
  *   `shown` 走 phase 本身 ⇒ 首次挂载必然有题。
+ *
+ * 🔥 **📎 Story 1.16 裁决 7 把兜底范围收窄到 `awaiting-build`**（守卫 **G94**）。
+ *   改之前是「**任何**非 `awaiting-answer` 的相位都用上一道题」，
+ *   而 `Phase` 有**六个**变体 ⇒ `resolving` / `round-over` /
+ *   **`level-complete` / `level-failed`** 四种也都在兜底范围里。
+ *   ⇒ 失败之后卡面、四个选项、反馈条**全都还留在屏幕上**，
+ *     而此时点它们没有任何事发生 —— 这正是 AC-D5 说的「假可点」。
+ *   ⇒ 现在只兜 `awaiting-build`：`lastQuestion` 的存在理由逐字是
+ *     「答完 → 建造期」这一段（≤100ms 反馈需要一个可见的载体），
+ *     它从未覆盖过终态。
+ *
+ * ⚠️ **为什么 `resolving` / `round-over` 也不兜**：它们是 `END_BUILD` 之后的
+ *   真实一帧，卡面在那两帧里消失是可接受的 —— 那正是「点开战之后画面变干净」
+ *   的预期反馈。而**终态**不容许，因为终态上盖着浮层（AC-D2），
+ *   卡面在浮层底下若仍可点，孩子会以为「我点的没反应」。
  */
-const shown = computed<Question | null>(() =>
-  state.value.phase.kind === 'awaiting-answer' ? state.value.phase.question : lastQuestion.value,
-)
+const shown = computed<Question | null>(() => {
+  const phase = state.value.phase
+  if (phase.kind === 'awaiting-answer') return phase.question
+  return phase.kind === 'awaiting-build' ? lastQuestion.value : null
+})
 
 /** 当前是否在等孩子答题 —— 决定重听与自动朗读是否可用。 */
 const answering = computed(() => state.value.phase.kind === 'awaiting-answer')
@@ -88,6 +108,49 @@ const pickedRight = computed(() => {
   if (question === null) return false
   return state.value.masteredEntryIds.includes(question.entryId)
 })
+
+/**
+ * 🔥 **📎 Story 1.16 裁决 8：新的一局开始时复位 `spokenEntryId`。**
+ *
+ * `RESTART_LEVEL` 把 `state.turn` 拨回 1，而重打**不卸载组件**
+ * （`LevelView` 一直挂着，`QuestionCard` 一直在）⇒ 这个 ref 会**跨局残留**：
+ * 它留着上一局的最后一道 `entryId`，而重打**从头开始、题序与上一局完全相同**
+ * ⇒ 重打后的第一道题 `entryId` **必然**与它相同
+ * ⇒ 自动朗读的守卫 `phase.question.entryId === spokenEntryId` 命中
+ * ⇒ **新一局的第一道题永远不朗读**（FR1 逐字：每道新词都要念一遍）。
+ *
+ * ⚠️⚠️ **为什么只清这一个，而另外两个不是「忘了清」**（这条是实测结论，不是推断）：
+ *   `lastQuestion` / `pickedOptionId` 由下面那个 phase 的 watch 兜住了 ——
+ *   `RESTART_LEVEL` **必定**落在 `awaiting-answer`（裁决 4），而那个 watch
+ *   对 `awaiting-answer` 本来就写这两行。变异实测：把下面的复位体**整个删空**，
+ *   `tests/components/quiz-card.test.ts` **只红 1 条**，就是这条朗读用例
+ *   （`expected "vi.fn()" to be called 1 times, but got 0 times`），
+ *   `lastQuestion` / `pickedOptionId` 相关的断言全绿。
+ *   ⇒ 1.16 落地前那段注释把三项症状都写成真问题，那是**推断**；按实测改窄。
+ *
+ * 🚨🚨 **为什么 watch 的是 `turn` 这一个字段、而不是在 phase 的 watch 里判 `turn === 1`**：
+ *   **`turn` 是在 `nextQuestion`（`CONTINUE`）里才 +1 的**，
+ *   而「答题 → `awaiting-build`」不涨回合 ⇒ **第 1 回合的建造期里 `turn` 仍然是 1**。
+ *   在 phase 的 watch 里判 `turn === 1`，会在**每一次**相位变化时都复位 ——
+ *   于是答完第一题进入建造期的那一刻，`lastQuestion` 被清成 `null`，
+ *   反馈载体消失，**AC-C5 的 ≤100ms 反馈在第 1 回合当场失效**
+ *   （`tests/components/quiz-card.test.ts` 实测红，裁决 8 落地时抓到的）。
+ *   ⇒ 判据必须是「**回合号跃迁到 1**」这一**事件**：只有 `RESTART_LEVEL`
+ *     与 `createInitialState` 会让 `turn` 变成 1，而 Vue 的 watch 只在**值真的变了**
+ *     时触发 ⇒ 第 1 回合里的相位变化根本不触发它。
+ *
+ * ⚠️ **必须注册在朗读那个 watch 之前**：两者都由同一次 dispatch 触发，
+ *   Vue 按注册顺序执行 ⇒ 复位晚一步的话，`spokenEntryId` 还没清，
+ *   朗读守卫已经先判过了，新一局的第一道题就此静默。
+ */
+watch(
+  () => state.value.turn,
+  (turn) => {
+    if (turn !== 1) return
+    spokenEntryId.value = null
+  },
+  { immediate: true },
+)
 
 /**
  * 记住当前题，并在**每次进入一道新题**时清 `pickedOptionId`。

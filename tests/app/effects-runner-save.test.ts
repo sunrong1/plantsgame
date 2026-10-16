@@ -83,24 +83,26 @@ describe('AC-C3 —— SAVE 真的被接到写盘上', () => {
     ).toBe('awaiting-build')
   })
 
-  it('⚠️ 落盘的 progress 比内存里少一条（偏离 3 的实测钉子）', () => {
-    // ⚠️ **这条断言写的是本 story 已登记的取舍，不是理想形状**：
-    //   `applyAction` 里 `runEffectsFromStore` 排在 `advanceProgress` **之前**
-    //   （后者逐字要求排在 `state.value = next` 之后 —— 1.13 AC-B3），
-    //   ⇒ 落盘的 `progress` 少一条本次答对的词。
-    //   把它钉成断言，是为了**将来有人调换那两步时会被这条红**，
-    //   而不是等到 `[CR]` 才有人想起来问「当初为什么是这个顺序」。
+  it('🔥 落盘的 progress 就是内存里那一份（含本题 —— 1.16 裁决 11）', () => {
+    // 📎 **1.16 `[CS]` 裁决 11 改写了这条判据**（原写「比内存里少一条」，R-57 留痕）。
+    //   原判据钉的是 1.15 的**偏离 3**（写盘排在 `advanceProgress` 之前），
+    //   症状是「答完一题立刻关页面，盘上少一个词」⇒ 现在反过来钉。
+    //   ⚠️ 「把它钉成断言」的原意（将来有人调换那两步时会被这条红）**继续成立**，
+    //     变的只是钉的是哪一个顺序。
     applyAction(core.answer(correctIdOfCurrentQuestion()))
 
     const persisted = writeMock.mock.calls[0][0]
     expect(
       persisted.masteredWordIds.length,
-      '落盘的 masteredWordIds 比内存里少一条 —— 这是偏离 3 记录的那个取舍',
-    ).toBe(progress.value.masteredWordIds.length - 1)
-    expect(
-      persisted.masteredWordIds,
-      '少的那一条正是本题 —— 若是别的，才说明判据另有偏差',
-    ).toEqual([])
+      '落盘的 masteredWordIds 必须已经含本题 —— 不许「等下一次 dispatch 再补」',
+    ).toBe(progress.value.masteredWordIds.length)
+    expect(persisted, '而且要逐字全等（不是只比长度）—— M97 变异传字面量空对象时靠这条红').toEqual(
+      progress.value,
+    )
+    // ⚠️ **不要断言引用相等（`toBe`）**：`progress` 是 Vue 的 `ref`，`progress.value`
+    //   读出来的是 **reactive 代理**，而 `writeSave` 拿到的是 `nextProgress` **原对象**。
+    //   两者逐字相同但引用不同 ⇒ 断言 `toBe` 是在断言「Vue 的代理缓存行为」，
+    //   与本 story 要守的命题无关，且 Vue 升级就红。
   })
 
   it('resolving 不落盘（裁决 6 表里的两条负向之一）', () => {

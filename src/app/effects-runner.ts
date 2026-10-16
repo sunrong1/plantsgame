@@ -92,7 +92,13 @@ function runOne(effect: Effect, progress: Progress): void {
       //   联合里留着这个成员是为了 1.15 接线时返回类型不变。
       return
     case 'TTS':
-      // 📎 裁决 6：换题朗读走 `store.speakQuestion()` 门面，收口属 Story 1.16。
+      // 🚨 **📎 1.16 `[CS]` 裁决 6 更正了归属（原写「收口属 Story 1.16」）：**
+      //   `epics.md` 的 Story 1.16 AC 零 TTS 字样 ⇒ 按 R-32，1.16 无权做这件事；
+      //   而 `epics.md` 里没有任何 story 承担它 ⇒ 归 **无归属**，需 `/gds-correct-course` 指派。
+      //   本分支**仍然是空 `return`**，行为一个字没改 —— 改的只是「谁来接」的归属声明。
+      //   现状（1.14 裁决 6）：换题朗读走 `store.speakQuestion()` 门面，
+      //   而 `QuestionCard.vue` 里还有一条独立的 `watch` 触发同一件事 ——
+      //   那条张力记在 `deferred-work.md` 的 1.14 第 6 条，未被本 story 触发。
       return
     case 'SAVE':
       // 📎 **Story 1.15 接上的**（AC-C3）。写盘判据在 `core/effects.ts` 里，

@@ -147,6 +147,7 @@ export { WORD_IMAGE_PLACEHOLDER_SVG } from './placeholder.js'
 //   否则画面与声音会各算各的，在一次掉 2 心时对不上。
 export {
   advanceProgress,
+  advanceUnit,
   heartSlots,
   heartsLostBetween,
   lostSlotIndexes,

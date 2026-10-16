@@ -51,6 +51,10 @@ import HandDeck from '../components/hand/HandDeck.vue'
 import HeartRow from '../components/hud/HeartRow.vue'
 import ProgressBar from '../components/hud/ProgressBar.vue'
 import SunCounter from '../components/hud/SunCounter.vue'
+// ⚠️ **必须显式 import**（同上面那条，`vue/no-undef-components: 'error'` 为此设了守卫）：
+//   终态浮层（Story 1.16 / AC-D2）。它**无条件**挂载 —— 是否渲染由它自己的
+//   `v-if` 决定（AC-D1），所以这里不需要 `v-if`，也不该加。
+import LevelOutcome from '../components/hud/LevelOutcome.vue'
 import { entriesOf } from '../content'
 import { state } from '../app/store'
 
@@ -131,6 +135,19 @@ const unitTotal = computed(() => {
         1.10 那个「横向撑破到 1351px」的坑不许重新踩。
     -->
     <HandDeck />
+    <!--
+      🔥 终态浮层（Story 1.16 / AC-D2）。
+
+      ⚠️ **战场在终态下仍然渲染，浮层是叠在它上面的一层** ——
+        本组件是**无条件**挂载的，是否出现由 `LevelOutcome` 自己的 `v-if` 决定。
+        若这里改成 `v-if="终态"`，就等于让「战场和浮层二选一」，
+        而 AC-D2 逐字要的是**战场始终在**（孩子通关时应当看得见自己守住的那片地）。
+
+      ⚠️ **不要在这里或浮层上写死 px 高度**去「压住」战场 ——
+        见下方样式块里那条 `flex: 0 0 auto` 的长注释：1.10 的「横向撑破到 1351px」
+        就是重排战场布局留下的坑，而重排战场意味着 45 格重新测一遍。
+    -->
+    <LevelOutcome />
   </main>
 </template>
 
@@ -152,6 +169,17 @@ const unitTotal = computed(() => {
   display: flex;
   flex-direction: column;
   min-height: 100dvh;
+  /*
+   * 📎 **Story 1.16 / AC-D2 加的**：`position: relative` 是终态浮层
+   * `position: absolute; inset: 0` 的**定位上下文**。
+   *
+   * ⚠️ **只加定位上下文，一行尺寸都不加** —— 加了它之后战场区的
+   *   `flex: 0 0 auto` 与「不写死高度」那两条纪律**一字不动**。
+   *   浮层是 `inset: 0` 撑满**最近的定位祖先**，也就是这个 `main`；
+   *   而 `main` 的高度由内容（战场 + HUD + 手牌 + 卡面）自然决定 ⇒
+   *   浮层盖的是**整页**，战场完整地留在底下（AC-D2 要的就是这个）。
+   */
+  position: relative;
   /*
    * 🚨 **整页铺草地绿（`[CR]` 2026-10-16 修的 P0：题面文字白字白底不可见）。**
    *

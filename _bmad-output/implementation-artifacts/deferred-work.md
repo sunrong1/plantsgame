@@ -1389,6 +1389,10 @@ Story 1.12 之后的 `SunCounter` / `HeartRow` / `ProgressBar` 一类**尺寸类
 - **本 story 刻意不动**：AC-F2 明确「`QuestionCard.vue` 的逻辑一个字都不改」，
   只在文件里加了一段说明为什么它与 `runEffects` 不冲突。
 - **恢复条件**：Story 1.16（把 `Effect` 的 `TTS` 成员真正接上时）**必须**重新裁决这一点。
+  ⚠️ **📎 2026-10-17 归属更正（Story 1.16 裁决 6）**：原写「Story 1.16」，
+  而 Story 1.16 的 AC **零 TTS 字样** ⇒ 按 R-32 它无权做这件事 ⇒
+  这一条**没有归属 story**，需 `/gds-correct-course` 指派。
+  ⇒ 「没有归属」比「有归属但没做」更值得盯：一个没人负责的缺口不会被主动补上。
   —
   `src/app/effects-runner.ts`, `src/components/quiz/QuestionCard.vue`
 
@@ -1411,6 +1415,9 @@ Story 1.12 之后的 `SunCounter` / `HeartRow` / `ProgressBar` 一类**尺寸类
 - **恢复条件**：Story 1.16 若给 `Effect` 加上会抛的新成员（`TTS` 的朗读调用），
   且把它排在 `SAVE` **之前**，这一条立刻变成可构造 ⇒ 那时必须补上
   「前一条抛错、后一条仍执行」的正向用例（1.14 已有同型：G69）。
+  ⚠️ **📎 2026-10-17：这条恢复条件在 Story 1.16 未触发** ——
+  1.16 裁决 6 明确**不接** `TTS`（`epics.md` 里 1.16 的 AC 零 TTS 字样，按 R-32 无权做）。
+  ⇒ 本条**仍然挂着**，且因为 `TTS` 已归「无归属 story」，它现在**没有会被触发的 story**。
   —
   `src/core/effects.ts`, `src/app/effects-runner.ts`, `tests/app/effects-runner-save.test.ts`
 
@@ -1465,3 +1472,68 @@ Story 1.12 之后的 `SunCounter` / `HeartRow` / `ProgressBar` 一类**尺寸类
   把「前缀合规 + 不在逐帧路径」做成一条通用守卫，而不是继续逐模块手写断言。
   —
   `docs/rules/architecture.md`, `tests/scaffold/save-boundary.test.ts`
+
+
+## Deferred from: story-1-16-关卡流程-通关-失败与推进 `[DS]` (2026-10-17)
+
+### 1. ✅ 已关闭 —— 问答卡面的三个生命周期缺口（由 1.11 的 `[CR]` 移交给 1.16）
+
+- **原文三条**：`spokenEntryId` 跨局残留（重打后首题无声）/ `lastQuestion` 兜底覆盖全部
+  无 `question` 的相位（终态下卡面仍可点）/ `pickedOptionId` 终局相位下不清。
+- **处置**：`shown` 已按裁决 7 收窄到**只兜 `awaiting-build`**；
+  `spokenEntryId` 已按「`turn` 跃迁到 1」复位。
+- ⚠️ **只关了两条，第三条本来就成立** —— 变异实测（把复位体整个删空）只红 1 条，
+  就是朗读那条。`pickedOptionId` / `lastQuestion` 由 phase 的 watch 兜住了
+  （`RESTART_LEVEL` 必定落在 `awaiting-answer`）。原移交单把三条都写成真问题，
+  那是推断，按实测更正。
+
+### 2. ✅ 已关闭 —— 「`enterLevel()` 是唯一读档入口」的**重打分支**
+
+- **原文**（1.15 deferred 第 4 条）：任何新增的「回到战场」路径若不经 `enterLevel()`
+  就读不到存档。
+- **裁决 4(a)**：重打**刻意不读档** —— 走 `enterLevel()` 会把**刚失败的那一局**
+  从盘上读回来，孩子点了「再来一次」却回到同一个死局。
+  ⇒ 这条 deferred 的**恢复条件对重打这一支不适用**，改由守卫钉住：
+  G93（`RESTART_LEVEL` 只有一个调用点，且是 store 门面）+
+  它那条「重打绝不走 `enterLevel`」的用例。
+- ⚠️ **新增的缺口**：G93 守的是「谁调」，**守不到「每条进关路径都调了」** ——
+  1.17 的「跳到某单元」按钮若忘了读档，G93 一声不响。
+
+### 3. 🆕 `onBeforeUnmount` 暂不实现（裁决 9，R-41 要求显式记）
+
+- **事实**：`QuestionCard.vue` **没有** `onBeforeUnmount`，而
+  `services/pronunciation.ts` **没有公开的 stop** ⇒ 若孩子点了重听后组件被卸载，
+  朗读会一路播到结束。
+- **为什么暂不实现**：已逐项查过组件里没有定时器 / 监听器 / objectURL 可漏；
+  而今天**没有任何路径会卸载它**（重打不换视图，通关只改 `view`）。
+  为一个不可达的场景写清理逻辑，等于凭想象引入一条会漏的生命周期。
+- **恢复条件**：**出现第二条会切走 `QuestionCard` 的路径**时
+  （1.17 的调试面板、1.18 的暂停覆盖层、或任何把 `view` 从 `level` 切走的分支），
+  同一个 story 里必须先给 `pronunciation.ts` 补公开的 `stop`，再挂 `onBeforeUnmount`。
+  — `src/components/quiz/QuestionCard.vue`, `src/services/pronunciation.ts`
+
+### 4. 🆕 「下一单元」的 UI 路径只有纯函数，没有画面（2.5 的活）
+
+- **事实**：`advanceUnit` / `hasNextUnit` 让「通关 ⇒ 进下一单元」这条链路在**纯函数**层
+  成立，1.16 的接线也把它接上了；但**没有任何界面元素指向下一个单元** ——
+  通关浮层的按钮是「回开始」，而 `StartView` 永远从 `FIRST_UNIT_NUMBER` 起手。
+- **为什么本 story 不做**：Epic 1 只录了**一个**单元，做「下一单元」按钮等于
+  给一个还不存在的内容做界面；而 GDD 逐字「无选关自由」（守卫 G92 钉着
+  `src/` 下零 `UnitSelectView`）——「下一单元」这条**线性**路径与选关自由不冲突，
+  但它的**画面归属**属 2.5（第二个单元录入时）。
+- **恢复条件**：**2.5 录入单元 2 时**，同一个 story 必须补上「通关后进下一单元」的
+  UI 路径；在那之前 `hasNextUnit` 恒为 `false`，`advanceUnit` 恒返回入参本身。
+  — `src/core/hud.ts`, `src/components/hud/LevelOutcome.vue`
+
+### 5. 📌 1.13 的 AC-B3 字面口径被 1.16 改写，而该 story 文档已归档 ⇒ 未同步
+
+- **事实**：1.13 的 AC-B3 写的是「HUD 的进度只读内存里的进度」。
+  1.16 把写盘点扩到了第 6 个（`RESTART_LEVEL`），并在裁决 11 里把「落盘看到的进度」
+  改成了「**这一次结算之后**的进度」—— 这改的是 1.13 那条判据的**字面口径**。
+- **为什么没同步**：按 R-40，`done` 的 story 文档一律 `git mv` 进归档目录，
+  **本 story 不得改动任何已归档的 story 文档**，也不得在任何活跃文档里
+  写出归档目录下的具体文件名 ⇒ 只能在这里按 story key 登记。
+- **恢复条件**：下一次做文档治理（`/gds-correct-course` 或 QD 治理）时，
+  把这条口径更正**一次性**回写进 1.13 的归档文档，并同步 `docs/rules/` 里
+  与「落盘看到的进度」有关的任何表述。
+  — `docs/rules/architecture.md`（R-06 段已追加同型经验，见下条）

@@ -25,6 +25,7 @@ import { describe, expect, it } from 'vitest'
 import {
   HEARTS,
   advanceProgress,
+  advanceUnit,
   answer,
   createInitialState,
   heartSlots,
@@ -398,5 +399,51 @@ describe('HUD 判据接真实 reducer —— 答对会让 masteredEntryIds 增�
   it('🚨 探测棒自检：题单本身是有题的（否则上面恒真）', () => {
     expect(DECK.length).toBeGreaterThan(0)
     expect(makeSyntheticDeck(3, 1)[0]?.entryId).toBe('u1-word-01')
+  })
+})
+
+// ── 单元推进（Story 1.16 / AC-B1–AC-B3、G87–G88） ────────────────────────
+//
+// ⚠️ **这里两条判据必须同时存在**：只测「会推进」的那条，G87（引用相等）恒绿；
+// 只测「不推进」的那条，G88（+1 / masteredWordIds 不变）恒绿。
+// 二者是同一根指针的两面，缺一面就只剩一面可看。
+
+describe('G87 —— advanceUnit 在没有下一单元时返回**入参本身**', () => {
+  it('引用严格相等（不是内容相同的新对象）', () => {
+    const before: Progress = { currentUnitIndex: 2, masteredWordIds: ['u1-word-01'] }
+
+    const after = advanceUnit(before, false)
+
+    expect(Object.is(after, before),
+      '返回一个内容相同的新对象会让 progress.value 的引用变更次数恒等于 dispatch 次数 —— ' +
+        '守卫 G54 就成了构造上恒真的断言，且与「无脑重建」不可区分').toBe(true)
+    expect(after, '顺带钉住「什么都没变」这件事本身').toEqual(before)
+  })
+
+  it('🚨 探测棒自检：喂 `true` 时**确实**会换引用（否则上面恒真）', () => {
+    const before: Progress = { currentUnitIndex: 2, masteredWordIds: [] }
+
+    const after = advanceUnit(before, true)
+
+    expect(Object.is(after, before), '有下一单元时必须换引用，否则这条守卫没有鉴别力').toBe(false)
+  })
+})
+
+describe('G88 —— advanceUnit 推进时只动 currentUnitIndex 一个键', () => {
+  it('currentUnitIndex 加 1', () => {
+    const before: Progress = { currentUnitIndex: 0, masteredWordIds: [] }
+
+    const after = advanceUnit(before, true)
+
+    expect(after.currentUnitIndex, '0 基 → 推进后就是下一个单元的 1 基单元号').toBe(1)
+  })
+
+  it('masteredWordIds 逐字不变 —— 推进不是「顺手清一次」的机会（FR58）', () => {
+    const ids = ['u1-word-01', 'u1-word-02', 'u2-keyword-01'] as const
+    const before: Progress = { currentUnitIndex: 0, masteredWordIds: ids }
+
+    const after = advanceUnit(before, true)
+
+    expect(after.masteredWordIds, '跨单元累计的掌握记录一个字都不许动').toEqual(ids)
   })
 })

@@ -1,0 +1,418 @@
+/**
+ * 关卡流程的接线守卫（Story 1.16 / AC-C1–AC-C5、G89 / G93 / G95 / G96）。
+ *
+ * ── 这个文件守什么 ────────────────────────────────────────────────────────
+ * **全是接线**，一条纯函数判据都没有。这是刻意的：1.15 的 M90 与 M97 两次 0 红
+ * （`docs/rules/architecture.md` 的 R-06 段逐字记着）都是同一个形态 ——
+ * 判据钉在 `runEffects` / `advanceProgress` 的**返回值**上，
+ * 而调用方把错的对象递进去时，**纯函数照样返回正确的东西**。
+ * ⇒ 「跨模块传错对象」是本仓库最贵的一种漏网，它绕过的不是「没写守卫」，
+ *   而是「守卫站在错的一侧」。
+ *
+ * 四条判据各自对应一个具体的坏法：
+ *   · **G89** 重打的结果必须落盘 —— 否则重打后关页面，重进又回到失败画面（FR51）
+ *   · **G93** `RESTART_LEVEL` 的唯一调用点是 `store.restartLevel()`（R-04 的接线半）
+ *   · **G95** 进关单元号 = `progress.currentUnitIndex + 1` —— 否则推进对孩子零可见效果
+ *   · **G96** 落盘的那份 `progress` 是**这一次结算之后**的 —— 否则「答完就关页面」会丢词
+ *
+ * ── 两条纪律 ──────────────────────────────────────────────────────────────
+ * 1. **`localStorage` 用共享 fake**（R-37：`tests/fixtures/fake-storage.ts` 是全仓唯一一份）。
+ *    不装的话 `writeSave` 会静默降级成 `'write'`，**没有一条用例变红** ——
+ *    守卫自己先漏那就太难看了。
+ * 2. **判据全部走真的 `applyAction` 链路**，不许直接改 `state.value` 来「模拟」
+ *    一次 dispatch —— 那正是 M90 漏掉的那一半。
+ */
+
+import { readdirSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
+
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+// ⚠️ 类型必须走**静态** `import type`：`core` 那个命名空间来自下面的
+//   `await import('../../src/core')`，而 `await import` 的返回值**不能当命名空间用**
+//   （TS2503）。两者指向同一个模块 —— 值走动态 import 是为了让 `vi.mock` 能生效，
+//   类型走静态 import 只是要那几个形状。
+import type { OptionId, Progress, State } from '../../src/core'
+import { stripComments } from '../helpers/contrast'
+import { afterEachUninstall, installFakeStorage } from '../fixtures/fake-storage'
+import type { FakeStorage } from '../fixtures/fake-storage'
+import { greedyBuildActions } from '../fixtures/level-driver'
+
+let storage: FakeStorage
+let warn: ReturnType<typeof vi.spyOn>
+
+const core = await import('../../src/core')
+const content = await import('../../src/content')
+const saveApi = await import('../../src/services/save')
+const store = await import('../../src/app/store')
+
+const SRC = join(process.cwd(), 'src')
+
+/** 一份结构合法的初始对局。 */
+function freshState(): State {
+  return core.createInitialState({ unitNumber: 1, deck: content.entriesOf(1) })
+}
+
+/** 当前这道题的正确项 id。 */
+function correctIdOfCurrentQuestion(): OptionId {
+  const phase = store.state.value.phase
+  if (phase.kind !== 'awaiting-answer') {
+    throw new Error(`当前相位是 ${phase.kind}，没有可答的题`)
+  }
+  const correct = phase.question.card.options.find((o) => o.correct)
+  if (correct === undefined) throw new Error('题上没有正确项')
+  return correct.id
+}
+
+/**
+ * 把 store 推到 `level-failed`。
+ *
+ * ⚠️ **直接构造而不是答题答错四次**：`assertInvariants` 要求 `hearts` 落在
+ * `[0, HEARTS]`，而「连错 4 题」这个门槛属于 `applyResolve` 内部的战斗结算，
+ * 与本文件要验的**写盘接线**无关 ⇒ 走真实门槛只会让用例慢且脆。
+ * `tests/components/hud.test.ts` 的 G57 用的是同一手法。
+ */
+function pushIntoLevelFailed(): void {
+  const base = store.state.value
+  store.state.value = { ...base, hearts: 0, phase: { kind: 'level-failed' } }
+}
+
+/**
+ * 用**真的** store 门面跑完整一局，直到通关。
+ *
+ * ⚠️ **建塔策略复用 `greedyBuildActions`**（R-37：全仓一份建塔策略），
+ *   不在本文件另写一份 —— 另写一份的结果是「本文件的一局能通关、别人的一局不能」，
+ *   而两边都绿。`level-driver.ts` 文件头逐字记着这个坑（「门槛是 4」在两份驱动里
+ *   给出不同的数）。
+ *   ⚠️ 走 store 门面而不是 `applyAction(action)`：`placeSelectedAt` 才有
+ *   「自动清选中态」那条边（G42），绕开它等于测的不是孩子实际走的那条路。
+ *
+ * ── `afterEachAnswer` 为什么必须挂在**答题之后**而不是整局之后 ──────────────
+ * 实测（R-50 探针的结论，见 G96）：落盘的滞后**只在「同一次 dispatch 里既结算了
+ * 掌握记录、又命中了写盘点」时**才露得出来。`ANSWER` 正是那一次
+ * （`awaiting-build` 是写盘点），而 `advanceProgress` 排在 `runEffectsFromStore`
+ * **之后** ⇒ 答题那一刻盘上少一个词。
+ * `startRound()` 的三次 dispatch 各自重读 `progress.value`，会把这一条补上。
+ * ⚠️ ⇒ **只在整局之后断言「落盘 = 内存」是一条恒绿判据**：它测不出 1.15 的偏离 3，
+ *   而症状（孩子答完最后一题立刻关页面，丢一个词）恰恰发生在**中途**。
+ */
+function driveLevel(afterEachAnswer?: () => void): void {
+  let guard = 0
+  while (store.state.value.phase.kind === 'awaiting-answer') {
+    guard += 1
+    if (guard > 200) throw new Error('跑了一局还没通关 —— 判据或实现变了')
+
+    store.applyAction(core.answer(correctIdOfCurrentQuestion()))
+    afterEachAnswer?.()
+
+    for (const action of greedyBuildActions(store.state.value)) {
+      if (action.type !== 'PLACE_TOWER') {
+        throw new Error(`贪心策略产出了非建塔 action：${action.type}`)
+      }
+      const { row, col } = core.parseCellKey(action.cell)
+      store.selectTowerCard(action.entryId)
+      if (!store.placeSelectedAt(row, col)) {
+        throw new Error(`贪心策略要建的格子被门面拒了：(row=${row}, col=${col}) —— 两份判据分叉了`)
+      }
+    }
+
+    store.startRound()
+  }
+
+  if (store.state.value.phase.kind !== 'level-complete') {
+    throw new Error(`跑完一局却停在 ${store.state.value.phase.kind}`)
+  }
+}
+
+/** 直接读盘上的原始 JSON —— 不走 `readSave()`，免得解析层把问题藏起来。 */
+function readRawSave(): { progress: Progress; currentGame: State | null } {
+  const raw = storage.data.get(saveApi.SAVE_KEY)
+  // ⚠️ `Map.get` 的缺席值是 `undefined` 而不是 `null` —— 只判 `=== null` 会把
+  //   「没落盘」当成「落了个 undefined 进去」，JSON.parse 立刻报一个看不懂的错。
+  if (raw === undefined) throw new Error('盘上根本没有存档 —— 接线没落盘')
+  return JSON.parse(raw)
+}
+
+beforeEach(() => {
+  storage = installFakeStorage()
+  warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+  vi.spyOn(console, 'info').mockImplementation(() => {})
+  store.state.value = freshState()
+  store.progress.value = { currentUnitIndex: 0, masteredWordIds: [] }
+  store.view.value = 'start'
+})
+
+afterEachUninstall()
+
+// ── G89：重打的结果必须落盘 ───────────────────────────────────────────────
+
+describe('G89 —— 重打之后盘上必须是一局**新的**（FR51 战场不跨局保留）', () => {
+  it('重打走完 applyAction 链路 ⇒ 盘上的 currentGame 换成新的一局', () => {
+    pushIntoLevelFailed()
+
+    store.restartLevel()
+
+    const saved = readRawSave().currentGame
+    if (saved === null) throw new Error('重打后 currentGame 为 null —— 盘上还是局末清空的那份')
+    expect(saved.hearts, '重打后盘上的心数必须是满值，不是 0').toBe(core.HEARTS)
+    expect(saved.phase.kind, '重打后盘上的相位必须是新一局的开局').toBe('awaiting-answer')
+    expect(saved.turn, '重打后回合号回到 1').toBe(1)
+  })
+
+  it('🚨 反向钉住：删掉 effects.ts 那第 6 行判据，本用例必须红', () => {
+    // 夹具自检 —— 失败态本身必须真的落过盘，否则下面那条断言会拿到 null 而误判。
+    pushIntoLevelFailed()
+    store.restartLevel()
+    expect(readRawSave().currentGame?.hearts, '前置：重打后盘上确实是满心').toBe(core.HEARTS)
+  })
+
+  it('重打不推进 currentUnitIndex —— 重打是同单元内的再来一次（FR52）', () => {
+    store.progress.value = { currentUnitIndex: 0, masteredWordIds: ['u1-hello'] }
+    pushIntoLevelFailed()
+
+    store.restartLevel()
+
+    expect(store.progress.value, '重打不是过关 —— 单元号一个字都不许动').toEqual({
+      currentUnitIndex: 0,
+      masteredWordIds: ['u1-hello'],
+    })
+    expect(readRawSave().progress, '盘上那份也一样：掌握记录只增不减（FR58）').toEqual({
+      currentUnitIndex: 0,
+      masteredWordIds: ['u1-hello'],
+    })
+  })
+
+  it('重打绝不走 enterLevel —— 走它会把刚失败的那一局读回来', () => {
+    pushIntoLevelFailed()
+
+    store.restartLevel()
+
+    expect(
+      store.state.value.phase.kind,
+      '若这一步内部调了 enterLevel → restoreFromSave，盘上那份 level-failed 会覆盖重打结果',
+    ).toBe('awaiting-answer')
+  })
+})
+
+// ── G93：RESTART_LEVEL 的唯一调用点 ───────────────────────────────────────
+
+describe('G93 —— RESTART_LEVEL 只有一个调用点，且是 store 门面', () => {
+  it('判据自检：白名单里那个门面真的调了 applyAction(restartLevel(...))', () => {
+    // R-52：源码匹配型守卫必须先 stripComments —— `store.ts` 的文件头注释里
+    // 逐字出现过「`restartLevel()` 重置的是 `State`」，不剥注释它会被当成调用点。
+    const src = stripComments(readFileSync(join(SRC, 'app', 'store.ts'), 'utf8'))
+
+    // ⚠️ **用 `.test()` 而不是 `expect(src).toMatch(...)`**：后者失败时会把整个
+    //   `store.ts`（450+ 行中文注释）打进报告，把真正的失败信息埋掉。
+    //   R-53 要的是「判据不是恒真的」这一件事，`.test()` 已经把它验到了。
+    // ⚠️ 匹配 `restartLevelAction`（core 那个**构造器**的别名）而不是 `restartLevel`
+    //   —— 门面与构造器同名，不加别名就没法在同一文件里同时存在。
+    //   守卫 2（扫全仓的那个）只认**无别名的** `restartLevel(`，
+    //   所以别名调用不会被误报成「第二个调用点」，而它本来就在白名单里。
+    // ⚠️ `[^{]*` 而不是 `\s*`：`{` 前面还隔着返回类型标注 `: void`，
+    //   写成 `\s*` 会让这条自检在**任何**实现下都不匹配 —— 那就是恒假，
+    //   比恒真更难查（R-51）。
+    expect(
+      /export\s+function\s+restartLevel\(\)[^{]*\{[\s\S]{0,300}?applyAction\(\s*restartLevelAction\(\s*\)\s*\)/.test(src),
+      '判据自检：`store.restartLevel()` 若不再调 `restartLevel` action（`applyAction`），' +
+        '下面那条「唯一调用点」守卫会静默空转（白名单里什么都找不到）',
+    ).toBe(true)
+  })
+
+  it('🚨 全仓再无第二个 RESTART_LEVEL 的 dispatch 点', () => {
+    const offenders: string[] = []
+
+    const walk = (dir: string): void => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = join(dir, entry.name)
+        if (entry.isDirectory()) {
+          walk(full)
+          continue
+        }
+        if (!/\.(ts|vue)$/.test(entry.name) || entry.name.endsWith('.d.ts')) continue
+        const clean = stripComments(readFileSync(full, 'utf8'))
+        // ⚠️ **门面调用与 action 构造器同名，正则本身分不出来** ——
+        //   `LevelOutcome.vue` 里那处 `restartLevel()` 是**调 store 门面**（合法，
+        //   AC-D3 逐字要求的），而 `core/actions.ts` 里那处是**造 action**。
+        //   ⇒ 判据加一层**来源判定**：这个文件若从 `app/store` import 了
+        //     `restartLevel`，那它手里那个同名符号就**一定是门面**（R-02 分层
+        //     决定了它不可能同时从 core 拿到构造器而不引起 TS 重复标识符错误）。
+        //   ⚠️ **不许改成「把 `LevelOutcome.vue` 加进白名单」**（R-51/R-57）：
+        //     那样以后第五个组件绕过门面直连 core 也会照样绿。
+        const viaStoreFacade = /import\s*\{[^}]*\brestartLevel\b[^}]*\}\s*from\s*['"][^'"]*app\/store['"]/.test(
+          clean,
+        )
+        for (const m of clean.matchAll(/(?<!\w)restartLevel\s*\(/g)) {
+          const at = m.index ?? 0
+          // ① 定义本身不算调用点。
+          if (/export\s+function\s+$/.test(clean.slice(Math.max(0, at - 40), at))) continue
+          // ② `core/actions.ts` 里的 `restartLevel()` 是 **action 构造器**，
+          //    它是这条链路的**源头**，不算违规调用点。
+          if (full.endsWith(join('core', 'actions.ts'))) continue
+          // ③ `core/index.ts` 的 barrel 只是重导出。
+          if (full.endsWith(join('core', 'index.ts'))) continue
+          // ④ 白名单：`store.ts` 的门面自己 dispatch 一次。
+          if (full.endsWith(join('app', 'store.ts'))) continue
+          // ⑤ 从 `app/store` import 的那个同名符号**就是门面**，不是第二个 dispatch 点。
+          if (viaStoreFacade) continue
+          offenders.push(`${full.slice(SRC.length + 1)} → restartLevel()`)
+        }
+      }
+    }
+
+    walk(SRC)
+    expect(offenders, `RESTART_LEVEL 的 dispatch 必须只经 store 门面；多出来的调用点：\n${offenders.join('\n')}`)
+      .toEqual([])
+  })
+
+  it('🚨 反向自测：判据仍能咬住「绕过门面直连 core」（R-51）', () => {
+    // ⚠️ **这条不许省**：上面那条加的 ⑤ 是一个真实的「放行」分支，
+    //   而 R-51 记着的正是「守卫为了让它自己绿而允许了它要防的违规」。
+    //   探针刻意写成**从 core import 构造器再调**——这才是 AC-D3 禁的那件事。
+    const probe = `import { restartLevel } from '../../core'\nconst a = restartLevel()`
+    const viaStoreFacade = /import\s*\{[^}]*\brestartLevel\b[^}]*\}\s*from\s*['"][^'"]*app\/store['"]/.test(
+      probe,
+    )
+    expect(viaStoreFacade, '判据自检：从 core import 的同名符号不得被当成门面').toBe(false)
+    expect([...probe.matchAll(/(?<!\w)restartLevel\s*\(/g)].length, '判据自检：正则确实命中了那处调用').toBe(1)
+
+    // 反过来，门面那一侧必须**被**判成门面，否则 AC-D3 的正常写法会被误报。
+    const facade = `import { restartLevel, state } from '../../app/store'\nconst a = restartLevel()`
+    expect(
+      /import\s*\{[^}]*\brestartLevel\b[^}]*\}\s*from\s*['"][^'"]*app\/store['"]/.test(facade),
+      '判据自检：从 app/store import 的那个必须被判成门面',
+    ).toBe(true)
+  })
+})
+
+// ── G95：进关单元号 = progress.currentUnitIndex + 1 ───────────────────────
+
+describe('G95 —— 局末清空后重进，进的是**下一个单元**', () => {
+  it('currentUnitIndex = 0 ⇒ 进单元 1（Epic 1 的恒等变换，必须仍然成立）', () => {
+    seedSave({ currentUnitIndex: 0, masteredWordIds: [] }, null)
+
+    store.enterLevel()
+
+    expect(store.state.value.unitNumber, '0 基的 0 推进后是 1 基的单元 1').toBe(1)
+  })
+
+  it('🚥 currentUnitIndex > 0 时按 index + 1 组装（Epic 1 真机上走不到，靠假存档构造）', () => {
+    // ⚠️ 这是 AC-F2 要求的构造：`UNITS.length === 1` ⇒ 真机永远走到「目标单元不存在」的
+    //   那一半。不喂一个越界的 index，这条判据就永远是装饰守卫（R-51）。
+    seedSave({ currentUnitIndex: 7, masteredWordIds: [] }, null)
+
+    store.enterLevel()
+
+    expect(store.progress.value.currentUnitIndex, '进度逐字恢复').toBe(7)
+    expect(
+      store.state.value.unitNumber,
+      '目标单元 8 不存在 ⇒ 降级回首个单元，且不得抛（NFR13）',
+    ).toBe(1)
+    expect(
+      warn.mock.calls.length,
+      '降级必须留一条 WARN ——「不回头的推进」是静默丢数据，必须可查',
+    ).toBeGreaterThan(0)
+  })
+
+  it('currentGame 非 null 时**一律**走断点续学原路径，一个字段都不许动', () => {
+    const game = freshState()
+    // ⚠️ `state.unitNumber` 故意与「下一个单元」= 6 不同：只有这样这条断言才有鉴别力 ——
+    //   两者都等于 1 时，「走了重新组装」与「走了断点续学」给出同一个结果。
+    seedSave({ currentUnitIndex: 5, masteredWordIds: ['u1-hello'] }, game)
+
+    store.enterLevel()
+
+    // ⚠️ 用 `toEqual` 而不是 `toBe`：`restoreFromSave` 把存档 JSON 过了
+    // `assertInvariants`，而它是会**返回新对象**的。断言引用相等就是在断言
+    // 「校验函数没有 copy」—— 那是一条与本 story 无关、且实现有权改的细节。
+    expect(store.state.value, '断点续学优先于「下一个单元」—— 否则孩子会丢一整局').toEqual(game)
+    expect(store.state.value.phase.kind, '存档里是开局相位，重进后必须仍在开局').toBe('awaiting-answer')
+  })
+})
+
+// ── G96：落盘的那份 progress 是结算后的 ───────────────────────────────────
+
+describe('G96 —— 落盘的 progress 必须是**这一次结算之后**的', () => {
+  it('🚥 每答对一题，盘上立刻就有这个词 —— 不许「等下一次 dispatch 再补」', () => {
+    // ⚠️ 这是 1.15 偏离 3（「落盘比内存少一条」）的**真实**后果所在。
+    //   `ANSWER` 是唯一一次「既结算了掌握记录、又命中了写盘点（`awaiting-build`）」
+    //   的 dispatch，而 `advanceProgress` 排在 `runEffectsFromStore` **之后**
+    //   ⇒ 答题那一刻盘上少这个词。`startRound()` 的三次 dispatch 各自重读
+    //   `progress.value`，会把这一条补上。
+    //   ⇒ **只在整局之后断言「落盘 = 内存」是恒绿的**（实测：裁决 11 落地前后都绿），
+    //     而孩子的症状恰恰发生在中途：答完最后一题立刻关页面。
+    const lags: number[] = []
+    driveLevel(() => {
+      lags.push(diskMasteredCount() - store.progress.value.masteredWordIds.length)
+    })
+
+    expect(
+      lags.filter((lag) => lag !== 0),
+      '每一次答题后盘上都必须已经含这个词；实际逐回合差值 = ' + JSON.stringify(lags),
+    ).toEqual([])
+    expect(lags.length, '跑完整局至少 37 个回合 —— 这条断言不是空数组上跑的').toBe(
+      store.state.value.deck.length,
+    )
+  })
+
+  it('整局跑完：盘上的词条数 = 内存 = 题单长度，且 currentGame 已清空', () => {
+    driveLevel()
+
+    const saved = readRawSave()
+    expect(saved.currentGame, '通关时 currentGame 存 null（局末清空，FR51）').toBeNull()
+    expect(saved.progress.masteredWordIds.length, '落盘 = 内存').toBe(store.progress.value.masteredWordIds.length)
+    expect(saved.progress.masteredWordIds.length, '一局全部答对 ⇒ 每个词都在盘上').toBe(
+      store.state.value.deck.length,
+    )
+  })
+
+  it('Epic 1 的 UNITS.length === 1 ⇒ 通关**不**推进 currentUnitIndex（缺单元时不推进）', () => {
+    // ⚠️ 这条判据咬的是「**无条件推进**」，不是「该推进时没推进」——
+    //   后者在 Epic 1 构造上不可达（`hasNextUnit` 恒 false），
+    //   它由 `tests/core/hud.test.ts` 的 G87 / G88 以 `advanceUnit(p, true)` 覆盖。
+    driveLevel()
+
+    expect(content.UNITS.length, '前置：Epic 1 只录了单元 1 —— 这条用例靠它成立').toBe(1)
+    expect(store.progress.value.currentUnitIndex, '没有下一个单元 ⇒ 不推进，不抛错，不记降级').toBe(0)
+    expect(readRawSave().progress.currentUnitIndex, '盘上那份也一样').toBe(0)
+  })
+
+  it('⚠️ 通关**不是**一次降级 —— 不得留下任何 WARN（否则 1.17 的面板会误报）', () => {
+    driveLevel()
+
+    expect(
+      warn.mock.calls.filter((c: unknown[]) => String(c[0]).startsWith('[save]')).length,
+      '孩子读完单元 1 是正常结局，不是一次可诊断的失败',
+    ).toBe(0)
+  })
+})
+
+/** 盘上那份存档的掌握词条数；没落盘时返回 -1（让断言的差值显形而不是恒 0）。 */
+function diskMasteredCount(): number {
+  const raw = storage.data.get(saveApi.SAVE_KEY)
+  return raw === undefined ? -1 : JSON.parse(raw).progress.masteredWordIds.length
+}
+
+// ── AC-C4：单元推进判据的构造上可达性 ────────────────────────────────────
+
+describe('AC-F2 —— 「有下一个单元」这条分支在单测里可构造，真机上不可达', () => {
+  it('UNITS 里确实只有单元 1 —— 所以 store 侧的推进判据永远走 false 分支', () => {
+    expect(
+      content.UNITS.map((u) => u.unitNumber),
+      '若这里变了（2.5 录入了单元 2），AC-C4 的「不做下一单元 UI 路径」就需要重新评估',
+    ).toEqual([1])
+  })
+})
+
+/** 往 fake 里塞一份存档（绕过写盘，测的是**读**这一侧）。 */
+function seedSave(progress: Progress, currentGame: State | null): void {
+  storage.data.set(
+    saveApi.SAVE_KEY,
+    JSON.stringify({
+      schemaVersion: saveApi.SAVE_SCHEMA_VERSION,
+      savedAt: 1_700_000_000_000,
+      progress,
+      currentGame,
+    }),
+  )
+}

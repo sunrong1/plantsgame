@@ -65,8 +65,18 @@ export type SfxCue =
  * |---|---|
  * | `SFX` | **1.14** ✅ |
  * | `ANIMATION` | 1.13 裁决 2：画面走 class + CSS，不进 effects-runner |
- * | `TTS` | 换题朗读的收口前提在 1.16（1.14 裁决 6） |
- * | `SAVE` | **1.15** ✅ |
+ * | `TTS` | 🚨 **无归属 story** —— 见下 |
+ * | `SAVE` | **1.15** ✅（1.16 加了第 6 个写盘点） |
+ *
+ * ⚠️ **📎 1.16 `[CS]` 裁决 6 更正了 `TTS` 那一行的归属（原写「收口前提在 1.16」）：**
+ *   `epics.md` 的 Story 1.16 AC **零 TTS 字样**，按 R-32（以 AC 正文为准）1.16 无权做这件事；
+ *   而 `epics.md` 里**没有任何 story 承担它** —— 1.2 / 1.3 交付的是录音生成与降级，
+ *   不是「把 TTS 收口进 `runEffects`」。
+ *   ⇒ 归 **无归属**，需 `/gds-correct-course` 指派。
+ *   ⇒ 本 story **不接** `TTS`；`app/effects-runner.ts` 的 `case 'TTS'` 仍逐字是空 `return`。
+ *   ⇒ 1.15 记着的那条 defer（「写盘抛错后仍执行后续条目构造上不可达」）的恢复条件
+ *     逐字是「1.16 **若**给 `Effect` 加上会抛的新成员（`TTS` 的朗读调用）」——
+ *     既然不接 TTS，那条恢复条件**今天不会成立**，它继续挂着。
  */
 export type Effect =
   | { readonly kind: 'SFX'; readonly cue: SfxCue }
@@ -162,6 +172,30 @@ export function runEffects(action: Action, prev: State, next: State): readonly E
     //   而不是 1.16 还没做的「通关画面」终态。
     effects.push(save(null))
   } else if (next.phase.kind === 'level-failed' || next.phase.kind === 'round-over' || next.phase.kind === 'awaiting-build') {
+    effects.push(save(next))
+  }
+
+  // 🚨 **1.16 追加 —— 上表第 6 行，是这张表的「例外行」，不是它的反例。**
+  //
+  //   判据按 **`action.type`** 而不是相位：`RESTART_LEVEL` 之后 `next.phase.kind`
+  //   是 `awaiting-answer`，而上面那张表对 `awaiting-answer` 逐字判 ❌。
+  //
+  //   ⚠️⚠️ **为什么那一行的理由在这里不成立**（这是本行存在的全部理由）：
+  //     `awaiting-answer` 被判 ❌ 的理由逐字是「**刚 CONTINUE 出来**，
+  //     与上一份 round-over 存档内容相同」。
+  //     **重打不是 CONTINUE** —— 盘上那一刻存着的是刚 `level-failed` 的那份 state
+  //     （含 hearts = 0 与那份战场），而 `RESTART_LEVEL` 之后 `next` 是一局全新的
+  //     （心数满、`turn` 回到 1、`masteredEntryIds` 清空）。
+  //     ⇒ 两份内容**完全不同**，不写盘等于让**失败态的战场跨局活到下一局**，
+  //       FR51「战场状态在局末清空，不跨局保留」当场被破。
+  //
+  // ⚠️ **别把这行「统一」进相位表、也别把它删掉**：两种改法都会让重打重新静默失效，
+  //   而症状是「孩子重打后关页面，重进又回到失败画面」—— 界面上没有任何东西指向原因。
+  //   守卫 **G89** 专测这一行（走真的 `applyAction` 链路，不是纯函数返回值）。
+  //
+  // ⚠️ **它排在 `SAVE` 判据之后**：与上面的胜负音效一样是「先判局面、再落盘」。
+  //   注意它让 SAVE 仍然**恒排在该数组的末尾**（1.15 偏离 1 记着这件事）。
+  if (action.type === 'RESTART_LEVEL') {
     effects.push(save(next))
   }
 
