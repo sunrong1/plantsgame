@@ -167,7 +167,7 @@ export default tseslint.config(
     // ⚠️ **为什么必须用相对路径形态**（同 `src/core/**` 块里的同一段理由）：
     //   项目没有 `@/` 别名，写 `'@/core/balance'` 的话任何文件都写不出这个 import，
     //   规则永不触发 —— 看着在守，实际没守。
-    files: ['src/components/**/*.{ts,vue}'],
+    files: ['src/components/**/*.{ts,vue}', 'src/views/**/*.{ts,vue}'],
     rules: {
       'no-restricted-imports': [
         'error',
@@ -184,6 +184,33 @@ export default tseslint.config(
                 '它们是数值调优（Story 3.2）的对象，改动会牵动 balance-sim 的门槛数字。' +
                 '组件只从 State / Tower / Zombie 拿值，或调 core/ 里已封装好的纯函数' +
                 '（如 zombieHpRatio()）。这条边界的漂移风险是全项目最高的（[GA]:1029）。',
+            },
+            // 📎 **Story 1.14 / AC-F4、AC-G7** 的第二条禁项，与上面那条**同块**。
+            //
+            // ⚠️ **必须同块，不能另开一个 `src/components/**` 的块。**
+            //   flat config 里同名规则**后块覆盖前块**（不是合并）。实测：新开一块
+            //   只带 `services/audio` 的 `no-restricted-imports` 后，
+            //   **整条 `core/balance` 禁列消失** —— 而 `battle-field.test.ts` 的 G15
+            //   当场红 2 条（含它自己那条 M46 反向验证）。
+            //   ⇒ 本仓库已两次踩同一个坑（另一次是 `no-restricted-syntax` 的
+            //   `audio-unlock.ts` 块顶掉 `AwaitExpression`）。
+            //   **一个规则名在整个 config 里只能由一个块拥有。**
+            //
+            // ⚠️ **为什么禁整个 `services/audio` 而不是逐个函数名**：逐个列名字的话，
+            //   将来 `audio.ts` 新增一个播放入口而守卫没跟上，就会静默放行。
+            //
+            // ⚠️ **豁免仍在**：`unlockAudioSequence`（`app/audio-unlock.ts`）不在禁列里
+            //   —— 它是架构硬约束 4 的**唯一合法例外**（`audio-unlock.ts:23-24`）。
+            {
+              group: [
+                '**/../services/audio',
+                '**/../../services/audio',
+                '**/../../../services/audio',
+              ],
+              message:
+                '组件与视图不得直接 import `services/audio` —— 音效播放只能经 ' +
+                '`app/effects-runner.ts`（架构硬约束 4：副作用只走 effects-runner）。' +
+                '`unlockAudioSequence`（`app/audio-unlock.ts`）是唯一例外。',
             },
           ],
         },
@@ -216,9 +243,20 @@ export default tseslint.config(
     // FR2 管的是「三步之间」无 await，那里的 await 发生在三步之后。
     // 但写它是个坏味道。将来若要扩到 views/，那是 Story 1.13+ 的决定。
     //
+    // 📎 **Story 1.14 / AC-G8 裁决：`app/effects-runner.ts` 加进这个名单，即禁 await。**
+    //   理由（逐字对照 `audio-unlock.ts:23-24` 的例外说明）：effects-runner 是
+    //   「action 驱动的副作用执行」，它的调用方 `store.applyAction` 是**同步函数**，
+    //   组件门面**刻意没有** try/catch。加 await 会让音效解码挤进状态机，
+    //   并把 `applyAction` 变成隐式异步 —— 那是架构层面的变更，不是一个 story 的权限。
+    //   解码的 promise 链在 `services/audio.ts` 内部闭环，本文件只见同步的「发起」。
+    //
     // 这条规则是 FR2 唯一的**可机器判定**的部分：编译不报错、运行也不报错，
     // 只有一个写了 await 的人才会知道它坏了。少了守卫，FR2 必然在维护中漂移。
-    files: ['src/services/audio.ts', 'src/services/pronunciation.ts', 'src/app/audio-unlock.ts'],
+    files: [
+      'src/services/audio.ts',
+      'src/services/pronunciation.ts',
+      'src/app/effects-runner.ts',
+    ],
     rules: {
       'no-restricted-syntax': [
         'error',
@@ -227,6 +265,49 @@ export default tseslint.config(
           message:
             '音频解锁链路不允许 await：三步必须在用户手势的同一个同步块内完成（架构硬约束 8 / FR2）。' +
             'resume() 是 Promise —— 用 `void ctx.resume().catch(...)` 同步发起，不要等它完成。',
+        },
+      ],
+    },
+  },
+  {
+    // 📎 **Story 1.14 / AC-G8 裁决之二：`app/audio-unlock.ts` 同时禁 `await` 与 `.then()`。**
+    //
+    // ⚠️ **它被从上一块的 `files` 里拿了出来 —— 这是必须的，不是整理癖。**
+    //   flat config 里同名规则**后块覆盖前块**（不是合并）。首版把 audio-unlock.ts
+    //   同时留在两个块里，结果后块只带 `.then()` 一条 selector，把 `AwaitExpression`
+    //   **整个顶掉了** —— 实测 `audio-unlock-guard.test.ts` 当场红 2 条。
+    //   ⇒ 一个文件只归一个块；这个块的禁列要写全。
+    //
+    // ── 为什么必须禁 `.then()` ────────────────────────────────────────────
+    // 上一块的 selector 只有 `AwaitExpression`，所以
+    //   `ctx.resume().then(() => { speakSilentWarmup(); prewarmBgm() })`
+    // 被**完全放行** —— 而那会让第②③步落到微任务里、不再处于手势同步块，
+    // Android 上音频解锁**静默失效**（编译不报错、运行也不报错）。
+    //
+    // ⚠️ **而 `.then()` 不能一刀切加进上一块。** `services/audio.ts` 的
+    //   `fetchAudioBuffer` 必须用 `.then()` 串 `fetch → arrayBuffer → decodeAudioData`
+    //   （AC-D6 要求「同步发起 promise + 挂 .then」，而不是 await —— 那个块禁 await）。
+    //   一刀切会让 AC-D6 无法实现。⇒ `.then()` 的禁令**只**落在三步同步块那一个文件。
+    //
+    // ⚠️ 这条规则的**鉴别力**必须实测，不能靠「配对了」自证 ——
+    //   `tests/scaffold/audio-unlock-guard.test.ts` 里有配套的 `Linter.verify`
+    //   反向验证（探针文本真的会被这两条规则报出来）。
+    files: ['src/app/audio-unlock.ts'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: 'AwaitExpression',
+          message:
+            '音频解锁链路不允许 await：三步必须在用户手势的同一个同步块内完成（架构硬约束 8 / FR2）。' +
+            'resume() 是 Promise —— 用 `void ctx.resume().catch(...)` 同步发起，不要等它完成。',
+        },
+        {
+          selector: "MemberExpression[property.name='then']",
+          message:
+            '解锁三步不允许挂在 promise 链上：`.then()` 会把第②③步推迟到微任务，' +
+            '手势上下文已被让出，Android 上音频解锁会**静默失效**（无异常、无警告）。' +
+            '三步必须同步依次调用（FR2 / 架构硬约束 8）。',
         },
       ],
     },

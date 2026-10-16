@@ -7,11 +7,11 @@
  *
  * ── 刻意不做的事 ──────────────────────────────────────────────────────────
  * · **不建 `src/app/router.ts`** —— 属 Story 1.15。这里只有最小的 `view` 态（见下）。
- * · **不写 `runEffects` 的实现** —— 属 Story 1.13（`app/effects-runner.ts`）。
- *   本文件只提供 {@link speakQuestion} 这个**朗读门面**（Story 1.11 / 裁决 3），
- *   它与 `runEffects` 不是一回事：后者 action 驱动，前者是「用户点重听」触发的。
- *   下面是**显式的空位注释**，不是「先造一个空函数占位」——
- *   空函数会让「副作用已接上」这件事看起来成立，而实际上一条音效都没播过。
+ * · **不写 `runEffects` 的实现** —— 属 Story 1.14（`app/effects-runner.ts`）。
+ *   本文件**只调** `runEffectsFromStore`（`applyAction` 四步里的第 3 步），
+ *   判据与播放实现在另外两层。另有 {@link speakQuestion} 这个**朗读门面**
+ *   （Story 1.11 / 裁决 3），它与 `runEffects` 不是一回事：后者 action 驱动，
+ *   前者是「用户点重听」触发的（裁决 6 明确本 story **不**把换题朗读收口进去）。
  * · **不做存档** —— 属 Story 1.15（决策 5 的 `SaveFile`）。
  * · **不含任何战斗规则计算** —— 数值只读 `towerType`（架构硬约束 3），
  *   全部计算在 `core/`。
@@ -40,6 +40,8 @@ import {
 } from '../core'
 import type { Action, Progress, State } from '../core'
 import { playPronunciation } from '../services/pronunciation'
+
+import { runEffectsFromStore, startBgmIfReady } from './effects-runner'
 
 /**
  * 首个单元号。Epic 1 只有单元 1；「选单元」入口属 Story 1.15，
@@ -131,9 +133,18 @@ export const progress: Ref<Progress> = ref({ currentUnitIndex: 0, masteredWordId
 /** 当前显示哪个视图。Story 1.15 建 `router.ts` 时由它接管。 */
 export const view: Ref<'start' | 'level'> = ref('start')
 
-/** 进入战场。由 `StartView` 的 `onStart` 在音频解锁**之后**同步调用。 */
+/**
+ * 进入战场。由 `StartView` 的 `onStart` 在音频解锁**之后**同步调用。
+ *
+ * 📎 **Story 1.14（AC-E3）：第二行是新增的 `startBgmIfReady()`。**
+ *   BGM 由「进入战斗」触发，而**进关不是 action** —— `state` 在模块求值期就建好了，
+ *   `enterLevel()` 只改 `view`。⇒ BGM 走 `effects-runner` 的门面，**不进 `runEffects`**（裁决 5）。
+ *   ⚠️ 排在 `view.value = 'level'` **之后**：视图先切过去，再起播 —— 顺序反了会在
+ *     孩子还看着开始界面时就响音乐。
+ */
 export function enterLevel(): void {
   view.value = 'level'
+  startBgmIfReady()
 }
 
 // ── 建造交互的视图状态与门面（Story 1.12 / AC-D4、AC-D5、AC-F2、AC-F3）──────
@@ -184,15 +195,14 @@ function clearSelectionIfLeavingBuildPhase(next: State): void {
 export function applyAction(action: Action): void {
   const prev = state.value
   const next = reduce(prev, action)
-  // 📎 **空位 —— `runEffects` 属 Story 1.13**（`app/effects-runner.ts`）。
+  // 📎 **Story 1.14 接上的第三步**（AC-E2）：拿 `(action, prev, next)` 三个快照去播音效。
   //
-  // 它该在这里做什么：拿 `(action, prev, next)` 三个快照去播音效 / 触发触觉反馈，
-  // 即架构硬约束 4 说的「副作用只走 effects-runner」。
-  //
-  // 为什么**不写一个空函数占位**：空函数会让 `applyAction` 的调用点看起来
-  // 「已经接上副作用链路」，而实际上一个音效都没播过 —— 那正是本仓库反复
-  // 抓到的「假绿」形态。留注释是诚实的：这一层现在**确实**不做副作用。
-  // 接入时它必须排在 `state.value = next` **之前**（见文件头）。
+  // ⚠️ **位置不可换** —— 它读的是 prev/next 两个快照，排在 `state.value = next`
+  //   之后的话 `prev` 就已经取不到了（见文件头的四步顺序）。
+  // ⚠️ 这一层**只负责调用**，判据（该播哪条 cue）全在 `core/effects.ts` 的
+  //   `runEffects` 里，播放实现在 `services/audio.ts` —— 三层各司其职，
+  //   store 不碰「播什么」，也不碰「怎么播」。
+  runEffectsFromStore(action, prev, next)
   state.value = next
   // ⚠️ **📎 Story 1.12 在这一步之后加了一行**（AC-D4）：相位离开 `awaiting-build`
   //   时清掉选中态。排在赋值**之后**是刻意的 —— 判据必须读**新**相位。
@@ -263,7 +273,7 @@ export function placeSelectedAt(row: number, col: number): boolean {
  *
  * ⚠️ **为什么这条链路归 1.12**：`applyAnswer` 答完立刻切到 `awaiting-build`
  *   （`reducer.ts` 的 `withBuildPhase`），而**没有任何 story 拥有 `END_BUILD`
- *   之后的那段链路** —— 1.13 管 HUD / effects-runner，1.16 管通关 / 失败 / 重打，
+ *   之后的那段链路** —— 1.13 管 HUD、📎 1.14 管 effects-runner，1.16 管通关 / 失败 / 重打，
  *   两者的 AC 里都没有「结算这一回合」。不接上它，1.12 交付后游戏停在
  *   `awaiting-build`，**1.12 的成果无法真机验证**。
  *
@@ -317,7 +327,7 @@ function currentPhaseKind(): State['phase']['kind'] {
  * ── 为什么**不**走 `effects-runner.ts` ──────────────────────────────────────
  * 它的签名 `runEffects(action, prev, next)` 是为 **action 驱动**设计的，
  * 而「孩子主动点重听」**不对应任何 action** —— 硬塞进去是形状错配。
- * 它属 Story 1.13，且那时的用法会是「本 facade 在 action 链路上转调它」。
+ * 它属 Story 1.14，且那时的用法会是「本 facade 在 action 链路上转调它」。
  *
  * ── 🚨 为什么必须先做 phase 收窄 ──────────────────────────────────────────
  * `Phase` 是六变体联合，其中**五个没有 `question`**（`types.ts:307-314`）。

@@ -98,10 +98,12 @@ export const PROBE_FILES = [
   'src/components/battle/Tower.vue',
   'src/components/battle/Zombie.vue',
   'src/components/hand/HandCard.vue',
+  'src/components/quiz/QuestionCard.vue',
   'src/views/StartView.vue',
   'src/services/audio.ts',
   'src/services/pronunciation.ts',
   'src/app/audio-unlock.ts',
+  'src/app/effects-runner.ts',
   'src/content/schema.ts',
 ] as const
 

@@ -26,5 +26,5 @@ import { speakSilentWarmup } from '../services/pronunciation'
 export function unlockAudioSequence(): void {
   unlockAudioSession() // ① Web Audio 解锁 —— 同步，不可 await
   speakSilentWarmup() // ② TTS 预热（volume = 0 的空 utterance）
-  prewarmBgm() // ③ BGM buffer 预解（Story 1.13 落地实现）
+  prewarmBgm() // ③ BGM buffer 预解（📎 Story 1.14 落地实现，旧编号 1.13 已废）
 }

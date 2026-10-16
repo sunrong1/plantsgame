@@ -1,0 +1,105 @@
+{
+  "note": "Story 1.14 / AC-H1 —— 音效素材来源逐条登记。license 字段逐条真实，不统一填一个值。七个音效全部来自 OpenGameArt 的 CC0 条目；BGM 由同库的 CC0 循环曲提供（裁决 1 原定 mmx music generate，该 API 于 2026-10-16 对本账号返回 HTTP 410 已关闭，改用 CC0 库，见 story 文档的 [DS] 偏离登记）。每个条目的 sourcePage 与 author 都于 2026-10-16 从 OpenGameArt 内容页人工核对过一遍 —— 首版登记里有三条 author 抄错了（electric-buzz / game-over-trumpet-sfx / classic-fanfare-lick），已在本次核对中更正。",
+  "verifiedOn": "2026-10-16",
+  "sfx": [
+    {
+      "cue": "answer-correct",
+      "file": "answer-correct.mp3",
+      "title": "Correct Bell",
+      "url": "https://opengameart.org/content/correct-bell",
+      "downloadUrl": "https://opengameart.org/sites/default/files/bell.mp3",
+      "author": "fupi",
+      "authorUrl": "https://opengameart.org/users/fupi",
+      "license": "CC0 1.0 Universal (Public Domain Dedication)",
+      "durationSec": 1.65,
+      "note": "明亮上扬的铃音 —— 对应「答对」。原始文件即 mp3，未转码。"
+    },
+    {
+      "cue": "answer-wrong",
+      "file": "answer-wrong.mp3",
+      "title": "Electric Buzz",
+      "url": "https://opengameart.org/content/electric-buzz",
+      "downloadUrl": "https://opengameart.org/sites/default/files/buzz.ogg",
+      "author": "bonder",
+      "authorUrl": "https://opengameart.org/users/bonder",
+      "license": "CC0 1.0 Universal (Public Domain Dedication)",
+      "durationSec": 1.12,
+      "note": "短促下行、不刺耳的否定音 —— 对应「答错」。原始为 ogg，用 ffmpeg libmp3lame -q:a 4 转 mp3。"
+    },
+    {
+      "cue": "tower-placed",
+      "file": "tower-placed.mp3",
+      "title": "Coin Drop",
+      "url": "https://opengameart.org/content/coin-drop",
+      "downloadUrl": "https://opengameart.org/sites/default/files/coin_drop.ogg",
+      "author": "vinrax",
+      "authorUrl": "https://opengameart.org/users/vinrax",
+      "license": "CC0 1.0 Universal (Public Domain Dedication)",
+      "durationSec": 1.46,
+      "note": "清脆的落位音 —— 对应「建塔」。原始为 ogg，转 mp3。"
+    },
+    {
+      "cue": "zombie-died",
+      "file": "zombie-died.mp3",
+      "title": "A Slide Pop Sound",
+      "url": "https://opengameart.org/content/a-slide-pop-sound",
+      "downloadUrl": "https://opengameart.org/sites/default/files/slidepop.mp3",
+      "author": "ezduzziteh",
+      "authorUrl": "https://opengameart.org/users/ezduzziteh",
+      "license": "CC0 1.0 Universal (Public Domain Dedication)",
+      "durationSec": 0.68,
+      "note": "短促的 pop —— 对应「僵尸倒下」。原始即 mp3。"
+    },
+    {
+      "cue": "heart-lost",
+      "file": "heart-lost.mp3",
+      "title": "Damage taken",
+      "url": "https://opengameart.org/content/damage-taken",
+      "downloadUrl": "https://opengameart.org/sites/default/files/damage_taken.mp3",
+      "author": "zander-games",
+      "authorUrl": "https://opengameart.org/users/zander-games",
+      "license": "CC0 1.0 Universal (Public Domain Dedication)",
+      "durationSec": 0.42,
+      "note": "沉闷的受击音 —— 对应「掉心」。原始即 mp3。"
+    },
+    {
+      "cue": "level-complete",
+      "file": "level-complete.mp3",
+      "title": "Classic fanfare lick",
+      "url": "https://opengameart.org/content/classic-fanfare-lick",
+      "downloadUrl": "https://opengameart.org/sites/default/files/fanfare_3.ogg",
+      "author": "MedicineStorm",
+      "authorUrl": "https://opengameart.org/users/medicinestorm",
+      "license": "CC0 1.0 Universal (Public Domain Dedication)",
+      "durationSec": 2.95,
+      "note": "胜利号角 —— 对应「通关」。原始为 ogg，转 mp3。"
+    },
+    {
+      "cue": "level-failed",
+      "file": "level-failed.mp3",
+      "title": "Game Over Trumpet SFX",
+      "url": "https://opengameart.org/content/game-over-trumpet-sfx",
+      "downloadUrl": "https://opengameart.org/sites/default/files/losetrumpet.mp3",
+      "author": "Mehmet Adil",
+      "authorUrl": "https://opengameart.org/users/mehmet-adil",
+      "license": "CC0 1.0 Universal (Public Domain Dedication)",
+      "durationSec": 1.15,
+      "note": "失败号角 —— 对应「失败」。原始即 mp3。"
+    }
+  ],
+  "music": [
+    {
+      "file": "battle-loop.mp3",
+      "title": "Happy Lullaby (song17)",
+      "path": "assets/audio/music/battle-loop.mp3",
+      "url": "https://opengameart.org/content/happy-lullaby-song17",
+      "downloadUrl": "https://opengameart.org/sites/default/files/song17.mp3",
+      "author": "Bonsaiheldin（条目提交者）",
+      "authorUrl": "https://opengameart.org/users/bonsaiheldin",
+      "license": "CC0 1.0 Universal (Public Domain Dedication)",
+      "licenseAttribution": "CC0 Audio - Uploader: cynicmusic",
+      "durationSec": 39.56,
+      "note": "战斗循环 BGM。裁决 1 原定由 `mmx music generate --instrumental` 生成，但该 API 于 2026-10-16 对本账号返回 HTTP 410（已对新用户关闭），三个模型 music-2.6 / 2.5+ / 2.5 全部失败 ⇒ 改用同库 CC0 循环曲，保住「真文件 ⇒ 404/解码失败/离线未缓存三条判据可测」这一核心设计目标（见 story 文档 AC-H3 与 Completion Notes 的偏离登记）。source.loop=true 在解码后循环；39.56s 单曲，循环点由 Web Audio 的 loop 标记处理（首尾不做额外拼接）。该条目的提交者（Bonsaiheldin）与 CC0 Audio 上传者（cynicmusic）在页面上是两个不同的字段，两个名字都如实登记。"
+    }
+  ]
+}

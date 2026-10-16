@@ -12,6 +12,22 @@
 > 与 `1-13-hud-阳光-心与进度.md`「裁决 1」的逐处对照表。
 >
 > **改这些条目时按 1.14 理解，但不要顺手改写原文** —— 原文保留作历史记录。
+>
+> ---
+>
+> ### 📎 2026-10-16 追加（📎 Story 1.14 `[DS]` 交付后回填）
+>
+> 1.14 已落地，上述「等 1.13/1.14 接手时再办」的条目**逐条结清**如下：
+>
+> | 原条目 | 现状 |
+> |---|---|
+> | 「`app/effects-runner.ts` 不在守卫名单内」（本文件 :23、:25） | ✅ **已补** —— `eslint.config.js` 给 `src/components/**` + `src/views/**` 加了 `no-restricted-imports`，禁 `services/audio` 的播放函数；守卫 **G70**（含 `Linter.verify` 真跑一条用法层验证）。⚠️ 同时把 `app/effects-runner.ts` 纳入 `no-restricted-syntax` 的**禁 await** 名单。 |
+> | 「五条已处理但零测试覆盖的分支」（本文件 :94） | ✅ **已补** —— `AudioContext` 不存在 / `new AudioContext()` 抛 / `resume()` 被拒 / `fetch` 抛 / `decodeAudioData` 抛，五条各有独立用例（`tests/services/audio.test.ts`，G72）。 |
+> | 「BGM 接目标平台」（本文件 :113 一带） | ✅ **已接** —— `music/battle-loop.mp3` 已下载进仓，`enterLevel()` 触发 `startBgmIfReady()`（裁决 5：BGM **不走** `runEffects`，因为进关不是 action）。 |
+> | 「effects-runner 的异步形态」（本文件 :113） | ✅ **已裁决** —— **禁 `await`**；但 `services/audio.ts` **允许 `.then()`**（解码必须）。`.then()` 逃逸守卫**只**加在 `app/audio-unlock.ts`（三步同步块不许挂 promise 链）。见 `1-14-音效与-bgm-接入.md` 裁决与 AC-G8。 |
+> | `audio-unlock-guard.test.ts` 里「守卫有意不覆盖 views/」那条用例 | ✅ **仍然成立，未改** —— 它守的是 FR2 的 **`no-restricted-syntax`**（解锁三步禁 `await` / `.then()`），而 AC-G7 补的是另一条规则 **`no-restricted-imports`**（组件/视图禁 import `services/audio` 的播放函数）。两条规则管的不是一回事：`views/` 里确实没有解锁三步可 await，但**不允许它自己 import 播放函数**。⇒ 那条用例无需改写成断言新状态，改了反而是放宽断言（R-57）。新增的覆盖由 G70 单独断言。 |
+>
+> **本 story 新登记的 deferred 见文件末尾「Deferred from: story-1-14-音效与-BGM-接入」一节。**
 
 ## Deferred from: code review of story-1-2-音频解锁与-tts-朗读 (2026-10-12)
 
@@ -1275,3 +1291,88 @@ Story 1.12 之后的 `SunCounter` / `HeartRow` / `ProgressBar` 一类**尺寸类
 
 
 
+
+## Deferred from: story-1-14-音效与-BGM-接入 `[DS]` (2026-10-16)
+
+### 1. 🔥 M117 全量 0 红 —— `RESTART_LEVEL` 的 `Math.max(0, …)` 夹取无任何守卫
+
+- **实测**：`core/effects.ts` 的 `RESTART_LEVEL` 分支去掉 `Math.max(0, …)` 后，
+  跑**整个测试套件**（37 文件 / 1400 条）**一条都没红**。
+  ⇒ 不是「等价变异体」，而是**真的没有任何东西守着这个夹取**。
+- **为什么它现在无害**：心数在别处已被夹在 `[0, MAX_HEARTS]`，两条路径重合 ⇒ 行为等价。
+  但这正是本仓库吃过三次亏的形状：**「今天无害」不等于「永远无害」**。
+  将来若某条路径绕过 `setHearts` 直接改 `hearts`，夹取一去，负心数就会出现在 HUD 上。
+- **为什么不在 1.14 补**：`RESTART_LEVEL` 的心数语义属 **Story 1.15/1.16**（重打 / 通关 / 失败），
+  本 story 的 AC 不含改这条链路。硬补一条守卫等于**在没有 AC 的地方加判据**。
+- **恢复条件**：Story 1.15 或 1.16 动 `RESTART_LEVEL` / 心数写入路径时，
+  **同一次改动里**补一条反向断言（例如「重打后 `hearts` 不得为负」）。
+  —
+  `src/core/effects.ts`, `tests/core/effects.test.ts`
+
+### 2. M120 实测 0 红 —— 批量级 try/catch 与单条级 try/catch 当前完全冗余
+
+- **实测**：在 `effects-runner.ts` 的整条循环外再包一层 `try/catch`，7 条守卫**全部照绿**。
+- **为什么这是正确结果而不是缺守卫**：`runOne` 的 `SFX` 分支**已经有自己的 try/catch**，
+  而其余分支都是 `return`。外层能兜住的只有 `runEffects` 抛错 —— 而它是纯函数、不抛。
+  ⇒ 两个变异体在当前代码下**行为完全等价**，0 红是 AC-G4 §「等价变异体」那一档。
+- **外层为何仍值得留着**（不是冗余代码，是 1.15 的前置防御）：
+  `case 'SAVE'` 在 1.15 会真的做 I/O，那时它抛错将**中断后续条目**；
+  AC-E4 的「继续执行后续条目」需要一条兜底。
+- **⚠️ 代价要说清**：`assertNeverEffect` 被刻意放在 `runOne` 的 try **之外**，
+  但外层这层 catch 会把它重新兜住 —— 运行时一旦漏了某个 `Effect` 成员，
+  退化成的不是编译错误而是**一条 `console.warn`**。可见性仍在（`[audio]` 前缀，WARN 级），
+  但**弱于**「立刻炸出来」。1.15 接 `SAVE` 前应当重新评估这一层。
+- —
+  `src/app/effects-runner.ts`
+
+### 3. `matchesGlob` 不支持字符类 `[...]`（AC-G7 一并到期，本 story 不修）
+
+- `deferred-work.md:170-179` 写「接手时对 `[...]` 加转义并补自测；或引入 minimatch 做交叉校验」。
+  1.14 新增了 `src/app/effects-runner.ts`（第 4 个探针文件），让这条判据的覆盖面又大了一圈。
+- **本 story 不修的理由**：`matchesGlob` 是 `tests/scaffold/audio-unlock-guard.test.ts` 的
+  判据**自身**的函数，而它的模式串里目前**没有任何字符类** ⇒ 修了也验不到自己，
+  得同时新增一条「模式串含 `[...]`」的探针，那是**为修 bug 而造 bug**。
+- **真实风险**：`eslint.config.js` 里一旦有人写 `src/{app,views}/**` 这种模式，
+  `matchesGlob` 会**匹配失败并静默判定「没覆盖」** ⇒ 守卫朝**假红**方向坏（安全侧），
+  而不是朝假绿 —— 这是本条可以继续压着的原因，但不该一直压着。
+- **恢复条件**：下一个改 `eslint.config.js` 覆盖名单的 story，或引入 minimatch 时。
+  —
+  `tests/scaffold/audio-unlock-guard.test.ts`, `eslint.config.js`
+
+### 4. ✅ 已关闭 —— 人工试听已于 2026-10-16 由用户完成（结论 OK）
+
+- **原缺口**：本 story 的自动化**只验结构**（cue 映射、执行顺序、失败降级、URL 拼装、文件非空），
+  **任何一条都不判断声音好不好听**（裁决 2 明确禁止音频特征断言）
+  ⇒ 素材一度**无人听过**（AI 会话无音频输出通路）。
+- **✅ 关闭依据**：用户（sunrong）于 2026-10-16 在本地开发环境试听
+  **7 个 sfx + `battle-loop.mp3`（BGM）全部**，结论 **OK**。
+- ⚠️ **关闭的边界（别当成「音效已定型」）**：这是**一次性人工验收**，**逐项**结论
+  （答错音是否刺耳 / BGM 是否压过音效 / 循环处是否听得出来）**无书面记录** ——
+  拿到的是概括性的「OK」。本地开发环境**也不是真机**。
+- **恢复条件（仍然成立，只是升级了）**：「这套音效的音量 / 响度配比是否适合 4–8 岁孩子」
+  仍需 **真机 + 儿童用户测试**，归 Story 1.16 / 1.18。那是**另一件事**，不是本条的缺口。
+  —
+  `public/assets/audio/sfx/`, `public/assets/audio/music/`
+
+### 5. 1.13 遗留：`core/hud.ts` 架构组件树未列 —— **本 story 不代劳**
+
+- 逐条确认它**仍在 deferred 里**（本文件上一节第 4 条），归 1.16/1.18 的架构回写。
+  1.14 的 AC-H8 只确认「`game-architecture.md` **本来就列了** `core/effects.ts` 与
+  `app/effects-runner.ts`（`:748` / `:804`）⇒ 1.14 是「补实现」，**不需要 `[GA]` 回写**。
+  两件事别混：`effects` / `effects-runner` 已列，`hud.ts` 仍缺。
+  —
+  `_bmad-output/planning-artifacts/game-architecture.md`
+
+### 6. 裁决 6 的张力：换题朗读（TTS）在两个地方都有入口
+
+- **事实**：TTS 效果目前**不在** `runEffects` 里产出（裁决 6），
+  换题朗读走 `store.speakQuestion()` 门面，而 1.11 的 `QuestionCard.vue` 里
+  还有一条独立的 `watch` 触发同一件事。
+- **张力**：1.11 偏离 1 是为了「用户点重听不对应任何 action」的形状问题（这个理由仍然成立），
+  但**换题**本身确实对应一个状态转移。将来若要把 TTS 收口进 `runEffects`，
+  必须先答清楚「重听」怎么办 —— 否则会为了统一而把「重听」硬塞进某个 action。
+- **本 story 刻意不动**：AC-F2 明确「`QuestionCard.vue` 的逻辑一个字都不改」，
+  只在文件里加了一段说明为什么它与 `runEffects` 不冲突。
+- **恢复条件**：Story 1.16（把 `Effect` 的 `TTS` 成员真正接上时）**必须**重新裁决这一点。
+  —
+  `src/app/effects-runner.ts`, `src/components/quiz/QuestionCard.vue`

@@ -17,6 +17,7 @@ let resumeRejects: boolean
 class FakeAudioContext {
   resumeCalls = 0
   state = 'suspended'
+  destination = {}
 
   constructor() {
     contexts.push(this)
@@ -29,6 +30,42 @@ class FakeAudioContext {
     }
     this.state = 'running'
     return Promise.resolve()
+  }
+
+  // ── Story 1.14 / AC-D4：SFX 与 BGM 播放需要的三件 ──────────────────────
+  /** 起播记录：每一次 `source.start()` 记一笔，供「重复触发只请求一次」等断言读。 */
+  started: FakeBufferSource[] = []
+
+  createBufferSource(): FakeBufferSource {
+    const source = new FakeBufferSource()
+    this.started.push(source)
+    return source
+  }
+
+  decodeAudioData(): Promise<unknown> {
+    return Promise.resolve({ fake: 'decoded' })
+  }
+}
+
+/** 一次性的 buffer 源节点（复现「第二次 start() 不出声」那条 Web Audio 规则）。 */
+class FakeBufferSource {
+  buffer: unknown = null
+  loop = false
+  connectedTo: unknown = null
+  startCalls = 0
+  stopCalls = 0
+  onended: (() => void) | null = null
+
+  connect(target: unknown): void {
+    this.connectedTo = target
+  }
+
+  start(): void {
+    this.startCalls += 1
+  }
+
+  stop(): void {
+    this.stopCalls += 1
   }
 }
 
@@ -116,15 +153,42 @@ describe('unlockAudioSession（AC-1 ①）', () => {
   })
 })
 
-describe('prewarmBgm（AC-1 ③ / 决策 1）', () => {
-  it('本 story 是同步空实现：调它不发请求、不抛', async () => {
-    const fetchMock = vi.fn()
+describe('prewarmBgm（AC-1 ③ / 决策 1 / AC-D6）', () => {
+  it('同步发起 fetch（不 await），BGM 就绪后缓存；重复调用不重复请求', async () => {
+    // ⚠️ mock 必须**带 URL 形参的类型**（`vi.fn<(url: string) => …>`），否则
+    // mock.calls 的元组类型是 `[]`，读 `calls[0][0]` 会 TS2493；
+    // 而拿 `as` 强转绕过正是「假断言」的温床（R-57）。
+    // 也不能写成 `(_url: string) =>` 实参 —— eslint no-unused-vars 会红（本仓未开 argsIgnorePattern）。
+    const fetchMock = vi.fn<(url: string) => Promise<unknown>>(() =>
+      Promise.resolve({
+        ok: true,
+        status: 200,
+        arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)),
+      }),
+    )
     vi.stubGlobal('fetch', fetchMock)
-    const { prewarmBgm } = await import('../../src/services/audio')
+    const audio = await import('../../src/services/audio')
 
-    expect(() => prewarmBgm()).not.toThrow()
-    // BGM 资源属 Story 1.13，现在去请求只会在平板控制台留下一条 404。
-    expect(fetchMock.mock.calls, 'BGM 资源还不存在，不该发请求').toHaveLength(0)
+    audio.unlockAudioSession()
+    // FakeAudioContext 没有 decodeAudioData —— 补一个，否则解码失败会走降级。
+    const ctx = audio.getAudioContext() as unknown as {
+      decodeAudioData: (b: ArrayBuffer) => Promise<unknown>
+    }
+    ctx.decodeAudioData = () => Promise.resolve({ fake: 'buffer' })
+
+    expect(() => audio.prewarmBgm()).not.toThrow()
+    // ⚠️ fetch 必须**同步发起**（AC-D6）—— 在同一个手势同步块内，不是 await 之后。
+    expect(fetchMock.mock.calls, 'prewarmBgm 必须同步发起 BGM 的 fetch').toHaveLength(1)
+    expect(String(fetchMock.mock.calls[0]![0]), 'BGM URL 必须接 BASE_URL（AC-D3 / G65）').toContain(
+      'assets/audio/music/battle-loop.mp3',
+    )
+
+    // 让 promise 队列跑够拍数，解码完成（fetch → arrayBuffer → decodeAudioData 是三段链）。
+    await flush()
+
+    // 第二次 prewarm 已缓存 ⇒ 不再发请求（AC-D4）。
+    audio.prewarmBgm()
+    expect(fetchMock.mock.calls, 'BGM 解码一次即可，重复调用不重复请求').toHaveLength(1)
   })
 })
 
@@ -200,5 +264,220 @@ describe('unlockAudioSequence（AC-1 三步同步块）', () => {
 
     // 若哪天有人把它改成 async，这里会拿到 Promise 而失败。
     expect(unlockAudioSequence()).toBeUndefined()
+  })
+})
+
+// ════════════════════════════════════════════════════════════════════════
+// Story 1.14 —— 音效播放器 / 降级标志 / 绝不向调用方抛
+// ════════════════════════════════════════════════════════════════════════
+
+/** 造一个可解锁且能解码的 AudioContext，并返回 fetch mock。 */
+async function unlockedWithFetch(): Promise<{ audio: typeof import('../../src/services/audio'); fetchMock: ReturnType<typeof vi.fn> }> {
+  const fetchMock = vi.fn<(url: string) => Promise<unknown>>(() =>
+    Promise.resolve({ ok: true, status: 200, arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)) }),
+  )
+  vi.stubGlobal('fetch', fetchMock)
+  const audio = await import('../../src/services/audio')
+  audio.unlockAudioSession()
+  const ctx = audio.getAudioContext() as unknown as { decodeAudioData: (b: ArrayBuffer) => Promise<unknown> }
+  ctx.decodeAudioData = () => Promise.resolve({ fake: 'buffer' })
+  return { audio, fetchMock }
+}
+
+/** 让 promise 队列跑几拍，等 fetch/decode 的 .then 落地。 */
+async function flush(times = 5): Promise<void> {
+  for (let i = 0; i < times; i += 1) await Promise.resolve()
+}
+
+describe('G65 —— 资源 URL 必须接 import.meta.env.BASE_URL（AC-D3）', () => {
+  it('SFX_BASE_PATH 与 MUSIC_BASE_PATH 都以 BASE_URL 起头', async () => {
+    const audio = await import('../../src/services/audio')
+    expect(audio.SFX_BASE_PATH, 'sfx URL 必须接 BASE_URL，否则部署到 /plantsgame/ 下全 404').toBe(
+      `${import.meta.env.BASE_URL}assets/audio/sfx/`,
+    )
+    expect(audio.MUSIC_BASE_PATH, 'music URL 必须接 BASE_URL').toBe(
+      `${import.meta.env.BASE_URL}assets/audio/music/`,
+    )
+    // ⚠️ BASE_URL 自带尾斜杠，BASE_PATH 不得再拼一个（pronunciation.ts:155）。
+    expect(audio.SFX_BASE_PATH.endsWith('sfx//'), 'BASE_URL 自带尾斜杠，不要重复拼').toBe(false)
+  })
+
+  it('G65：播放音效请求的 URL 以 SFX_BASE_PATH 起头（真跑一次播放）', async () => {
+    const { audio, fetchMock } = await unlockedWithFetch()
+    audio.playSfx('answer-correct')
+    await flush()
+    expect(String(fetchMock.mock.calls[0]![0]), '音效 URL 必须来自 SFX_BASE_PATH').toContain(
+      'assets/audio/sfx/answer-correct.mp3',
+    )
+  })
+})
+
+describe('G68 —— 失败即标记，绝不重试（AC-D5）', () => {
+  it('资源失败后连续触发三次，fetch 只被调用一次', async () => {
+    const fetchMock = vi.fn<(url: string) => Promise<unknown>>(() => Promise.resolve({ ok: false, status: 404, arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)) }))
+    vi.stubGlobal('fetch', fetchMock)
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const audio = await import('../../src/services/audio')
+    audio.unlockAudioSession()
+    const ctx = audio.getAudioContext() as unknown as { decodeAudioData: (b: ArrayBuffer) => Promise<unknown> }
+    ctx.decodeAudioData = () => Promise.resolve({ fake: 'buffer' })
+
+    audio.playSfx('zombie-died')
+    await flush()
+    audio.playSfx('zombie-died')
+    audio.playSfx('zombie-died')
+    await flush()
+
+    expect(fetchMock.mock.calls, '失败即标记：连续触发三次只请求一次（epics.md:1211）').toHaveLength(1)
+  })
+
+  it('失败资源记入 audioDegradations 且 scope 是 asset', async () => {
+    vi.stubGlobal('fetch', vi.fn<(url: string) => Promise<unknown>>(() => Promise.resolve({ ok: false, status: 404, arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)) })))
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const audio = await import('../../src/services/audio')
+    audio.unlockAudioSession()
+    const ctx = audio.getAudioContext() as unknown as { decodeAudioData: (b: ArrayBuffer) => Promise<unknown> }
+    ctx.decodeAudioData = () => Promise.resolve({ fake: 'buffer' })
+
+    audio.playSfx('heart-lost')
+    await flush()
+
+    const degradations = audio.audioDegradations()
+    const hit = degradations.find((d) => d.key === 'sfx:heart-lost')
+    expect(hit, '失败资源必须出现在降级清单里，1.17 面板要能看到原因').toBeDefined()
+    expect(hit!.scope, '单个资源失败是 asset 级，不是 session 级').toBe('asset')
+  })
+})
+
+describe('G71 —— isAudioSilent 与 audioDegradations 的 scope 语义分离（AC-D8）', () => {
+  it('单个音效坏掉 ≠ 全静', async () => {
+    vi.stubGlobal('fetch', vi.fn<(url: string) => Promise<unknown>>(() => Promise.resolve({ ok: false, status: 500, arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)) })))
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const audio = await import('../../src/services/audio')
+    audio.unlockAudioSession()
+    const ctx = audio.getAudioContext() as unknown as { decodeAudioData: (b: ArrayBuffer) => Promise<unknown> }
+    ctx.decodeAudioData = () => Promise.resolve({ fake: 'buffer' })
+
+    audio.playSfx('tower-placed')
+    await flush()
+
+    expect(audio.audioDegradations().length, '确实有一条降级').toBeGreaterThan(0)
+    expect(audio.isAudioSilent(), '一个音效坏了不等于设备无音频（AC-D8 / M123）').toBe(false)
+  })
+
+  it('AudioContext 不存在 ⇒ isAudioSilent 为 true，scope 是 session', async () => {
+    vi.stubGlobal('AudioContext', undefined)
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const audio = await import('../../src/services/audio')
+
+    audio.unlockAudioSession()
+
+    expect(audio.isAudioSilent(), 'AudioContext 不存在就是全静').toBe(true)
+    const hit = audio.audioDegradations().find((d) => d.scope === 'session')
+    expect(hit, 'session 级降级项必须在清单里，且带原因').toBeDefined()
+    expect(hit!.reason, '降级项必须带原因（epics.md:1217）').toBeTruthy()
+  })
+})
+
+describe('G72 —— 新入口不向调用方抛（AC-D9 / NFR13）', () => {
+  it('AudioContext 不存在时，playSfx / prewarmBgm / startBgmIfReady 都不抛', async () => {
+    vi.stubGlobal('AudioContext', undefined)
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const audio = await import('../../src/services/audio')
+    audio.unlockAudioSession()
+
+    expect(() => audio.playSfx('answer-correct'), '全静时播音效不得抛').not.toThrow()
+    expect(() => audio.prewarmBgm(), '全静时预解 BGM 不得抛').not.toThrow()
+    expect(() => audio.startBgmIfReady(), '全静时起播 BGM 不得抛').not.toThrow()
+  })
+
+  it('fetch 抛 / 响应非 2xx / decodeAudioData 抛，三种都不冒到调用方', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const audio = await import('../../src/services/audio')
+
+    // ① fetch 直接抛
+    vi.stubGlobal('fetch', vi.fn<(url: string) => Promise<unknown>>(() => { throw new Error('网络栈炸了') }))
+    audio.unlockAudioSession()
+    const ctx = audio.getAudioContext() as unknown as { decodeAudioData: (b: ArrayBuffer) => Promise<unknown> }
+    ctx.decodeAudioData = () => Promise.resolve({ fake: 'buffer' })
+    expect(() => audio.playSfx('answer-wrong'), 'fetch 抛不得冒到调用方').not.toThrow()
+    await flush()
+
+    // ② decodeAudioData 抛
+    vi.resetModules()
+    vi.stubGlobal('fetch', vi.fn<(url: string) => Promise<unknown>>(() => Promise.resolve({ ok: true, status: 200, arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)) })))
+    const audio2 = await import('../../src/services/audio')
+    audio2.unlockAudioSession()
+    const ctx2 = audio2.getAudioContext() as unknown as { decodeAudioData: (b: ArrayBuffer) => Promise<unknown> }
+    ctx2.decodeAudioData = () => Promise.reject(new Error('解码器内部异常'))
+    expect(() => audio2.playSfx('level-complete'), '解码抛不得冒到调用方').not.toThrow()
+    await flush()
+
+    warn.mockRestore()
+  })
+})
+
+describe('AC-H6 ① —— deferred 的「AudioContext 不存在 / new Audio() 抛」两条分支', () => {
+  it('① AudioContext 不存在：unlockAudioSession 记 session 降级且不抛', async () => {
+    vi.stubGlobal('AudioContext', undefined)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const audio = await import('../../src/services/audio')
+
+    expect(() => audio.unlockAudioSession(), 'AudioContext 缺失不得抛').not.toThrow()
+    expect(audio.isAudioSilent(), '缺 AudioContext = session 降级').toBe(true)
+    warn.mockRestore()
+  })
+
+  it('① new AudioContext() 构造抛错：记 session 降级且不抛', async () => {
+    vi.stubGlobal('AudioContext', class {
+      constructor() {
+        throw new Error('构造被拒')
+      }
+    })
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const audio = await import('../../src/services/audio')
+
+    expect(() => audio.unlockAudioSession(), 'new AudioContext 抛错不得冒到调用方').not.toThrow()
+    expect(audio.isAudioSilent(), '构造抛错 = session 降级').toBe(true)
+    expect(audio.getAudioContext(), '构造失败时 context 必须仍是 null').toBeNull()
+    warn.mockRestore()
+  })
+})
+
+describe('AC-D7 —— BGM 单曲循环 + 重复调用不叠播', () => {
+  it('startBgmIfReady 起播一个 loop 源节点，重复调用先停上一个', async () => {
+    const { audio } = await unlockedWithFetch()
+    // 预热并等 BGM 解码完成。
+    audio.prewarmBgm()
+    await flush()
+
+    audio.startBgmIfReady()
+    const ctx = audio.getAudioContext() as unknown as FakeAudioContext
+    const first = ctx.started[ctx.started.length - 1]
+    expect(first?.loop, 'BGM 必须单曲循环').toBe(true)
+    expect(first?.startCalls, 'BGM 必须起播一次').toBe(1)
+
+    audio.startBgmIfReady()
+    const last = ctx.started[ctx.started.length - 1]
+    expect(first?.stopCalls, '重复调用必须先停掉上一个源节点，否则叠播').toBe(1)
+    expect(last?.loop, '第二个源节点同样单曲循环').toBe(true)
+  })
+})
+
+describe('AC-D4 —— 解码一次，缓存，重放不重新 fetch', () => {
+  it('同一 cue 连续触发三次只 fetch 一次，每次播放都新建源节点', async () => {
+    const { audio, fetchMock } = await unlockedWithFetch()
+
+    audio.playSfx('tower-placed')
+    await flush()
+    audio.playSfx('tower-placed')
+    audio.playSfx('tower-placed')
+    await flush()
+
+    expect(fetchMock.mock.calls, '同一资源第二次及以后不重新 fetch（AC-D4）').toHaveLength(1)
+    const ctx = audio.getAudioContext() as unknown as FakeAudioContext
+    const sfxSources = ctx.started.filter((s) => s.connectedTo === ctx.destination)
+    // 首次（解码回调里）+ 两次重放 = 3 次起播，每次一个新源节点。
+    expect(sfxSources.length, '每次播放都新建 createBufferSource —— AudioBufferSourceNode 是一次性的').toBe(3)
   })
 })

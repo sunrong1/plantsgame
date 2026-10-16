@@ -154,3 +154,11 @@ export {
 } from './hud.js'
 
 export type { Progress, ProgressDisplay } from './hud.js'
+
+// 📎 副作用判据（Story 1.14 / AC-B1）。架构硬约束 4「副作用只走 effects-runner」
+//   的落点：关于「这次 dispatch 该播什么声音」的问题**只能**问 `runEffects`，
+//   `app/effects-runner.ts` 按它返回的**顺序**逐条执行（AC-C5）。
+//   ⚠️ 类型重导出必须 `export type`（`verbatimModuleSyntax`，见本文件头）。
+export { assertNeverEffect, effectKindName, runEffects } from './effects.js'
+
+export type { Effect, SfxCue } from './effects.js'

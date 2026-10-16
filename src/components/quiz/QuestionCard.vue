@@ -11,7 +11,9 @@
  * · **不 import `services/pronunciation`** —— 朗读只经 `store` 的
  *   `speakQuestion()` 门面（裁决 3、守卫 G25）。
  * · **不 throw、不写 assert**（AC-E3 / `[GA]:567-575`）。
- * · **不建 `app/effects-runner.ts`** —— 属 Story 1.13。
+ * · **不直接调 `app/effects-runner.ts`** —— 📎 它属 Story **1.14**（不是 1.13，
+ *   旧编号残留已按 R-32 更正），本组件的音效一律由 `applyAction` 触发它；
+ *   这里自己播一遍就是重复播放，且守卫 **G60** 会判红。
  * · **不写死卡面区高度** —— 1.12 的手牌区与 1.13 的 HUD 都要位置（Dev Notes §10）。
  *
  * ── 🚨 关于 `lastQuestion`（裁决 4 / AC-C5）─────────────────────────────
@@ -122,6 +124,15 @@ watch(
  *   Completion Notes 的「裁决的偏离」第 1 条：触发源是「换了一道题」这一
  *   **可数事件**，守卫 G27 断言连点 3 次重听后 `applyAction` 一次都没被调用、
  *   且自动朗读不重复触发。**不假装这条张力不存在。**
+ *
+ * 📎 **Story 1.14 裁决 6 复核（2026-10-16）：收口前提还不具备，逻辑一个字不动。**
+ *   收口进 `runEffects` 的**前提**是「进关/出关成为结构化事件」，而
+ *   `store.ts` 的 `state = ref(initialState())` 在**模块求值期**就建好首题，
+ *   **首题朗读不经过 `applyAction`** ⇒ 没有任何 action 可 diff。
+ *   若只把后续换题收口进 `runEffects`、首题仍靠这里 `immediate: true`，
+ *   就得到**两个事实来源**判「该不该念」—— 那正是本仓库反复抓的漂移形态。
+ *   ⇒ 收口属 **Story 1.16（关卡流程）**；本 story 只把张力如实登记进
+ *   `deferred-work.md`，**不改这里一行逻辑**（AC-F2）。
  */
 watch(
   () => state.value.phase,
