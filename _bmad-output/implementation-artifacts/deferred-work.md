@@ -28,6 +28,21 @@
 > | `audio-unlock-guard.test.ts` 里「守卫有意不覆盖 views/」那条用例 | ✅ **仍然成立，未改** —— 它守的是 FR2 的 **`no-restricted-syntax`**（解锁三步禁 `await` / `.then()`），而 AC-G7 补的是另一条规则 **`no-restricted-imports`**（组件/视图禁 import `services/audio` 的播放函数）。两条规则管的不是一回事：`views/` 里确实没有解锁三步可 await，但**不允许它自己 import 播放函数**。⇒ 那条用例无需改写成断言新状态，改了反而是放宽断言（R-57）。新增的覆盖由 G70 单独断言。 |
 >
 > **本 story 新登记的 deferred 见文件末尾「Deferred from: story-1-14-音效与-BGM-接入」一节。**
+>
+> ---
+>
+> ### 📎 2026-10-17 追加（📎 Story 1.15 `[DS]` 交付后回填）
+>
+> 1.15 已落地，归 1.15 的条目**逐条结清**如下（原文一律保留不动，只在此登记现状）：
+>
+> | 原条目 | 现状 |
+> |---|---|
+> | 1.13 第 3 条「`progress` 是内存态，进度条在刷新页面后归零」 | ✅ **已结** —— `src/services/save.ts` 按 `schemaVersion` 序列化 `{ currentUnitIndex, masteredWordIds }` 两个键（键名逐字未改），`enterLevel()` 读档时**原样喂回** `progress` ref，**未做任何版本迁移**（版本不匹配走「安全降级为从头开始」，FR61）。守卫 **G74 / G78**（G78 = R-06 的正式守卫，钉「局末 `currentGame === null` 且 `progress` 逐字不变」）。 |
+> | 1.13 dismissed 的「`progress` 只是模块内存态，刷新即丢，进度条肉眼可见回退」 | ✅ **同上，结清** —— `ProgressBar.vue` 文件头写的「若出现回退，那不是动画该掩盖的事」如今有判据撑着。⚠️ 代价是**新增了一条失败链**：读档失败时进度会退回初始（`store.ts` 的 `restoreFromSave` 逐字 WARN 记录了这一点，不是静默）。 |
+> | 1.13 dismissed 的「`unitTotal` 的 computed 在渲染期可 throw（1.15 读档后的第一条失败链）」 | ✅ **已结** —— `LevelView.vue` 的 `unitTotal` 改成 try/catch，取不到单元就退回 `0` 并记 WARN。`0` 是**已定义好**的形状：`core/hud.ts` 的 `progressDisplay` 对 `unitTotal === 0` 早已取 `ratio = 0`。⚠️ 报错**没有**被吞掉 —— 开局路径 `store.ts` 的 `initialState()` 那里仍有 try/catch 和人话提示。守卫 **G84**（含 `Linter.verify` 真跑一条验证 + 假阳性对照）。 |
+> | 1.14 第 1 条「🔥 M117 全量 0 红 —— `RESTART_LEVEL` 的 `Math.max(0, …)` 夹取无任何守卫」 | ✅ **到期条件已成立并已补** —— 该条逐字写的恢复条件是「Story 1.15 或 1.16 动 `RESTART_LEVEL` / **心数写入路径**时，同一次改动里补一条反向断言」。1.15 正是新增了第二条心数写入路径：`restoreFromSave` 把 `localStorage` 里的 `hearts` 直接写进 `state.value`（此前 `hearts` 只可能由 reducer 产生）。反向断言见 `tests/app/store-save.test.ts`「心数为**负**同样退回」，变异 **M99**（去掉 `assertCounters` 的 `state.hearts < 0` 一半）**2 红**。<br>⚠️ **为什么原先那条 0 红不是缺口**：deferred 条目点名的 `Math.max(0, …)` 夹取今天在 `reducer.ts` 的 `applyResolve` 里，不在 `RESTART_LEVEL` 分支 —— `restart()` 走 `createInitialState`，心数直接回到满值，根本没有夹取。那条 0 红是**等价变异体**（两处夹取重合），不是「无人守」。 |
+> | 1.14 第 2 条「M120 实测 0 红 —— 批量级 try/catch 与单条级 try/catch 当前完全冗余」 | ✅ **已裁决并结清** —— 该条逐字要求「1.15 接 `SAVE` 前应当重新评估这一层」。裁决：**选 ② 收窄**（把 try/catch 收进 `case 'SAVE'`），不选 ① 在循环外加一层。<br>⚠️ 同时**纠正原条目的一处失实**：它写「外层为何仍值得留着」，好像那层一直存在 —— 实测 1.14 `[DS]` 交付的代码里**整条循环外没有 try/catch**（M120 那个变异是**加**一层，加了之后 7 条守卫 0 红）。<br>理由与代价逐条写在 `src/app/effects-runner.ts` 的 `case 'SAVE'` 注释里（AC-E4 裁决）：① 会把 `assertNeverEffect` 重新兜住，编译期穷尽性退化成一条 WARN；② 下 `assertNeverEffect` 仍在任何 try 之外，`Effect` 联合漏成员时**立刻炸**，可见性一步没减。 |
+> | 1.13 第 2 条「不引入 `sunEarned` 累计阳光字段（裁决 4）—— 归 1.16 或 1.17」 | ⏸ **仍未触发**，但恢复条件已**实测过一次**并留下记录：该条逐字写「**若 1.15 存档格式要求**「本存档累计获得多少阳光」」⇒ 1.15 的 `SaveFile` 只有 `progress` + `currentGame` 两个字段（裁决 2 / 架构决策 5），**没有**累计阳光。⇒ 触发条件为假，本条**继续挂着**，不因为「1.15 已经做过存档了」就顺手结掉。<br>⚠️ 留这一行是因为 1.13 写它时**没人能确定 1.15 的存档形状**；现在能确定了，而答案是「不带」—— 这个否定结论本身值得留痕，否则下一个人会重新推一遍。 |
 
 ## Deferred from: code review of story-1-2-音频解锁与-tts-朗读 (2026-10-12)
 
@@ -1376,3 +1391,77 @@ Story 1.12 之后的 `SunCounter` / `HeartRow` / `ProgressBar` 一类**尺寸类
 - **恢复条件**：Story 1.16（把 `Effect` 的 `TTS` 成员真正接上时）**必须**重新裁决这一点。
   —
   `src/app/effects-runner.ts`, `src/components/quiz/QuestionCard.vue`
+
+
+## Deferred from: story-1-15-存档与断点续学 `[DS]` (2026-10-17)
+
+### 1. 🔥 AC-E5 的「写盘抛错后仍执行后续条目」**构造上不可达**
+
+- **事实**：`core/effects.ts` 的写盘判据（块 ④）是 `runEffects` 里**最后一段**，
+  `SAVE` 因此**恒排在该数组的末尾**（守卫 G79 之外，`tests/app/effects-runner-save.test.ts`
+  里有一条用例专门断言这件事）。
+  ⇒ 「前面某条（只能是 SAVE 本身）抛错 ⇒ 后续条目仍被执行」这个构造
+  **根本不存在**：`SAVE` 后面没有任何条目。
+- **为什么它仍要留着那条 try/catch**：AC-E4 逐字要求「某条副作用抛错不得冒到
+  `applyAction`」，而 `writeSave` 的契约是「不抛」（AC-B3 / AC-B6）。
+  契约违约时的兜底与构造上的不可达**不矛盾** —— 兜底防的是「将来有人给
+  `writeSave` 加一条会抛的路径」。
+- ⚠️ **这不是 AC 未满足**，是 AC 的措辞在当前代码下**有一半构造上无法验证**。
+  如实降级记在 story 文档的偏离表第 5 条，不粉饰成「已验证」。
+- **恢复条件**：Story 1.16 若给 `Effect` 加上会抛的新成员（`TTS` 的朗读调用），
+  且把它排在 `SAVE` **之前**，这一条立刻变成可构造 ⇒ 那时必须补上
+  「前一条抛错、后一条仍执行」的正向用例（1.14 已有同型：G69）。
+  —
+  `src/core/effects.ts`, `src/app/effects-runner.ts`, `tests/app/effects-runner-save.test.ts`
+
+### 2. `readSave()` 成功时 `degraded.clear()` —— 会连带抹掉别的 key 的降级项
+
+- **事实**：`readSave` 读成功与 `writeSave` 写成功都调 `degraded.clear()`，
+  清的是**整张 Map**，不是「自己那条」。
+- **今天的理由**：读到一份可用的存档 ⇒ 之前记的 `parse` / `schema-version` 已不成立；
+  写成功 ⇒ 存储恢复，新写进去的这份必然 JSON 合法、版本正确。
+- **张力的形状**：如果将来出现「读成功但写仍失败」并存的场景（例如 `setItem` 恒抛、
+  而某条内存里的值恰好还在），`readSave` 的一次成功会把 `write` 的降级项**一起抹掉**，
+  面板于是显示「没在降级」而孩子其实正在丢进度。
+- **恢复条件**：1.17 接到调试面板、且**真的**出现「读写降级可并存」这条路径时，
+  把 `clear()` 收窄成「只删本次成功所对应的那个 key」。
+  —
+  `src/services/save.ts`
+
+### 3. `parseSaveFile` 只做底线形状校验 —— 对局的新字段没有对应的拒绝判据
+
+- **事实**：`parseSaveFile` 只校验 `progress` 的两键类型 + `currentGame` 是不是对象。
+  对局内部的合法性**全部**依赖 app 层的 `assertInvariants`（AC-D1）。
+- **张力的形状**：`assertInvariants` 查的是**不变量**，不是**结构**。
+  若 1.16 给 `State` 加了一个字段而 `assertInvariants` 没覆盖它，
+  一份来自旧内容版本的存档会把这个字段缺着地灌进 `state.value`，
+  而**没有任何一条判据会响**。
+- **恢复条件**：1.16 / 1.17 每次给 `State` 加字段时，**同一次改动里**确认
+  `core/reducer.ts` 的 `assertInvariants` 覆盖了它（并在 story 文档里留一行）。
+  —
+  `src/services/save.ts`, `src/core/reducer.ts`
+
+### 4. `enterLevel()` 是今天**唯一**的读档入口 —— 别的「进关」路径不会恢复
+
+- **事实**：读档挂在 `store.enterLevel()`（裁决 3：不做模块求值期读取）。
+  任何新增的「回到战场」路径（1.16 的重打按钮、1.17 的「跳到某单元」）若不经过
+  `enterLevel()`，**就读不到存档**。
+- **为什么现在不做别的**：今天只有 `StartView` 一个入口，`enterLevel()` 就是全部。
+  过早抽一层「确保进关前恢复过」的包装，等于为还不存在的第二条路径先造抽象。
+- **恢复条件**：新增第二条进关路径的同一个 story 里，必须确认它走 `enterLevel()`
+  或显式调 `restoreFromSave()`（守卫 **G86** 只管「谁调 `readSave`」，管不到
+  「每条进关路径都调了」—— 那需要另一条守卫）。
+  —
+  `src/app/store.ts`
+
+### 5. R-14 在 `services/` 与 `app/` 的那部分仍无守卫
+
+- **事实**：`tests/scaffold/save-boundary.test.ts` 的 R-14 补卫只扫 `src/core/**`
+  的「零 `console.`」。R-14 允许 `services/` / `app/` 「带模块前缀且不在逐帧路径」，
+  而那两条判据放不进「零出现」这一条形式。
+- **现状**：`[save]` 前缀由 **G85** 逐字断言（变异 M98 → 3 红），
+  但那是**存档这一个模块**的判据，不覆盖 R-14 全域。
+- **恢复条件**：累计到**第三个**带前缀日志的服务（`audio` / `save` / 第三个）时，
+  把「前缀合规 + 不在逐帧路径」做成一条通用守卫，而不是继续逐模块手写断言。
+  —
+  `docs/rules/architecture.md`, `tests/scaffold/save-boundary.test.ts`

@@ -213,7 +213,15 @@ describe('G61 —— runEffects 排在 `state.value = next` 之前（AC-E2）', 
 
   it('applyAction 里 runEffectsFromStore 的行号 < state.value = next 的行号', () => {
     const body = store.slice(store.indexOf('export function applyAction'))
-    const runAt = body.indexOf('runEffectsFromStore(action, prev, next)')
+    // 📎 **Story 1.15 更新（登记留痕，非放宽）**：原判据写死整条调用串
+    //   `'runEffectsFromStore(action, prev, next)'`，而 1.15 给它加了第 4 个实参
+    //   `progress.value`（存档要写两样东西，裁决 4）⇒ 原字符串再也匹配不上，
+    //   守卫会**恒红**，而它守的命题「runEffects 排在赋值之前」一个字都没变。
+    //   ⇒ 改成**前缀匹配**（去掉右括号），命题与严格性完全不变：
+    //     少一个括号照样匹配得到，多几个实参也照样匹配得到。
+    //   ⚠️ **不许因此把判据改成 `indexOf('runEffectsFromStore')`**：
+    //     那会把「函数名出现在别处」也算成调用点，命题就被放宽了。
+    const runAt = body.indexOf('runEffectsFromStore(action, prev, next')
     const assignAt = body.indexOf('state.value = next')
 
     expect(runAt, 'applyAction 里没有 runEffectsFromStore 调用 —— 音效链路没接上').toBeGreaterThan(-1)

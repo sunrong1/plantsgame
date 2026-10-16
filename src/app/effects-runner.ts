@@ -24,8 +24,9 @@
  */
 
 import { assertNeverEffect, runEffects } from '../core'
-import type { Action, Effect, State } from '../core'
+import type { Action, Effect, Progress, State } from '../core'
 import { playSfx, startBgmIfReady } from '../services/audio'
+import { writeSave } from '../services/save'
 
 export { startBgmIfReady }
 
@@ -33,13 +34,27 @@ export { startBgmIfReady }
  * 执行一次 dispatch 产生的全部副作用 —— 按 `runEffects` 返回的**顺序**逐条执行
  * （AC-C5：返回顺序就是播放顺序）。
  *
- * ⚠️ **本函数绝不抛**（AC-E4）。某一条抛错只记 `[audio] WARN` 并**继续执行后续条目** ——
+ * ⚠️ **本函数绝不抛**（AC-E4）。某一条抛错只记 `WARN` 并**继续执行后续条目** ——
  *   理由是 `store.applyAction` 的调用方（组件门面）刻意没有 try/catch，
- *   冒上去就等于回合卡死，而 `epics.md:1210` 逐字要求「不阻断回合流转」。
+ *   冒上去就等于回合卡死，而 `epics.md` 的 Story 1.15 逐字要求「不阻断回合流转」。
+ *   ⚠️📎 **1.15 的结论：catch 是「每条各自包」，不是「循环外包一层」** ——
+ *   理由与代价逐条写在 `runOne` 的 `case 'SAVE'` 注释里（AC-E4 裁决），
+ *   并在 `case 'SAVE'` 处留有指向。**别把它合并回循环外一层。**
+ *
+ * @param progress **1.15 新增的第 4 参**（裁决 4）。存档要写两样东西：
+ *   `currentGame` 来自 `next`（判据在纯函数里，已编进 `SAVE` effect），
+ *   而 `progress` 是 store 里的独立 ref，**不是** `(action, prev, next)` 能算出来的 ——
+ *   `advanceProgress` 住在 `store.ts` 且有「无增量返回入参本身」的性质。
+ *   ⚠️ 为什么不把它编进 `SAVE` effect：那会让 `runEffects` 不再是纯判据。
  */
-export function runEffectsFromStore(action: Action, prev: State, next: State): void {
+export function runEffectsFromStore(
+  action: Action,
+  prev: State,
+  next: State,
+  progress: Progress,
+): void {
   for (const effect of runEffects(action, prev, next)) {
-    runOne(effect)
+    runOne(effect, progress)
   }
 }
 
@@ -55,7 +70,7 @@ export function runEffectsFromStore(action: Action, prev: State, next: State): v
  * ⚠️ `try/catch` 只包住**真正的执行**（`playSfx`）。分支选择本身不会抛，
  *   包进去只是为了让 catch 变成一条永远走不到的代码路径。
  */
-function runOne(effect: Effect): void {
+function runOne(effect: Effect, progress: Progress): void {
   if (effect.kind === 'SFX') {
     try {
       playSfx(effect.cue)
@@ -80,7 +95,30 @@ function runOne(effect: Effect): void {
       // 📎 裁决 6：换题朗读走 `store.speakQuestion()` 门面，收口属 Story 1.16。
       return
     case 'SAVE':
-      // 📎 属 Story 1.15。本 story **不** import 尚不存在的 `services/save.ts`（AC-A4）。
+      // 📎 **Story 1.15 接上的**（AC-C3）。写盘判据在 `core/effects.ts` 里，
+      //   这里只负责执行 —— 与 SFX 那条路径同构。
+      //
+      // ⚠️🚨 **AC-E4 的裁决（本 story 的结论，不是 1.14 的「已评估」）** ——
+      //   1.14 段 defer 第 2 条逐字要求「1.15 接 `SAVE` 前应当重新评估这一层」。
+      //   **先纠正它的一处失实**：它写「外层为何仍值得留着」，好像那层 try/catch
+      //   一直存在 —— 实测 1.14 `[DS]` 交付的代码里**整条循环外没有 try/catch**
+      //   （M120 那个变异是**加**一层，加了之后 7 条守卫 0 红 ⇒ 它当时就是冗余的）。
+      //   ⇒ 「重新评估这层」的结论是：**它不存在，而 AC-E5 又要求写盘抛错不中断后续**。
+      //   两个选项：**① 在循环外加一层**（会把 `assertNeverEffect` 的抛重新兜住，
+      //   编译期穷尽性退化成一条 WARN —— 那正是 defer 逐字记下的代价）；
+      //   **② 把 catch 收窄到这一条**。**本 story 选 ②**：
+      //     · AC-E5 成立 —— 写盘抛错不影响回合，也不影响循环里的其他条目；
+      //     · AC-E4 的代价**不存在** —— `assertNeverEffect` 仍在任何 try 之外，
+      //       `Effect` 联合漏成员时**立刻炸**，可见性一步没减。
+      //   ⚠️ **别把它「简化」成循环外一层**：那会一次买回 defer 记的两条代价，
+      //     而 ① 换来的额外覆盖在当前代码里是 0 条（save.ts 自己 catch 全部异常）。
+      //   ⚠️ `writeSave` 正常路径**不抛**（它 catch 一切并返回 boolean，AC-B3/AC-B6），
+      //     所以这层 try 是**契约违约的兜底**，不是主兜底 —— 两者的职责别混淆。
+      try {
+        writeSave(progress, effect.currentGame)
+      } catch (err) {
+        console.warn(`[save] 写盘抛错（已跳过，不阻断回合）：${describe(err)}`)
+      }
       return
     default:
       assertNeverEffect(effect)

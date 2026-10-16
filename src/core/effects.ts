@@ -53,24 +53,26 @@ export type SfxCue =
   | 'level-failed'
 
 /**
- * 副作用的可辨识联合 —— **四个 `kind` 一次建全**（裁决 3）。
+ * 副作用的可辨识联合 —— **四个 `kind` 一次建全**（1.14 裁决 3）。
  *
- * ⚠️ 本 story **只产出 `SFX`**；另三个变体存在但永不产出。仍然要建全：
- *   联合新增成员而 `runEffects` 的返回类型不含它时，1.15 加 `SAVE`
- *   要改返回类型、store 接线跟着返工（裁决 3 逐字）。
+ * ⚠️ `SAVE` 变体在 **1.15** 里由 `{ readonly kind: 'SAVE' }` 扩为携带 `currentGame`
+ *   （1.15 裁决 4）。扩的理由：把「局末 `currentGame` 置 `null`」这条**判据**留在纯函数里 ——
+ *   不扩的话它就得落到 `app/effects-runner.ts`，而那正是 1.14 逐字划给
+ *   `runEffects` 的地盘（「判据全在 `core/effects.ts` 的 `runEffects` 里」）。
+ *   `State` 是本文件同层的纯数据类型，**不违 R-01**（那条禁的是浏览器 API 与 Vue 符号）。
  *
  * | 变体 | 归属 |
  * |---|---|
  * | `SFX` | **1.14** ✅ |
  * | `ANIMATION` | 1.13 裁决 2：画面走 class + CSS，不进 effects-runner |
- * | `TTS` | 换题朗读的收口前提在 1.16（裁决 6） |
- * | `SAVE` | 1.15 |
+ * | `TTS` | 换题朗读的收口前提在 1.16（1.14 裁决 6） |
+ * | `SAVE` | **1.15** ✅ |
  */
 export type Effect =
   | { readonly kind: 'SFX'; readonly cue: SfxCue }
   | { readonly kind: 'ANIMATION'; readonly name: string }
   | { readonly kind: 'TTS'; readonly text: string; readonly entryId: string }
-  | { readonly kind: 'SAVE' }
+  | { readonly kind: 'SAVE'; readonly currentGame: State | null }
 
 /**
  * 联合新增成员而本文件没跟上时的编译期兜底。
@@ -141,7 +143,34 @@ export function runEffects(action: Action, prev: State, next: State): readonly E
     effects.push(sfx('level-failed'))
   }
 
+  // ④ 存档 —— 1.15 接入。**排在胜负音效之后**：先判胜负再落盘（因果顺序）。
+  //
+  // ⚠️ **判据是 `next.phase.kind`，不是 `action.type`** —— 两条路径不等价：
+  //   `CONTINUE` 会把 `round-over` 推成 `awaiting-answer`（或 `level-complete`），
+  //   按 `action.type === 'RESOLVE_ROUND'` 判会漏掉「推进到下一题」那一步的落盘。
+  //
+  // ⚠️ **写盘点的 5 行表（1.15 裁决 6 / AC-C2）逐字如下，不要自己再推一遍**：
+  //   `awaiting-answer` ❌ —— 刚 CONTINUE 出来，与上一份 round-over 存档内容相同；
+  //   `awaiting-build`   ✅ —— AC 逐字要求「包括当前处于 awaiting-build 的局面」，
+  //                         只守 round-over 会让那句 AC 构造上不可达（AC-B6 同型假绿）；
+  //   `resolving`        ❌ —— 真实一帧，用户看不到也退不出；
+  //   `round-over`       ✅ —— 「每个回合结束」的主路径；
+  //   `level-failed`     ✅ —— 同样是结算出口，不写的话失败后退出重进会退回上一回合；
+  //   `level-complete`   ✅ —— 存 `null`（局末清空战场）。
+  if (next.phase.kind === 'level-complete') {
+    // ⚠️ **存 `null` 而不是那个已被清空的 state**：重进要回到该单元起点，
+    //   而不是 1.16 还没做的「通关画面」终态。
+    effects.push(save(null))
+  } else if (next.phase.kind === 'level-failed' || next.phase.kind === 'round-over' || next.phase.kind === 'awaiting-build') {
+    effects.push(save(next))
+  }
+
   return effects
+}
+
+/** 造一条 `SAVE` Effect。唯一入口 ⇒ 该变体的字段形态在全文件只有一处定义。 */
+function save(currentGame: State | null): Effect {
+  return { kind: 'SAVE', currentGame }
 }
 
 /**

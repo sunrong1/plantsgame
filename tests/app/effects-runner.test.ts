@@ -17,12 +17,20 @@
  * ⚠️ **「一次产出多条 cue」的两条用例合成 `(prev, next)` 而不跑真实战斗** ——
  *   真实战斗耦合 `ZOMBIE_HP` / 单回合伤害等数值，Story 3.2 会重调它们，
  *   届时这两条守卫会因**与音效无关**的原因变红。
+ *
+ * 📎 **Story 1.15 起本文件还装 `fakeStorage`**：`runEffectsFromStore` 的第 4 参
+ *   落盘、`enterLevel()` 读档，两条路径都会碰 `localStorage`。
+ *   不装的话 `readSave()` 会在 try 里撞上 ReferenceError、降级成 `'read'`，
+ *   `console.warn` 刷屏而**没有一条用例变红** —— 静默降级正是本 story 要防的东西，
+ *   守卫自己先漏那就太难看了（`localStorage` 用 `tests/fixtures/fake-storage.ts`，
+ *   R-37：全仓只有那一份）。
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { OptionId, Question, State } from '../../src/core'
+import type { OptionId, Progress, Question, State } from '../../src/core'
 import { playSfx, startBgmIfReady } from '../../src/services/audio'
+import { afterEachUninstall, installFakeStorage } from '../fixtures/fake-storage'
 
 vi.mock('../../src/services/audio', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../src/services/audio')>()
@@ -36,6 +44,14 @@ const core = await import('../../src/core')
 const { entriesOf } = await import('../../src/content')
 const { applyAction, enterLevel, state } = await import('../../src/app/store')
 const { runEffectsFromStore } = await import('../../src/app/effects-runner')
+
+/**
+ * 一份空进度，只用于喂 `runEffectsFromStore` 的第 4 参。
+ *
+ * ⚠️ **本文件不验落盘内容** —— 那是 `tests/services/save.test.ts` 的活。
+ *   这里只需要一个**结构合法**的值，让接线能跑通。
+ */
+const stubProgress: Progress = { currentUnitIndex: 0, masteredWordIds: [] }
 
 /** 一份结构合法的 state（`deck` 用真实内容，保证 `nextQuestion` 能选出题）。 */
 function freshState() {
@@ -59,8 +75,11 @@ function multiCuePair(): { prev: State; next: State } {
 beforeEach(() => {
   playMock.mockReset()
   bgmMock.mockReset()
+  installFakeStorage()
   state.value = freshState()
 })
+
+afterEachUninstall()
 
 /** 初始相位上的当前题；不是 `awaiting-answer` 就直接判失败。 */
 function currentQuestion(): Question {
@@ -117,7 +136,7 @@ describe('AC-E1 —— effects-runner 按 runEffects 的顺序逐条执行', () 
       .map((e) => e.cue)
     expect(expected.length, '构造的 prev/next 对必须真能产出多条 cue，否则本用例空转').toBeGreaterThan(1)
 
-    runEffectsFromStore({ type: 'CONTINUE' }, prev, next)
+    runEffectsFromStore({ type: 'CONTINUE' }, prev, next, stubProgress)
 
     expect(playMock.mock.calls.map((c) => c[0])).toEqual(expected)
   })
@@ -138,7 +157,10 @@ describe('AC-E4 / G69 —— 单条抛错不阻断后续条目，且绝不冒到
       throw new Error('解码器内部异常')
     })
 
-    expect(() => runEffectsFromStore({ type: 'CONTINUE' }, prev, next), '抛错不得冒到调用方').not.toThrow()
+    expect(
+      () => runEffectsFromStore({ type: 'CONTINUE' }, prev, next, stubProgress),
+      '抛错不得冒到调用方',
+    ).not.toThrow()
     expect(playMock.mock.calls.map((c) => c[0]), '前一条炸了，后一条仍必须被播').toEqual(expected)
     // ⚠️ AC-E4 的**另一半**：必须记 `[audio] WARN`。
     //   这条断言是变异 **M119**（把 catch 写成空块、吞掉不记日志）逼出来的 ——

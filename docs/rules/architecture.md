@@ -48,7 +48,12 @@
 
 **依据** `[GA]` 定案：副作用散落会导致同一事件在多个组件路径下被播多次，且无法集中降级。
 
-**守卫** ⚠️ **无守卫 —— 该文件尚不存在**（属 Story 1.14）。`tests/core/reducer.test.ts` 里只有注释级断言。落地时必须同时建守卫，否则这条规则只是文字。
+**守卫** ⚠️ **部分** —— 音频那一半已落守卫，**TTS 那一半还没有**（TTS 属 Story 1.16）。
+
+- **G60**（`tests/scaffold/effects-boundary.test.ts`）：组件与视图里不出现播放函数名。
+- **G70**（同文件）：组件与视图不 import `services/audio` 的播放函数。含一条**真跑 `Linter.verify`** 的反向验证 —— 「规则没触发」与「文件没解析」长得一模一样，只看规则对象会假绿。
+- **G61**：`runEffectsFromStore` 的调用行号必须**小于** `state.value = next`（AC-E2）。
+- **G86**（Story 1.15 补，R-04 的**存档**那一半）：逐个**调用点**判定 —— `writeSave` 只许在 `src/app/effects-runner.ts`、`readSave` 只许在 `src/app/store.ts`、`clearSave` 今天必须**零**调用点（1.17 才用）。变异 M100（在 `store.ts` 里插一处 `clearSave()`）→ **1 红**，消息直接点名文件与函数。⚠️ 刻意**按调用点判而不是按文件判**：按文件判就得把 `services/save.ts` 硬编码进例外名单，名单一长，守卫就开始靠自觉活着。
 
 **首现** Story 1-1
 
@@ -72,7 +77,9 @@
 
 **依据** 混在一起会在局末丢掉「21/60」—— 对局结束时整份存档被清，进度跟着一起没了。
 
-**守卫** ⚠️ **无守卫 —— `src/services/save.ts` 尚不存在**（属 Story 1.15）。落地时必须同建。
+**守卫** ✅ **G78** —— `tests/services/save.test.ts`（「局末写盘后 `currentGame === null` 且 `progress` 逐字不变」，按 `JSON.stringify` 比对而**不是** `toMatchObject`，让「少一个键」照样红的宽松断言无处藏）。另有 **G74**（`writeSave` 原样搬运两个键）与 `tests/app/save-integration.test.ts`（`store → runner` 那一段的**接线**，见下方「实测」）。
+
+⚠️ **这段接线差点全绿地漏掉**（2026-10-17 实测）：把 `effects-runner.ts` 的实参换成一份空的 progress，**1460 条测试 0 红** —— G78 守的是 `writeSave` 的**契约**，够不着**调用方传了谁**。补 `save-integration.test.ts` 后同一变异 **3 红**；`applyAction` 那一处同样 0 红过 1464 条，补测试后 **2 红**。⇒ 判据只钉在纯函数上时，跨模块传错对象是本仓库最贵的一种漏网。
 
 **首现** Story 1-1
 
@@ -170,6 +177,8 @@
 
 **依据** 逐帧日志会拖垮低端平板的性能，而这类问题在开发机上看不出来。
 
-**守卫** ⚠️ **无守卫**
+**守卫** ⚠️ **部分** —— `tests/scaffold/save-boundary.test.ts`（R-14 补卫）守住最硬的一半：`src/core/**` 逐文件**零 `console.`** 出现（`readdirSync` 扫整层，不是只看某几个文件；匹配前先 `stripComments`，否则注释里的 `console` 字样会误报）。
+
+⚠️ **`services/` 与 `app/` 的那部分无守卫** —— R-14 允许那里「带模块前缀且不在逐帧路径」，判据（「前缀合规」+「不在逐帧」）放不进「零出现」这一条。`src/services/save.ts` 的四条日志目前是**人肉守**的：`tests/services/save.test.ts` 的 **G85** 逐字断言 INFO 与四条 WARN 都以 `[save]` 开头（变异 M98 改前缀 → **3 红**），但那是**存档这一个模块**的判据，不覆盖 R-14 全域。
 
 **首现** Story 1.4

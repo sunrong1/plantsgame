@@ -203,7 +203,32 @@ describe('AC-C5 / G62 —— 一次 RESOLVE_ROUND 可同时产出三个 cue，�
   it('G62：输出是数组且有序（不是 Set / Object.keys 的产物）', () => {
     const effects = tripleCueDispatch().effects
     expect(Array.isArray(effects), 'runEffects 返回数组 —— 返回顺序即播放顺序').toBe(true)
-    expect(effects.every((e) => e.kind === 'SFX'), '本 story 只产 SFX').toBe(true)
+    // ⚠️ `[DS]` 2026-10-17 —— **Story 1.15 改了这条判据，不是把它放宽**（R-57）。
+    //
+    // 原文逐字是 `effects.every((e) => e.kind === 'SFX')`，失败消息「本 story 只产 SFX」。
+    // 那是一条 **1.14 的范围断言**（「这个 story 只实现 SFX，另三个变体显式落到不执行的分支」），
+    // 而 1.15 合法接入了 `SAVE` ⇒ 它今天必然红。
+    //
+    // ⇒ 改成**精确的 kind 序列**，比原文**更强**：原文只说「全是 SFX」，
+    //   这条说的是「恰好是三个 SFX，第四个恰好是 SAVE，且 SAVE 排在胜负判定之后」。
+    //   放宽的写法（`e.kind === 'SFX' || e.kind === 'SAVE'`）会让「多产一条 SAVE」
+    //   照绿 —— 那正是本仓库吃过三次亏的形状。
+    expect(
+      effects.map((e) => e.kind),
+      '一次 RESOLVE_ROUND 的 kind 序列必须是 SFX×3 + SAVE，且 SAVE 排在最后（1.15 裁决 4 / AC-C1）',
+    ).toEqual(['SFX', 'SFX', 'SFX', 'SAVE'])
+  })
+
+  it('G62：SAVE 排在 level-complete 之后 —— 先判胜负再落盘', () => {
+    const effects = tripleCueDispatch().effects
+    const saveIndex = effects.findIndex((e) => e.kind === 'SAVE')
+    const completeIndex = effects.findIndex(
+      (e) => e.kind === 'SFX' && e.cue === 'level-complete',
+    )
+    expect(saveIndex, '这次结算没产出 SAVE —— 1.15 AC-C2 说 round-over 是写盘点').toBeGreaterThan(-1)
+    expect(saveIndex, 'SAVE 必须排在 level-complete 之后（因果顺序，不是字典序）').toBeGreaterThan(
+      completeIndex,
+    )
   })
 })
 

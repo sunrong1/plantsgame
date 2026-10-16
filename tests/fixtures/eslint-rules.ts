@@ -105,6 +105,10 @@ export const PROBE_FILES = [
   'src/app/audio-unlock.ts',
   'src/app/effects-runner.ts',
   'src/content/schema.ts',
+  // 📎 Story 1.15：存档服务。进探针是为了让 G83 能问
+  // 「core/ 与 content/ 的 localStorage 禁令有没有外溢到 save.ts」——
+  // 这个问题只有把 save.ts 放进探针表才问得出来。
+  'src/services/save.ts',
 ] as const
 
 /**

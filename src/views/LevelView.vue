@@ -17,8 +17,11 @@
  *   而 AC-16 要求「战场在浏览器里肉眼可见」。
  * · **不做词图加载** —— 属 1.11 / 1.18。**由 `<QuestionCard />` 消费**
  *   （1.11 把 30 张词图第一次接进运行时通路），本视图不碰任何 URL。
- * · **不建选关入口**（`UnitSelectView`）—— GDD 无选关自由，1.15 也不得建
- *   （`[GA]:770-782` 专门有纠错说明）。
+ * · **不建选关入口**（`UnitSelectView`）—— GDD 无选关自由（`[GA]:770-782` 专门有
+ *   纠错说明）⇒ **任何 story 都不得建**，除非先改 GDD。
+ *   ⚠️📎 原写「1.15 也不得建」，那一句已按 R-32 更正（2026-10-17）：
+ *   `epics.md` 的 AC 正文里 1.15 根本没有选关这项任务，写成「1.15 也不得建」
+ *   会让人以为 1.15 曾经有权建、只是被否决了。
  *
  * ── 关于「战场状态不得寄存在组件本地」（1.16 的前置要求）─────────────────
  *   本视图与 `BattleField` **都不持有战场状态** —— 一切都从 `app/store` 的
@@ -61,8 +64,34 @@ import { state } from '../app/store'
  *
  * ⚠️ 用 `computed` 而不是模板里直接调：模板每次重渲染都会重新求值，
  *   而 `entriesOf` 会走一次查表。它是纯的，但没必要每次都算。
+ *
+ * 📎 **Story 1.15 / AC-D3：这一行现在会吞掉「取不到单元」并退化成 `0`。**
+ *   为什么必须吞：`entriesOf` 取不到单元是**抛错**（内容层的刻意设计，
+ *   不是返回 `undefined`）。今天 `state.unitNumber` 恒为 1，所以抛不出来；
+ *   **1.15 既然按存档还原 `State`，`unitNumber` 就来自磁盘** ⇒ 内容回滚、
+ *   或存档来自另一个内容版本时，这个 `computed` 会在**渲染期**抛，
+ *   而 Vue 会让整个 `LevelView` 渲染失败 —— 整页白屏，正撞
+ *   架构 `:563` 的压倒性原则「孩子面前永不出现技术错误」。
+ *   ⇒ 退化成 `0` 是**有定义的**：`core/hud.ts` 的 `progressDisplay`
+ *     已为 `unitTotal === 0` 定义 `ratio = 0` ⇒ 进度条显示空条，不崩。
+ *   ⚠️ **别把 try/catch 删掉「因为现在抛不出来」** —— 那正是它今天抛不出来的原因。
+ *   ⚠️ **真错误不留在这里**：开局路径 `store.ts` 的 `initialState()` 已经有
+ *     try/catch 与人话提示（并且 `runEffects`/进度都是二选一，本文件不参与）。
+ *     本 catch 只是让**渲染期**不再成为第一个撞上它的地方。
  */
-const unitTotal = computed(() => entriesOf(state.value.unitNumber).length)
+const unitTotal = computed(() => {
+  try {
+    return entriesOf(state.value.unitNumber).length
+  } catch (err) {
+    // 不 alert、不弹窗：只让分母退回 0，让 HUD 画空条。
+    // 真正的原因已经由 `store.initialState()` / `readSave()` 各自记过 WARN 了。
+    console.warn(
+      `[hud] 取不到单元 ${state.value.unitNumber} 的词表，进度条分母退回 0：` +
+        `${err instanceof Error ? err.message : String(err)}`,
+    )
+    return 0
+  }
+})
 </script>
 
 <template>
