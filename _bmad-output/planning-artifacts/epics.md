@@ -1,6 +1,20 @@
 ---
 stepsCompleted: [1, 2, 3, 4]
 status: complete
+revision: 2
+revisionNote: |
+  rev 2 —— [DS] Story 1.17 的**事实更正**（**不改任何设计决定**）。只更正 Story 1.17 AC 的
+  「降级标志来源」口径：原文逐字是「消费 Story 1.11 / 1.13 / 1.14 各自暴露的降级标志」，
+  而实测 —— ① **1.11（三种卡型）与 1.13（HUD）没有可降级的东西**：词图 / 塔图 / 僵尸图
+  在 1.17 之前**全仓零可查询标志**，只有组件内的 `failed` ref 加一条 `[content]` WARN；
+  ② 存档的 `saveDegradations()` 由 **1.15**（存档与断点续学）交付，不是 1.13；
+  ③ 音频的 `audioDegradations()` 由 **1.14** 交付 —— 这一条原文是对的。
+  ⇒ 词图那一路由 **1.17 自己**新建 `src/services/asset-degradations.ts`（Story 1.17 裁决 10）。
+  **为什么由 `[DS]` 改**（R-33 的三个条件全满足）：① 被描述的行为**已交付且有守卫钉住**
+  （G114–G117 + AC-E1..E6 共 24 条用例）；② **另一侧没有选择** —— 1.11 / 1.13 的 story 文档
+  已归档，R-40 禁止 `[DS]` 回改，而「让实现去迁就文档」等于凭空给它们造一个降级面；
+  ③ 本 note 即「升 revision + 追加」，并已同步 `deferred-work.md`。
+  ⚠️ 本 note 引用原文句子而非行号（R-31：行号随 revision 漂移）。
 inputDocuments:
   - '_bmad-output/planning-artifacts/gdds/gdd-plants-game-2026-10-11/gdd.md'
   - '_bmad-output/planning-artifacts/game-architecture.md'
@@ -1358,7 +1372,10 @@ So that 我不用猜，也不需要向谁描述半天。
 
 **Given** 某个子系统正在静默降级（词图加载失败 / 音频资源缺失 / 存档写入失败）
 **When** 打开调试面板
-**Then** 一次性列出所有正在生效的降级项及其原因 —— 消费 Story 1.11 / 1.13 / 1.14 各自暴露的降级标志
+**Then** 一次性列出所有正在生效的降级项及其原因 —— 📎 **（rev 2 事实更正）** 消费的三个来源是
+**本 story 自建的词图 registry**（`assetDegradations`，rev 2 前 1.11 / 1.13 零可查询标志）、
+**1.14 的音频**（`audioDegradations`）与 **1.15 的存档**（`saveDegradations`）——
+原文写的「Story 1.11 / 1.13 / 1.14」把 1.13 误当成了存档那一路，见文件头 `revisionNote`
 **And** 存档降级项提供「重试写入」按钮
 **And** 该面板是**唯一**展示这些状态的地方 —— **对局画面上不得出现任何降级提示**（NFR13）
 
@@ -1369,7 +1386,9 @@ So that 我不用猜，也不需要向谁描述半天。
 **And** `DEBUG` 级日志经 `import.meta.env.DEV` 门控，生产构建中不输出
 **And** 禁止在渲染路径打日志
 
-**📎 覆盖：** AR19、AR39–AR42、NFR12、**NFR13**、NFR14、NFR22（降级标志消费者：Story 1.11 / 1.13 / 1.14）
+**📎 覆盖：** AR19、AR39–AR42、NFR12、**NFR13**、NFR14、NFR22（📎 rev 2 更正：降级标志的**生产方**是
+**本 story 自建的词图 registry** + 1.14（音频）+ 1.15（存档），不是原文写的 1.11 / 1.13 / 1.14；
+本 story 是它们的**消费者**）
 
 ---
 
