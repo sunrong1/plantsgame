@@ -207,6 +207,35 @@ describe('createUnitCompletedState —— 切片为空时的「已学完」形�
     expect(() => reduce(s, answer('c-e0-ok'))).toThrow(/本局已通关/)
   })
 
+  // 📎📎 **`[CR]` 2026-10-18 加的反向断言 —— 空题单 + 重打是本 story 造出的新组合。**
+  //   `createUnitCompletedState` 的 `deck: []` 与 `RESTART_LEVEL` 的
+  //   `createInitialState({ deck: state.deck })` 是一对**互斥**的东西：
+  //   后者对空题单**抛错**（「题单不能为空」）。今天不相撞**只因为**一道相位门 ——
+  //   `reduce` 在 `level-complete` 下先 `rejectAction`。
+  // ⚠️ 那道门是**唯一**的护栏，而它挂在相位上而不是挂在「空题单」上：
+  //   1.18 的 `devAdjust` 已经干过一次「连带改相位」的事（`dev-adjust.ts`），
+  //   所以「不可达」不等于「安全」。
+  // ⇒ 三条断言把「不可达」和「不可达的理由」都钉住。
+  it('空题单终态 + 重打 ⇒ 抛错，且抛的是「本局已通关」而不是「题单不能为空」', () => {
+    const s = createUnitCompletedState(1)
+    expect(s.deck, '夹具前提：这个终态必须是空题单').toEqual([])
+    expect(() => reduce(s, restartLevel())).toThrow(/本局已通关/)
+    // ⚠️ 关键的反向断言：出错原因必须是**相位门**，不是空题单那条抛错。
+    //   若是后者，就说明有人绕过/改动了相位门 —— 那正是要防的形态。
+    expect(() => reduce(s, restartLevel())).not.toThrow(/题单不能为空/)
+  })
+
+  it('「不可达」的理由是相位门，不是空题单这条不变量（把相位摘掉就会撞）', () => {
+    // 这条不是测现状，是**把护栏的边界画出来**：若相位门哪天失效，
+    // 撞上的是「题单不能为空」—— 一个孩子面前的技术错误（NFR13 要消灭的东西）。
+    const s: State = { ...createUnitCompletedState(1), phase: { kind: 'level-failed' } }
+    expect(
+      () => reduce(s, restartLevel()),
+      '空题单 + level-failed 竟然没抛 —— createInitialState 的空题单守卫被改坏了，' +
+        '那么真实路径上那道相位门就是唯一护栏，而它一失效就是孩子面前的技术错误',
+    ).toThrow(/题单不能为空/)
+  })
+
   it('存档往返后仍是终态（AC-B6：断点续学不能把「已学完」变回一局）', () => {
     const roundTripped = JSON.parse(JSON.stringify(createUnitCompletedState(3)))
     expect(roundTripped.phase.kind).toBe('level-complete')

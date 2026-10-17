@@ -210,7 +210,11 @@ describe('G162 —— 「全量词表直接当题单」在 src/ 归零（Story 1
     for (const [path, source] of SRC) {
       if (/createInitialState\(\s*\{[^}]*deck:\s*entriesOf\(/.test(source)) offenders.push(path)
     }
-    expect(offenders).toEqual([])
+    expect(
+      offenders,
+      '「全量词表直接当题单」的邻接形态：`createInitialState({ …, deck: entriesOf(n) })` —— ' +
+        '换了字段顺序或抽成变量就绕过去了，而一局 = 整个单元正是 AC-B3 要消灭的那一版',
+    ).toEqual([])
   })
 
   it('判据自测：上面两条正则真的能命中原始写法（R-53）', () => {
@@ -285,12 +289,66 @@ describe('G164 —— 进度分母仍是 37，不许改成 10 或 60 去凑 AC�
     ).not.toMatch(/unitTotal\s*=\s*[^;]*QUESTIONS_PER_LEVEL/)
   })
 
+  // 📎📎 **`[CR]` 2026-10-18：前两条判据都拦不住「等比缩放」形态 —— 本条补上。**
+  //   首版的两条是「`not.toMatch(/unitTotal\s*=\s*\d+/)`」+「`toMatch(/entriesOf\([^)]*\)\.length/)`」，
+  //   而 `const unitTotal = entriesOf(1).length * 1.62` **两条全绿**：
+  //   它不是字面量数字（第一条绿），而它确实以 `entriesOf(...).length` 开头（第二条绿）。
+  //   症状是进度条显示「第 1 单元 · 7/59」—— 分母既不是 37 也不是 10，
+  //   **而没有任何东西指向原因**（AC 逐字：AC 示例里的 60 从来不是分母）。
+  // ⚠️ 变异 M172′ 只试了 `return 60`，**只响了「不许写死数字」那一条** ⇒ 缺口比记录的还宽一档。
+  // ⇒ 改成逐条检查 `unitTotal` 的 computed 里**每一个 `return` 表达式**：
+  //   非 `0` 的那些必须**逐字等于** `entriesOf(...).length`，多一个运算符都算违规。
+  it('分母的每一个 return 都必须逐字是 `entriesOf(...).length`（等比缩放也不许）', () => {
+    const computedBody =
+      /unitTotal\s*=\s*computed\(\s*\(\)\s*=>\s*\{([\s\S]*?)\n\}\)/.exec(levelViewSource)?.[1]
+    expect(
+      computedBody,
+      'src/views/LevelView.vue 里找不到 `unitTotal` 的 computed —— 判据范围消失',
+    ).toBeDefined()
+    if (computedBody === undefined) return
+
+    /** 唯一合法的分母表达式（包一层括号也算，那是纯格式化）。 */
+    const exact = /^\(?entriesOf\([^)]*\)\.length\)?$/
+    /** catch 分支的降级值：分母退回 0，HUD 画空条 —— 这是**刻意**允许的字面量。 */
+    const ALLOWED_DEGRADE = '0'
+
+    const offenders: string[] = []
+    for (const [, expr] of computedBody.matchAll(/return\s+([^;\n]+)/g)) {
+      const trimmed = expr.trim()
+      if (trimmed === ALLOWED_DEGRADE || exact.test(trimmed)) continue
+      offenders.push(trimmed)
+    }
+    expect(
+      offenders,
+      '分母表达式必须逐字是 `entriesOf(unitNumber).length` —— 等比缩放（`… .length * 1.62`）、' +
+        '加减常量、换成题数或别的常量都算违规。症状是进度条显示一个既不是 37 也不是 10 的数，' +
+        '而 AC 逐字写着「AC 的示例值 60 从来不是分母」（裁决 3）',
+    ).toEqual([])
+  })
+
   it('判据自测：unitTotal 写成字面量时上面两条都会命中（R-53）', () => {
     expect('const unitTotal = 60').toMatch(/unitTotal\s*=\s*\d+/)
     expect('const unitTotal = QUESTIONS_PER_LEVEL').toMatch(
       /unitTotal\s*=\s*[^;]*QUESTIONS_PER_LEVEL/,
     )
     expect('const unitTotal = entriesOf(1).length').not.toMatch(/unitTotal\s*=\s*\d+/)
+  })
+
+  // 📎 同上：等比缩放那条判据的**反向自测**（R-53）—— 不自测就不知道它咬不咬得住。
+  it('判据自测：等比缩放形态会被上面那条抓住，而正确写法与降级值不会（R-53）', () => {
+    const judgement = (body: string): string[] => {
+      const exact = /^\(?entriesOf\([^)]*\)\.length\)?$/
+      return [...body.matchAll(/return\s+([^;\n]+)/g)]
+        .map(([, expr]) => expr.trim())
+        .filter((e) => e !== '0' && !exact.test(e))
+    }
+    expect(
+      judgement('  return entriesOf(1).length * 1.62'),
+      '判据抓不住等比缩放 —— 这条守卫是装饰（守卫是弱守卫，不是没有守卫）',
+    ).toEqual(['entriesOf(1).length * 1.62'])
+    expect(judgement('  return entriesOf(n).length - 3')).toEqual(['entriesOf(n).length - 3'])
+    // 而真实源码与降级分支都不该命中。
+    expect(judgement('  return entriesOf(state.value.unitNumber).length\n  …\n  return 0')).toEqual([])
   })
 })
 

@@ -1846,3 +1846,94 @@ M101–M110 共 25 红无 0 红），**无一条守卫假绿**。以下 8 条真
   则本 bug 不是唯一原因，**继续查「平板上有没有声音 / 孩子能否把听到的词对上图」**。
 - ⚠️ 与 D1–D8 一并处理即可（同一趟真机试玩）。
 - — `_bmad-output/implementation-artifacts/1-19-单元-1-首次试玩验证-epic-1-的生死线.md`
+
+---
+
+## Deferred from: code review of 1-19-单元-1-首次试玩验证-epic-1-的生死线 `[CR]` (2026-10-18)
+
+> 三层对抗评审（Blind Hunter / Edge Case Hunter / Acceptance Auditor）+ 主评审逐条回代码核验后剩 12 条。
+> 范围：`cd49c67..521770c` 的代码部分。**这 12 条全部是「真实存在但不由本次改动引入」或「落在本次改动之外」的**，
+> 不阻塞 1.19 转 done，但每一条都注明了它会在什么时候变成真的。
+
+### 1. 存档对局不合法 ⇒ 跨局进度被清零，而 1.19 之后清零直接决定「下一局考哪 10 个词」
+
+- `src/app/store.ts:374`：`restoreFromSave` 的 catch 分支把 `progress` 重置成 `{ currentUnitIndex: 0, masteredWordIds: [] }`。
+- 这段是 1.16 AC-D4 的既有降级路径，本 story 没动它。
+- ⚠️ **1.19 放大了影响面**：`masteredWordIds` 现在是题单切片的唯一输入（裁决 2），清零的代价从「进度条上一个数字」变成「下一局考哪 10 个词」。
+- 该分支既无测试，也只留一条 `console.warn`。孩子侧看到的是「我学过的东西全没了」。
+- **恢复条件** 存档降级路径重做时（与 M2 一并看）。
+
+### 2. `masteredWordIds` 里混进一个非字符串 ⇒ 整份进度归零，且同一个失败信号有两种结局
+
+- `src/app/store.ts:336`：`readSave()` 返回 null 时 `restoreFromSave` 直接 return，而 `progress` 此时还是模块初值。
+- `parseSaveFile` 的结构校验对 `masteredWordIds` 是全有或全无 —— 一个坏元素 ⇒ 整份判失败。
+- 🔥 **同一个失败信号现在有两种画面**：恰好覆盖整个单元 ⇒ 孩子看到「已学完」通关卡；不覆盖 ⇒ 回到第 1 局从头学。语义不一致。
+- **恢复条件** 同第 1 条。
+
+### 3. 损坏存档（`currentUnitIndex` 越界）下 AC-B6 的终态不可达
+
+- `src/app/store.ts:410` 的 `restoreNextUnit` 先问「下一个单元录了没有」，不通就 `return` ⇒ 永远走不到 `buildStateFor`。
+- 结果：HUD 显示「第 1 单元 · 37/37」的同时仍在考那 10 个词，`gained` 恒空 ⇒ 打完再进还是同一局。
+- 正常路径（`currentUnitIndex: 0`）**不受影响**；改前这条路径留下一份 37 题的题单，同样错。**非 1.19 引入的回归。**
+- **恢复条件** 存档损坏的降级语义统一时（AC-D4 组）。
+
+### 4. AC-B4 / AC-B8 的表述只在「每局全对通关」这一条路径上成立
+
+- 测试里 `playOneRoundWith(mastered)` 直接把 `masteredWordIds` seed 进存档，全仓没有一个测试走过「玩一局 → 进度推进 → 下一局切题单」的真实链路。
+- 失败路径的实际行为：`core/effects.ts` 在 `level-failed ✅` 时存下那份**含原题单**的 state ⇒ `restoreFromSave` 的 `currentGame !== null` 分支不经过 `buildStateFor` ⇒ 重进/重打**仍是同样那 10 条**。
+- 这是 AC-B5「重打不重切」的直接后果、**符合设计**，但 AC-B4「10/10/10/7」与 AC-B8「第 2 局与第 1 局零交集」都是无条件表述。
+- **恢复条件** 真机试玩前先把这两条 AC 的前提（「每局全对」）写进 AC 正文；否则家长会把符合设计的行为读成 bug。
+
+### 5. `sliceDeckForLevel` 返回内容层的同一批 `DeckEntry` 对象引用
+
+- 纯度注释保证的是「不改动传入的两个参数」，实现上 `filter` + `slice` 换了数组、**元素仍是共享引用**；两条测试也只证明了数组层。
+- 任何对 `DeckEntry` 的就地写会同时改到内容层那一份，且 `toEqual` 类断言仍全绿。
+- **恢复条件** 首次出现「给卡打标记」类需求时。
+
+### 6. `masteredWordIds` 是全局的，切片却是按单元做的
+
+- `sliceDeckForLevel(entriesOf(unitNumber), progress.value.masteredWordIds)` 只处理了「含**词表之外**的 id」这一种存档残留，没处理「**词表之内、但属于别的单元**的 id」。
+- Story 2.5 录入单元 2 且它复用了单元 1 的复习词（同一 `entryId`）时，进单元 2 直接得「已学完」终态、一次都玩不了，且没有任何东西提示原因。
+- **恢复条件** **Story 2.5 录入单元 2 之前**（与裁决 5 那条同批处理）。
+
+### 7. G160 / G161 挡不住第二份「题数」实现
+
+- G160 只查切片上界的**字面量** `10`（`slice(\s*0\s*,\s*10\s*)`）且豁免整个 `src/core/deck-slice.ts`；G161 的 `LAYER_PREFIXES` 不含 `src/core/`。
+- 第二份实现写成 `.slice(0, LEVEL_QUESTIONS)` 且住在 `src/core/other.ts` ⇒ 两条守卫全绿、两份判据分叉。
+- **恢复条件** 切片判据需要第二次落点时（那时应该改成 G161 扫 core + 追常量引用，而不是加字面量）。
+
+### 8. G163 / G165 的判据范围靠 `indexOf('\n}\n', start)` 切函数体
+
+- `tests/guards/deck-slice-boundaries.test.ts:242/303/317`。缩进风格一变（顶格 `}`）判据范围静默截断，守卫不会红而它守的那行已不在扫描范围内。
+- 同文件 G161 用的是文件级判据，两处口径不一致。今天对现有格式正确。
+- **恢复条件** 给守卫补一个「判据范围」自测夹具时。
+
+### 9. 宽屏分栏没有宽度下界
+
+- `src/styles/responsive.css:163` 的 `grid-template-columns: minmax(0, 1fr) 25rem`，左栏可一路缩到 0；断点只有 `min-aspect-ratio: 1/1`。
+- 窄横屏（如 568×320）右栏吃掉 400px、格子边长 ≈ 33px，远低于 `--touch-min` 的 48px —— 与该文件注释自己判「不可接受」的是同一种失败。
+- 目标机型（2000×2560 / 1200×1920）横屏均为 1920+ 宽，**不落在区间内**。
+- **恢复条件** 支持矩阵扩到窄横屏（或出手机版）时。
+
+### 10. 战场行轨不足时溢出手牌行
+
+- `grid-template-rows: ... minmax(0, 1fr) ...` + `.battle-grid` 只有 `align-self: start`：战场高度由**列宽**经 `aspect-ratio: 9/5` 推出（1280 宽 ⇒ 左栏 880px ⇒ 约 489px），轨道不随内容涨。
+- 1280×660 一类视口下第 3 行可用高度不足 ⇒ 战场向下溢出、盖住第 4 行的手牌区，孩子点不到卡。`overflow-y: auto` 救不了「轨道不重排」。
+- 注释声称「1280×800 及以上实测不产生滚动」，该阈值以下无覆盖。
+- **恢复条件** 横屏布局打磨时（与「战场偏上」那条一并看）。
+
+### 11. 全部跳过时 `nextQuestion` 返回 null ⇒ 技术错误抛给孩子
+
+- `src/core/reducer.ts` 的 `CONTINUE` 分支：`next === null` 走 `rejectAction` **抛错**。
+- 1.18 的隐含假设是一局 37 题（需连续 37 次词图 404 才触发），切片后只需 10 次。
+- 另一侧：`skippedEntryIds` 局末随 `currentGame: null` 蒸发 ⇒ 一个每次都跳的孩子 `masteredWordIds` 恒空 ⇒ 空切片永不发生、永远卡在第 1 局的同一批 10 个词上，AC-B6 的终态也到不了。
+- **恢复条件** 词图 404 率被真机验证之前；若真出现连续 404，先降级成「跳过全部 ⇒ 通关」而不是抛错。
+
+### 12. 空题单终态下 `assertDeckRelations` 四条不变量全部真空成立
+
+- `createUnitCompletedState` 把 `unlocked` / `masteredEntryIds` / `skippedEntryIds` 三套账都初始化为空 ⇒ 四条不变量对 `deck: []` 结构性成立，不提供任何约束。
+- 「终态的 deck 必须是 `[]`」目前只有 `tests/app/store-deck-slice.test.ts` 一条 `expect(done.deck).toEqual([])` 守着；`tests/core/deck-slice.test.ts` 的「与 CONTINUE 终态同形」只比 phase/towers/grid/zombies、不比 deck。
+- ⚠️ 典型失效：有人为「让进度条有分母」把终态的 `deck` 填成 `entriesOf(unitNumber)` ⇒ G165 绿、`assertInvariants` 绿、同形断言也绿。
+- **恢复条件** 本 story 的 patch 项落地时补齐（本条与 patch 组第 5 条是同一处，一起改）。
+
+- — `_bmad-output/implementation-artifacts/1-19-单元-1-首次试玩验证-epic-1-的生死线.md`

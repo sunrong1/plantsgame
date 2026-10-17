@@ -44,7 +44,10 @@
 #   epics.md 的销项说明处理。
 
 generated: 2026-10-12
-last_updated: 2026-10-17  # 1-19 [DS] 第二轮 —— 横屏分栏落地（G166-169 / M176-181），Task 3 + 6.11 真机未跑 ⇒ 留 in-progress
+last_updated: 2026-10-18  # 1-19 [CR] 完成 —— 三层对抗评审：34 条 → 19 条（1 裁决 + 6 patch + 12 defer），
+                        #   6 条 patch 全落地并做变异验证 M182-M184；AC-D3 口径经用户裁决改为「按回合数」；
+                        #   Task 3 + 6.11 真机未跑 ⇒ 仍留 in-progress
+                        # 1-19 [DS] 第二轮 —— 横屏分栏落地（G166-169 / M176-181），Task 3 + 6.11 真机未跑 ⇒ 留 in-progress
                         # 1-19 [CS] 完成 —— 「一局 = 10 题」落成实现 + 真机试玩 ⇒ ready-for-dev
                         # 运行记录见 story 文档的 Dev Agent Record（R-42：本文件只留指针）
                         # 1-18 [DS] 开工 —— 13 条裁决（G120 起 / M143 起）

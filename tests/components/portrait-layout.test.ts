@@ -765,11 +765,17 @@ describe('G166 —— 宽屏分栏块存在且是左右两栏（Story 1.19 / AC-
 
   it('`.level-view` 在宽屏下真的切成了 grid（且带 !important，见 G166 的头注释）', () => {
     const rule = ruleBodyFor(landscapeBlock(responsive), '.level-view')
+    // 📎📎 **`[CR]` 2026-10-18：这里原来写的是 `not.toBeNull()`，而那是一条恒真的空断言** ——
+    //   `ruleBodyFor` 的返回类型是 `string`，找不到规则时返回 `''`（见它的实现），
+    //   **永远不会返回 `null`** ⇒ 删掉整条 `.level-view` 规则它照样绿。
+    //   真正拦下的是下面那句 `toMatch(LANDSCAPE_DISPLAY)`，但留着 `not.toBeNull()`
+    //   会让人以为「规则存在」这件事已被**独立**验证过一次（R-51：断言不许允许它要防的违规）。
+    // ⇒ 改成对 `''` 的显式判空，让「规则被删」与「规则存在但没切 grid」两种失败各有各的报错。
     expect(
       rule,
       '宽屏块里没有 `.level-view` 的规则 —— 战场与题面仍在同一条纵向流里，' +
         '横屏下题卡必然被推出视口',
-    ).not.toBeNull()
+    ).not.toBe('')
     expect(rule, '.level-view 在宽屏下没有切 grid ⇒ 左右分栏根本没发生').toMatch(
       LANDSCAPE_DISPLAY,
     )
@@ -958,6 +964,35 @@ describe('G168 —— 宽屏下每个面板都被排了版（Story 1.19 / AC-H1�
       '`.level-outcome` 不再是绝对定位 —— 它参与了正常流，' +
         '于是 G168 上一条对它的豁免就变成了一条真实的漏排',
     ).toMatch(/position:\s*absolute/)
+  })
+
+  // 📎📎 **`[CR]` 2026-10-18 加的反向自测（R-53）—— 这条守卫的鉴别力全靠扫描器。**
+  //   G168 的全部价值是「区分直接子元素与孙元素」，而那正是 `directChildrenOfLevelView`
+  //   的 depth 记账在做。**记账一旦失衡，G168 变成恒绿**，且没有任何东西会报错 ——
+  //   症状与它要抓的漏排一模一样（某个面板不见了、界面上没有任何报错）。
+  // ⇒ 夹具直接覆盖三种失衡：空元素多进一层、多余闭合标签让 depth 变负、以及正常嵌套。
+  it('判据自测：直接子元素扫描器在「原生空元素」下不失明（R-53）', () => {
+    const wrap = (inner: string): string =>
+      `<main class="level-view">\n${inner}\n</main>\n`
+    const tagsOf = (t: string): string[] => directChildrenOfLevelView(t).map((c) => c.tag)
+
+    // ⚠️ 核心形态：`<img>` 之后**必须还能认出后面的直接子元素**。
+    //   首版这里会得到 ['img'] —— `depth` 被 `<img>` 顶到 1 且永不回落。
+    expect(
+      tagsOf(wrap('  <img src="mascot.png">\n  <HandDeck />\n  <BattleField />')),
+      '扫描器遇到原生空元素就永久失明 —— 后面新加的直接子元素永远不会被 G168 收集，' +
+        '守卫从此恒绿而症状与它要抓的漏排完全一样',
+    ).toEqual(['img', 'HandDeck', 'BattleField'])
+
+    // 而成对嵌套的元素不该被当成直接子元素。
+    expect(tagsOf(wrap('  <div><BattleField /></div>\n  <HandDeck />'))).toEqual(['div', 'HandDeck'])
+    // 带 slot 的子组件（成对写法）要能正确收口。
+    expect(tagsOf(wrap('  <HandDeck><Card /></HandDeck>\n  <BattleField />'))).toEqual([
+      'HandDeck',
+      'BattleField',
+    ])
+    // 空元素写成自闭合也该认得出（两种写法都得对）。
+    expect(tagsOf(wrap('  <hr />\n  <BattleField />'))).toEqual(['hr', 'BattleField'])
   })
 })
 
@@ -1153,6 +1188,40 @@ interface DirectChild {
 }
 
 /**
+ * HTML 的**空元素**（void elements）：语法上没有结束标签。
+ *
+ * 📎📎 **`[CR]` 2026-10-18 加进来的 —— 首版扫描器漏了它们，漏得很贵。**
+ *   `<br>` / `<img>` / `<hr>` / `<input>` 既不是自闭合（没有 `/`）也没有闭合标签，
+ *   而首版的 `if (selfClosing !== '/') depth += 1` 会给它们 **`+1` 且永不回落**
+ *   ⇒ `depth` 从此再也回不到 0 ⇒ 扫描器认为整个 `<main>` 都没关过
+ *   ⇒ **后面新加的任何直接子元素永远不会被收集**
+ *   ⇒ G168「每个直接子元素都有 `grid-area`」变成恒绿，
+ *   症状正是它自己文案里写的「某个东西不见了，界面上没有任何报错」。
+ * ⚠️ 与 `<Component />` 的区别：Vue 子组件**必须**写自闭合或成对，
+ *   所以这条漏法只对原生 HTML 空元素成立 —— 而原生空元素恰好是最容易被顺手加进来的
+ *   （插一张图、分隔线、一个输入框）。
+ *
+ * ⚠️ 这份清单来自 HTML 规范而不是「当前模板里出现过什么」——
+ *   若按后者归纳，等于让判据跟着被测对象一起漂移（今天模板里没有 `<br>` 就永远测不到 `<br>`）。
+ */
+const VOID_ELEMENTS: ReadonlySet<string> = new Set([
+  'area',
+  'base',
+  'br',
+  'col',
+  'embed',
+  'hr',
+  'img',
+  'input',
+  'link',
+  'meta',
+  'param',
+  'source',
+  'track',
+  'wbr',
+])
+
+/**
  * `<main class="level-view">` 的**直接**子元素（嵌套在它们内部的标签不算）。
  *
  * ⚠️ 用扫描而不是正则，是因为正则没法区分「直接子元素」与「孙元素」，
@@ -1177,7 +1246,11 @@ function directChildrenOfLevelView(template: string): readonly DirectChild[] {
       const cls = /class="([^"]*)"/.exec(attrs)?.[1] ?? null
       out.push({ tag, rootClass: cls === null ? null : cls.split(/\s+/)[0] })
     }
-    if (selfClosing !== '/') depth += 1
+    // ⚠️ 只有两种「不进 depth」：自闭合 `/>`，以及原生空元素。
+    //   ⚠️ **不要**按「标签名首字母大写」再豁免 Vue 子组件 —— 带 slot 的写法
+    //   （`<BattleField>…</BattleField>`）是有配对结束标签的，豁免它会让 depth 提前回落。
+    if (selfClosing === '/' || VOID_ELEMENTS.has(tag.toLowerCase())) continue
+    depth += 1
   }
   return out
 }
