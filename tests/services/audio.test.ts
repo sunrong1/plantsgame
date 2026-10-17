@@ -417,3 +417,112 @@ describe('AC-D4 —— 解码一次，缓存，重放不重新 fetch', () => {
     expect(sfxSources.length, '每次播放都新建 createBufferSource —— AudioBufferSourceNode 是一次性的').toBe(3)
   })
 })
+
+// ════════════════════════════════════════════════════════════════════════
+// [CR] 2026-10-17 —— 降级变更信号（版本号 + 订阅）
+// ════════════════════════════════════════════════════════════════════════
+
+/**
+ * 为什么音频这一路的信号判据住在**本文件**而不是 `debug-panel.test.ts`：
+ * `audioContextUnavailableReason` 是模块级状态，而 `audio.ts` **没有** `clear…ForTest`
+ * —— 一旦某例触发过 session 级降级，同一文件里后续所有用例都带着它
+ * （jsdom 下 `AudioContext` 不存在，`unlockAudioSession()` 必然走 session 分支）。
+ * ⇒ 在面板文件里测音频会把整份面板判据永久染脏。
+ */
+describe('[CR 2026-10-17] 降级变更信号：版本号 + 订阅（三条写入路径）', () => {
+  it('session 级降级：版本号递增 **且** 订阅被调用', async () => {
+    const audio = await import('../../src/services/audio')
+    // ⚠️ 本文件的前置已经装好 `fake-audio`，但那条路**不会**降级；
+    //   要造 session 降级得让 `AudioContext` 不存在 ⇒ 撤掉那个 stub。
+    vi.stubGlobal('AudioContext', undefined)
+    const before = audio.audioDegradationsVersion()
+    let fired = 0
+    const off = audio.onAudioDegradationsChanged(() => {
+      fired += 1
+    })
+
+    audio.unlockAudioSession()
+
+    expect(audio.isAudioSilent(), '前置：这条路径确实记了 session 降级').toBe(true)
+    expect(
+      audio.audioDegradationsVersion(),
+      '版本号没涨 —— 面板「变没变」的判据失灵',
+    ).toBeGreaterThan(before)
+    expect(fired, '订阅没被调用 —— 面板建不起依赖，永远停在挂载那一刻').toBeGreaterThan(0)
+    off()
+  })
+
+  it('资源级降级（音效 404）：版本号递增 **且** 订阅被调用', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<(url: string) => Promise<unknown>>(() =>
+        Promise.resolve({ ok: false, status: 404, arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)) }),
+      ),
+    )
+    const audio = await import('../../src/services/audio')
+    audio.unlockAudioSession()
+    const ctx = audio.getAudioContext() as unknown as FakeAudioContext
+    ctx.decodeAudioData = () => Promise.resolve({ fake: 'buffer' })
+    const before = audio.audioDegradationsVersion()
+    let fired = 0
+    const off = audio.onAudioDegradationsChanged(() => {
+      fired += 1
+    })
+
+    audio.playSfx('answer-wrong')
+    await flush()
+
+    expect(
+      audio.audioDegradations().filter((d) => d.scope === 'asset'),
+      '前置：音效 404 确实登记了资源级降级',
+    ).toHaveLength(1)
+    expect(audio.audioDegradationsVersion(), '资源级降级没让版本号递增').toBeGreaterThan(before)
+    expect(fired, '资源级降级没通知订阅者 —— 面板上的音频那一段是死的').toBeGreaterThan(0)
+    off()
+  })
+
+  it('退订之后不再被调用（面板卸载必须退订，否则第二次挂载回调翻倍）', async () => {
+    const audio = await import('../../src/services/audio')
+    let fired = 0
+    const off = audio.onAudioDegradationsChanged(() => {
+      fired += 1
+    })
+    off()
+
+    vi.stubGlobal('fetch', vi.fn<(url: string) => Promise<unknown>>(() =>
+      Promise.resolve({ ok: false, status: 404, arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)) }),
+    ))
+    audio.unlockAudioSession()
+    const ctx = audio.getAudioContext() as unknown as FakeAudioContext
+    ctx.decodeAudioData = () => Promise.resolve({ fake: 'buffer' })
+    audio.playSfx('answer-wrong')
+    await flush()
+
+    expect(fired, '退订之后还被回调 —— 模块级监听者集合漏了清理').toBe(0)
+  })
+
+  it('反向自测：版本号与通知写在同一个入口 —— 少一个就会被抓', async () => {
+    // 判据自检：订阅能在**没有**版本号时单独触发，反之亦然 ——
+    // 证明这两条判据不是同一个事实的两次测量。
+    const audio = await import('../../src/services/audio')
+    let fired = 0
+    const off = audio.onAudioDegradationsChanged(() => {
+      fired += 1
+    })
+    const v0 = audio.audioDegradationsVersion()
+
+    vi.stubGlobal('fetch', vi.fn<(url: string) => Promise<unknown>>(() =>
+      Promise.resolve({ ok: false, status: 404, arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)) }),
+    ))
+    audio.unlockAudioSession()
+    const ctx = audio.getAudioContext() as unknown as FakeAudioContext
+    ctx.decodeAudioData = () => Promise.resolve({ fake: 'buffer' })
+    audio.playSfx('answer-wrong')
+    await flush()
+
+    // 一次降级可能经过多个记账函数（fetch 内部一次 + 回调一次）⇒ 只断言「都变了」。
+    expect(fired, '一次降级至少要通知一次').toBeGreaterThan(0)
+    expect(audio.audioDegradationsVersion(), '一次降级至少要涨一次版本号').toBeGreaterThan(v0)
+    off()
+  })
+})

@@ -22,6 +22,14 @@
  * ⇒ 「三条判据都落在合法区间内」这条前提只能靠**注释 + 守卫 G108**兜，
  *   不能指望 `reduce` 顺手验一遍。
  *
+ * ⚠️📎 **「落在合法区间内」不等于「满足全部不变量」**（`[CR]` 2026-10-17 的教训）：
+ *   值域合法（`hearts ∈ [0, HEARTS]`、`sun >= 0`）与**结构不变量**
+ *   （`assertPhaseMirror`：`phase.sun` 必须等于 `sun`）是两回事。
+ *   无限阳光最初只改 `state.sun`，值域完全合法，却产出一份违反结构不变量的
+ *   state 并落盘 ⇒ 重进时整局被静默丢弃。
+ *   ⇒ 守卫 G108 现在**逐个开关**在 `awaiting-build` 相位上跑一次完整的
+ *     `assertInvariants`，不再只在 `awaiting-answer`（镜像断言会直接 return 的相位）上验。
+ *
  * ── 三条边界（裁决 6）──────────────────────────────────────────────────────
  * 1. **要写盘** —— 补偿后的值会被 `SAVE` 带走。保持读写一致比「dev 不写盘」更重要。
  * 2. **不进回放** —— 会话录制器挂在 `applyAction` 的录制点，拿到的是**玩家点的 action**。
@@ -95,8 +103,24 @@ export function devAdjust(reduced: State, prev: State, flags: DevFlags = devFlag
 
   // ── 2. 无限阳光（裁决 5 判据 2）──────────────────────────────────────────
   // 只抬不降 ⇒ 恒满足 `sun >= 0`。`assertCounters` 对 sun 没有上界，所以这条合法。
+  //
+  // ⚠️📎 **必须连带同步 `phase.sun`（`[CR]` 2026-10-17 修的假绿）**：
+  //   `reducer.ts:517-533` 的 `assertPhaseMirror` 逐字判
+  //   「`phase.kind === 'awaiting-build'` 时 `phase.sun === sun`」，
+  //   而 `withBuildPhase`（`reducer.ts:397`）在答完一题时把**答题前的余额**
+  //   写进了 `phase.sun` 那份只读镜像。补偿只改 `state.sun` 而放过它 ⇒
+  //   产出一份**违反不变量**的 state，而它**真的会被 `SAVE` effect 写进
+  //   localStorage**（`core/effects.ts` 把 `awaiting-build` 列为写盘点）。
+  //   实测后果：重进时 `restoreFromSave` 的 `assertInvariants(restored)` 必抛
+  //   并进 catch 降级 ⇒ **孩子刚学会的那个词连同整局一起被丢弃**，
+  //   界面上没有任何东西指向原因（R-06 说的「静默错到下一个生命周期」）。
+  //   ⚠️ 顺带一条 UI 分叉：建造界面读 `phase.sun`、建塔判定读 `state.sun`
+  //   ⇒ 不修的话面板显示 50 而实际能建 9999 的塔。
   if (flags.infiniteSun && next.sun < INFINITE_SUN) {
-    next = { ...next, sun: INFINITE_SUN }
+    next =
+      next.phase.kind === 'awaiting-build'
+        ? { ...next, sun: INFINITE_SUN, phase: { ...next.phase, sun: INFINITE_SUN } }
+        : { ...next, sun: INFINITE_SUN }
   }
 
   // ── 3. 直接通关（裁决 5 判据 3）──────────────────────────────────────────
@@ -133,8 +157,15 @@ export const DEV_MAX_HEARTS = HEARTS
  *   那三个默认全关（AC-D4），要开得在面板上点。URL 参数不预开任何开关：
  *   一个被 URL 静默改过的对局，连「面板上那个勾是怎么来的」都答不上来。
  *
- * ⚠️ **生产构建里整段被静态替换成 `false`**：Vite 把 `import.meta.env.DEV`
- *   换成字面量 `false` 后，`URLSearchParams` 这条路径成为死代码并被 tree-shake。
+ * ⚠️ **生产构建里 `import.meta.env.DEV` 被静态替换成 `false`**：本函数整体塌缩成
+ *   `return false`，**调试入口不可达，NFR22 成立**。
+ *   ⚠️📎 **但本文件的其余代码仍然进包**（`[CR]` 2026-10-17 实测更正）：
+ *   三个开关的文案、`INFINITE_SUN` 的 9999、`devAdjust` 全文都会留在产物里 ——
+ *   `v-if` 剪不掉静态 import，Rollup 不会因为「运行时恒为假」就删掉组件代码。
+ *   ⇒ 门控是**行为**门控（没有可达入口），**不是**打包器级门控（产物里一个字符串都不剩）。
+ *   这不是缺陷：NFR22 要防的是「生产环境有人能打开调试 UI」，那件事已被守住；
+ *   「产物零字符串」从来不是它，也不该被注释写成是。裁决 11 把产物级验证定为
+ *   一次性人工动作正是这个原因（R-10 的同类处置）。
  */
 export function isDebugPanelRequested(): boolean {
   if (!import.meta.env.DEV) return false

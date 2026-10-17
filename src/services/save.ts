@@ -108,6 +108,49 @@ export type SaveDegradationKey = 'write' | 'read' | 'parse' | 'schema-version'
  */
 const degraded = new Map<SaveDegradationKey, string>()
 
+/**
+ * 降级登记表的版本号 —— **只在 `degraded` 增删时递增**（`[CR]` 2026-10-17 补）。
+ *
+ * 📎 **为什么需要它**：调试面板上那个 `computed` 读的是本模块的 `Map`，
+ *   而 Vue 对普通 `Map` **建不起响应式依赖** ⇒ 面板只会在挂载时算一次，
+ *   之后的写盘失败再也不会显示，「重试写入」按钮因此永远不露脸。
+ * ⚠️ **刻意用纯数字而不是 `ref`**：`services/` 今天零 vue 依赖（R-08）。
+ */
+let degradedVersion = 0
+
+/**
+ * 变更监听者 —— **纯函数集合，零框架**（`[CR]` 2026-10-17 补）。
+ *
+ * ⚠️📎 **光有版本号推不动面板**：Vue 的 `computed` 只追踪**响应式量**的读取，
+ *   把 `saveDegradationsVersion()` 读进 `computed` **建不起依赖** ——
+ *   版本号变了它照样不重算。版本号回答「变没变」（可拉、可断言），
+ *   监听者回答「什么时候变」（推给 Vue），**两个都要**。
+ */
+const degradationListeners = new Set<() => void>()
+
+/** 订阅降级变化 —— 返回退订函数（照 `AbortSignal` 的形状，不留半截订阅）。 */
+export function onSaveDegradationsChanged(cb: () => void): () => void {
+  degradationListeners.add(cb)
+  return () => degradationListeners.delete(cb)
+}
+
+/**
+ * 「降级状态变了」—— **本模块唯一的变更入口**。
+ *
+ * ⚠️ **版本号与通知写在同一个函数里是刻意的**：两者回答同一个事实。
+ *   分成两处调用点就多一次「加了一个忘了另一个」的机会，而那种不一致
+ *   **测不出来**（版本涨了面板不刷，两边单看都绿）。
+ */
+function noteDegradationsChanged(): void {
+  degradedVersion += 1
+  for (const cb of degradationListeners) cb()
+}
+
+/** 降级登记表的当前版本号（纯整数；配 {@link onSaveDegradationsChanged} 用）。 */
+export function saveDegradationsVersion(): number {
+  return degradedVersion
+}
+
 /** 存档是否正在降级运行（写不进去 / 读不出来 / 存档本身坏了）。 */
 export function isSaveDegraded(): boolean {
   return degraded.size > 0
@@ -127,6 +170,7 @@ export function saveDegradations(): readonly SaveDegradation[] {
 /** 记一条降级项 —— WARN 级，前缀 `[save]`（AC 逐字）。 */
 function markDegraded(key: SaveDegradationKey, reason: string): void {
   degraded.set(key, reason)
+  noteDegradationsChanged()
   console.warn(`[save] ${reason}`)
 }
 
@@ -165,6 +209,7 @@ export function writeSave(progress: Progress, currentGame: State | null): boolea
     localStorage.setItem(SAVE_KEY, JSON.stringify(payload))
     // ⚠️ 先清降级项再记日志：写成功说明存储恢复了（见 `degraded` 的注释）。
     degraded.clear()
+    noteDegradationsChanged()
     console.info(
       `[save] 已存档（单元序号 ${progress.currentUnitIndex} · 已掌握 ${progress.masteredWordIds.length} 词` +
         `${currentGame === null ? ' · 本局已结束' : ` · 第 ${currentGame.turn} 回合`}）`,
@@ -212,6 +257,7 @@ export function readSave(): SaveFile | null {
 
   // 读到一份可用的存档 ⇒ 之前的失败理由已不成立。
   degraded.clear()
+  noteDegradationsChanged()
   return parsed.file
 }
 
@@ -309,6 +355,7 @@ export function clearSave(): void {
   try {
     localStorage.removeItem(SAVE_KEY)
     degraded.clear()
+    noteDegradationsChanged()
   } catch (err) {
     markDegraded('read', `清不掉存档（${describe(err)}）—— 浏览器可能禁用了本地存储`)
   }

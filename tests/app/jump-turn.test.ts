@@ -40,6 +40,7 @@ import { answer, createInitialState, isCorrect } from '../../src/core'
 import { readSave, writeSave } from '../../src/services/save'
 
 import { afterEachUninstall, installFakeStorage } from '../fixtures/fake-storage'
+import { exportedFunctionBody } from '../fixtures/exported-function-body'
 import { stripComments } from '../fixtures/strip-comments'
 import { makeSyntheticDeck } from '../fixtures/synthetic-deck'
 
@@ -79,11 +80,11 @@ function advanceRounds(count: number): void {
 describe('G118 —— 「跳到任意回合」必须经 `enterLevel()`（Story 1.17 / 裁决 7）', () => {
   it('G118：门面体内有 `enterLevel(`，且没有 `state.value = …`', () => {
     const source = stripComments(readFileSync(join(root, 'src/app/store.ts'), 'utf8'))
-    const from = source.indexOf('export function jumpToTurn')
-    expect(from, 'jumpToTurn 找不到了 —— 判据已失明').toBeGreaterThan(-1)
-    // ⚠️ 切到**下一个顶层导出**为止：按固定字数切会把下一个函数里的调用算进来。
-    const next = source.slice(from + 1).search(/^export\s/m)
-    const body = next < 0 ? source.slice(from) : source.slice(from, from + 1 + next)
+    // ⚠️📎 `[CR]` 2026-10-17 改用共享 fixture：本条第一版的切法是对的
+    //   （切到下一个顶层 export 为止），而同一 story 的 G112 第一版切到文件末尾
+    //   ⇒ 同一个形状的问题在两个文件里得出两种做法。两份会各自漂移（R-37），
+    //   现在统一到 `tests/fixtures/exported-function-body.ts`。
+    const body = exportedFunctionBody(source, 'export function jumpToTurn')
 
     expect(body, '跳回合没经过 enterLevel() ⇒ 读不到存档（deferred-work 1.15 第 4 条）').toMatch(
       /enterLevel\(/,
@@ -193,6 +194,78 @@ describe('G118 —— 「跳到任意回合」必须经 `enterLevel()`（Story 1
       isRecording(),
       '跳回合合成的回合被录进了会话 —— 那份 JSON 从一个假局面开始播，而复现要求是真输入',
     ).toBe(false)
+  })
+
+  // ⚠️📎 `[CR]` 2026-10-17 补。上面那条与「只在真跳了才清」**不构成鉴别力**：
+  //   那条断言的是「跳完之后不录了」，对「无条件清」与「有条件清」都成立。
+  //   而真正被修掉的 bug 是**反方向**：目标回合 ≤ 当前回合时循环体一次都不跑，
+  //   `resetSession()` 却照跑 —— 家长点了没反应的那一下，把这局的复现现场弄丢了，
+  //   而面板只显示「已到第 1 回合」读起来像成功了。
+  it('[CR 2026-10-17] 目标回合 ≤ 当前回合时**不得**清掉会话录制', () => {
+    devSetInfiniteHearts(true)
+    advanceRounds(3)
+    view.value = 'level'
+
+    // 前置：先真的录到东西，否则「清掉」无从观测
+    expect(isRecording(), '前置：advanceRounds 已经 dispatch 过，录制器应是活的').toBe(true)
+    const before = state.value.turn
+
+    const result = jumpToTurn(2)
+
+    expect(result.stoppedBy).toBe('reached')
+    expect(state.value.turn, '前置：这一次点击不该动局面').toBe(before)
+    expect(
+      isRecording(),
+      '一次什么都没跳的点击清空了整局录制 —— 家长把「可复现的现场」丢了，' +
+        '面板却显示「已到第 N 回合」读起来像成功了',
+    ).toBe(true)
+  })
+
+  it('[CR 2026-10-17] 真的跳了才清录制（反向：不能因为上一条而无条件不调）', () => {
+    devSetInfiniteHearts(true)
+    jumpToTurn(4)
+    expect(
+      isRecording(),
+      '真跳了之后反而不清 —— 导出的 JSON 会从跳回合造出来的假局面开始播',
+    ).toBe(false)
+  })
+
+  it('[CR 2026-10-17] 步数预算耗尽如实报告，不得谎报成「不在能推进的阶段」', () => {
+    // ⚠️📎 **题单必须造到 500 步以上，否则本条恒绿**（评审第一版就踩了这个坑）：
+    //   本文件其余用例用 25 题的 `DECK`，而一个回合约 3 步 ⇒ 整局 75 步 ≪ 500
+    //   ⇒ 真实内容下 500 步**够跑完整局**，`step-budget-exhausted` 构造上不可达。
+    //   `[DS]` 的注释「正常路径根本走不到它」在 25 题的尺度上是对的，
+    //   但那是**题单长度**带来的，不是机制保证的 —— 题单一长它就会被踩到。
+    //   ⇒ 这里用 400 题的题单（约 1000 步）把那条路径真造出来，而不是接受 0 红。
+    //   ⚠️ 这条**贵**：它要真跑满 500 次 dispatch，而每次 dispatch 都写一次盘
+    //   （1.15 的写盘点）。400 题 ≈ 8 秒，故显式给 timeout。
+    const BIG_DECK = makeSyntheticDeck(400, 1)
+    state.value = createInitialState({ unitNumber: 1, deck: BIG_DECK })
+    devSetInfiniteHearts(true)
+    view.value = 'level'
+
+    // 面板输入框的 `min="1"` 只挡下界，挡不住 99999。
+    const result = jumpToTurn(99999)
+
+    expect(
+      result.reachedTurn,
+      '前置：必须真的没到目标回合（400 题 ≈ 1000 步 > 500），否则下面那条判据恒绿',
+    ).toBeLessThan(99999)
+    expect(
+      result.stoppedBy,
+      '步数预算耗尽被报成别的 —— 那一刻相位恰恰是完全可推进的 round-over，谎报比不报更难查',
+    ).toBe('step-budget-exhausted')
+  }, 20_000)
+
+  it('[CR 2026-10-17] 25 题的真实尺度上，预算够跑完整局 —— 如实报 `level-complete`', () => {
+    // ⚠️ 与上一条**互为另一端**：上一条造大题单把它逼到预算上限，
+    //   这一条确认在真实内容尺度上它不会被误触 —— 否则「加一个分支」很容易变成
+    //   「把一个正常结局改报成异常」。
+    devSetInfiniteHearts(true)
+    view.value = 'level'
+    const result = jumpToTurn(99999)
+    expect(result.stoppedBy).toBe('level-complete')
+    expect(result.reachedTurn).toBe(25)
   })
 
   it('类型面：目标回合是数字，面板直接传输入框的值即可', () => {

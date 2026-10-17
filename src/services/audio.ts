@@ -83,6 +83,54 @@ export interface AudioDegradation {
 let audioContextUnavailableReason: string | null = null
 
 /**
+ * 降级状态的版本号 —— **只在降级标志变化时递增**（`[CR]` 2026-10-17 补）。
+ *
+ * 📎 **为什么需要它**：调试面板上那个 `computed` 读的是本模块的三个**普通变量**
+ *   （`audioContextUnavailableReason` / `failedSfx` / `bgmFailed`），
+ *   Vue 对它们**建不起任何响应式依赖** ⇒ 面板只在挂载时算一次，
+ *   之后的音效 / BGM 失败再也刷不出来。
+ * ⚠️ **刻意用纯数字而不是 `ref`**：`src/services/**` 与 `src/core/**` 今天
+ *   **零 vue 依赖**（R-08 的依赖方向里没有 Vue 这一层，守卫会红）。
+ */
+let degradationsVersion = 0
+
+/**
+ * 变更监听者 —— **纯函数集合，零框架**（`[CR]` 2026-10-17 补）。
+ *
+ * ⚠️📎 **光有版本号推不动面板**：Vue 的 `computed` 只追踪**响应式量**的读取，
+ *   把 `audioDegradationsVersion()` 读进 `computed` **建不起依赖** ——
+ *   版本号变了它照样不重算。版本号回答「变没变」（可拉、可断言），
+ *   监听者回答「什么时候变」（推给 Vue），**两个都要，缺一不可**。
+ */
+const degradationListeners = new Set<() => void>()
+
+/** 订阅降级变化 —— 返回退订函数（照 `AbortSignal` 的形状，不留半截订阅）。 */
+export function onAudioDegradationsChanged(cb: () => void): () => void {
+  degradationListeners.add(cb)
+  return () => degradationListeners.delete(cb)
+}
+
+/**
+ * 「降级状态变了」—— **本模块唯一的变更入口**。
+ *
+ * ⚠️ **递增点选在这一个函数上，而不是三处标志赋值旁**：
+ *   `markAssetFailed` 与 `markSessionUnavailable` 是三条写入路径
+ *   （session / 某个 sfx / BGM）的**共同咽喉**。在标志旁逐处加会漏，
+ *   而漏掉的那一处恰好是「面板不刷新」最难查的形态（R-37：登记只走记账）。
+ * ⚠️ **版本号与通知写在同一个函数里**：两者回答同一个事实，
+ *   分成两处调用点就多一次「加了一个忘了另一个」的机会，而那种不一致测不出来。
+ */
+function noteDegradationsChanged(): void {
+  degradationsVersion += 1
+  for (const cb of degradationListeners) cb()
+}
+
+/** 降级状态的当前版本号（纯整数；配 {@link onAudioDegradationsChanged} 用）。 */
+export function audioDegradationsVersion(): number {
+  return degradationsVersion
+}
+
+/**
  * 是否全静（AudioContext 整个不可用）。
  *
  * ⚠️ **只**由 `audioContextUnavailableReason` 决定，**不**等价于
@@ -108,14 +156,23 @@ export function audioDegradations(): readonly AudioDegradation[] {
   return list
 }
 
-/** 记一条资源级降级（不改变 `isAudioSilent()`）。 */
+/**
+ * 记一条资源级降级（不改变 `isAudioSilent()`）。
+ *
+ * ⚠️ **递增点在这里，而不是在 `failedSfx.add()` / `bgmFailed = true` 旁边**：
+ *   本函数是资源级降级的**唯一咽喉**，而 `fetchAudioBuffer` 内部与它的调用方
+ *   （`playSfx` / `prewarmBgm` 的回调）**都会调它** —— 在标志旁逐处加会漏，
+ *   而漏掉的那一处恰好是「面板不刷新」最难查的形态（R-37）。
+ */
 function markAssetFailed(reason: string): void {
+  noteDegradationsChanged()
   console.warn(`[audio] ${reason}`)
 }
 
 /** 记一条 session 级降级（AudioContext 整个不可用）。 */
 function markSessionUnavailable(reason: string): void {
   audioContextUnavailableReason = reason
+  noteDegradationsChanged()
   console.warn(`[audio] ${reason}`)
 }
 

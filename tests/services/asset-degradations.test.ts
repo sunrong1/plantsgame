@@ -36,9 +36,11 @@ import DebugPanel from '../../src/components/debug/DebugPanel.vue'
 import { createInitialState } from '../../src/core'
 import {
   assetDegradations,
+  assetDegradationsVersion,
   clearAssetDegradationsForTest,
   isAssetDegraded,
   markAssetDegraded,
+  onAssetDegradationsChanged,
 } from '../../src/services/asset-degradations'
 import { audioDegradations } from '../../src/services/audio'
 import { clearSave, saveDegradations, writeSave } from '../../src/services/save'
@@ -367,5 +369,67 @@ describe('夹具自测 —— `stripComments` 与本文件的形态对得上', (
     const stripped = stripComments('// 这里会 markAssetDegraded(url)\nconst a = 1\n')
     expect(stripped).toMatch(/const a = 1/)
     expect(stripped).not.toMatch(/markAssetDegraded/)
+  })
+})
+
+// ── [CR] 2026-10-17 —— 变更信号（版本号 + 订阅）──────────────────────────
+describe('[CR 2026-10-17] 登记与清除**两条路**都要发信号', () => {
+  it('登记一条：版本号递增 **且** 订阅被调用', () => {
+    const before = assetDegradationsVersion()
+    let fired = 0
+    const off = onAssetDegradationsChanged(() => {
+      fired += 1
+    })
+
+    markAssetDegraded('/words/apple.svg', '词图加载失败')
+
+    expect(assetDegradationsVersion(), '版本号没涨').toBeGreaterThan(before)
+    expect(fired, '订阅没被调用').toBe(1)
+    off()
+  })
+
+  // ⚠️📎 **清除也必须发信号** —— 面板上「降级项消失了」同样是一条要刷新的消息。
+  //   只判「登记」的那条在 `clearAssetDegradationsForTest` 漏掉通知时**照样绿**
+  //   （评审变异时实测过），所以这两条必须成对。
+  it('清除：版本号递增 **且** 订阅被调用（「好了」也得刷）', () => {
+    markAssetDegraded('/words/apple.svg', '词图加载失败')
+    const before = assetDegradationsVersion()
+    let fired = 0
+    const off = onAssetDegradationsChanged(() => {
+      fired += 1
+    })
+
+    clearAssetDegradationsForTest()
+
+    expect(assetDegradations(), '前置：真的清空了').toHaveLength(0)
+    expect(assetDegradationsVersion(), '清空没涨版本号').toBeGreaterThan(before)
+    expect(fired, '清空没通知 —— 面板会一直挂着一条已经不生效的降级项').toBe(1)
+    off()
+  })
+
+  it('同一条降级项重复登记也要发信号（理由变了也是一条消息）', () => {
+    markAssetDegraded('/words/apple.svg', '第一次的理由')
+    let fired = 0
+    const off = onAssetDegradationsChanged(() => {
+      fired += 1
+    })
+
+    markAssetDegraded('/words/apple.svg', '第二次的理由')
+
+    expect(fired, '重复登记被当成「没变化」—— 面板上的理由会停在第一次').toBe(1)
+    expect(assetDegradations()[0]?.reason).toBe('第二次的理由')
+    off()
+  })
+
+  it('退订之后不再被调用', () => {
+    let fired = 0
+    const off = onAssetDegradationsChanged(() => {
+      fired += 1
+    })
+    off()
+
+    markAssetDegraded('/words/apple.svg', '词图加载失败')
+
+    expect(fired, '退订之后还被回调 —— 模块级监听者集合漏了清理').toBe(0)
   })
 })

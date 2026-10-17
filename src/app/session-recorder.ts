@@ -24,7 +24,9 @@
  * 代价是每次 dispatch push 一个引用：`State` 全是 `readonly` 的普通对象，
  * **push 引用不产生深拷贝**，单次成本 O(1)。
  * ⇒ 真正的「导出」是面板上的一个按钮（Story 1.17 的 `DebugPanel`），
- *   而本模块的 `exportSession()` 只交出**引用**，序列化留给调用方。
+ *   本模块的 `exportSession()` 交出**一份快照**（`[CR]` 2026-10-17 更正：
+ *   原文写的是「只交出**引用**」），序列化留给调用方 ——
+ *   面板那一侧做的是 `JSON.stringify(...)` 后复制到剪贴板。
  *
  * ── ⚠️ 不深拷贝、不冻结 ────────────────────────────────────────────────────
  * `State` 的 `grid` 刻意是 `Record` 而不是 `Map`（`types.ts` 的注释逐字解释过：
@@ -66,16 +68,33 @@ const recording: Recording = { initialState: null, actions: [] }
 /**
  * 记一步 dispatch。**唯一的调用点在 `store.applyAction` 的最前面。**
  *
- * ⚠️ **必须排在 `reduce` 之前**：`initialState` 要的是「第 1 条 action **之前**的 state」，
- *   而 `reduce(prev, action)` 返回的是**新对象**，不会改 `prev` ——
- *   但排在它之后会让「起点」这件事依赖「reduce 不改入参」这条隐含性质。
- *   排在前面则由本函数自己保证，与 reducer 的实现无关。
+ * ⚠️📎 **它排在 `reduce` 之后 —— 而「起点仍然正确」依赖一条真实的外部性质**
+ *   （`[CR]` 2026-10-17 更正，原注释逐字写的是「必须排在 `reduce` 之前」，
+ *    而唯一调用点恰恰排在后面，是一处**失实注释**）：
+ *   `initialState` 要的是「第 1 条 action **之前**的 state」。`recordStep` 收下的
+ *   `prev` 是 `store.applyAction` 在 `reduce` 之前取的引用 —— 它**之所以**到这一步
+ *   仍然代表 dispatch 前那一刻，是因为 `reduce(prev, action)` **返回新对象、
+ *   不就地改写 `prev`**。
+ *   ⇒ 这条性质不是本模块自己保证的，它由 `core/reducer.ts` 保证，
+ *     并由 **`tests/core/reducer.test.ts` 的「`reduce` 不改入参」守卫**钉住
+ *     （`[CR]` 2026-10-17 新增）。将来 reducer 里任何一处就地改 `grid` / `hearts`，
+ *     那条守卫会先红 —— 而 `initialState` 静默带上被改过的内容这条后果也随之可见。
  *
  * @param action 本次 dispatch 的 action —— 记的是**玩家点的**那一个，
  *   **不是**任何 dev 补偿后的结果（AC-B6 / 裁决 6：补偿不进回放，
  *   否则回放出来的局面带 dev 态，那不叫复现）。
  * @param prev dispatch 之前的 state 快照（作为第一条时的 `initialState`）。
  * @param next dispatch 之后的 state —— **当前不参与导出**，留参数是为了将来做步进回放。
+ *
+ * ⚠️📎 **AC-C3 逐字要求「写清楚 R-58 不适用」，本模块是另一半**（`[CR]` 2026-10-17 补）：
+ *   「⚠️ 「数 dispatch 次数」的断言若走 Vue `watch` 必须 `flush: 'sync'`（R-58）——
+ *   但本 story 的日志在 `applyAction` 里，**不走 watch**，天然同步 ⇒ 不适用 R-58。」
+ *   本函数是「数 dispatch」的第二处：调用点在 `store.ts` 的 `applyAction`，
+ *   与 `core/effects.ts:154` 那条 TRACE **同一条同步链**，中间不跨任何微任务。
+ *   ⇒ R-58 要防的形态（`watch` 默认 `flush: 'pre'` 把同一 tick 里的多次赋值
+ *     合并成一次、于是数出来的次数偏少）在这里**构造上不可达**。
+ *   ⚠️ 而 R-58 自身的「守卫」字段逐字标注为「⚠️ 无守卫」⇒ 这条规则今天
+ *     **只由这两处注释兜底**，谁把它挪进 `watch` 谁就得自己补 `flush: 'sync'`。
  */
 export function recordStep(action: Action, prev: State, next: State): void {
   if (recording.initialState === null) {
@@ -89,11 +108,11 @@ export function recordStep(action: Action, prev: State, next: State): void {
 }
 
 /**
- * 交出已录的会话。
+ * 交出已录的会话 —— **一份快照**，交出之后不再被本模块的任何后续操作改写。
  *
- * ⚠️ **一条 action 都没录过时**，起点退回**当前** `state` 的调用方兜底 ——
- *   本模块拿不到 `state`（那是 `store.ts` 的 ref），所以由调用方决定。
- *   本函数此时交出 `initialState: null`，那是「还没录过」的唯一信号。
+ * ⚠️ **一条 action 都没录过时**，本函数**抛错**而不是交出空起点：
+ *   导出一个空起点会让回放从一个孩子从没见过的局面开始 —— 那不叫复现。
+ *   面板那一侧用 `isRecording()` 把按钮置灰，从源头上不给出机会。
  */
 export function exportSession(): SessionExport {
   if (recording.initialState === null) {
@@ -102,7 +121,16 @@ export function exportSession(): SessionExport {
         '导出一个空起点会让回放从一个孩子从没见过的局面开始 —— 那不叫复现。',
     )
   }
-  return { initialState: recording.initialState, actions: recording.actions }
+  // ⚠️📎 **必须交一份快照，不能交 `recording.actions` 本体**（`[CR]` 2026-10-17 修的）：
+  //   `resetSession()` 执行的是 `recording.actions.length = 0` ——
+  //   **就地清空同一个数组**。先前交出去的对象会跟着从 12 条变成 0 条
+  //   （实测 `expected +0 to be 12`），而把它喂 `replaySession` **不抛错**：
+  //   `for` 循环零次迭代，直接返回 `initialState` —— 一个孩子从没玩到过的
+  //   开局局面被当成「复现成功」返回。
+  //   ⚠️ 这一行 spread **不违反 AC-B4**「不得对 state 做任何深拷贝或冻结」：
+  //   那条约束的是 `State` 对象本身（仍是同一个引用、单次成本 O(1)），
+  //   复制的是**记录列表**，一次一局约百来条，O(n) 且无副作用。
+  return { initialState: recording.initialState, actions: [...recording.actions] }
 }
 
 /**

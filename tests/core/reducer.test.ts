@@ -751,6 +751,56 @@ describe('子任务 4.5 —— reduce 是纯函数', () => {
     expect(JSON.stringify(start), 'reduce 不得就地修改入参 —— 就地改会让「同一串 Action 重放出同一局」当场失效，存档回放与平衡模拟全部作废').toBe(snapshot)
   })
 
+  it('ANSWER 这条路径同样不改入参（`[CR]` 2026-10-17 补）', () => {
+    // ⚠️ 上一条只量了 `placeTower` **一条** action。而 `app/session-recorder.ts`
+    //   的 `initialState` 取的是「第一条 action 之前」的快照，它之所以在
+    //   `recordStep`（排在 `reduce` 之后）那一刻仍然正确，靠的就是这条性质。
+    //   答对那道题走的正是 `applyAnswer` ⇒ `withBuildPhase`，
+    //   **它把答题前的余额写进 `phase.sun` 那份只读镜像** ——
+    //   一旦它就地改了入参，`initialState` 会静默带上被改过的内容，
+    //   而会话回放的首帧与录制首帧不再一致（G100 的逐字相等随之失明）。
+    //   ⇒ 这条守卫量的正是那条契约，不是「纯函数」的泛泛重复。
+    const start = fresh()
+    const snapshot = JSON.stringify(start)
+    const next = reduce(start, answer(correctOptionId(currentQuestion(start))))
+
+    expect(next.phase.kind, '前置：答对后必须落在 awaiting-build —— 那正是产出 phase.sun 镜像的相位').toBe('awaiting-build')
+    expect(JSON.stringify(start), 'applyAnswer 不得就地修改入参 —— 它要写的是新 state，不是改旧的').toBe(snapshot)
+  })
+
+  it('一整串 action 跑完，每一步的入参都没被那条 reduce 就地改过（逐 dispatch 前后比对）', () => {
+    const firstEntry = DECK[0].entryId
+    const script: readonly ((s: State) => Action)[] = [
+      (s) => answer(correctOptionId(currentQuestion(s))),
+      () => placeTower(firstEntry, cellKey(ZOMBIE_ROW, 7)),
+      () => endBuild(),
+      () => resolveRound(),
+      () => continueRound(),
+    ]
+
+    // 跨 `applyAnswer` / `applyBuild` / `applyResolve` / `applyContinue`
+    // 四条分支逐个量：把**入参**在 reduce 前后各序列化一次并比对。
+    // 比「只量某一条 action」强得多。
+    const offenders: string[] = []
+    let cursor = fresh()
+    let steps = 0
+    for (const step of script) {
+      const before = JSON.stringify(cursor)
+      const next = reduce(cursor, step(cursor))
+      if (JSON.stringify(cursor) !== before) offenders.push(`第 ${steps + 1} 步`)
+      cursor = next
+      steps += 1
+    }
+
+    // 前置：本条必须真的跑满整串，否则「一条都没改」是空转。
+    expect(steps, '脚本只跑了一半 —— 本条就退化成「没跑任何东西」的空断言').toBe(script.length)
+    expect(
+      offenders.join('、'),
+      '这些 dispatch 就地改了入参 —— 会话录制的 initialState 会静默带上被改过的内容，' +
+        '回放首帧与录制首帧不再一致（G100 的逐字相等随之失明）',
+    ).toBe('')
+  })
+
   it('同一串 Action 从同一个起点跑两次得到完全相同的结果', () => {
     const firstEntry = DECK[0].entryId
     const script: readonly ((s: State) => Action)[] = [

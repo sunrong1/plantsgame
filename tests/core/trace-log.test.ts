@@ -21,6 +21,9 @@
  * · 本文件不做源码变异，变异走 M130 / M131 / M132。
  */
 
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+
 import { describe, expect, it } from 'vitest'
 
 import {
@@ -42,6 +45,7 @@ import {
   type State,
 } from '../../src/core'
 import { correctOptionId, makeSyntheticDeck, wrongOptionId } from '../fixtures/synthetic-deck'
+import { stripComments } from '../fixtures/strip-comments'
 
 // ── 夹具 ───────────────────────────────────────────────────────────────────
 
@@ -67,6 +71,44 @@ function dispatch(prev: State, action: Action): { prev: State; next: State; effe
 /** 只取 TRACE 行（过滤掉 SFX / SAVE —— 本文件只关心日志那一条）。 */
 function traceLines(effects: readonly Effect[]): readonly string[] {
   return effects.filter((e): e is Extract<Effect, { kind: 'TRACE' }> => e.kind === 'TRACE').map((e) => e.line)
+}
+
+/**
+ * 一路空跑到**心数真的下降**的那一次 dispatch，返回它的三份数据。
+ *
+ * ⚠️📎 **为什么必须是「真的下降」而不是任意一次 dispatch**（`[CR]` 2026-10-17 补）：
+ *   `ANSWER` 不掉心 ⇒ 那一类 dispatch 上 `next.hearts === prev.hearts`，
+ *   于是「日志读的是 `next`」与「日志读的是 `prev`」**构造上不可区分**（等价变异）。
+ *   本仓已因此吃过一次假绿：一条 `toBeLessThanOrEqual(HEARTS)` 守的正是「心数不越界」，
+ *   而它跑的那次 dispatch 心数恰好**等于**上界 ⇒ 断言允许的边界值就是当前值。
+ *   不建塔时僵尸要走近 8 回合才摸到房子，所以这个循环真的要走十几步。
+ *
+ * @throws 30 步内一次都没掉心 —— 那说明夹具变了，本文件的判据全部失去鉴别力
+ */
+function findHeartDroppingTrace(): { before: number; after: number; line: string } {
+  let cursor = freshState()
+  for (let i = 0; i < 30; i += 1) {
+    if (cursor.phase.kind !== 'awaiting-answer') break
+    cursor = reduce(cursor, answer(correctOptionId(currentQuestion(cursor))))
+    cursor = reduce(cursor, endBuild())
+    const before = cursor.hearts
+    const resolved = reduce(cursor, resolveRound())
+    const effects = runEffects(resolveRound(), cursor, resolved)
+    if (resolved.hearts < before) {
+      const line = traceLines(effects)[0]
+      if (line === undefined) throw new Error('掉心那一次 dispatch 没产出 TRACE 行')
+      return { before, after: resolved.hearts, line }
+    }
+    cursor = resolved.phase.kind === 'round-over' ? reduce(resolved, continueRound()) : resolved
+  }
+  throw new Error('30 步内一次都没掉心 —— 夹具变了，本文件的判据全部失去鉴别力')
+}
+
+/** 从一行日志里把 `hearts=` 那个字段的值**取出来**（而不是 `toContain` 整段拼接）。 */
+function heartsFieldOf(line: string): number {
+  const hit = /\bhearts=(\d+)/.exec(line)
+  if (hit === null) throw new Error(`这行里没有 hearts= 字段：${line}`)
+  return Number(hit[1])
 }
 
 // ── G102 ───────────────────────────────────────────────────────────────────
@@ -110,47 +152,57 @@ describe('回合日志格式（Story 1.17 / AC-C1、G102）', () => {
     }
   })
 
-  it('G102：日志读的是 `next`（dispatch 之后的状态），不是 `prev`', () => {
-    // 这就是 M130 的正面判据：把 `hearts` 换成 `prev.hearts` 会红。
-    //
-    // ⚠️ **必须先跑到真的掉心那一回合** —— 不建塔时僵尸要走近 8 回合才摸到房子，
-    //   在头几个回合里 `next.hearts === prev.hearts`，那条「读 next 不读 prev」的断言
-    //   就恒绿了（一种装饰守卫，R-51）。这里一路空跑到心数下降为止。
-    let cursor = freshState()
-    let line: string | undefined
-    let before = 0
-    let after = 0
+  it('G102：日志读的是 `next` —— 报的是掉心**之后**的数（正面）', () => {
+    // M130 的正面判据：把 `hearts` 换成 `prev.hearts` 会红。
+    const { before, after, line } = findHeartDroppingTrace()
 
-    for (let i = 0; i < 30 && line === undefined; i += 1) {
-      if (cursor.phase.kind !== 'awaiting-answer') break
-      cursor = reduce(cursor, answer(correctOptionId(currentQuestion(cursor))))
-      cursor = reduce(cursor, endBuild())
-      const resolved = reduce(cursor, resolveRound())
-      const effects = runEffects(resolveRound(), cursor, resolved)
-      if (resolved.hearts < cursor.hearts) {
-        before = cursor.hearts
-        after = resolved.hearts
-        line = traceLines(effects)[0]
-      }
-      cursor = resolved.phase.kind === 'round-over' ? reduce(resolved, continueRound()) : resolved
-    }
+    expect(after, '前置：这一次 dispatch 必须真的掉了心').toBeLessThan(before)
+    // ⚠️ **取字段而不是 `toContain` 整段拼接**：拼接写法的反面断言
+    //   （`not.toContain(\`hearts=${before} \`)`）在前 `before !== after` 时**恒真**，
+    //   什么实现都能过。取出来比数才有鉴别力（R-51）。
+    expect(heartsFieldOf(line), '日志报的是掉心之前的数 —— 它读的是 `prev`').toBe(after)
+  })
 
-    expect(line).toBeDefined()
-    expect(after).toBeLessThan(before)
-    // 正面：报的是掉**之后**的数。
-    expect(line).toContain(`hearts=${after} `)
-    // 反面：不是掉之前的数（这两条同时成立才说明它读的是 `next`）。
-    expect(line).not.toContain(`hearts=${before} `)
+  // ⚠️📎 **这一条与上一条是两条独立的判据**（`[CR]` 2026-10-17 拆开）：
+  //   原版把正反两面挤在一条用例里、且共用循环里的一对 `before` / `after`
+  //   ⇒ 只要循环没填上那一对（比如夹具变了、走不到掉心那一步），
+  //   **两条会一起绿**，谁也证伪不了谁。拆开之后每条各自重新走一遍。
+  it('G102：日志里那个数**不等于**掉心之前的数（反面）', () => {
+    const { before, after, line } = findHeartDroppingTrace()
+
+    expect(after, '前置：前后必须不同，否则「不等于之前」是废话').toBeLessThan(before)
+    expect(
+      heartsFieldOf(line),
+      '日志报的还是掉心之前的数 —— 把 `next` 写成 `prev` 的变异没被抓住',
+    ).not.toBe(before)
   })
 
   it('G102：`hearts` 上界就是 `HEARTS`（心数恒落在 `[0, HEARTS]`）', () => {
-    // 顺带钉住 AC-D3 面板文案的前提：日志里的心数不会越界。
+    // ⚠️📎 **两个 dispatch 都要量**（`[CR]` 2026-10-17 修）：
+    //   原版只量 `ANSWER`，而 `ANSWER` **不掉心** ⇒ `next.hearts` 恰好**等于**
+    //   `HEARTS` ⇒ `toBeLessThanOrEqual(HEARTS)` 允许的边界值就是当前值，
+    //   任何「把心数夹成 HEARTS + 1」或「不夹」的实现都抓不住
+    //   （本仓已因此出过一次假红）。
+    //   ⇒ 补一次**真的掉心**的 dispatch：那里 `next.hearts < HEARTS`，
+    //   上界断言才真正咬得住 —— 一个把它抬到 `HEARTS + 1` 的变异会红。
     const prev = freshState()
     const { next, effects } = dispatch(prev, answer(correctOptionId(currentQuestion(prev))))
 
+    expect(next.hearts, '前置：`ANSWER` 不掉心，所以此刻应当就等于上界').toBe(HEARTS)
     expect(next.hearts).toBeGreaterThanOrEqual(0)
     expect(next.hearts).toBeLessThanOrEqual(HEARTS)
     expect(traceLines(effects)[0]).toContain(`hearts=${next.hearts} `)
+
+    const dropped = findHeartDroppingTrace()
+    expect(
+      dropped.after,
+      '前置：掉心之后必须**真的低于**上界，否则下面那条判据仍是恒绿的边界值',
+    ).toBeLessThan(HEARTS)
+    expect(dropped.after).toBeGreaterThanOrEqual(0)
+    expect(dropped.after, '心数掉到上界之上了 —— 日志里的心数会越界（AC-D3 的前提）').toBeLessThanOrEqual(
+      HEARTS,
+    )
+    expect(heartsFieldOf(dropped.line)).toBe(dropped.after)
   })
 })
 
@@ -257,5 +309,54 @@ describe('逐 action 一条（Story 1.17 / AC-C3、G104）', () => {
     const afterTurn = Number(traceLines(continued)[0]?.match(/turn (\d+)/)?.[1])
 
     expect(afterTurn).toBe(beforeTurn + 1)
+  })
+})
+
+// ── AC-C3 逐字要求的「写清楚 R-58 不适用」是一条**只由注释兜底**的 AC ──────
+
+describe('AC-C3 的 R-58 说明**必须真的写在代码里**（不是只在 story 文档里）', () => {
+  // ⚠️📎 为什么这条要写成守卫：R-58 自身的「守卫」字段逐字标注为「⚠️ 无守卫」，
+  //   而 AC-C3 逐字要求「**写清楚这一点**」—— 也就是这条 AC 的**交付物是注释本身**。
+  //   对一条「交付物是注释」的 AC 写行为守卫是本末倒置，但**完全不写**就等于
+  //   「注释被谁删掉都不会有人发现」—— 评审实测 `grep -rn "R-58\|flush"`
+  //   在三个相关文件里**零命中**，正是这个形态。
+  // ⇒ 这里守的**不是**注释的内容，而是**它还在**。
+
+  const CORE_EFFECTS = readFileSync(join(process.cwd(), 'src/core/effects.ts'), 'utf8')
+  const SESSION_RECORDER = readFileSync(join(process.cwd(), 'src/app/session-recorder.ts'), 'utf8')
+
+  it('两处「数 dispatch」的源头都点了 R-58 与 `flush`', () => {
+    for (const [name, source] of [
+      ['core/effects.ts', CORE_EFFECTS],
+      ['app/session-recorder.ts', SESSION_RECORDER],
+    ] as const) {
+      expect(source, `${name} 里找不到 R-58 的说明`).toContain('R-58')
+      expect(
+        source,
+        `${name} 点了 R-58 却没有提 flush —— AC-C3 逐字要求的是「必须 flush: 'sync'」那一半`,
+      ).toContain('flush')
+    }
+  })
+
+  // ⚠️ **反向自测**：证明上面那两条判据真能咬住它要防的形态。
+  //   一份「只同步调用、没有 watch」的探针应当**通过** ——
+  //   也就是说这两条守的不是「代码里不该有 watch」，而是「**说明不许消失**」。
+  it('反向自测：判据自检（一份不含 R-58 说明的探针会被判为不合规）', () => {
+    const withoutNote = 'export function recordStep() {}\n'
+    const withNote = '// R-58 不适用：本条不走 watch，天然同步（flush 无关）\nfunction f() {}\n'
+    expect(withoutNote.includes('R-58') && withoutNote.includes('flush')).toBe(false)
+    expect(withNote.includes('R-58') && withNote.includes('flush')).toBe(true)
+  })
+
+  it('**当前实现确实不走 `watch`** —— 说明与事实相符（R-58 不适用是真的成立）', () => {
+    // ⚠️ 这条不是查注释，是查**事实**：注释说「不走 watch」，那代码里就不该有 watch。
+    //   两者一旦漂移（代码改了、注释没改），上面那条守卫照样绿，而 R-58
+    //   已经**适用**了 —— 那正是它要防的形态。
+    const wholeChain = stripComments(`${CORE_EFFECTS}\n${SESSION_RECORDER}`)
+    expect(
+      /\bwatch\s*\(/.test(wholeChain),
+      '「数 dispatch」的链路上出现了 `watch(` —— R-58 从此适用，' +
+        '而上面两条注释守卫对此一无所知',
+    ).toBe(false)
   })
 })

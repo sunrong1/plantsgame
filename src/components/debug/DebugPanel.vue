@@ -36,19 +36,28 @@
  *   「跳到任意回合」（AR40 / 裁决 7）是独立的一段：目标回合 + 按钮 + 结果行，
  *   经 `store` 的 `jumpToTurn` 门面执行（守卫 G118 盯的是**门面那份**的实现）。
  */
-import { computed, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 
 import {
   assetDegradations,
+  assetDegradationsVersion,
   audioDegradations,
+  audioDegradationsVersion,
   devFlags,
   devSetDirectWin,
   devSetInfiniteHearts,
   devSetInfiniteSun,
+  exportSession,
+  isRecording,
   jumpToTurn,
+  MAX_JUMP_STEPS,
+  onAssetDegradationsChanged,
+  onAudioDegradationsChanged,
+  onSaveDegradationsChanged,
   progress,
   retrySaveWrite,
   saveDegradations,
+  saveDegradationsVersion,
   state,
 } from '../../app/store'
 import type { JumpResult } from '../../app/store'
@@ -77,18 +86,66 @@ interface PanelDegradation {
 /**
  * 三个来源归一化成一个列表。
  *
- * ⚠️ **本模块的三个 registry 都不是响应式的**（模块级 `Map` / `Set`），
- *   而 Vue 只重算依赖到响应式量的 computed ⇒ 点完「重试写入」后，
- *   光调 `saveDegradations()` **不会**让这段重渲染。
- *   ⇒ {@link bump} 是那个「手动踩一下」的响应式量。
+ * ⚠️ **本模块的三个 registry 都不是响应式的**（模块级 `Map` / `Set` / 普通变量），
+ *   而 Vue 只重算依赖到响应式量的 computed ⇒ 单纯调 `saveDegradations()`
+ *   **不会**让这段重渲染。
+ *   ⇒ {@link registriesVersion} 是那个把「底层状态变了」翻译成「有东西变了」的信号。
+ *
+ * ⚠️ **为什么是本地 `ref` 而不是 service 直接返回 `ref`**
+ *   （`[CR]` 2026-10-17 裁决）：`src/services/**` 与 `src/core/**` 今天**零 vue 依赖**
+ *   （R-08 的依赖方向里没有 Vue 这一层，守卫会红）⇒ 底层只能给**纯数字**，
+ *   响应式依赖由**这一层**建立。这正是裁决 2 选的那条缝。
  *
  * ⚠️ **不改两个既有 API 的返回类型**（AC-E4）：形状由 1.14 / 1.15 自己的守卫钉着，
  *   这里只读不写。
  */
 const bump = ref(0)
 
+/**
+ * 三个 registry 的版本号快照 —— **把它读进 `computed` 只是记账，不是刷新**。
+ *
+ * ⚠️📎 **为什么必须配 {@link onDegradationChanged}，版本号单独不够**：
+ *   Vue 的 `computed` **只追踪响应式量的读取**。`assetDegradationsVersion()`
+ *   返回一个普通整数，读它**建不起任何依赖** ⇒ 只挂这个的话，
+ *   底层版本号一路涨到 9999，面板从头到尾显示「一切正常」。
+ *   版本号回答「**变没变**」（可拉、可断言），订阅回答「**什么时候变**」（推给 Vue）。
+ */
+const registriesVersion = computed(
+  () =>
+    `${bump.value}|${assetDegradationsVersion()}|${saveDegradationsVersion()}|${audioDegradationsVersion()}`,
+)
+
+/**
+ * 挂载时订阅三个 registry，**卸载时逐个退订**（`[CR]` 2026-10-17）。
+ *
+ * ⚠️ **退订不是可选的洁癖**：监听者集合是**模块级**的，面板每次挂载都往里加一个
+ *   闭包。漏退订 ⇒ 面板卸载后底层仍在回调它，第二次挂载时同一个 ref 被推两遍
+ *   （本例无害，但下一任读者加了计数/日志就会出怪事）。
+ * ⚠️ 底层给的是**纯 JS 回调**（零 vue），依赖由本层的 `bump` 建立 —— R-08 不动。
+ */
+const unsubscribers: Array<() => void> = []
+
+onMounted(() => {
+  unsubscribers.push(
+    onAssetDegradationsChanged(() => {
+      bump.value += 1
+    }),
+    onSaveDegradationsChanged(() => {
+      bump.value += 1
+    }),
+    onAudioDegradationsChanged(() => {
+      bump.value += 1
+    }),
+  )
+})
+
+onUnmounted(() => {
+  for (const off of unsubscribers) off()
+  unsubscribers.length = 0
+})
+
 const degradations = computed<readonly PanelDegradation[]>(() => {
-  void bump.value
+  void registriesVersion.value
   const rows: PanelDegradation[] = []
   for (const item of assetDegradations()) {
     rows.push({ locator: `url=${item.url}`, reason: item.reason })
@@ -104,7 +161,7 @@ const degradations = computed<readonly PanelDegradation[]>(() => {
 
 /** 有没有存档降级项 —— 决定「重试写入」这个按钮露不露脸。 */
 const saveDegraded = computed(() => {
-  void bump.value
+  void registriesVersion.value
   return saveDegradations().length > 0
 })
 
@@ -113,7 +170,8 @@ const saveDegraded = computed(() => {
  *
  * ⚠️ **刻意不调 `clearSave()`** —— 清档与重试是两件事，
  *   调试面板误清玩家的存档**不可逆**（守卫 G115 读 `removeItem` 的调用痕迹）。
- * ⚠️ 写成功后 `save.ts` 自己清降级项，本函数只需让列表重算。
+ * ⚠️ 写成功后 `save.ts` 自己清降级项；这里仍要 `bump` 一下，
+ *   因为「按钮刚被点过」这件事本身也要让列表重算一次。
  */
 function onRetrySaveWrite(): void {
   retrySaveWrite(progress.value, state.value)
@@ -149,6 +207,10 @@ const jumpSummary = computed(() => {
     'level-failed': '这一局已经失败',
     'level-complete': '这一局已经通关',
     'not-in-play': '当前不在能推进的阶段',
+    // ⚠️ 与 `not-in-play` 必须是**两句话**（`[CR]` 2026-10-17 修）：
+    //   原来步数预算耗尽也落进 `not-in-play`，面板如实显示「当前不在能推进的阶段」
+    //   —— 而那一刻相位恰恰是完全可推进的 `round-over`。谎报比不报更难查。
+    'step-budget-exhausted': `一次最多跳 ${MAX_JUMP_STEPS} 步（面板的输入框挡不住 99999），目标太远了`,
   }[result.stoppedBy]
   return `停在第 ${result.reachedTurn} 回合：${why}`
 })
@@ -161,6 +223,60 @@ const jumpSummary = computed(() => {
  */
 function onJumpTurn(): void {
   jumpResult.value = jumpToTurn(Number(targetTurn.value))
+}
+
+// ── 导出会话（裁决 3 / AR39）────────────────────────────────────────────────
+
+/**
+ * 「导出会话」按钮的可用性 —— **没录过时置灰**。
+ *
+ * ⚠️📎 **不能直接在模板里写 `isRecording()`**（`session-recorder.ts` 与
+ *   `tests/app/session-recorder.test.ts:196` 的注释逐字点名那个绑定）。
+ *   裸调函数**建不起任何响应式依赖** —— 它读的是模块级变量。
+ *   本条显式读 `state.value` 只为**挂一个依赖**：每 dispatch 一次都会换掉
+ *   `state.value`（`applyAction` 的第 2 步），于是这个 `computed` 必然重算，
+ *   按钮的置灰状态跟着「第一条 action 有没有按过」走。
+ *   ⚠️ 这是与上面 `registriesVersion` 同款的坑：**光读不算数，要挂上响应式量**。
+ */
+const canExport = computed(() => {
+  void state.value
+  return isRecording()
+})
+
+/** 上一次导出的结果反馈。`null` = 还没点过 —— 此时面板不显示任何反馈行。 */
+const exportFeedback = ref<string | null>(null)
+
+/**
+ * 点「导出会话」：把整局复制到剪贴板（**裁决 3**，2026-10-17）。
+ *
+ * ⚠️ **序列化在复制之前**：`exportSession()` 交出的是**一份快照**
+ *   （`[CR]` 2026-10-17 修掉了它原先交出活引用的问题），
+ *   而 `JSON.stringify` 把它固化成字符串 ⇒ 之后即使 `resetSession()` 发生，
+ *   剪贴板里那份仍然是完整的一局。
+ *
+ * ⚠️ **两条失败路径都**不**抛，且都不写技术字样**（NFR12 / NFR13 / 守卫 G111）：
+ *   · 没录过 —— 按契约 `exportSession()` 抛，按钮本该是灰的；这里仍然兜住，
+ *     因为「置灰」与「能不能导出」是两件事，中间可能隔着一次 `resetSession()`。
+ *   · 剪贴板被拒 —— 非安全上下文 / 用户拒授权 / 老浏览器都没有 `clipboard`。
+ *     面板对家长说的话是「没复制成」，不是 `undefined is not a function`。
+ */
+async function onExportSession(): Promise<void> {
+  let text: string
+  try {
+    text = JSON.stringify(exportSession(), null, 2)
+  } catch {
+    exportFeedback.value = '这一局还没有录到任何操作，没什么可导出的'
+    return
+  }
+
+  try {
+    await navigator.clipboard.writeText(text)
+    exportFeedback.value = `已复制到剪贴板（${exportSession().actions.length} 步操作）`
+  } catch {
+    // ⚠️ 不退回去「弹一个 textarea 让人自己复制」—— 那要再加一块 UI，
+    //   而面板是给家长在平板上用的，临时方案在平板上往往更难用。
+    exportFeedback.value = '没复制成 —— 浏览器没让这个页面访问剪贴板'
+  }
 }
 </script>
 
@@ -307,6 +423,36 @@ function onJumpTurn(): void {
         {{ jumpSummary }}
       </p>
     </section>
+
+    <!--
+      「导出会话」（裁决 3 / AR39）。
+      ⚠️ **置灰而不是点完再报错**：家长在开始界面就点得到这个按钮，
+        而那时一条 action 都还没按过 —— `exportSession()` 按契约**抛**，
+        报错弹出来对家长毫无意义。
+    -->
+    <section class="debug-panel__export">
+      <h3 class="debug-panel__subtitle">
+        导出会话
+      </h3>
+
+      <button
+        type="button"
+        class="debug-panel__button"
+        data-action="export-session"
+        :disabled="!canExport"
+        @click="onExportSession"
+      >
+        复制这一局
+      </button>
+
+      <p
+        v-if="exportFeedback"
+        class="debug-panel__export-feedback"
+        data-action="export-feedback"
+      >
+        {{ exportFeedback }}
+      </p>
+    </section>
   </aside>
 </template>
 
@@ -323,6 +469,34 @@ function onJumpTurn(): void {
   color: var(--color-path);
   padding: var(--space-panel-pad);
   font-size: 14px;
+
+  /* ⚠️📎 **`position: fixed` 不是装饰，是可达性**（`[CR]` 2026-10-17 补）：
+   *   `App.vue:41` 把本组件挂在模板**末尾**、与 `StartView` / `LevelView` 平级，
+   *   而它是个普通 `<aside>` ⇒ 不定位就是**流内最后一个块级元素**，
+   *   竖屏（本作的主场景）下被整块推到游戏视图**下方** ——
+   *   而 `App.vue` 给出的挂载理由恰恰是「调试开始界面时也看得见面板」。
+   *   ⇒ 修法是让它**脱离文档流、固定在视口内**，而不是改 `App.vue` 的挂载顺序
+   *   （那会动到既有视图的布局，且「面板在末尾」本身没有错）。
+   *
+   * ⚠️ `inset-block-start: 0` + `inset-inline-end: 0`：贴**右上**角。
+   *   不贴左上的理由：左上角是标题与生命条的常规位置，压上去会让面板**盖住**
+   *   孩子真正要看的那些东西 —— NFR13 在这一层仍然成立（见文件头）。
+   * ⚠️ **`max-height` + `overflow-y: auto`**：面板有五段（读数 / 开关 / 降级 / 跳回合 /
+   *   导出），小屏竖屏下内容比视口高。不给滚动的话下半截（含「重试写入」与
+   *   「导出会话」两个**补救入口**）会落在屏幕外 —— 而那正是家长最需要按到的两下。
+   * ⚠️ `inset-block-end: 0` **不设**：不同时贴上下边，否则 `max-height` 会被两端挤成
+   *   视口高度减去上下 padding，内容一多就还是溢出。
+   */
+  position: fixed;
+  inset-block-start: 0;
+  inset-inline-end: 0;
+  z-index: 10;
+  max-height: 100vh;
+  max-height: 100dvh;
+  overflow-y: auto;
+  /* 离屏幕边缘留一点，压到最边上时贴边文字会被系统手势区挡住。 */
+  margin: var(--space-panel-pad);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.25);
 }
 
 .debug-panel__title {
@@ -427,5 +601,26 @@ function onJumpTurn(): void {
 .debug-panel__jump-result {
   margin: 8px 0 0;
   opacity: 0.9;
+}
+
+/*
+ * 「导出会话」那一段。
+ * ⚠️ 零新美术资产（AC-D6）：只复用上面已经用过的 `__subtitle` / `__button`，
+ *   这里的 `__export-feedback` 与 `__jump-result` 是同一形态（同为「一句话反馈」），
+ *   所以沿用同一组已存在的变量，不新造一套间距/字号。
+ */
+.debug-panel__export-feedback {
+  margin: 8px 0 0;
+  opacity: 0.9;
+}
+
+/*
+ * ⚠️ **置灰样式是必须的，不能只靠 `:disabled`**：`.debug-panel__button` 自己
+ *   设了 `background: transparent` 与 `color: inherit`，浏览器默认的
+ *   `:disabled` 变灰**会被它整个盖掉** ⇒ 按钮看起来完全可点，点了才没反应。
+ */
+.debug-panel__button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 </style>

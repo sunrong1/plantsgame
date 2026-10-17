@@ -35,6 +35,65 @@ export interface AssetDegradation {
 const degraded = new Map<string, string>()
 
 /**
+ * 登记表版本号 —— 每次登记 / 清除都 +1（`[CR]` 2026-10-17 补）。
+ *
+ * ── 为什么需要它 ────────────────────────────────────────────────────────────
+ * `degraded` 是个**模块级 `Map`**：Vue 的响应式追踪只认 `ref` / `reactive` / `computed`，
+ * 读一个普通 `Map` **建不起任何依赖** ⇒ 面板上那个 `computed` 只会在挂载时算一次，
+ * 之后词图 404 再也刷不出来。
+ *
+ * 📎 **刻意用纯数字而不是 `ref`**：`src/services/**` 与 `src/core/**` 今天**零 vue 依赖**
+ *   （R-08 的依赖方向里没有 Vue 这一层，守卫会红）。版本号在这里只是一个**普通整数**。
+ */
+let version = 0
+
+/**
+ * 变更监听者 —— **纯函数数组，零框架**（`[CR]` 2026-10-17 补）。
+ *
+ * ⚠️📎 **为什么光有版本号不够**（这是本条最容易想当然的一处）：
+ *   Vue 的 `computed` **只追踪响应式量的读取**。把 `assetDegradationsVersion()`
+ *   写进 `computed` 里读一遍，**建不起任何依赖** —— 那个 `computed` 只会在
+ *   它自己别的响应式依赖变动时才重算 ⇒ 版本号变了面板**照样不刷**。
+ *   「版本号」回答的是「**变没变**」（可拉、可断言），「监听者」回答的是
+ *   「**什么时候变**」（推给 Vue）。两个都要，缺一不可。
+ */
+const listeners = new Set<() => void>()
+
+/**
+ * 订阅降级变化 —— 返回**退订函数**（照 `AbortSignal` 的形状，不留半截订阅）。
+ *
+ * ⚠️ 监听者集合是模块级的，**每个订阅都必须在 `onUnmounted` 退订** ——
+ *   漏一个就是面板卸载后仍被回调，第二次挂载时回调翻倍。
+ */
+export function onAssetDegradationsChanged(cb: () => void): () => void {
+  listeners.add(cb)
+  return () => listeners.delete(cb)
+}
+
+/**
+ * 「降级状态变了」—— **本模块唯一的变更入口**。
+ *
+ * ⚠️📎 **版本号与通知写在同一个函数里，是刻意的**：它们回答的是同一个事实
+ *   （「状态变了」）。分成两处调用点就多一次「加了一个忘了另一个」的机会，
+ *   而那种不一致**测不出来** —— 版本号涨了面板不刷，或者反之，两边单看都绿
+ *   （与 R-58 记的那个「默认 `flush: 'pre'` 把同步多次赋值合并成一次」同类：
+ *   一个只监一个信号的判据恒绿）。
+ */
+function noteChanged(): void {
+  version += 1
+  for (const cb of listeners) cb()
+}
+
+/** 登记表的当前版本号 —— **只在登记 / 清除时递增**。
+ *
+ *  ⚠️ **同一条降级项重复登记也要递增**：面板要能反映「理由变了」，
+ *    而不只是「多了一项」。
+ */
+export function assetDegradationsVersion(): number {
+  return version
+}
+
+/**
  * 登记一条内容资产降级。**不抛、不出声、不阻断**（AC-E1 第 3 条）。
  *
  * @param url 失败的资源 URL
@@ -42,6 +101,7 @@ const degraded = new Map<string, string>()
  */
 export function markAssetDegraded(url: string, reason: string): void {
   degraded.set(url, reason)
+  noteChanged()
 }
 
 /** 全部正在生效的内容资产降级项 —— 调试面板的数据源（AC-E4）。 */
@@ -65,4 +125,5 @@ export function isAssetDegraded(): boolean {
  */
 export function clearAssetDegradationsForTest(): void {
   degraded.clear()
+  noteChanged()
 }

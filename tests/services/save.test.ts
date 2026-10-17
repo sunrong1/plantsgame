@@ -575,3 +575,111 @@ describe('AC-B7 —— readSave 的两条 null 语义可区分', () => {
     expect(saveApi.isSaveDegraded(), '删干净了就是「没有存档」，那是正常状态').toBe(false)
   })
 })
+
+// ── [CR] 2026-10-17 —— 变更信号（版本号 + 订阅）──────────────────────────
+describe('[CR 2026-10-17] 增与删**四条路径**都要发信号', () => {
+  it('写失败：版本号递增 **且** 订阅被调用', () => {
+    storage.throwOnSet = true
+    const before = saveApi.saveDegradationsVersion()
+    let fired = 0
+    const off = saveApi.onSaveDegradationsChanged(() => {
+      fired += 1
+    })
+
+    saveApi.writeSave(freshProgress(), null)
+
+    expect(saveApi.saveDegradations(), '前置：确实登记了一条').toHaveLength(1)
+    expect(saveApi.saveDegradationsVersion(), '版本号没涨').toBeGreaterThan(before)
+    expect(fired, '订阅没被调用 —— 面板上的「重试写入」永远不会露脸').toBe(1)
+    off()
+  })
+
+  it('读失败：同样发信号（不是只有写失败这一条路）', () => {
+    storage.throwOnGet = true
+    const before = saveApi.saveDegradationsVersion()
+    let fired = 0
+    const off = saveApi.onSaveDegradationsChanged(() => {
+      fired += 1
+    })
+
+    saveApi.readSave()
+
+    expect(saveApi.saveDegradations(), '前置：确实登记了一条').toHaveLength(1)
+    expect(saveApi.saveDegradationsVersion(), '读这条路漏了').toBeGreaterThan(before)
+    expect(fired, '读这条路漏通知了').toBe(1)
+    off()
+  })
+
+  // ⚠️📎 **「清空」那几条比「登记」更容易被漏掉**：登记路径全部汇进 `markDegraded`
+  //   一个函数，而清空散在 `writeSave` / `readSave` / `clearSave` **三处** `degraded.clear()`
+  //   —— 每处都得记得跟一句通知。评审变异实测：删掉其中任意一处通知，
+  //   只判「登记」的判据**全绿**。
+  it('写成功清空降级项：版本号递增 **且** 订阅被调用', () => {
+    storage.throwOnSet = true
+    saveApi.writeSave(freshProgress(), null)
+    expect(saveApi.saveDegradations(), '前置：先落一条降级项').toHaveLength(1)
+    storage.throwOnSet = false
+    const before = saveApi.saveDegradationsVersion()
+    let fired = 0
+    const off = saveApi.onSaveDegradationsChanged(() => {
+      fired += 1
+    })
+
+    saveApi.writeSave(freshProgress(), null)
+
+    expect(saveApi.saveDegradations(), '写成功后降级项应当被清掉').toHaveLength(0)
+    expect(saveApi.saveDegradationsVersion(), '「好了」也是一条要刷的消息').toBeGreaterThan(before)
+    expect(fired, '清空没通知 —— 面板会一直挂着一条已经不生效的降级项').toBe(1)
+    off()
+  })
+
+  it('读到可用存档同样清空并发信号', () => {
+    storage.data.set(saveApi.SAVE_KEY, '不是 JSON')
+    saveApi.readSave()
+    expect(saveApi.saveDegradations(), '前置：先落一条 parse 降级项').toHaveLength(1)
+    saveApi.writeSave(freshProgress(), null)
+    const before = saveApi.saveDegradationsVersion()
+    let fired = 0
+    const off = saveApi.onSaveDegradationsChanged(() => {
+      fired += 1
+    })
+
+    saveApi.readSave()
+
+    expect(saveApi.saveDegradations()).toHaveLength(0)
+    expect(saveApi.saveDegradationsVersion(), 'readSave 的清空漏了').toBeGreaterThan(before)
+    expect(fired, 'readSave 的清空没通知').toBe(1)
+    off()
+  })
+
+  it('`clearSave()` 的清空也发信号', () => {
+    storage.throwOnSet = true
+    saveApi.writeSave(freshProgress(), null)
+    storage.throwOnSet = false
+    const before = saveApi.saveDegradationsVersion()
+    let fired = 0
+    const off = saveApi.onSaveDegradationsChanged(() => {
+      fired += 1
+    })
+
+    saveApi.clearSave()
+
+    expect(saveApi.saveDegradations()).toHaveLength(0)
+    expect(saveApi.saveDegradationsVersion(), 'clearSave 的清空漏了').toBeGreaterThan(before)
+    expect(fired, 'clearSave 的清空没通知').toBe(1)
+    off()
+  })
+
+  it('退订之后不再被调用', () => {
+    storage.throwOnSet = true
+    let fired = 0
+    const off = saveApi.onSaveDegradationsChanged(() => {
+      fired += 1
+    })
+    off()
+
+    saveApi.writeSave(freshProgress(), null)
+
+    expect(fired, '退订之后还被回调 —— 模块级监听者集合漏了清理').toBe(0)
+  })
+})

@@ -417,17 +417,69 @@ describe('G105 —— 回合日志的 DEV 门控与 console 的落点（Story 1.
     for (const file of ALL_SOURCE_FILES) {
       const rel = file.slice(root.length + 1)
       if (rel === 'src/app/effects-runner.ts') continue
-      // 「打印回合日志」这件事的形态只有一种：`console.*` 直接吃一个
-      // 变量名里带 line/trace 的值。判据锚在这一处，避免把别的日志牵连进来。
       const clean = stripComments(readFileSync(file, 'utf8'))
-      if (/\bconsole\s*\.\w+\([^)]*\b(effect|trace)\w*\.line\b/.test(clean)) offenders.push(rel)
+      // ⚠️📎 **`[CR]` 2026-10-17 换判据锚点（R-57）**：原来锚在
+      //   `/\bconsole\s*\.\w+\([^)]*\b(effect|trace)\w*\.line\b/` 上 ——
+      //   **只认 `X.line` 一种语法形态**，于是三种真实违规全部放过（实测）：
+      //     · `console.info(turnLogLine(action, next))` —— 直接调生产者
+      //     · `console.log(l)` —— 变量名叫 `l`，正则里的 `\w+` 要求它以 line/trace 开头
+      //     · `console.info(line)` —— 连属性访问都没有
+      //   「一句话怎么被打印出来」的形态是**无限的**（包装函数、别名、中间变量），
+      //   在 `console.*` 这一层收口收不干净。
+      //   ⇒ 改锚在**两个有限的事实上**，它们合起来才等价于「打印点唯一」：
+      //     ① **生产者唯一**：`turnLogLine` 是回合日志字符串的唯一产地
+      //        （`core/effects.ts:263` 定义、`:154` 唯一的消费点）。
+      //        它一旦被**别的文件**调用，就说明有人绕过 `runEffects` 自己拼日志。
+      //     ② **读者唯一**：`TraceEffect` 的正文只有一个出口 `effect.line`。
+      //        实测全仓 `src/` 里 `.line` **只出现一次**（`effects-runner.ts:133`），
+      //        所以「除 runner 外零 `.line`」是一条**不误伤**的强判据。
+      //
+      // ⚠️ **两个豁免不是同一个范围**，别图省事合成一个：
+      //   · `core/effects.ts` **可以**调 `turnLogLine` —— 它就是产地的家。
+      //   · 但它**不可以**读 `.line` —— 产地自己读自己的出口没有意义，
+      //     出现即说明有人绕过 `runEffects` 直接操作 `Effect` 数组。
+      const isProducerHome = rel === 'src/core/effects.ts'
+      const usesProducer = !isProducerHome && /\bturnLogLine\s*\(/.test(clean)
+      const readsLine = /\.line\b/.test(clean)
+      if (usesProducer || readsLine) {
+        offenders.push(`${rel}${usesProducer ? '（调了 turnLogLine）' : ''}`)
+      }
     }
 
     expect(
       offenders,
-      `回合日志在 runner 之外被打印了：${offenders.join('、')}。` +
-        '前缀 `[core]` 是语义标签，打印者必须留在 effects-runner（裁决 1）',
+      `回合日志在 runner 之外被生成或被读取了：${offenders.join('、')}。` +
+        '前缀 `[core]` 是语义标签，生产者 `turnLogLine` 的**消费点**与出口 `effect.line` ' +
+        '都必须留在 effects-runner（裁决 1）',
     ).toEqual([])
+  })
+
+  // ⚠️📎 **R-53 反向自测**：换锚点之后必须证明新锚点**真的能咬**。
+  //   评审第一版的原判据收得太窄，三种真实违规形态实测**全部放过** ——
+  //   而当时没有反向自测，所以「绿」不说明任何事。
+  //   下面这三条探针逐字对应那三种实测形态，外加一条合法写法防误伤。
+  it('反向自测：换锚点后这三种违规形态都被拦下（旧判据实测全部放过）', () => {
+    /** 与上面真判据**同形**的探针函数 —— 形态不同形的自测等于没有自测。 */
+    const flags = (clean: string): { producer: boolean; readsLine: boolean } => ({
+      producer: /\bturnLogLine\s*\(/.test(clean),
+      readsLine: /\.line\b/.test(clean),
+    })
+
+    // ① 直接调生产者（旧判据放过）
+    const direct = 'console.info(turnLogLine(action, next))\n'
+    expect(flags(direct).producer, '判据自检：直接调生产者的探针都拦不住').toBe(true)
+
+    // ② 变量名短到正则 `\w+` 匹配不上（旧判据放过）
+    const shortVar = 'const l = effect.line\nconsole.log(l)\n'
+    expect(flags(shortVar).readsLine, '判据自检：短变量名的探针都拦不住').toBe(true)
+
+    // ③ 连属性访问都没有，只把结果塞进变量（旧判据放过）
+    const viaFn = 'function say() { return turnLogLine(action, next) }\n'
+    expect(flags(viaFn).producer, '判据自检：包装函数的探针都拦不住').toBe(true)
+
+    // ④ 合规写法：一个字都不能误伤
+    const legal = "case 'SAVE':\n  writeSave(p, s)\n  break\n"
+    expect(flags(legal)).toEqual({ producer: false, readsLine: false })
   })
 })
 

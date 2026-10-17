@@ -25,7 +25,13 @@
 
 import { assertNeverEffect, runEffects } from '../core'
 import type { Action, Effect, Progress, State } from '../core'
-import { audioDegradations, playSfx, startBgmIfReady } from '../services/audio'
+import {
+  audioDegradations,
+  audioDegradationsVersion,
+  onAudioDegradationsChanged,
+  playSfx,
+  startBgmIfReady,
+} from '../services/audio'
 import { writeSave } from '../services/save'
 
 // 📎 **Story 1.17 / AC-E4：把「音频降级项」这个只读查询也放行到组件层。**
@@ -33,7 +39,14 @@ import { writeSave } from '../services/save'
 //     逐字说明了为什么禁整个模块而不是逐个函数名），而 1.17 的面板必须显示
 //     「音效资源缺失」⇒ 唯一的合法通道就是本文件这个 app 层门面，
 //     与 1.14 裁决 5 的 `startBgmIfReady` **同构**（同一个理由、同一处出口）。
-export { audioDegradations, startBgmIfReady }
+// ⚠️📎 `[CR]` 2026-10-17 补：`audioDegradationsVersion` 与 `audioDegradations`
+//   **同一条通道** —— 面板要靠它把版本号包成响应式依赖，而禁列禁的是**整个模块**。
+export {
+  audioDegradations,
+  audioDegradationsVersion,
+  onAudioDegradationsChanged,
+  startBgmIfReady,
+}
 
 /**
  * 执行一次 dispatch 产生的全部副作用 —— 按 `runEffects` 返回的**顺序**逐条执行

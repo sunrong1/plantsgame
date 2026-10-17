@@ -151,6 +151,20 @@ export function runEffects(action: Action, prev: State, next: State): readonly E
   //   若只在收尾那一次产出，`answer` 那条就丢了 —— 而**正是它最能说明
   //   「孩子选错了哪张卡」**。`turn` 字段把它们归到同一回合号。
   //   守卫 **G104** 专测「条数 = dispatch 次数」。
+  //
+  // ⚠️📎 **AC-C3 逐字要求「写清楚 R-58 不适用」—— 这一段就是那份记录**
+  //   （`[CR]` 2026-10-17 补；此前零处提及，AC 的这条要求一直是**没落地**的）。
+  //   AC 原文：「⚠️ 「数 dispatch 次数」的断言若走 Vue `watch` 必须 `flush: 'sync'`
+  //   （R-58）—— 但本 story 的日志在 `applyAction` 里，**不走 watch**，天然同步 ⇒ 不适用 R-58。」
+  //   展开成「为什么天然同步」：
+  //     · 本行在 `runEffects(action, prev, next)` 体内 —— 它是**一次 dispatch 的
+  //       同步尾巴**，调用点在 `app/effects-runner.ts`，`applyAction` 里同步调它。
+  //     · `tests/core/trace-log.test.ts` 的 G104 直接调 `runEffects` 数条数，
+  //       **整条链上没有一个 `watch`**。
+  //   ⇒ R-58 要防的形态（「`watch` 默认 `flush: 'pre'` 把同一 tick 里的多次赋值
+  //     合并成一次，于是数出来的 dispatch 次数偏少」）在这里**构造上不可达**。
+  //   ⚠️ **若哪天这一行挪进 `watch` 或任何微任务里，R-58 立刻适用** ——
+  //     而 R-58 自身的「守卫」字段逐字标注为「⚠️ 无守卫」，全靠注释兜底的正是这条规则。
   effects.push(trace(turnLogLine(action, next)))
 
   // ① 答题反馈 —— 读 `prev.phase.question`（答题**前**的那道题），见 AC-C2。

@@ -98,6 +98,17 @@ export { audioDegradations } from './effects-runner'
 export { assetDegradations } from '../services/asset-degradations'
 export { saveDegradations } from '../services/save'
 
+// 📎 `[CR]` 2026-10-17：三个 registry 的**变更信号门面** —— 同一理由的同一处出口。
+//   面板上那两个 `computed` 读的是模块级 `Map` / 普通变量，Vue 建不起依赖
+//   ⇒ 挂载时算一次就再也不刷了。
+//   ⚠️ **版本号是「可拉」的一半，订阅是「可推」的一半，两个都要**：
+//     把版本号读进 `computed` **建不起任何依赖**（Vue 只追踪响应式量的读取），
+//     光导出版本号面板照样不刷新。底层给纯 JS 信号，Vue 依赖由面板层建立
+//     （`src/services/**` 与 `src/core/**` 今天零 vue 依赖，R-08 不动）。
+export { audioDegradationsVersion, onAudioDegradationsChanged } from './effects-runner'
+export { assetDegradationsVersion, onAssetDegradationsChanged } from '../services/asset-degradations'
+export { saveDegradationsVersion, onSaveDegradationsChanged } from '../services/save'
+
 /**
  * 首个单元号。Epic 1 只有单元 1。
  * ⚠️📎 **「选单元」入口不属 Story 1.15**（R-32 的编号残留更正，2026-10-17）：
@@ -224,8 +235,20 @@ export const view: Ref<'start' | 'level'> = ref('start')
 export function enterLevel(): void {
   view.value = 'level'
   startBgmIfReady()
+  // ⚠️📎 **会话录制从「进入战场」起算**（`[CR]` 2026-10-17 补的缺口）：
+  //   原来 `resetSession()` 只挂在 `restartLevel()` 与 `jumpToTurn()` 上，
+  //   于是「通关 → 返回开始 → 再进关」这条路径上，`restoreNextUnit` 已经把
+  //   `state.value` 换成了一份**全新**的 state，`recordStep` 却因
+  //   `initialState !== null` **沿用上一局的开局**当起点
+  //   ⇒ 导出的 `{initialState, actions}` 起点与输入错配，而
+  //   `core/session-replay.ts` 逐字声明「非法 action 会照 `reduce` 的抛错抛出去，
+  //   本函数**不**接住」⇒ 这份导出**必炸**，家长拿到一个打不开的"可复现现场"。
+  //   ⚠️ 顺带把「断点续学后接着录」也一起定义了：回到战场就从恢复后那份 state 起算，
+  //     因为复现要求是真输入 —— 从孩子**接下来真按的那一下**重播才对得上。
+  resetSession()
   restoreFromSave()
 }
+
 
 /**
  * 从存档恢复跨局进度与当前这一局（AC-D1）。
@@ -384,6 +407,19 @@ export function applyAction(action: Action): void {
   // ⚠️ 它排在**第 2 步之后、第 3 步之前** —— 四步顺序是架构的一部分（见文件头），
   //   本 story 只是在中间插入记账，不是改了那四步的内容。
   recordStep(action, prev, reduced)
+  // 📎 **Story 1.17（AC-B5）：`RESTART_LEVEL` 就是「新一局」，会话录制从它复位。**
+  //
+  // ⚠️ **判据是 `action.type`，不是相位**（AC-B5 逐字）。它原来挂在 `restartLevel()`
+  //   门面里，而那个门面第一行是 `if (currentPhaseKind() !== 'level-failed') return`
+  //   ⇒ 判据实际是**相位门**：一条在别的相位上合法派发的 `RESTART_LEVEL` 会漏掉复位。
+  //   挂在这里则与「谁派发了这条 action」完全对齐（AC-B5 的字面口径）。
+  //
+  // ⚠️ **必须排在 `recordStep` 之后**：`recordStep` 会把这一条 `RESTART_LEVEL`
+  //   连同上一局的尾巴一起 push 进 `recording.actions`，而它属于**上一局**。
+  //   先清后录就把它录进新一局 —— 守卫 **G101** 专测这条顺序。
+  if (action.type === 'RESTART_LEVEL') {
+    resetSession()
+  }
   // 📎 **Story 1.17 裁决 5：dev-only 补偿缝** —— 第 2 步（`reduce`）与第 3 步之间。
   //
   // ⚠️ **必须排在 `runEffectsFromStore` 之前**（守卫 G109）：`SAVE` effect 携带的那份
@@ -593,10 +629,12 @@ export function restartLevel(): void {
   //
   // ⚠️ **必须排在 `applyAction` 之后**：`recordStep` 挂在 `applyAction` 里，
   //   先清后 dispatch 会把这一条 `RESTART_LEVEL` 也录进去 —— 而它属于**上一局**。
-  // ⚠️ 判据是「重打是**新一局**」，不是相位：上一局的 `initialState` 对新一局
-  //   毫无意义（它还是那个孩子刚失败的局面），留着会让导出的 JSON
-  //   从一个失败局面开始播。守卫 **G101** 专测。
-  resetSession()
+  // ⚠️📎 **`resetSession()` 已移到 `applyAction`，判据改成 `action.type`**（AC-B5，`[CR]` 2026-10-17）：
+  //   它原来挂在这里，而 AC-B5 逐字要求「判据是 `action.type`，不是相位」——
+  //   挂在这里就意味着判据是**这个门面的相位门**，一条在别的相位上合法派发的
+  //   `RESTART_LEVEL`（G93 只保证 `restartLevel()` 是它的唯一调用点，
+  //   不保证它只在 `level-failed` 相位被调用）会漏掉这次复位。
+  //   本句只保留说明，真正的判据见 `applyAction` 里那三行。
 }
 
 /**
@@ -664,17 +702,37 @@ export interface JumpResult {
    * 为什么停在这儿。
    * ⚠️ `reached` **不是**「一定到了目标回合」——目标回合 ≤ 当前回合时也是它
    *   （那本来就该是「原样不动」）。
+   *
+   * 📎 **2026-10-17 `[CR]` 加了第五个成员 `step-budget-exhausted`**
+   *   （原注释逐字：「相位是有限的，正常路径根本走不到上限」）。
+   *   实测那不成立：面板输入框的 `min="1"` 挡不住 `99999`，
+   *   约第 166 回合就把 500 步用光，而相位是 `round-over`（完全可推进）⇒
+   *   旧代码落进 `not-in-play` 那一支，面板如实显示**「当前不在能推进的阶段」**，
+   *   而真相是「步数预算耗尽」。**谎报比不报更难查。**
    */
-  readonly stoppedBy: 'reached' | 'level-failed' | 'level-complete' | 'not-in-play'
+  readonly stoppedBy: 'reached' | 'level-failed' | 'level-complete' | 'not-in-play' | 'step-budget-exhausted'
 }
 
 /**
  * 步数上限 —— 防「目标回合写成 99999」把浏览器挂死。
  *
- * ⚠️ 正常路径根本走不到它：循环体每次都推进一个相位，而相位是有限的
- *   （答题 → 开战 → 结算 → 推进）。它是**兜底**，不是流程的一部分。
+ * ⚠️📎 **它不是构造上不可达**（`[CR]` 2026-10-17 实测更正）：
+ *   原注释逐字写的是「正常路径根本走不到它」。实测一个回合要过
+ *   `awaiting-answer → awaiting-build → round-over` 三次 dispatch ≈ 3 步，
+ *   而单元 1 的题单有 25 题 —— 500 步大约在**第 166 回合**耗尽。
+ *   面板输入框的 `min="1"` 只挡下界，**挡不住 `99999`**。
+ *   ⇒ 它是**兜底**，而兜底会真的被踩到；`JumpResult.stoppedBy`
+ *     因此必须有 `step-budget-exhausted` 这一支如实报告它
+ *     （原先它落进 `not-in-play`，面板会显示一句**假的**「当前不在能推进的阶段」）。
+ *   顺带：真走到这条路径时，一次点击会打出约 500 条 TRACE 日志并做
+ *   约 500 次同步 `localStorage` 写入 —— 移动端上是可感知的卡顿。
  */
 const MAX_JUMP_STEPS = 500
+
+/** 📎 导出给面板用（`[CR]` 2026-10-17）—— 面板要显示「一次最多跳 N 步」，
+ *  而这个数字**不许**在 `DebugPanel.vue` 里另写一份（R-37 的复制链）。
+ */
+export { MAX_JUMP_STEPS }
 
 /**
  * 「跳到任意回合」（AR40）—— 调试面板上那个输入框 + 按钮的唯一入口。
@@ -710,7 +768,10 @@ export function jumpToTurn(targetTurn: number): JumpResult {
 
   const target = Number.isFinite(targetTurn) ? Math.max(1, Math.trunc(targetTurn)) : 1
 
+  let dispatched = 0
+  let steps = 0
   for (let step = 0; step < MAX_JUMP_STEPS && state.value.turn < target; step += 1) {
+    steps = step + 1
     // ⚠️ 直接读 `phase` 而不是 `currentPhaseKind()`：那个 helper 只返回 `kind`
     //   （`State['phase']['kind']`），**判别联合到这一步已经收窄了**，
     //   `phase.question` 取不到。`tests/app/session-replay` 里同款处置见
@@ -724,10 +785,12 @@ export function jumpToTurn(targetTurn: number): JumpResult {
       //   ⇒ 停下来如实报告，而不是 dispatch 一条会被 reducer 判非法态的 ANSWER。
       if (correct === undefined) break
       applyAction(answer(correct.id))
+      dispatched += 1
       continue
     }
     if (phase.kind === 'awaiting-build') {
       startRound()
+      dispatched += 1
       continue
     }
     // ⚠️ `round-over` 只在 dev 补偿把 `level-failed` 翻回来之后才会出现
@@ -735,14 +798,34 @@ export function jumpToTurn(targetTurn: number): JumpResult {
     //   要继续往后走就得再按一次推进。生产构建里这段不可达（dev 补偿被 tree-shake）。
     if (phase.kind === 'round-over') {
       applyAction(continueRound())
+      dispatched += 1
       continue
     }
     break
   }
 
-  resetSession()
+  // ⚠️ 步数预算耗尽**必须与 `break` 区分开**（`[CR]` 2026-10-17）：
+  //   `break` 有三个出口 —— 坏内容数据没有正确项、`level-failed`、`level-complete`
+  //   —— 它们都是「局面自己到了一个停得住的地方」，得如实报成对应的原因。
+  //   只有 `steps` 真的顶到 `MAX_JUMP_STEPS` **且**还没到目标回合，才是预算耗尽。
+  //   ⚠️ 判据是 `steps` 而不是「没 break 出来」：`state.value.turn < target`
+  //     在**每一个** break 出口上同样成立（心耗尽时回合号当然没到目标），
+  //     拿它当判据会把 level-failed 谎报成 step-budget-exhausted
+  //     （`tests/app/jump-turn.test.ts` 那条「心耗尽了却报到达 —— 那是撒谎」当场抓住）。
+  const budgetExhausted = steps >= MAX_JUMP_STEPS && state.value.turn < target
+
+  // ⚠️📎 **只在真的跳了才清录制**（`[CR]` 2026-10-17 修）：
+  //   原来这句无条件执行，于是「目标回合 ≤ 当前回合」那种一次 action 都不
+  //   dispatch 的点击也会清空整局的会话录制，而面板只显示「已到第 N 回合」
+  //   读起来像成功了 —— 家长点了没反应的那一下，把这局的复现现场弄丢了。
+  if (dispatched > 0) resetSession()
 
   const kind = currentPhaseKind()
+  // ⚠️📎 **顺序不可换**（`[CR]` 2026-10-17，变异验证时抓到）：
+  //   `level-failed` / `level-complete` 必须排在 `budgetExhausted` **前面** ——
+  //   一局跑完可能正好把 500 步用尽，而那仍然是「这一局通关了」，
+  //   不是「没跳到」。反过来排会把一个正常结局误报成异常，
+  //   那比谎报更难查：家长会以为是自己目标写大了。
   const stoppedBy: JumpResult['stoppedBy'] =
     state.value.turn >= target
       ? 'reached'
@@ -750,7 +833,9 @@ export function jumpToTurn(targetTurn: number): JumpResult {
         ? 'level-failed'
         : kind === 'level-complete'
           ? 'level-complete'
-          : 'not-in-play'
+          : budgetExhausted
+            ? 'step-budget-exhausted'
+            : 'not-in-play'
 
   return { reachedTurn: state.value.turn, stoppedBy }
 }

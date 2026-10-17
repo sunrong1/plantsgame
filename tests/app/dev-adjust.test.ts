@@ -57,6 +57,7 @@ import {
 } from '../../src/core'
 import type { State } from '../../src/core'
 import { afterEachUninstall, installFakeStorage } from '../fixtures/fake-storage'
+import { readSave } from '../../src/services/save'
 import { correctOptionId, makeSyntheticDeck } from '../fixtures/synthetic-deck'
 
 // ── 夹具 ───────────────────────────────────────────────────────────────────
@@ -175,10 +176,20 @@ describe('G108 —— 补偿后的 state 仍能过 `assertInvariants`（裁决 5
 
   it('G108：「无限心」只在真掉心时补，不许把满心改成非满心', () => {
     devSetInfiniteHearts(true)
+    const before = state.value.hearts
     answerCorrectly()
     playOneRound()
-    const full = state.value.hearts
-    expect(full).toBe(HEARTS)
+
+    // ⚠️📎 `[CR]` 2026-10-17 拆开了它与上一条「走不到 level-failed」的耦合：
+    //   原来这里是 `expect(state.value.hearts).toBe(HEARTS)`，任何把心数夹成
+    //   `HEARTS - 1` 的变异会让**上一条与这一条同时**红 ⇒ 两条不构成两份独立的鉴别力。
+    //   换成断言**补偿自己声明的语义**「只抬不降」：本次 dispatch 之后心数
+    //   不得低于 dispatch 之前那份。任何把补偿写成无条件赋值的变异都会单独红在这里。
+    expect(before).toBe(HEARTS)
+    expect(
+      state.value.hearts,
+      '「无限心」只抬不降 —— 补偿后心数低于 dispatch 前那份，说明它在无条件改写心数',
+    ).toBeGreaterThanOrEqual(before)
   })
 
   it('G108（补）：`prev.hearts` 本来就是 0 的局面 ⇒ 仍必须夹到 1（M134 专打）', () => {
@@ -224,6 +235,48 @@ describe('G108 —— 补偿后的 state 仍能过 `assertInvariants`（裁决 5
     answerCorrectly()
     // 此刻相位是 awaiting-build，devAdjust 已把阳光抬上去。
     expect(state.value.sun).toBeGreaterThanOrEqual(9999)
+  })
+
+  // ⚠️📎 `[CR]` 2026-10-17 补的鉴别力用例。上面那条为什么是**假绿**：
+  //   它 `playOneRound()` 之后相位已是 `awaiting-answer`，而
+  //   `assertPhaseMirror`（`reducer.ts:517-533`）逐字第一句就是
+  //   「`phase.kind !== 'awaiting-build'` ⇒ 直接 return」⇒ 那条断言恒绿，
+  //   它根本碰不到结构不变量。
+  //   上面「答题相位」那条虽然**停在** `awaiting-build`（镜像断言在这里才真的跑），
+  //   却只断言了 `sun >= 9999`、**没调 `assertInvariants`**。
+  //   两条各差一步，谁也盖不住「phase.sun 没跟着抬」这个 bug ——
+  //   实测它产出 `Phase 上的 sun（50）与 State（9999）不一致`，
+  //   而那份非法 state **真的被 SAVE 写进了 localStorage**。
+  it('G108（[CR] 补）：「无限阳光」在 awaiting-build 上抬时，`phase.sun` 镜像必须跟着抬', () => {
+    devSetInfiniteSun(true)
+    answerCorrectly()
+
+    // 前置：这条用例只在 `awaiting-build` 上有意义 —— 别的相位 `assertPhaseMirror` 会 return
+    expect(state.value.phase.kind, '前置：必须停在 awaiting-build，否则本条恒绿').toBe('awaiting-build')
+    expect(state.value.sun).toBeGreaterThanOrEqual(9999)
+
+    // ↓ 这条断言删掉，补偿就可以只改 `state.sun` 而放过镜像，而没有任何用例会红
+    expect(
+      () => assertInvariants(state.value),
+      '补偿抬了 state.sun 却没抬 phase.sun —— 这份非法 state 会被 SAVE 写进存档，' +
+        '重进时 restoreFromSave 抛错进 catch 降级，孩子刚学会的词连同整局一起被丢弃',
+    ).not.toThrow()
+  })
+
+  it('G108（[CR] 补）：开着「无限阳光」落盘的存档，重进时自身必须过 `assertInvariants`', () => {
+    devSetInfiniteSun(true)
+    answerCorrectly()
+
+    const saved = readSave()
+    expect(saved, '前置：这一次 dispatch 必须是写盘点').not.toBeNull()
+    expect(saved?.currentGame).not.toBeNull()
+
+    // ↓ 与上一条互为另一端：上一条验内存里那份，这条验**盘上**那份。
+    //   `restoreFromSave` 读的就是它（`store.ts` 的 `assertInvariants(restored)`）。
+    expect(
+      () => assertInvariants(saved!.currentGame!),
+      '存档内容自身违反不变量 ⇒ 重进时必被 assertInvariants 拦下并降级丢弃整局',
+    ).not.toThrow()
   })
 
   it('G108：「直接通关」在 `awaiting-build` 上补满题单，且不变量过得去', () => {

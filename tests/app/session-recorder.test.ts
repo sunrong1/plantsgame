@@ -205,6 +205,72 @@ describe('会话录制（Story 1.17 / G97 / G98）', () => {
     expect(isRecording()).toBe(false)
   })
 
+  // ⚠️📎 `[CR]` 2026-10-17 补的缺口：**跨局不复位**。
+  //   上面那条在修复前后都绿 —— 它断言的是「没录过就别装录过」，
+  //   而真正的 bug 是**录过之后换了一局却没清**。
+  //   原实现里 `resetSession()` 只挂在 `restartLevel()` 与 `jumpToTurn()` 上，
+  //   于是「通关 → 返回开始 → 再进关」这条路径上 `restoreNextUnit` 已经把
+  //   `state.value` 换成一份**全新**的 state，`recordStep` 却因
+  //   `initialState !== null` **沿用上一局的开局**当起点。
+  it('[CR 2026-10-17] 通关 → 返回开始 → 再进关：录制必须从新一局起算', () => {
+    // ⚠️ **必须换一份 3 题的题单**：本文件默认的 25 题题单在「不建塔」下会先
+    //   心耗尽（实测走到 `level-failed`），永远走不到 `level-complete`，
+    //   而本用例要的正是**通关**那条路径（通关才把 `currentGame` 存成 `null`，
+    //   再进关时才会走 `restoreNextUnit` 换一份全新的 state）。
+    state.value = createInitialState({ unitNumber: 1, deck: makeSyntheticDeck(3, 1) })
+    resetSession()
+
+    // ① 打完整局，录到东西
+    for (let i = 0; i < 10 && state.value.phase.kind !== 'level-complete'; i += 1) {
+      if (state.value.phase.kind !== 'awaiting-answer') break
+      answerCorrectly()
+      startRound()
+    }
+    expect(state.value.phase.kind, '前置：本用例要走通关路径').toBe('level-complete')
+    expect(isRecording(), '前置：第一局已经录到了 action').toBe(true)
+
+    // ② 回开始，再进关 —— `restoreNextUnit` 会换掉 `state.value`
+    backToStart()
+    enterLevel()
+
+    expect(
+      isRecording(),
+      '换了一局却没清录制 —— 新一局的 action 会接在上一局的起点后面，' +
+        '导出的 JSON 喂回 replaySession 必在第一条 action 上抛（那个函数按契约不接住）',
+    ).toBe(false)
+  })
+
+  it('[CR 2026-10-17] 断点续学：回到战场后，录制从**恢复后**那份 state 起算', () => {
+    // ⚠️ 与上一条**互为另一端**：上一条管「换局」，这一条管「同一局的续学」。
+    //   断点续学后从恢复那份 state 起算才对 —— 复现要求是**孩子接下来真按的那一下**，
+    //   而不是把关闭页面前的输入也算进来。
+    answerCorrectly()
+    startRound()
+    const resumeTurn = state.value.turn
+    writeSave({ currentUnitIndex: 0, masteredWordIds: [] }, state.value)
+    expect(isRecording(), '前置：玩过，录制器是活的').toBe(true)
+
+    backToStart()
+    enterLevel()
+
+    // ⚠️ 刚回来时**一条 action 都还没按**，此时 `exportSession()` 本就该抛
+    //   （起点必须是第一条 action 之前的快照）⇒ 先按一下再量。
+    expect(() => exportSession(), '刚回来还没按任何键，导出本就应当抛').toThrow()
+
+    answerCorrectly()
+
+    const resumed = exportSession()
+    expect(
+      resumed.initialState.turn,
+      '续学后录制的起点是「恢复后那份 state」而不是「关闭页面前那一局的开局」—— ' +
+        '起点错配会让导出的 JSON 回放出另一局',
+    ).toBeGreaterThanOrEqual(resumeTurn)
+    expect(
+      resumed.initialState.turn,
+      '前置：它不该还是第 1 回合（那就是没读档）',
+    ).toBeGreaterThan(1)
+  })
+
   it('AC-B1③：`next` 收下但当前不参与导出 —— 判据落在导出形状上', () => {
     // 手动喂一条：`next` 与 `prev` 刻意不同（`END_BUILD` 的载荷为空 ⇒ 逐字相等，
     // 所以用 `RESTART_LEVEL` 之外的一条**载荷非空**的：`PLACE_TOWER`）。
@@ -275,6 +341,28 @@ describe('会话重置（Story 1.17 / G101 / AC-B5）', () => {
 
     expect(isRecording()).toBe(false)
     expect(() => exportSession()).toThrow()
+  })
+
+  it('[CR 2026-10-17] 已经交出去的会话不被后续 `resetSession()` 清空', () => {
+    answerCorrectly()
+    startRound()
+    answerCorrectly()
+
+    // ⚠️ 这条在修复前**恒绿**：上面那条「`resetSession()` 把会话清回没录过」
+    //   只断言 `exportSession()` 这个**函数调用**会抛，完全没管
+    //   「先前已经拿到的那份对象会怎样」。实测那份对象会从 12 条变成 0 条 ——
+    //   `resetSession` 执行的是 `recording.actions.length = 0`，就地清空同一个数组。
+    const exported = exportSession()
+    const lenAtExport = exported.actions.length
+    expect(lenAtExport, '前置：必须真的录到了 action').toBeGreaterThan(0)
+
+    resetSession()
+
+    expect(
+      exported.actions.length,
+      '已导出的会话被后续 reset 清空 —— 家长交出去的「可复现现场」在别人手上变成空的，' +
+        '而把它喂 replaySession 不抛错，直接返回 initialState（一个孩子从没玩到过的局面）',
+    ).toBe(lenAtExport)
   })
 
   it('选中 / 取消选中不产生 action（它不是 dispatch）', () => {
