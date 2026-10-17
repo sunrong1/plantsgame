@@ -25,6 +25,7 @@ import {
   enterLevel,
   exportSession,
   isRecording,
+  progress,
   recordStep,
   resetSession,
   restartLevel,
@@ -34,6 +35,7 @@ import {
 } from '../../src/app/store'
 import { answer, createInitialState } from '../../src/core'
 import type { Action, State } from '../../src/core'
+import { writeSave } from '../../src/services/save'
 import { afterEachUninstall, installFakeStorage } from '../fixtures/fake-storage'
 import { correctOptionId, makeSyntheticDeck } from '../fixtures/synthetic-deck'
 
@@ -125,6 +127,41 @@ describe('会话录制（Story 1.17 / G97 / G98）', () => {
     // 整局的题单都在 `deck` 里（`State` 的既有性质）。
     expect(exportSession().initialState.deck.length).toBe(DECK.length)
     expect(JSON.stringify(exportSession().initialState)).toBe(openingText)
+  })
+
+  it('G97（补）：断点续学后的会话起点是**读档回来的那份**，不是重算的开局（M127 专打）', () => {
+    // 🔥 **这条是 M127 变异逼出来的**（首版 G97 只从新开局起量）。
+    // 为什么那条量不出来：会话从**新开局**开始时，第一条 action 的 `prev`
+    // 与 `createInitialState({unitNumber, deck})` **逐字相等** ⇒
+    // 把 `initialState` 改成重算，在那条路径上**构造上不可区分**（等价变异）。
+    // 而 FR60 的真实场景是**断点续学**：`enterLevel()` 读档替换 `state.value`
+    // 且**不 dispatch**（⇒ 会话还没开始录），于是第一条 action 的 `prev`
+    // 是**玩到一半的局面** —— 这才是「起点被换成假起点」真正会露出来的地方。
+    answerCorrectly()
+    startRound()
+    answerCorrectly()
+    const savedTurn = state.value.turn
+    const savedMastered = state.value.masteredEntryIds.length
+    expect(savedTurn, '前置：存档那份应当不在第 1 回合').toBeGreaterThan(1)
+    expect(savedMastered, '前置：存档那份应当答对过题').toBeGreaterThan(0)
+    writeSave(progress.value, state.value)
+
+    // 模拟「关掉页面再打开」：内存换成新开局、会话清空。
+    resetSession()
+    state.value = createInitialState({ unitNumber: 1, deck: DECK })
+    enterLevel()
+    expect(state.value.turn, '前置：应当读档成功').toBe(savedTurn)
+
+    // ⚠️ 存档点是 `awaiting-build`（1.15 写盘表）⇒ 读档回来**没有正在问的题**，
+    //   所以第一条 action 用 `startRound()`（它链发 END_BUILD 等真 action）。
+    startRound()
+
+    const session = exportSession()
+    expect(
+      session.initialState.turn,
+      '起点被换成了重算出来的开局 —— 回放会从孩子**没玩到过**的盘面开始播',
+    ).toBe(savedTurn)
+    expect(session.initialState.masteredEntryIds.length).toBe(savedMastered)
   })
 
   it('G98：`actions` 的顺序就是 dispatch 顺序，一条不漏一条不多', () => {

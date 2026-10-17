@@ -66,7 +66,7 @@ const recording: Recording = { initialState: null, actions: [] }
 /**
  * 记一步 dispatch。**唯一的调用点在 `store.applyAction` 的最前面。**
  *
- * ⚠️ **必须排在 `reduce` 之前**：`initialState` 要的是「第��条 action **之前**的 state」，
+ * ⚠️ **必须排在 `reduce` 之前**：`initialState` 要的是「第 1 条 action **之前**的 state」，
  *   而 `reduce(prev, action)` 返回的是**新对象**，不会改 `prev` ——
  *   但排在它之后会让「起点」这件事依赖「reduce 不改入参」这条隐含性质。
  *   排在前面则由本函数自己保证，与 reducer 的实现无关。

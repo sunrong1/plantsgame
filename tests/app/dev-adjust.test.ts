@@ -181,6 +181,35 @@ describe('G108 —— 补偿后的 state 仍能过 `assertInvariants`（裁决 5
     expect(full).toBe(HEARTS)
   })
 
+  it('G108（补）：`prev.hearts` 本来就是 0 的局面 ⇒ 仍必须夹到 1（M134 专打）', () => {
+    // 🔥 **这条是 M134 变异逼出来的**（首版 G108 只量真打出来的掉心）。
+    // 为什么首版量不出来：`prev` 是 `RESOLVE_ROUND` **之前**那份 state，
+    // 而「心掉到 0」的那一刻正是 resolve 把它推成 `level-failed` 的那一刻
+    // ⇒ 真机上 `prev.hearts` **恒 ≥ 1** ⇒ 去掉 `Math.max(1, …)` 是
+    // **等价变异**（两条路径输出逐字相同）。
+    // ⇒ 这个夹取是**防御性的**：它守的是「将来某条路径让 0 心继续往下走」，
+    //   而那种局面今天构造不出来 ⇒ 只能用**直接喂给 `devAdjust`** 的办法量它。
+    const opening = createInitialState({ unitNumber: 1, deck: DECK })
+    const reduced: State = {
+      ...opening,
+      hearts: 0,
+      phase: { kind: 'level-failed' },
+    }
+    const prev: State = { ...opening, hearts: 0, phase: { kind: 'round-over' } }
+
+    const next = devAdjust(reduced, prev, {
+      infiniteHearts: true,
+      infiniteSun: false,
+      directWin: false,
+    })
+
+    expect(
+      next.hearts,
+      '0 心没有被夹到 1 —— 夹取一旦删掉，「心数恒落在 [0, HEARTS] 之外」就没人拦',
+    ).toBe(1)
+    expect(() => assertInvariants(next)).not.toThrow()
+  })
+
   it('G108：「无限阳光」把阳光抬到 9999，且不变量过得去', () => {
     devSetInfiniteSun(true)
     answerCorrectly()
