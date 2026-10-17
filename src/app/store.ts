@@ -53,6 +53,47 @@ import { playPronunciation } from '../services/pronunciation'
 import { readSave } from '../services/save'
 
 import { runEffectsFromStore, startBgmIfReady } from './effects-runner'
+import { devAdjust } from './dev-adjust'
+import { recordStep, resetSession } from './session-recorder'
+
+// 📎 **Story 1.17：会话录制的四个门面从本文件转出**（AC-D2 / AC-D1）。
+//   ⚠️ **理由与 {@link selectTowerCard} 那组门面同款**：组件**只调 `store` 的门面**，
+//     不自己 import 别的 app 模块。这样「面板调了哪些能力」在一处就能看全，
+//     也让「面板不许 import `core/actions`」那条边界（守卫 G110）只需要盯一个文件。
+//   ⚠️ **重导出而不是搬进来**：录制器持有自己的模块级状态，
+//     搬进 `store.ts` 会让它与 `state` / `progress` 挤在一个文件里。
+export { exportSession, isRecording, recordStep, resetSession } from './session-recorder'
+export type { SessionExport } from './session-recorder'
+
+// 📎 **Story 1.17：dev 调试开关的门面同样从本文件转出**（AC-D2 / G110）。
+//   理由与上面那组门面同款：面板**只调 `store` 的门面**，
+//   于是「面板调了哪些能力」在一处就能看全。
+// ⚠️ **不转出 `devAdjust`**：它不是面板的能力，是 `applyAction` 内部四步中的一步。
+//   转出它等于邀请组件自己去补偿 state，那正是 R-04 要防的事。
+export {
+  devFlags,
+  devSetDirectWin,
+  devSetInfiniteHearts,
+  devSetInfiniteSun,
+  isDebugPanelRequested,
+} from './dev-adjust'
+export type { DevFlags } from './dev-adjust'
+
+// 📎 **Story 1.17 / AC-E3：调试面板「重试写入」的门面。**
+//   ⚠️ **理由与上面两组门面同款**：组件只调 `store` 的门面，不自己 import
+//   `services/save` —— 那会让 `writeSave` 多出第二个调用点，当场撞红守卫 G86
+//   （逐个调用点判定：`writeSave` 只许在 `src/app/effects-runner.ts`）。
+export { retrySaveWrite } from './effects-runner'
+
+// 📎 **Story 1.17 / AC-E4：三个降级 registry 的只读门面。**
+//   ⚠️ **音频那个必须走 `effects-runner`** —— 组件与视图**整条** `services/audio`
+//     都在 ESLint 禁列里（禁整个模块而不是逐个函数名，是 1.14 留下的纪律），
+//     所以面板读音频降级项的唯一合法通道就是那个 app 层门面。
+//   ⚠️ 另两个没有这条限制，但**仍然转出**，理由与上面那两组门面同款：
+//     「面板调了哪些能力」在一处就能看全，守卫 G110 只盯 `DebugPanel.vue` 一个文件。
+export { audioDegradations } from './effects-runner'
+export { assetDegradations } from '../services/asset-degradations'
+export { saveDegradations } from '../services/save'
 
 /**
  * 首个单元号。Epic 1 只有单元 1。
@@ -330,7 +371,27 @@ function clearSelectionIfLeavingBuildPhase(next: State): void {
  */
 export function applyAction(action: Action): void {
   const prev = state.value
-  const next = reduce(prev, action)
+  const reduced = reduce(prev, action)
+  // 📎 **Story 1.17 在四步之中加的这一行**（AC-B1）：把这一记 dispatch 录进会话。
+  //
+  // ⚠️ **`initialState` 取的是 `prev`（本步之前那份），不是 `reduced`** ——
+  //   它要的是「第一条 action **之前**的 state」。`reduce` 是纯函数不改编入参，
+  //   所以 `prev` 在这一步之后**仍然**是那一份快照；这一点由 `reducer.test.ts`
+  //   的「零随机、零时间」守卫兜着。
+  // ⚠️ 它排在**第 2 步之后、第 3 步之前** —— 四步顺序是架构的一部分（见文件头），
+  //   本 story 只是在中间插入记账，不是改了那四步的内容。
+  recordStep(action, prev, reduced)
+  // 📎 **Story 1.17 裁决 5：dev-only 补偿缝** —— 第 2 步（`reduce`）与第 3 步之间。
+  //
+  // ⚠️ **必须排在 `runEffectsFromStore` 之前**（守卫 G109）：`SAVE` effect 携带的那份
+  //   必须与内存里孩子看到的一致。排在后面就出现「盘上一份、内存一份」。
+  // ⚠️ **排在上面那条录制之前**：会话要记的是**玩家点的输入**，
+  //   记在补偿之前 ⇒ dev 态天然不进回放（AC-B6 / 裁决 6：
+  //   回放必须复现真实输入才叫复现，带 dev 态的局面那不叫复现）。
+  // ⚠️ **`import.meta.env.DEV` 这道门必须留在调用点**：Vite 生产构建会把它
+  //   静态替换成 `false`，整条 `devAdjust` 分支被 tree-shake 掉，
+  //   生产包**不带**这三个开关的任何代码。
+  const next = import.meta.env.DEV ? devAdjust(reduced, prev) : reduced
   // 🔥 **Story 1.16 裁决 11（AC-C2）：先把「本局结算后的进度」算出来，两处共用。**
   //
   // ⚠️ **为什么要提前算**：写盘（第 3 步）此前拿的是**旧**的 `progress.value`，
@@ -346,10 +407,17 @@ export function applyAction(action: Action): void {
   //   而 1.13 的 story 文档已归档、按 R-40 不去动它。
   //
   // ⚠️ **`advanceProgress` / `advanceUnit` 各只调一次** —— 不是「算两次对得上」。
-  // ⚠️ **`hasNextUnit(next)` 只在 `next.phase.kind === 'level-complete'` 时为 `true`**，
+  // ⚠️ **`hasNextUnit(reduced)` 只在 `reduced.phase.kind === 'level-complete'` 时为 `true`**，
   //   其余相位恒 false ⇒ 两条纯函数的「无增量返回入参本身」性质被绝大多数
   //   dispatch 保住，`progress.value` 的引用只在真有变化时才变（守卫 G54 的鉴别力）。
-  const nextProgress = advanceUnit(advanceProgress(progress.value, next), hasNextUnit(next))
+  // 📎 **1.17：这里刻意读 `reduced` 而不是 `next`（裁决 5 末段二选一的判定）** ——
+  //   跨局进度是**孩子真的会带走的业务事实**（FR58 只增不减、还要落盘），
+  //   dev 补偿是**临时手柄**。拿补偿后的掌握记录去算进度的话，
+  //   「直接通关」勾一下就把整份题单永久写进了 `masteredWordIds` ——
+  //   关掉开关、重打一局，那 25 个词仍然显示成「已掌握」，而界面上没有任何东西
+  //   指向原因（R-06 说的那种「静默错到下一个生命周期」）。
+  //   ⇒ 写盘拿 `next`（要一致），跨局进度拿 `reduced`（不能被 dev 手柄污染）。
+  const nextProgress = advanceUnit(advanceProgress(progress.value, reduced), hasNextUnit(reduced))
   // 📎 **Story 1.14 接上的第三步**（AC-E2）：拿 `(action, prev, next)` 三个快照去播音效。
   //
   // ⚠️ **位置不可换** —— 它读的是 prev/next 两个快照，排在 `state.value = next`
@@ -518,6 +586,14 @@ function currentPhaseKind(): State['phase']['kind'] {
 export function restartLevel(): void {
   if (currentPhaseKind() !== 'level-failed') return
   applyAction(restartLevelAction())
+  // 📎 **Story 1.17（AC-B5）：重打之后清掉会话录制。**
+  //
+  // ⚠️ **必须排在 `applyAction` 之后**：`recordStep` 挂在 `applyAction` 里，
+  //   先清后 dispatch 会把这一条 `RESTART_LEVEL` 也录进去 —— 而它属于**上一局**。
+  // ⚠️ 判据是「重打是**新一局**」，不是相位：上一局的 `initialState` 对新一局
+  //   毫无意义（它还是那个孩子刚失败的局面），留着会让导出的 JSON
+  //   从一个失败局面开始播。守卫 **G101** 专测。
+  resetSession()
 }
 
 /**

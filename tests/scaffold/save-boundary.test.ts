@@ -143,7 +143,17 @@ describe('G86 —— R-04 的存档那一半：只有 effects-runner 能写盘�
     const CALLERS: Record<string, string> = {
       writeSave: 'src/app/effects-runner.ts',
       readSave: 'src/app/store.ts',
-      clearSave: null as unknown as string, // 1.17 才用；今天零调用点
+      // 📎 **1.17 [CS] 裁决 8 曾计划把这一条改判为「调用点只许在
+      //   `src/components/debug/` 下、且 DEV 门控」—— `[DS]` 未改判，留痕如下。**
+      //   前提不成立：`1.17` 的 AC-E3 逐字要求「重试写入」调 `writeSave`、
+      //   **不许**调 `clearSave`（「清档与重试是两件事」）⇒ 1.17 从头到尾
+      //   **没有造出任何 `clearSave` 调用点**（实测 `grep -rn clearSave src/`
+      //   只剩定义处与三处注释）。
+      //   ⇒ 原判据「零调用点」**一字未动**，且它比裁决 8 计划的改判**更强**：
+      //   改判会允许 debug 组件清档，而那正是 AC-E3 禁止的行为。
+      //   变异 M139（「重试写入」改调 `clearSave()`）因此由 **G115** 单独抓，
+      //   不再依赖 G86 —— 验证见本 story 的 Task 9。
+      clearSave: null as unknown as string,
     }
 
     for (const [fn, allowed] of Object.entries(CALLERS)) {
@@ -164,7 +174,7 @@ describe('G86 —— R-04 的存档那一半：只有 effects-runner 能写盘�
       expect(
         offenders,
         allowed === null
-          ? `R-04：${fn} 今天必须零调用点（1.17 的面板还没建），却在这几处被调了`
+          ? `R-04：${fn} 必须零调用点（1.17 的「重试写入」按 AC-E3 调 writeSave，不调它），却在这几处被调了`
           : `R-04：${fn} 只许在 ${allowed} 里调用，却在这几处也被调了`,
       ).toEqual([])
     }

@@ -15,9 +15,22 @@
  * ⚠️ 两个子组件都**必须显式 import**（Debug Log #4）：`script setup` 不做全局
  *   组件解析，漏掉会渲染成没有内容的自定义元素，而 vue-tsc / build / test / lint
  *   **全绿**，页面只是白着。`eslint.config.js` 的 `vue/no-undef-components` 守着它。
+ *
+ * 📎 **Story 1.17：调试面板挂在**本文件**而不是 `views/` 里**（AC-D5、裁决 9）。
+ *   ⚠️ AC-D5 那句「挂在 `LevelView.vue` 或 `App.vue` 的 DEV 分支里」与它下一句
+ *     「守卫 G113：`src/views/` 下零 `components/debug` 的 import」**自相矛盾** ——
+ *     挂进 `LevelView.vue` 就正好违反 G113。按「**面板不是可路由到达的页面**」
+ *     这条**语义**裁决：挂 `App.vue`（根组件，非视图），
+ *     `src/views/` 因此保持零调试 import，G113 可以逐字守。
+ *   ⚠️ 挂在根上还有一个好处：调试开始界面时也看得见面板 ——
+ *     「进关后白屏」这类问题恰恰发生在 `enterLevel()` 之前。
+ *   ⚠️ **门控是 `isDebugPanelRequested()`，它自己再判一次 `import.meta.env.DEV`**
+ *     （守卫 G112）—— 生产构建里整段被静态替换掉并 tree-shake，
+ *     生产包**不含**面板的任何代码。
  */
-import { view } from './app/store'
+import { isDebugPanelRequested, view } from './app/store'
 
+import DebugPanel from './components/debug/DebugPanel.vue'
 import LevelView from './views/LevelView.vue'
 import StartView from './views/StartView.vue'
 </script>
@@ -25,4 +38,5 @@ import StartView from './views/StartView.vue'
 <template>
   <StartView v-if="view === 'start'" />
   <LevelView v-else />
+  <DebugPanel v-if="isDebugPanelRequested()" />
 </template>

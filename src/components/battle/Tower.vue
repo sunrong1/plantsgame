@@ -27,6 +27,7 @@
 import { computed, ref } from 'vue'
 
 import type { Tower as TowerEntity, TowerType } from '../../core'
+import { markAssetDegraded } from '../../services/asset-degradations'
 import { expectedTowerAssetUrl } from '../../services/asset-url'
 
 const props = defineProps<{
@@ -74,6 +75,13 @@ function onImageError(): void {
       '已降级为 CSS 占位形状，回合流转不受影响。若部署后普遍发生，先查 ' +
       '`import.meta.env.BASE_URL` 是否与站点前缀一致（守卫 G16）。',
   )
+  // 📎 **Story 1.17 / AC-E2：登记这一条，让调试面板读得到它。**
+  //   ⚠️ **排在既有 warn 之后，且渲染降级态的逻辑一个字没动** ——
+  //   `failed.value = true` 与下面那段 `v-if="!failed"` 占位形状是 1.7 / 1.11
+  //   已交付、且被既有守卫钉住的交付物（AC-A1 第 7 行）。
+  //   ⚠️ **registry 里零 `console`**：出声的是「刚刚发现图挂了」的组件 ——
+  //   它知道塔 id 与塔型，登记点什么都不知道。
+  markAssetDegraded(src.value, `塔图（塔 ${props.tower.id}，塔型 ${props.tower.towerType}）`)
 }
 </script>
 

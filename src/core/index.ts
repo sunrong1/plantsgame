@@ -163,3 +163,12 @@ export type { Progress, ProgressDisplay } from './hud.js'
 export { assertNeverEffect, effectKindName, runEffects } from './effects.js'
 
 export type { Effect, SfxCue } from './effects.js'
+
+// 📎 会话回放（Story 1.17 / AC-B2）。**纯计算**：把导出的 `{ initialState, actions[] }`
+//   喂进 `reduce` 还原终态 —— 零 DOM、零 Vue、零副作用，所以它落在本层而不是 `app/`。
+//   ⚠️ 回放的判据只有一条：终态逐字相等。它**不**跑 effects、不写盘、不播音效（R-04）。
+//   ⚠️ `ReplayInput` 与 `app/session-recorder.ts` 的 `SessionExport` 刻意不共享类型 ——
+//     共享只能靠 `core/` import `app/`（R-08 禁），见该文件的注释。
+export { replaySession } from './session-replay.js'
+
+export type { ReplayInput } from './session-replay.js'

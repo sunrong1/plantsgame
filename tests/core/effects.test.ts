@@ -203,20 +203,22 @@ describe('AC-C5 / G62 —— 一次 RESOLVE_ROUND 可同时产出三个 cue，�
   it('G62：输出是数组且有序（不是 Set / Object.keys 的产物）', () => {
     const effects = tripleCueDispatch().effects
     expect(Array.isArray(effects), 'runEffects 返回数组 —— 返回顺序即播放顺序').toBe(true)
-    // ⚠️ `[DS]` 2026-10-17 —— **Story 1.15 改了这条判据，不是把它放宽**（R-57）。
+    // ⚠️ `[DS]` 2026-10-17 —— **Story 1.17 又改了这条判据，不是把它放宽**（R-57）。
     //
-    // 原文逐字是 `effects.every((e) => e.kind === 'SFX')`，失败消息「本 story 只产 SFX」。
-    // 那是一条 **1.14 的范围断言**（「这个 story 只实现 SFX，另三个变体显式落到不执行的分支」），
-    // 而 1.15 合法接入了 `SAVE` ⇒ 它今天必然红。
+    // 1.15 把 `every(e => e.kind === 'SFX')`（1.14 的范围断言，1.15 接入 SAVE 后必然红）
+    // 改成**精确的 kind 序列**。1.17 加了第五个成员 `TRACE`（回合日志，排在**最前**）
+    // ⇒ 序列变成 `TRACE + SFX×3 + SAVE`。
     //
-    // ⇒ 改成**精确的 kind 序列**，比原文**更强**：原文只说「全是 SFX」，
-    //   这条说的是「恰好是三个 SFX，第四个恰好是 SAVE，且 SAVE 排在胜负判定之后」。
-    //   放宽的写法（`e.kind === 'SFX' || e.kind === 'SAVE'`）会让「多产一条 SAVE」
-    //   照绿 —— 那正是本仓库吃过三次亏的形状。
+    // ⚠️ **TRACE 排第一不是随意选的**：日志记的是「当时发生了什么」，
+    //   音效与存档是「它引起了什么」⇒ 先记因、后记果。
+    //   这条判据因此**比原断言更强**：它钉死了五个成员的相对次序，
+    //   任何一条被挪位置都会红。放宽的写法（`e.kind === 'SFX' || e.kind === 'SAVE'`）
+    //   会让「多产一条 SAVE」照绿 —— 那正是本仓库吃过三次亏的形状。
     expect(
       effects.map((e) => e.kind),
-      '一次 RESOLVE_ROUND 的 kind 序列必须是 SFX×3 + SAVE，且 SAVE 排在最后（1.15 裁决 4 / AC-C1）',
-    ).toEqual(['SFX', 'SFX', 'SFX', 'SAVE'])
+      '一次 RESOLVE_ROUND 的 kind 序列必须是 TRACE + SFX×3 + SAVE：' +
+        'TRACE 记因排最前，SAVE 记果排最后（1.17 裁决 1 / 1.15 裁决 4 / AC-C1）',
+    ).toEqual(['TRACE', 'SFX', 'SFX', 'SFX', 'SAVE'])
   })
 
   it('G62：SAVE 排在 level-complete 之后 —— 先判胜负再落盘', () => {
@@ -286,7 +288,13 @@ describe('AC-B3 / AC-B4 —— Effect 联合与纯度', () => {
     const question = currentQuestion(prev)
     const { effects } = dispatch(prev, answer(correctOptionId(question)))
     for (const e of effects) {
-      expect(['SFX', 'ANIMATION', 'TTS', 'SAVE'], 'Effect.kind 必须是四个变体之一').toContain(e.kind)
+      // ⚠️ `[DS]` 2026-10-17 —— Story 1.17 加了第五个成员 `TRACE`（回合日志）。
+      //   改的是**白名单的内容**，不是它的严格性：仍是「必须是 N 个变体之一」的穷尽名单，
+      //   多一个未登记的 kind 照样红（R-57 留痕）。
+      expect(
+        ['SFX', 'ANIMATION', 'TTS', 'SAVE', 'TRACE'],
+        'Effect.kind 必须是五个变体之一（TRACE 是 1.17 加的回合日志）',
+      ).toContain(e.kind)
     }
   })
 

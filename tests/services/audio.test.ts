@@ -6,102 +6,36 @@
  *
  * ⚠️ 动态 `await import()`：模块级 audioCtx 状态要用 vi.resetModules() 清零，
  * 静态 import 拿到的是另一份实例，测试会假绿。
+ *
+ * 📎 **Story 1.17：三个 fake 类与它们的全局安装已提到 `tests/fixtures/fake-audio.ts`。**
+ *   1.17 的降级面板测试要真的跑一次「音效 404 ⇒ 进 `audioDegradations()`」，
+ *   需要同一套 fake —— 两处各写一份就是 `fake-storage.ts` 文件头点名的那个 P0。
+ *   ⇒ 本文件改为 import，并保留本地的 `contexts` / `spoken` / `resumeRejects` 名字
+ *     （15 处断言一个字不用改）。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-/** 每例新建一份 AudioContext 的记录。 */
+import {
+  FakeAudioContext,
+  fakeAudio,
+  installFakeAudio,
+  resetFakeAudio,
+} from '../fixtures/fake-audio'
+import type { FakeUtterance } from '../fixtures/fake-audio'
+
+/** 每例新建一份 AudioContext 的记录（`resetFakeAudio()` 换新数组后重新别名过来）。 */
 let contexts: FakeAudioContext[]
-/** 让下一次 resume() 的 Promise 被拒绝。 */
-let resumeRejects: boolean
-
-class FakeAudioContext {
-  resumeCalls = 0
-  state = 'suspended'
-  destination = {}
-
-  constructor() {
-    contexts.push(this)
-  }
-
-  resume(): Promise<void> {
-    this.resumeCalls += 1
-    if (resumeRejects) {
-      return Promise.reject(new Error('resume 被拒绝'))
-    }
-    this.state = 'running'
-    return Promise.resolve()
-  }
-
-  // ── Story 1.14 / AC-D4：SFX 与 BGM 播放需要的三件 ──────────────────────
-  /** 起播记录：每一次 `source.start()` 记一笔，供「重复触发只请求一次」等断言读。 */
-  started: FakeBufferSource[] = []
-
-  createBufferSource(): FakeBufferSource {
-    const source = new FakeBufferSource()
-    this.started.push(source)
-    return source
-  }
-
-  decodeAudioData(): Promise<unknown> {
-    return Promise.resolve({ fake: 'decoded' })
-  }
-}
-
-/** 一次性的 buffer 源节点（复现「第二次 start() 不出声」那条 Web Audio 规则）。 */
-class FakeBufferSource {
-  buffer: unknown = null
-  loop = false
-  connectedTo: unknown = null
-  startCalls = 0
-  stopCalls = 0
-  onended: (() => void) | null = null
-
-  connect(target: unknown): void {
-    this.connectedTo = target
-  }
-
-  start(): void {
-    this.startCalls += 1
-  }
-
-  stop(): void {
-    this.stopCalls += 1
-  }
-}
-
-/** fake TTS：记录真正被 speak 的 utterance，供断言预热与三步同步块。 */
-let spoken: FakeUtterance[] = []
-
-class FakeUtterance {
-  volume = 1
-  rate = 1
-  pitch = 1
-  voice: unknown = null
-  lang = ''
-  onend: (() => void) | null = null
-  onerror: (() => void) | null = null
-
-  constructor(public text: string) {}
-}
+/** 真正被 speak 的 utterance（同上）。 */
+let spoken: FakeUtterance[]
 
 beforeEach(() => {
   vi.resetModules()
-  resumeRejects = false
-  contexts = []
-  spoken = []
-
-  vi.stubGlobal('AudioContext', FakeAudioContext)
-  vi.stubGlobal('speechSynthesis', {
-    voices: [{ name: 'Samantha', lang: 'en-US' }],
-    speaking: false,
-    cancel: () => {},
-    getVoices: () => [{ name: 'Samantha', lang: 'en-US' }],
-    onvoiceschanged: null,
-    speak: (utterance: FakeUtterance) => {
-      spoken.push(utterance)
-    },
-  })
-  vi.stubGlobal('SpeechSynthesisUtterance', FakeUtterance)
+  resetFakeAudio()
+  installFakeAudio()
+  // ⚠️ **`resetFakeAudio()` 会换上全新的数组**，所以别名必须在它**之后**取 ——
+  //   取早了拿到的是上一轮那个已经没人往里 push 的旧数组，计数永远停在 0。
+  contexts = fakeAudio.contexts
+  spoken = fakeAudio.spoken
 })
 
 afterEach(() => {
@@ -130,7 +64,9 @@ describe('unlockAudioSession（AC-1 ①）', () => {
   })
 
   it('resume() 的 Promise 被拒绝时只记日志，不向调用方抛', async () => {
-    resumeRejects = true
+    // ⚠️ 设的是 `fakeAudio.resumeRejects` 而不是本地别名 —— `FakeAudioContext.resume()`
+    //   读的是 fixture 上那一个（类不认识本文件的局部变量）。
+    fakeAudio.resumeRejects = true
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const { unlockAudioSession } = await import('../../src/services/audio')
 

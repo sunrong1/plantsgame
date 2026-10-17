@@ -25,10 +25,15 @@
 
 import { assertNeverEffect, runEffects } from '../core'
 import type { Action, Effect, Progress, State } from '../core'
-import { playSfx, startBgmIfReady } from '../services/audio'
+import { audioDegradations, playSfx, startBgmIfReady } from '../services/audio'
 import { writeSave } from '../services/save'
 
-export { startBgmIfReady }
+// 📎 **Story 1.17 / AC-E4：把「音频降级项」这个只读查询也放行到组件层。**
+//   ⚠️ 组件与视图**整条** `services/audio` 都在 ESLint 禁列里（`eslint.config.js`
+//     逐字说明了为什么禁整个模块而不是逐个函数名），而 1.17 的面板必须显示
+//     「音效资源缺失」⇒ 唯一的合法通道就是本文件这个 app 层门面，
+//     与 1.14 裁决 5 的 `startBgmIfReady` **同构**（同一个理由、同一处出口）。
+export { audioDegradations, startBgmIfReady }
 
 /**
  * 执行一次 dispatch 产生的全部副作用 —— 按 `runEffects` 返回的**顺序**逐条执行
@@ -91,6 +96,29 @@ function runOne(effect: Effect, progress: Progress): void {
       // 📎 1.13 裁决 2：动效**不进** effects-runner —— 画面是 state 的表现，走 class + CSS。
       //   联合里留着这个成员是为了 1.15 接线时返回类型不变。
       return
+    case 'TRACE':
+      // 📎 **📎 Story 1.17 接上的**（AC-C4 / 裁决 1、2）。那行文本由
+      //   `core/effects.ts` 的 `runEffects` 产出（纯函数），本分支只负责打印。
+      //
+      // ⚠️ **为什么打印者在这里而不在 `core/`**：`[core]` 是**语义标签**
+      //   （这行描述的是核心层的状态迁移），而 R-14 的守卫逐字要求 core 整层零 console。
+      //   两条都是硬的 ⇒ 产出与执行分开。
+      // ⚠️📎 **本文件里不要写带星号的 glob（`core` 加两个星）**：守卫的 `stripComments`
+      //   是朴素正则，先块后行 —— 注释里一个星号加斜杠会与**后面某个**斜杠加星号
+      //   配成一对「块注释」，把两者之间的**真代码**整段吃掉。首版就因此让
+      //   G105 与 G106 双双假红（本分支的 `if` 被吃掉了）。同理别在行尾接 `**` 粗体。
+      //
+      // ⚠️ **DEV 门控的依据不是「日志级别」而是「对生产环境的用户有没有价值」**
+      //   （裁决 2）：`game-architecture.md` 的 Logging 表把「回合转换」归在 INFO
+      //   （INFO 无门控要求），而 `epics.md` 的 AC 逐字要求它「生产构建中不输出」。
+      //   ⇒ INFO 级 + DEV 门控。理由：回合流水对家长零价值、对生产包是纯噪音。
+      //   ⚠️ **下一个人若按 Logging 表把门控删掉，守卫 G105 会红** ——
+      //     那条判据刻意带长度上限，保证它只认「门控在分支内」而不是「文件里某处有 DEV」。
+      //
+      // ⚠️ **不 try/catch**：打印一行字符串不会抛，而这里的 `default: assertNeverEffect`
+      //   刻意留在任何 try 之外（1.14 裁决 E4）。包一层只会让编译期穷尽性退化成 WARN。
+      if (import.meta.env.DEV) console.info(effect.line)
+      return
     case 'TTS':
       // 🚨 **📎 1.16 `[CS]` 裁决 6 更正了归属（原写「收口属 Story 1.16」）：**
       //   `epics.md` 的 Story 1.16 AC 零 TTS 字样 ⇒ 按 R-32，1.16 无权做这件事；
@@ -134,4 +162,32 @@ function runOne(effect: Effect, progress: Progress): void {
 /** 把一个 unknown 变成一句可读的说明（不抛，NFR14）。 */
 function describe(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
+}
+
+/**
+ * 📎 **Story 1.17 / AC-E3：调试面板「重试写入」的落点。**
+ *
+ * ⚠️ **为什么这个门面住在本文件，而不是让面板直接 import `services/save`** ——
+ *   两条约束同时指向这里：
+ *   ① **R-04 / 架构硬约束 4**：副作用只在 `app/effects-runner.ts` 执行；
+ *   ② **守卫 G86 逐个调用点判定**：`writeSave` 的调用点**只许在本文件**。
+ *   面板直接调 `writeSave` 会当场把 G86 判红，而那不是「面板不该写盘」的意思。
+ *   ⇒ 组件只调 store 转出的门面，`writeSave` 的调用点仍然唯一（本文件第 147 行与这里）。
+ *
+ * ⚠️ **它调 `writeSave` 而不是 `clearSave`**（AC-E3 逐字）：清档与重试是两件事，
+ *   调试面板误清玩家的存档**不可逆**。写成功后 `save.ts` 自己
+ *   `degraded.clear()`（AC-B3 注释逐字），面板刷新即可看到降级项消失。
+ *
+ * ⚠️ **本函数绝不抛**，与 `runEffectsFromStore` 同款契约（AC-E4）——
+ *   面板的点击处理器刻意没有 try/catch。
+ *
+ * @returns 写成功 `true`；仍写不进去 `false`（`writeSave` 的返回值语义，AC-B3）。
+ */
+export function retrySaveWrite(progress: Progress, currentGame: State | null): boolean {
+  try {
+    return writeSave(progress, currentGame)
+  } catch (err) {
+    console.warn(`[save] 重试写入抛错（已跳过）：${describe(err)}`)
+    return false
+  }
 }

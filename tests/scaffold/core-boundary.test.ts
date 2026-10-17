@@ -10,7 +10,8 @@
  *
  * 不在 src/core/ 下 —— NFR16：测试全部在 tests/。
  */
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
@@ -25,6 +26,7 @@ import {
   severityOf,
 } from '../fixtures/eslint-rules'
 import vitestConfig from '../../vitest.config'
+import { stripComments } from '../fixtures/strip-comments'
 
 const root = fileURLToPath(new URL('../../', import.meta.url))
 
@@ -217,5 +219,78 @@ describe('vitest 配置', () => {
 
   it('测试只收 tests/ 下的文件（core/ 内不出现 .test.ts）', () => {
     expect(vitestConfig.test?.include).toEqual(['tests/**/*.test.ts'])
+  })
+})
+
+// ── G107 —— 裁决 5：`core/` 一个字都不许被 dev 补偿缝侵入 ──────────────────
+
+describe('G107 —— dev 补偿缝没有侵入 core/（Story 1.17 / 裁决 5）', () => {
+  /** 四条红线。**正向扫描与反向自测共用这一份** —— 抄第二份就等于自测自证。 */
+  const BANNED: readonly (readonly [string, RegExp])[] = [
+    // ① 补偿缝的任何痕迹。这是裁决 5 末段明确不做的三件事之一。
+    ['devAdjust', /\bdevAdjust\b/],
+    ['devFlags', /\bdevFlags\b/],
+    // ② 构建期环境常量。core/ 是纯函数层，`import.meta.env` 一进来，
+    //    `tsconfig.core.json` 的零 DOM 强制就再也说不清「core 依赖谁」了。
+    ['import.meta.env', /\bimport\.meta\.env\b/],
+    // ③ 平台对象。core/ 里出现 `process`/`window`/`localStorage` 一律是边界破了。
+    ['platform globals', /\b(process|window|localStorage)\b/],
+  ]
+
+  /** 递归列出 `src/core` 下的所有源码文件。 */
+  function coreFiles(): readonly string[] {
+    const out: string[] = []
+    const walk = (dir: string): void => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = join(dir, entry.name)
+        if (entry.isDirectory()) walk(full)
+        else if (/\.(ts|tsx|vue)$/.test(entry.name)) out.push(full)
+      }
+    }
+    walk(join(root, 'src/core'))
+    return out
+  }
+
+  /** 某一段源码里被红线命中的行（`行号 → 标签`），扫描与自测共用。 */
+  function hitsIn(source: string): readonly string[] {
+    return stripComments(source)
+      .split('\n')
+      .flatMap((line, i) =>
+        BANNED.filter(([, pattern]) => pattern.test(line)).map(([label]) => `${i + 1}: ${label}`),
+      )
+  }
+
+  it('判据自检：`stripComments` 在真实注释形态上不误报、不吃掉真代码', () => {
+    // ⚠️ R-52：源码正则守卫不剥注释就扫，判据数的是「注释里说了什么」。
+    //   本仓库的注释里逐字出现过 `import.meta.env`（`core/effects.ts` 裁决 2）
+    //   与 `window`（`core/index.ts` 文件头）⇒ 不剥注释时三条全被误报。
+    //   探针必须是**完整**的一段源码 —— 传半截注释（少了起始符）不算数，
+    //   任何剥注释实现都无从知道它在注释里。
+    expect(hitsIn('// 那一行要经 import.meta.env.DEV 门控\nconst a = 1\n')).toEqual([])
+    expect(hitsIn('/*\n * 写 window 即编译报错\n */\nconst a = 1\n')).toEqual([])
+
+    // ⚠️ R-52 的另一半：**别把真代码剥掉**。星号加粗 + 带星号的 glob 会
+    //   在朴素实现里配成一对「块注释」，吃掉两者之间的真代码（本 story 实测两次）。
+    const tricky = '/* 只能读 src/core/**\n */\nconst kept = devAdjust(x)\n'
+    expect(hitsIn(tricky), '星号 glob 之后的真代码被当成注释吃掉了').toEqual(['3: devAdjust'])
+  })
+
+  it('G107：`src/core/**` 里没有 dev 补偿缝的任何痕迹', () => {
+    expect(coreFiles().length, '前置：core/ 至少有文件可查，否则本条是装饰守卫').toBeGreaterThan(5)
+    const found = coreFiles().flatMap((file) =>
+      hitsIn(readFileSync(file, 'utf8')).map((hit) => `${file}:${hit}`),
+    )
+    expect(found, 'dev 补偿缝只许住在 src/app/').toEqual([])
+  })
+
+  it('G107：反向自测 —— 同一套扫描抓得到每一种真实违规形态', () => {
+    // ⚠️ 判据若对「什么都不会发生」恒绿，它就什么也守不住（R-51）。
+    //   这里拿**三种真实违规 + 一段真实合法源码**逐条过一遍 `hitsIn` 本身。
+    expect(hitsIn('const next = devAdjust(reduced, devFlags)')).toHaveLength(2)
+    expect(hitsIn('if (import.meta.env.DEV) return reduced')).toHaveLength(1)
+    expect(hitsIn('localStorage.setItem(key, value)')).toHaveLength(1)
+    // 真实合法形态：core/ 里本来就该有的纯函数代码，一行都不许误报。
+    expect(hitsIn('export function reduce(state: State, action: Action): State { return state }'))
+      .toEqual([])
   })
 })

@@ -28,6 +28,7 @@ import { computed, ref } from 'vue'
 
 import { WORD_IMAGE_PLACEHOLDER_SVG } from '../../core'
 import type { Card, Option, OptionId } from '../../core'
+import { markAssetDegraded } from '../../services/asset-degradations'
 import { wordImageUrl } from '../../services/asset-url'
 
 const props = defineProps<{
@@ -90,6 +91,8 @@ function onImageError(): void {
       '已降级为内联占位图形并禁用该选项，回合流转不受影响。' +
       '若部署后普遍发生，先查 `import.meta.env.BASE_URL` 是否与站点前缀一致（守卫 G22）。',
   )
+  // 📎 **Story 1.17 / AC-E2：登记这一条**（理由与 `Tower.vue` 同款，逐字理由见那里）。
+  markAssetDegraded(imageSrc.value, `词图（选项 ${props.option.id}）`)
 }
 
 function onPick(): void {

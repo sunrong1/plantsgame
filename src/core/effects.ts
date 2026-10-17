@@ -32,6 +32,7 @@
  * 加载失败由 `app/effects-runner.ts` 静默跳过（AC-C7）。
  */
 
+import { actionName } from './actions.js'
 import { lostSlotIndexes } from './hud.js'
 import type { Action, State } from './types.js'
 
@@ -67,6 +68,7 @@ export type SfxCue =
  * | `ANIMATION` | 1.13 裁决 2：画面走 class + CSS，不进 effects-runner |
  * | `TTS` | 🚨 **无归属 story** —— 见下 |
  * | `SAVE` | **1.15** ✅（1.16 加了第 6 个写盘点） |
+ * | `TRACE` | **1.17** ✅（回合日志，见下） |
  *
  * ⚠️ **📎 1.16 `[CS]` 裁决 6 更正了 `TTS` 那一行的归属（原写「收口前提在 1.16」）：**
  *   `epics.md` 的 Story 1.16 AC **零 TTS 字样**，按 R-32（以 AC 正文为准）1.16 无权做这件事；
@@ -77,12 +79,28 @@ export type SfxCue =
  *   ⇒ 1.15 记着的那条 defer（「写盘抛错后仍执行后续条目构造上不可达」）的恢复条件
  *     逐字是「1.16 **若**给 `Effect` 加上会抛的新成员（`TTS` 的朗读调用）」——
  *     既然不接 TTS，那条恢复条件**今天不会成立**，它继续挂着。
+ *
+ * ⚠️ **📎 1.17 加了第五个成员 `TRACE`**（裁决 1），它回答了「为什么这行日志的
+ *   **前缀是 `[core]` 而打印者不在 `core/` 里」：
+ *   前缀是**语义标签**（这行日志描述的是核心层的状态迁移），
+ *   而 R-14 的守卫逐字要求 core 整层零 console —— 两条都是硬的。
+ *   ⇒ 本层**只产出那行文本**（纯函数），`app/effects-runner.ts` 打印它。
+ *   ⇒ 顺带的好处：`assertNeverEffect` 与 runner 的 `switch` 都会因漏分支而**当场红**。
+ *
+ * ⚠️ **门控条件不是「日志级别」而是「这条日志对生产环境的用户有没有价值」**（裁决 2）：
+ *   `game-architecture.md` 的 Logging 表把「回合转换」归在 **INFO**（INFO 无门控要求），
+ *   而 `epics.md` 的 AC 逐字要求它「经 `import.meta.env.DEV` 门控，生产构建中不输出」。
+ *   ⇒ 裁决：INFO 级 + DEV 门控。理由是回合流水对家长零价值、对生产包是纯噪音
+ *     （每 20 秒一行，永远挂在 console 里）。
+ *   ⚠️ **下一个人若按 Logging 表把门控删掉，这段注释就是唯一的线索** ——
+ *     R-41 要求边界约束要么有守卫要么明确记，守卫 **G105** 专测这条分支在不在。
  */
 export type Effect =
   | { readonly kind: 'SFX'; readonly cue: SfxCue }
   | { readonly kind: 'ANIMATION'; readonly name: string }
   | { readonly kind: 'TTS'; readonly text: string; readonly entryId: string }
   | { readonly kind: 'SAVE'; readonly currentGame: State | null }
+  | { readonly kind: 'TRACE'; readonly line: string }
 
 /**
  * 联合新增成员而本文件没跟上时的编译期兜底。
@@ -122,6 +140,18 @@ export function assertNeverEffect(effect: never): never {
  */
 export function runEffects(action: Action, prev: State, next: State): readonly Effect[] {
   const effects: Effect[] = []
+
+  // ⓿ 📎 **Story 1.17：回合日志，排在最前面**（AC-C1..C3，裁决 1）。
+  //
+  // ⚠️ **排在最前面**不是随意选的：日志的用途是「复现不对劲的那一瞬」，
+  //   而音效/存档那些是「结果」。先记下当时发生了什么，再记它引起了什么。
+  //
+  // ⚠️ **逐 action 一条，不是逐回合一条**（AC-C3 的裁决）：一整回合有 4~6 次 dispatch
+  //   （`ANSWER` → `END_BUILD` → `RESOLVE_ROUND` → `CONTINUE` …），
+  //   若只在收尾那一次产出，`answer` 那条就丢了 —— 而**正是它最能说明
+  //   「孩子选错了哪张卡」**。`turn` 字段把它们归到同一回合号。
+  //   守卫 **G104** 专测「条数 = dispatch 次数」。
+  effects.push(trace(turnLogLine(action, next)))
 
   // ① 答题反馈 —— 读 `prev.phase.question`（答题**前**的那道题），见 AC-C2。
   if (action.type === 'ANSWER') {
@@ -207,6 +237,39 @@ function save(currentGame: State | null): Effect {
   return { kind: 'SAVE', currentGame }
 }
 
+/** 造一条 `TRACE` Effect。唯一入口 ⇒ `line` 的形态在全文件只有一处定义。 */
+function trace(line: string): Effect {
+  return { kind: 'TRACE', line }
+}
+
+/**
+ * 回合日志的那一行（Story 1.17 / AC-C1）。
+ *
+ * ⚠️ **字段之间是两个空格**（`epics.md` 的 AC 逐字如此）—— 守卫 **G102** 整行比对，
+ *   少一个空格就红。这不是排版洁癖：家长复制这一行去搜索时，一个多余的空格会改变结果。
+ *
+ * ⚠️ **读 `next` 不读 `prev`**（AC-C3 的裁决）：日志的用途是「复现出不对劲的那一瞬」，
+ *   而**那一瞬是 dispatch 之后的状态**。读 `prev` 会让「掉了一颗心」那一条
+ *   记成掉之前的数，家长照着查会得出错误结论。变异 **M130** 专打这一条。
+ *
+ * ⚠️ **`actionName(action)` 而不是自己写映射表**（AC-C2）：`actionName` 对联合外
+ *   的类型**抛错**而不是返回 `'unknown'` —— `actions.ts` 的注释逐字说这是刻意的
+ *   （「对局日志里出现一条无法归因的记录」是最该看见的一行）。
+ *   自己写映射表的话，联合新增成员时那张表会**静默漏一个分支**，而日志会照打不误。
+ *
+ * @param action 本次 dispatch 的 action（`reduce` 已成功执行）
+ * @param next dispatch **之后**的 state
+ */
+function turnLogLine(action: Action, next: State): string {
+  return (
+    `[core] turn ${next.turn}` +
+    `  action=${actionName(action)}` +
+    `  sun=${next.sun}` +
+    `  hearts=${next.hearts}` +
+    `  zombies=${next.zombies.length}`
+  )
+}
+
 /**
  * 答题的 Effect —— 答对 `answer-correct`，否则 `answer-wrong`（AC-C1）。
  *
@@ -250,6 +313,9 @@ export function effectKindName(effect: Effect): Effect['kind'] {
     case 'ANIMATION':
     case 'TTS':
     case 'SAVE':
+    // 📎 Story 1.17 加的第五个成员（裁决 1）。漏了它编译期就红 ——
+    //   那正是 `assertNeverEffect` 存在的理由，不许用 `as` 绕开（R-51 第 2 类）。
+    case 'TRACE':
       return effect.kind
     default:
       return assertNeverEffect(effect)

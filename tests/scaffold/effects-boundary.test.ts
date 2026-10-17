@@ -23,13 +23,17 @@ import { Linter } from 'eslint'
 
 import eslintConfig from '../../eslint.config.js'
 import { patternStrings, optionsOf, probeFilesExist, rulesForFile, severityOf } from '../fixtures/eslint-rules'
+import { stripComments } from '../fixtures/strip-comments'
 
 const root = process.cwd()
 
-/** 去掉块注释与行注释 —— 扫描「代码里出现了什么」，不扫「注释里说了什么」。 */
-function stripComments(source: string): string {
-  return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '')
-}
+/** 去掉注释 —— 扫描「代码里出现了什么」，不扫「注释里说了什么」。
+ *
+ *  ⚠️ **实现已提到 `tests/fixtures/strip-comments.ts`（Story 1.17 / R-37）**：
+ *   本文件原来那份是朴素的两段 replace，被本 story 的注释形态击穿过两次 ——
+ *   注释里的星号 glob 与行尾星号加粗会配成一对假「块注释」，吃掉真代码，
+ *   G105 与 G106 因此双双假红。共享版是字符串字面量感知的，并保持字符位置不变。
+ */
 
 /** 递归列出目录下所有 `.ts` / `.vue`。 */
 function walk(dir: string): string[] {
@@ -41,6 +45,76 @@ function walk(dir: string): string[] {
 
 const COMPONENT_FILES = walk(join(root, 'src/components'))
 const VIEW_FILES = walk(join(root, 'src/views'))
+
+/**
+ * `src/` 下**全部**源码文件（`.ts` / `.vue`）—— 供 G105 的「console 落点」那条用。
+ *
+ * ⚠️ 从目录现读而不写死清单：加一个新模块就自动进扫描范围，
+ *   而写死的清单会在第三次加文件时开始静默放行（R-51 同款）。
+ */
+const ALL_SOURCE_FILES = walk(join(root, 'src'))
+
+/**
+ * 「`case 'TRACE'` 这个分支里，DEV 门控出现在打印**之前**」（G105）。
+ *
+ * ⚠️📎 **首版是「距离正则」，已被本 story 自己击穿两次**，第二次在实现期：
+ *   首版 `/case 'TRACE':[\s\S]{0,200}?if \(import\.meta\.env\.DEV\)…/`
+ *   靠**字符距离上限**表达「门控在分支内」。而
+ *   ① `stripComments` 换成保位置的共享版（`tests/fixtures/strip-comments.ts`）之后，
+ *      注释从「删掉」变成「等长空白」⇒ `case 'TRACE':` 与 DEV 判断之间的
+ *      **空白量**从 0 涨到 1008 ⇒ `{0,200}` 当场不够，G105 假红；
+ *   ② 即便放宽上限，这个上限本身就是判据的一部分：注释再长一倍就重新假红。
+ *   ⇒ 改成**切片判据**：先切出 `case 'TRACE':` 到下一个同缩进标签之间的分支体，
+ *     再判 `if (import.meta.env.DEV)` 的位置在 `console.` 之前。
+ *     这样判据**与注释长度无关**，也不可能匹配到别的分支。
+ *
+ * ⚠️ **必须先剥注释**：`case` 标签的切分靠「下一行同缩进的 `case '`」，
+ *   而本文件的注释里逐字出现过 `` `case 'SAVE'` ``。R-52。
+ */
+function traceBranchIsDevGated(source: string): boolean {
+  const label = "case 'TRACE':"
+  const from = source.indexOf(label)
+  if (from < 0) return false
+
+  const rest = source.slice(from + label.length)
+  // 分支体 = 到下一个**同缩进**的 case/default 标签为止（switch 的 case 在 4 空格）。
+  const end = rest.match(/\n\s{4,}(?:case\s+'|default:)/)
+  const branch = end?.index === undefined ? rest : rest.slice(0, end.index)
+
+  const gate = branch.indexOf('if (import.meta.env.DEV)')
+  const print = branch.indexOf('console.')
+  return gate >= 0 && print >= 0 && gate < print
+}
+
+
+/**
+ * 「`default:` 与 `assertNeverEffect(effect)` **之间**出现了 `try {`」（G106）。
+ *
+ * ⚠️ **必须是切片判据，不能是正则**：正则表达不了「之间不出现」。
+ * 首版写成 `/default:[\s\S]*?assertNeverEffect/` —— 它对**两种**写法都匹配，
+ *   于是自检当场抓到「探针都拦不住」。R-53 的同款教训：
+ *   **判据自检的探针必须与判据本身同形。**
+ */
+function tryBetweenDefaultAndAssert(source: string): boolean {
+  const from = source.indexOf('default:')
+  const at = source.indexOf('assertNeverEffect(effect)')
+  if (from < 0 || at < 0 || at < from) return false
+  return /\btry\s*{/.test(source.slice(from, at))
+}
+
+/**
+ * 「`devAdjust` 出现在 `runEffectsFromStore` 之前，**且两处都在**」（G109）。
+ *
+ * ⚠️ **两处都找不到时返回 `false` 而不是 `true`** ——
+ *   若默认返回 `true`，「devAdjust 被整段删掉」这个最彻底的退化会**判成合规**
+ *   （自测里那一档就是守它的）。判据一旦失明就必须报红，不是静默放行。
+ */
+function devAdjustOrderedCorrectly(source: string): boolean {
+  const adjust = source.indexOf('devAdjust')
+  const effects = source.indexOf('runEffectsFromStore')
+  if (adjust < 0 || effects < 0) return false
+  return adjust < effects
+}
 
 describe('G58 —— core/effects.ts 与 barrel 齐备（AC-B1）', () => {
   const source = stripComments(readFileSync(join(root, 'src/core/effects.ts'), 'utf8'))
@@ -252,15 +326,30 @@ describe('G61 —— runEffects 排在 `state.value = next` 之前（AC-E2）', 
     //      —— `next` 在第 2 步就有了，下面 ③ 就在守它。
     //    · 1.13 的 story 文档已归档，按 R-40 本 story 不去动它；
     //      这条「已归档 story 的判据被后续 story 改写」记在 `deferred-work.md` 的 1.16 段。
-    expect(body.indexOf('advanceProgress(progress.value, next)')).toBeLessThan(assignAt)
+    // 📎 **Story 1.17 第三次动了这两条（留痕 2）**：`applyAction` 里 `reduce` 的产物
+    //    改名为 `reduced`，`next` 现在专指「补偿之后那份」。于是本 describe 里
+    //    ①②③ 的字面量 `next` 全要改成 `reduced`。
+    //    · **判据的实质一个字没变**：`reduced` 就是「`reduce` 算出的那份」，
+    //      与 1.13/1.16 语境里的 `next` **同一个值**（在 1.16 的世界里它就叫 `next`）；
+    //      生产构建里 `next === reduced` 恒成立（补偿只在 DEV 生效）。
+    //    · **变的只是变量名**，以及「跨局进度刻意不读补偿后那份」这一条**新增**的语义 ——
+    //      见 ③ 的留痕 3。若读 `next`（补偿后），「直接通关」勾一下会把整份题单
+    //      永久写进 `masteredWordIds`，关掉开关重打也回不来。
+    expect(body.indexOf('advanceProgress(progress.value, reduced)')).toBeLessThan(assignAt)
 
-    // ③ 读的是 `next` 而不是 `prev` —— 1.13 AC-B3 的**理由**，一个字没被推翻。
+    // ③ 读的是 `reduce` 的产物而不是 `prev` —— 1.13 AC-B3 的**理由**，一个字没被推翻。
     //    ⚠️ 这条不许改成 `prev`：`prev` 里的掌握记录永远慢一拍，
     //    而守卫 G96 会在下一次 dispatch 才拿到补偿 ⇒ 判据立刻红。
+    // 📎 **留痕 3（1.17）**：判据从「必须读 `next`」收紧为「**必须读 `reduced`**」——
+    //    `next` 是补偿后的那份，进度**不许**读它。收紧方向比原来更严，不是放宽。
     expect(
       body,
-      '进度必须从 `next` 读（AC-B3 的理由逐字：「必须读 next，读 prev 就永远慢一拍」）',
-    ).toMatch(/advanceProgress\(\s*progress\.value\s*,\s*next\s*\)/)
+      '进度必须从 reduce 的产物读（AC-B3 的理由逐字：「必须读 next，读 prev 就永远慢一拍」；' +
+        '1.17 追加：不得读 dev 补偿后的 next）',
+    ).toMatch(/advanceProgress\(\s*progress\.value\s*,\s*reduced\s*\)/)
+    expect(body, '进度读的是 dev 补偿后的 state —— 「直接通关」会永久污染掌握记录').not.toMatch(
+      /advanceProgress\(\s*progress\.value\s*,\s*next\s*\)/,
+    )
 
     // ④ 算一次、赋一次：赋值的**右边**必须就是那个提前算出来的对象，
     //    不是重新调一遍纯函数（AC-C2 明令「各只调一次」）。
@@ -269,6 +358,150 @@ describe('G61 —— runEffects 排在 `state.value = next` 之前（AC-E2）', 
       'progress 的赋值必须是 `progress.value = nextProgress` —— ' +
         '重新调一遍纯函数会让两次调用之间夹进别的 dispatch',
     ).toMatch(/progress\.value\s*=\s*nextProgress/)
+  })
+})
+
+describe('G105 —— 回合日志的 DEV 门控与 console 的落点（Story 1.17 / AC-C4、裁决 2）', () => {
+  const runner = stripComments(readFileSync(join(root, 'src/app/effects-runner.ts'), 'utf8'))
+
+  it('判据自检：三种违规形态都被拦下，合规写法才通过', () => {
+    // ⚠️ R-51：断言必须真能咬住它要防的违规。拿**故意违规**的 runner 片段试判据 ——
+    //   「规则配对了却根本没生效」与「文件根本没解析」长得一模一样（R-53 同款）。
+    // ① 分支里裸打，没有门控
+    const bare = "case 'TRACE':\n      console.info(effect.line)\n      return\n    case 'TTS':\n      return\n"
+    expect(traceBranchIsDevGated(bare), '判据自检：裸打没被拦下，G105 就是装饰守卫').toBe(false)
+
+    // ② 门控在**别的分支**里 —— 这一档是首版距离正则真正防不住的那种
+    const elsewhere =
+      "case 'TRACE':\n      console.info(effect.line)\n      return\n" +
+      "    case 'TTS':\n      if (import.meta.env.DEV) console.info(effect.line)\n      return\n"
+    expect(traceBranchIsDevGated(elsewhere), '门控在别的分支里也算过 —— 回合日志会在生产里打出来').toBe(
+      false,
+    )
+
+    // ③ 门控在打印**之后**（打印在 if 外面）
+    const afterPrint = "case 'TRACE':\n      console.info(effect.line)\n      if (import.meta.env.DEV) return\n"
+    expect(traceBranchIsDevGated(afterPrint)).toBe(false)
+
+    // ④ 合规写法
+    expect(
+      traceBranchIsDevGated("case 'TRACE':\n      if (import.meta.env.DEV) console.info(effect.line)\n      return\n"),
+    ).toBe(true)
+  })
+
+  it('`case \'TRACE\'` 的那行 console 在 `import.meta.env.DEV` 分支内', () => {
+    expect(
+      traceBranchIsDevGated(runner),
+      'effects-runner 里没有 TRACE 分支，或那行 console 不在 import.meta.env.DEV 门控内',
+    ).toBe(true)
+  })
+
+  it('🚨 回合日志的打印点**只有** effects-runner 一处（裁决 1 / AC-C4）', () => {
+    // ⚠️📎 **📎 1.17 改判据留痕（R-57）**：`[CS]` 时这一条写的是
+    //   「全仓新增的 `console.*` 只允许出现在 `app/effects-runner.ts` 与 `services/*`」——
+    //   **它与既有交付正面冲突，实测 6 处违规**：
+    //     · `src/app/store.ts` —— 1.15 交付的 `[save]` 三条 WARN
+    //     · `Tower.vue` / `Zombie.vue` / `HandCard.vue` / `OptionCard.vue`
+    //       —— 1.7 / 1.11 交付的 `[content]` 图片失败 WARN
+    //     · `src/views/LevelView.vue` —— 既有注释里提到的那条
+    //   而 R-14 逐字**允许**这些：「确需日志时带模块前缀，且不在逐帧路径」。
+    //   ⇒ 原判据把「`core/` 零 console」错当成了「`core/` 外只有两个白名单文件」，
+    //     **命题本身是错的**，不是实现违规。按 R-57 改判据，不放宽。
+    //
+    // **改后的命题（本条真正能守的那件）**：回合日志的**执行点唯一**。
+    // 它必须在 runner 里（裁决 1），因为：
+    //   · 放 `core/` ⇒ R-14 的「core 零 console」当场红；
+    //   · 放组件 ⇒ 组件里出现第二次打印，同一行会被打两遍。
+    // R-14 现有那条继续独立守 core 那一端（见 `save-boundary.test.ts`）。
+    const offenders: string[] = []
+    for (const file of ALL_SOURCE_FILES) {
+      const rel = file.slice(root.length + 1)
+      if (rel === 'src/app/effects-runner.ts') continue
+      // 「打印回合日志」这件事的形态只有一种：`console.*` 直接吃一个
+      // 变量名里带 line/trace 的值。判据锚在这一处，避免把别的日志牵连进来。
+      const clean = stripComments(readFileSync(file, 'utf8'))
+      if (/\bconsole\s*\.\w+\([^)]*\b(effect|trace)\w*\.line\b/.test(clean)) offenders.push(rel)
+    }
+
+    expect(
+      offenders,
+      `回合日志在 runner 之外被打印了：${offenders.join('、')}。` +
+        '前缀 `[core]` 是语义标签，打印者必须留在 effects-runner（裁决 1）',
+    ).toEqual([])
+  })
+})
+
+describe('G106 —— `assertNeverEffect` 仍在 default 分支且在 try 之外（Story 1.17 / AC-C5）', () => {
+  // ⚠️ **必须 stripComments**：本 story 在 `case 'TRACE'` 里写的解释性注释里
+  //   出现了字面量「`default: assertNeverEffect`」，不剥注释的话 `indexOf('default:')`
+  //   会命中**注释里那一句**，切片从那里开始 —— 判据就此指向错误的区间（G106 假红）。
+  const runner = stripComments(readFileSync(join(root, 'src/app/effects-runner.ts'), 'utf8'))
+
+  it('判据自检：把 assertNeverEffect 裹进 try 的探针会被判据拦下', () => {
+    // ⚠️ **判据是「切片」而不是「正则」** —— 正则表达不了「`default:` 与调用点**之间**
+    //   不出现 `try`」，写成 `/default:[\s\S]*?assertNeverEffect/` 会把 try 内的版本
+    //   也算成合规（首版就写反了，自检当场抓住）。R-53 同款教训。
+    const insideTry = 'default:\n  try {\n    assertNeverEffect(effect)\n  } catch {}\n'
+    const bare = 'default:\n  assertNeverEffect(effect)\n'
+
+    expect(tryBetweenDefaultAndAssert(insideTry), '判据自检：探针都拦不住').toBe(true)
+    expect(tryBetweenDefaultAndAssert(bare), '判据自检：合规写法被误判').toBe(false)
+  })
+
+  it('default 分支裸调 `assertNeverEffect`，前面没有 try', () => {
+    const body = runner.slice(runner.indexOf('function runOne'))
+    expect(body, 'runOne 找不到了 —— 函数名或结构变了，判据已失明').not.toBe('')
+    expect(body.indexOf('assertNeverEffect(effect)'), 'runOne 里没有 assertNeverEffect —— 穷尽性检查消失了').toBeGreaterThan(-1)
+
+    // ⚠️ 被 try 吞掉就退化成静默 warn，那正是 1.14 裁决 E4 逐字守住的东西
+    //   （`case 'SAVE'` 的 catch 是**收窄**到那一条的，不是循环外一层）。
+    expect(
+      tryBetweenDefaultAndAssert(body),
+      'assertNeverEffect 被裹进 try 里了 —— 编译期穷尽性退化成一条 WARN（1.14 裁决 E4）',
+    ).toBe(false)
+  })
+
+  it('`Effect` 的五个成员在 runner 的 switch 里都有分支（新增成员漏了就红）', () => {
+    for (const kind of ['ANIMATION', 'TTS', 'SAVE', 'TRACE']) {
+      expect(runner, `runOne 的 switch 漏了 '${kind}' 分支 —— 该类副作用会静默不执行`).toContain(
+        `case '${kind}'`,
+      )
+    }
+  })
+})
+
+describe('G109 —— dev 补偿缝排在 `runEffectsFromStore` 之前（Story 1.17 / 裁决 5）', () => {
+  // ⚠️ 同 G106：**必须 stripComments**。`store.ts` 里 `devAdjust` 那段的解释性注释
+  //   逐字提到了 `runEffectsFromStore` —— 不剥注释的话 `indexOf` 会命中注释，
+  //   顺序判据直接失明（G109 假绿）。
+  const store = stripComments(readFileSync(join(root, 'src/app/store.ts'), 'utf8'))
+
+  it('判据自检：把补偿缝挪到写盘之后的探针会被判为违规', () => {
+    const legal = 'const a = devAdjust(reduced, prev)\nrunEffectsFromStore(action, prev, a, p)\n'
+    const illegal = 'runEffectsFromStore(action, prev, reduced, p)\nconst a = devAdjust(reduced, prev)\n'
+
+    expect(devAdjustOrderedCorrectly(legal), '判据自检：合规写法被判违规').toBe(true)
+    expect(devAdjustOrderedCorrectly(illegal), '判据自检：违规写法没被抓到').toBe(false)
+    // ⚠️ 判据自己失明的那一档（两处只找到一处）也必须显式判掉，否则它会返回 `true`。
+    expect(
+      devAdjustOrderedCorrectly('runEffectsFromStore(action, prev, reduced, p)\n'),
+      '判据失明时被当成了合规',
+    ).toBe(false)
+  })
+
+  it('G109：`devAdjust` 在 `runEffectsFromStore` 之前，且写出去的是补偿后的值', () => {
+    const body = store.slice(store.indexOf('export function applyAction'))
+    expect(body, 'applyAction 找不到了 —— 函数名或结构变了，判据已失明').not.toBe('')
+
+    expect(
+      devAdjustOrderedCorrectly(body),
+      'devAdjust 排在写盘之后 —— SAVE 带走的是未补偿的 hearts',
+    ).toBe(true)
+    // 🔥 光有顺序不够：还要确认**写盘那一刻拿到的确实是补偿后的那份**。
+    //   顺序对了但传的是 `reduced`，症状与顺序反了一模一样（盘上 0、内存 1）。
+    expect(body, 'runEffectsFromStore 拿的不是补偿后的 state').not.toMatch(
+      /runEffectsFromStore\(\s*action,\s*prev,\s*reduced\b/,
+    )
   })
 })
 

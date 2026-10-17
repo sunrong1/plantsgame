@@ -60,7 +60,8 @@
 - **G60**（`tests/scaffold/effects-boundary.test.ts`）：组件与视图里不出现播放函数名。
 - **G70**（同文件）：组件与视图不 import `services/audio` 的播放函数。含一条**真跑 `Linter.verify`** 的反向验证 —— 「规则没触发」与「文件没解析」长得一模一样，只看规则对象会假绿。
 - **G61**：`runEffectsFromStore` 的调用行号必须**小于** `state.value = next`（AC-E2）。
-- **G86**（Story 1.15 补，R-04 的**存档**那一半）：逐个**调用点**判定 —— `writeSave` 只许在 `src/app/effects-runner.ts`、`readSave` 只许在 `src/app/store.ts`、`clearSave` 今天必须**零**调用点（1.17 才用）。变异 M100（在 `store.ts` 里插一处 `clearSave()`）→ **1 红**，消息直接点名文件与函数。⚠️ 刻意**按调用点判而不是按文件判**：按文件判就得把 `services/save.ts` 硬编码进例外名单，名单一长，守卫就开始靠自觉活着。
+- **G86**（Story 1.15 补，R-04 的**存档**那一半）：逐个**调用点**判定 —— `writeSave` 只许在 `src/app/effects-runner.ts`、`readSave` 只许在 `src/app/store.ts`、`clearSave` 必须**零**调用点。变异 M100（在 `store.ts` 里插一处 `clearSave()`）→ **1 红**，消息直接点名文件与函数。⚠️ 刻意**按调用点判而不是按文件判**：按文件判就得把 `services/save.ts` 硬编码进例外名单，名单一长，守卫就开始靠自觉活着。
+  📎 **1.17 留痕（R-57）**：原文写「`clearSave` 今天必须零调用点（**1.17 才用**）」。`1.17 [CS]` 裁决 8 据此计划把它改判为「调用点只许在 `src/components/debug/` 下、且 DEV 门控」—— **`[DS]` 未改判**：AC-E3 逐字要求「重试写入」调 `writeSave`、**不许**调 `clearSave`（「清档与重试是两件事」，调试面板误清玩家存档不可逆）⇒ 1.17 根本没造出 `clearSave` 调用点，改判的前提不成立。判据**一字未动**，且它比计划中的改判更强（改判会允许 debug 组件清档）。只更正了那句会误导后人的括注。
 
 **首现** Story 1-1
 

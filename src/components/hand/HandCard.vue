@@ -30,6 +30,7 @@
 import { computed, ref } from 'vue'
 
 import type { HandCard, TowerType } from '../../core'
+import { markAssetDegraded } from '../../services/asset-degradations'
 import { expectedTowerAssetUrl } from '../../services/asset-url'
 
 const props = defineProps<{
@@ -83,6 +84,8 @@ function onImageError(): void {
       '已降级为 CSS 占位形状，建造与回合流转不受影响。若部署后普遍发生，先查 ' +
       '`import.meta.env.BASE_URL` 是否与站点前缀一致（守卫 G16）。',
   )
+  // 📎 **Story 1.17 / AC-E2：登记这一条**（理由与 `Tower.vue` 同款，逐字理由见那里）。
+  markAssetDegraded(src.value, `手牌塔图（${props.card.towerType} 塔）`)
 }
 
 /**
