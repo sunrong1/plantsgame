@@ -1575,3 +1575,87 @@ Story 1.12 之后的 `SunCounter` / `HeartRow` / `ProgressBar` 一类**尺寸类
   且**没有** `state.value = …`」（源码判据 + 「从开始界面跳回合确实读到了存档那份对局」
   的行为判据，变异 **M141 实测 2 红**）。⇒ 那条缺口关闭。
   — `src/app/store.ts`、`tests/app/jump-turn.test.ts`
+
+---
+
+## Deferred from: code review of story-1-16-关卡流程-通关-失败与推进 `[CR]` (2026-10-17)
+
+三层对抗评审（Blind Hunter / Edge Case Hunter / Acceptance Auditor），
+diff 区间 `6dfd31e..976bf4f`。验收面全绿（11 条裁决 100% 落实、G87–G96 全部有效、
+M101–M110 共 25 红无 0 红），**无一条守卫假绿**。以下 8 条真实但本 story 不做。
+
+### 1. `backToStart()` 不停 BGM / 不清 `state.value`
+
+- **来源**：edge #1 + blind #3（合并）
+- **BGM 部分**：AC-D3 已**逐字裁决**「`backToStart()` 不停 BGM，BGM 停止策略属 1.14/1.18」
+  ⇒ 已登记到 1.18，不是新债。
+- **`state.value` 部分（盲审补充）**：该门面只写 `view.value = 'start'`，`state.value`
+  仍停在终态相位。将来任何「把 `view` 切回 `level` 却不走 `enterLevel()`」的路径会让浮层错位。
+- **今天不成立**：进 `level` 视图必经 `enterLevel()`，1.17 实测未新增这样的路径
+  （与 deferred-work 里 story-1-17 第 2 条的核查结论同款）。
+- **恢复条件**：出现第二条不经 `enterLevel()` 进关卡的路径。
+  — `src/app/store.ts`
+
+### 2. `LevelOutcome` 缺无障碍语义（`role="dialog"` / `aria-modal` / 焦点管理）
+
+- **来源**：edge #2 + blind #15（合并；盲审的 `--space-panel-pad` 回退 `NaN` 一说已驳回）
+- **缺口**：根节点无 `role="dialog"` / `aria-modal`，按钮无 `autofocus`、无 `focus` 转交
+  ⇒ 屏幕阅读器读不到「新对话框出现」，键盘用户需先 Tab 整棵树才能抵达按钮。
+- **不属 1.16 的口径**：NFR13 在本 story 收窄成「堵假可点」，无障碍未列入 AC。
+- **恢复条件**：1.18（目标平板落地）或 3.5（平板竖屏布局细节打磨）任一开工时并入。
+  — `src/components/hud/LevelOutcome.vue`
+
+### 3. G91 的正向词正则比 AC 更严
+
+- **来源**：blind #12
+- **缺口**：`expect(w.text()).toMatch(/读完|完成|太棒|过关/)` 把允许词写死成四个；
+  把文案换成同样合规的「通关啦！」即红。AC-E1 零字面约束。
+- **为什么不属 patch**：负向文案已由 G91 的 `FORBIDDEN_IN_TEXT` 正向黑名单兜住，
+  这条正向断言只是加保险。放宽它属于**改判据**（R-57 需留痕），不是修 bug。
+- **恢复条件**：下一次改通关心案时，顺手把它改成「不匹配任何负向词表」的表述。
+  — `tests/components/level-outcome.test.ts`
+
+### 4. G94 用花括号深度计数切 `shown` 的函数体
+
+- **来源**：blind #9
+- **缺口**：单层 `depth` 计数、不识别模板字符串 / 正则字面量里的 `}`。
+  `shown` 函数体一旦新增任意嵌套 `{}`，循环提前退出 ⇒ G94 静默取到被截断的字符串而失效。
+- **今天不成立**：`shown` 当前无嵌套，判据正确。
+- **恢复条件**：`shown` 函数体首次出现嵌套 `{}` 时换成真解析（正解不是再加一个计数器）。
+  — `tests/components/quiz-card.test.ts`
+
+### 5. `no-unit-select` 的反向探针只覆盖 `views/` 这一种路径形态
+
+- **来源**：blind #16
+- **缺口**：探针只往 `probe` 里塞 `views/UnitSelectView.vue`；若有人把同名文件建到
+  `components/` 下，这条守卫不响。G92/G113 的主体判据（扫全 `src/`）仍会红，
+  但这条「反向自检」本身不提供那层保护。
+- **恢复条件**：判为 P3。真出现时是显眼的架构违例（GDD 禁止选关），不是静默回归。
+  — `tests/scaffold/no-unit-select.test.ts`
+
+### 6. `driveLevel` 的 `guard > 200` 与内容长度耦合
+
+- **来源**：blind #17
+- **缺口**：Epic 2 录入第二单元后一局可能超过 200 步，抛的是「跑了一局还没通关」而非可读诊断。
+- **恢复条件**：Epic 2 录第二单元时同步调阈值，并在 helper 注释里写死「阈值怎么跟着内容长」。
+  — `tests/app/level-flow.test.ts`
+
+### 7. `reducer` 的 `masteredEntryIds` 追加时不去重
+
+- **来源**：edge 层复核时降级为 P3
+- **缺口**：`masteredEntryIds` 走 `[...prev, id]`，`assertInvariants` 不查内部重复
+  ⇒ 一旦某条路径重复记同一个词，数组静默膨胀。
+- **今天不成立**：运行时由 `nextQuestion` 的 `includes` 过滤兜住，跑不到重复。
+- **归属**：1.5 交付的既有行为，1.16 未触碰该行。
+  — `src/core/reducer.ts`
+
+### 8. `restoreNextUnit` 的两条降级路径只回退 `state`、不回退 `progress`
+
+- **来源**：blind #2 + auditor F-02（合并）
+- **缺口**：存档指向未录入单元、或 `buildStateFor` 抛错时，两条分支都只 `console.warn`
+  ⇒ `state` 停在单元 1 而 `progress.currentUnitIndex` 仍指向那个不存在的单元，二者长期不一致。
+- **不是疏漏**：「进度**不回退**」是该函数注释里**逐字写下的裁决**。
+- **今天不可达**：Epic 1 `currentUnitIndex` 恒 0 ⇒ `+1` 恒为 1 ⇒ 单元 1 已录入 ⇒ 两条分支都走不到。
+- **恢复条件**：Epic 2 出现第二个单元时重新评估「钳到合法范围」还是「显式清零」。
+  ⚠️ 本 story 对它的**措辞不一致**已单列为 patch，不在本条。
+  — `src/app/store.ts`

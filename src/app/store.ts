@@ -321,8 +321,15 @@ function restoreNextUnit(savedProgress: Progress): void {
 
   // ⚠️ **先问「录了没有」再组装**，而不是 try/catch 兜住 `entriesOf` 的抛错 ——
   //   「存档指向一个没录的单元」是**存档坏了 / 内容回滚了**，不是开局失败。
-  const hasNextUnit = UNITS.some((unit) => unit.unitNumber === targetUnitNumber)
-  if (!hasNextUnit) {
+  //
+  // ⚠️📌 `[CR]` 2026-10-17：局部名原来叫 `hasNextUnit`，**遮蔽**了本文件下方的
+  //   模块级 `hasNextUnit(next: State)`。今天没有功能 bug（本函数不调它），
+  //   但遮蔽是**类型系统抓不到**的那一类：将来有人在这里写
+  //   `hasNextUnit(state.value)`，TypeScript 会把 `boolean` 报成「不可调用」——
+  //   好在它会红（不是静默错），可读起来会先花五分钟怀疑人生。
+  //   ⇒ 改名成 `unitIsRecorded`，让它与模块级那个 `hasNextUnit` 一眼可分。
+  const unitIsRecorded = UNITS.some((unit) => unit.unitNumber === targetUnitNumber)
+  if (!unitIsRecorded) {
     // ⚠️ **保持打开页面时那份 state 原样不动**，并记 WARN（AC-C5 判据 3）。
     //   ⚠️ 别和 Epic 1 的正常结局搞混：`currentUnitIndex` 恒 0 时 `+1` 恒为 1，
     //     而单元 1 录了 ⇒ **正常结局根本走不到这一支**（AC-C4 的「不 bump」

@@ -196,6 +196,49 @@ describe('G89 —— 重打之后盘上必须是一局**新的**（FR51 战场�
 
 // ── G93：RESTART_LEVEL 的唯一调用点 ───────────────────────────────────────
 
+/**
+ * 这个文件里**从 `core` 绑定了 `restartLevel` action 构造器**的全部本地名。
+ *
+ * ⚠️📌 `[CR]` 2026-10-17 新增。原来 G93 的正则只认**字面名** `restartLevel(`，
+ *   而 `viaStoreFacade`（从 `app/store` import 了同名符号）是**文件级**布尔 ——
+ *   两件事叠起来留了一个洞，而 R-51 记的正是「守卫为了让自己绿而允许了要防的违规」：
+ * ```ts
+ *   import { restartLevel }        from '../../app/store'   // 合法：调门面
+ *   import { restartLevel as mk }  from '../../core'        // 🚨 第二个 dispatch 点
+ *   applyAction(mk())
+ * ```
+ *   上面那段**同时**满足 `viaStoreFacade === true`（于是 ⑤ 把整份文件放行）
+ *   与「正则在 `mk(` 上什么都不匹配」⇒ 违规调用点完全隐形。
+ *   ⇒ 判据必须**先把别名解析出来**，再一起扫。
+ *
+ * ⚠️ 返回值是 `Set` 而非单个名字：别名可以任意起。
+ * ⚠️ `import type { … }` 显式排除 —— 类型位置的构造器调不出来。
+ */
+function coreCtorLocalNames(clean: string): Set<string> {
+  const names = new Set<string>()
+  const importRe = /import\s*(?:type\s*)?\{([^}]*)\}\s*from\s*['"]([^'"]+)['"]/g
+  for (const m of clean.matchAll(importRe)) {
+    const from = m[2] ?? ''
+    if (!/(^|\/)core(\/|$)/.test(from)) continue
+    for (const clause of (m[1] ?? '').split(',')) {
+      const parts = clause.trim().split(/\s+as\s+/)
+      const imported = (parts[0] ?? '').trim()
+      if (imported !== 'restartLevel') continue
+      const local = (parts[1] ?? parts[0] ?? '').trim()
+      if (local !== '') names.add(local)
+    }
+  }
+  return names
+}
+
+/** 扫「可能是一个 dispatch 点」的调用 —— 匹配字面名**与**全部 core 别名。 */
+function dispatchPointPattern(ctorNames: Set<string>): RegExp {
+  const alts = ['restartLevel', ...ctorNames]
+  // ⚠️ 排序只为让错误信息可复现；`Set` 的插入序在 `import` 顺序变时会飘。
+  const uniq = [...new Set(alts)].sort()
+  return new RegExp(`(?<!\\w)(${uniq.join('|')})\\s*\\(`, 'g')
+}
+
 describe('G93 —— RESTART_LEVEL 只有一个调用点，且是 store 门面', () => {
   it('判据自检：白名单里那个门面真的调了 applyAction(restartLevel(...))', () => {
     // R-52：源码匹配型守卫必须先 stripComments —— `store.ts` 的文件头注释里
@@ -242,8 +285,12 @@ describe('G93 —— RESTART_LEVEL 只有一个调用点，且是 store 门面',
         const viaStoreFacade = /import\s*\{[^}]*\brestartLevel\b[^}]*\}\s*from\s*['"][^'"]*app\/store['"]/.test(
           clean,
         )
-        for (const m of clean.matchAll(/(?<!\w)restartLevel\s*\(/g)) {
+        // ⚠️📌 `[CR]` 2026-10-17：这里从「只扫字面名」改成「扫字面名 **+ 从 core
+        //   绑定的全部别名」——原来别名调用整条隐形，而 ⑤ 又会把整份文件放行。
+        const ctorNames = coreCtorLocalNames(clean)
+        for (const m of clean.matchAll(dispatchPointPattern(ctorNames))) {
           const at = m.index ?? 0
+          const called = m[1] ?? 'restartLevel'
           // ① 定义本身不算调用点。
           if (/export\s+function\s+$/.test(clean.slice(Math.max(0, at - 40), at))) continue
           // ② `core/actions.ts` 里的 `restartLevel()` 是 **action 构造器**，
@@ -253,9 +300,15 @@ describe('G93 —— RESTART_LEVEL 只有一个调用点，且是 store 门面',
           if (full.endsWith(join('core', 'index.ts'))) continue
           // ④ 白名单：`store.ts` 的门面自己 dispatch 一次。
           if (full.endsWith(join('app', 'store.ts'))) continue
+          // 🚨📌 `[CR]` 新增的前置判定（排在 ⑤ 之前）：**这一处调的是从 core
+          //   绑来的构造器**，无论文件里有没有同时 import 门面，都算第二个 dispatch 点。
+          if (ctorNames.has(called) && called !== 'restartLevel') {
+            offenders.push(`${full.slice(SRC.length + 1)} → ${called}()（从 core 绑定的构造器别名）`)
+            continue
+          }
           // ⑤ 从 `app/store` import 的那个同名符号**就是门面**，不是第二个 dispatch 点。
           if (viaStoreFacade) continue
-          offenders.push(`${full.slice(SRC.length + 1)} → restartLevel()`)
+          offenders.push(`${full.slice(SRC.length + 1)} → ${called}()`)
         }
       }
     }
@@ -282,6 +335,44 @@ describe('G93 —— RESTART_LEVEL 只有一个调用点，且是 store 门面',
       /import\s*\{[^}]*\brestartLevel\b[^}]*\}\s*from\s*['"][^'"]*app\/store['"]/.test(facade),
       '判据自检：从 app/store import 的那个必须被判成门面',
     ).toBe(true)
+  })
+
+  it('🚨 反向自测：判据能咬住「别名 import 的 core 构造器」（`[CR]` 2026-10-17 补）', () => {
+    // ⚠️ **这一条守的是刚补的那个洞**：同一份文件里既 import 门面、又从 core
+    //   别名绑一次构造器。旧判据下它**完全隐形** ——
+    //   `viaStoreFacade` 是文件级布尔（把整份文件放行），
+    //   而正则只认字面名 `restartLevel(`（`mk(` 一个字符都不匹配）。
+    const probe = [
+      `import { restartLevel } from '../../app/store'`,
+      `import { restartLevel as mk } from '../../core'`,
+      `const a = restartLevel()`,
+      `const b = mk()`,
+    ].join('\n')
+
+    const viaStoreFacade = /import\s*\{[^}]*\brestartLevel\b[^}]*\}\s*from\s*['"][^'"]*app\/store['"]/.test(
+      probe,
+    )
+    expect(viaStoreFacade, '判据自检：这份探针**确实**同时 import 了门面（这正是那个洞的前提）').toBe(true)
+
+    const ctorNames = coreCtorLocalNames(probe)
+    expect(
+      [...ctorNames],
+      '判据自检：必须把别名 `mk` 解析成「从 core 绑定的构造器」',
+    ).toEqual(['mk'])
+
+    const matches = [...probe.matchAll(dispatchPointPattern(ctorNames))].map((m) => m[1])
+    expect(
+      matches,
+      '判据自检：新的扫描模式必须同时命中门面调用与别名调用',
+    ).toEqual(['restartLevel', 'mk'])
+
+    // 真正要断的那一条：别名调用**不得**被 `viaStoreFacade` 放行。
+    const offenders = [...probe.matchAll(dispatchPointPattern(ctorNames))]
+      .filter((m) => ctorNames.has(m[1] ?? '') && (m[1] ?? '') !== 'restartLevel')
+      .map((m) => m[1])
+    expect(offenders, '🚨 判据自检：别名构造器调用必须被判为违规，不得被文件级放行吞掉').toEqual([
+      'mk',
+    ])
   })
 })
 
@@ -350,8 +441,21 @@ describe('G96 —— 落盘的 progress 必须是**这一次结算之后**的', 
       lags.filter((lag) => lag !== 0),
       '每一次答题后盘上都必须已经含这个词；实际逐回合差值 = ' + JSON.stringify(lags),
     ).toEqual([])
-    expect(lags.length, '跑完整局至少 37 个回合 —— 这条断言不是空数组上跑的').toBe(
-      store.state.value.deck.length,
+    // ⚠️📌 `[CR]` 2026-10-17：这条消息原来写死「**至少 37 个回合**」，
+    //   而判据是 `toBe(deck.length)` —— **等值**不是「至少」。
+    //   两处坏处，各有其形：
+    //     · Epic 2 把单元 1 的题单从 37 改成 35 ⇒ 断言仍绿，但「至少 37」成了死字，
+    //       下一个读它的人会以为 36 也算数；
+    //     · 真跑出 36 个 lag（少一题，**这才是本用例要抓的 bug**）⇒ 断言红，
+    //       消息却写着「至少 37」，读的人会以为 36 也能接受 ⇒ 误判严重度。
+    //   ⇒ 消息里的数字改为跟着 `deck.length` 走，措辞与判据逐字对齐。
+    const expectedTurns = store.state.value.deck.length
+    expect(
+      expectedTurns,
+      '判据自检：题单非空（否则上面那条是恒绿 —— 空数组上跑，filter 出来也是空）',
+    ).toBeGreaterThan(0)
+    expect(lags.length, `跑完整局应得 ${expectedTurns} 个回合（= 题单长度，一题一个 lag）`).toBe(
+      expectedTurns,
     )
   })
 

@@ -21,7 +21,7 @@
  *   （`state.value` 的引用变更、`view.value` 的取值）。
  */
 
-import { mount, enableAutoUnmount } from '@vue/test-utils'
+import { mount, enableAutoUnmount, type DOMWrapper, type VueWrapper } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import { afterEach, describe, expect, it } from 'vitest'
 
@@ -350,8 +350,92 @@ describe('按钮走 store 门面（AC-D1 / AC-D3）', () => {
  *   而「忘了 import 组件 ⇒ 渲染成空标签、**全绿**」这个坑本仓库已经踩过两次
  *   （`LevelView.vue:34-57` 逐字记着）。⇒ 必须挂真的视图。
  */
-describe('AC-D5 —— 终态下没有可点的假东西（集成在真 <LevelView /> 上）', () => {
-  /**
+/**
+ * AC-D5 那条「可点元素只有一个」的判据里，**什么叫「可点」**。
+ *
+ * ⚠️📌 `[CR]` 2026-10-17：**这条判据原来只是一串半截的 CSS 选择器**
+ *   （`button, [role="button"], .option-card, .hand-card`），而它的用例名与注释
+ *   逐字声称的是「**整棵视图树**、将来给**别的元素接了 handler** 也会红」。
+ *   那句话当时是假的 —— 选择器抓不到：
+ *     · 裸 `@click` 的 `div`（`<div @click="…">`，四个已知类名一个都不沾）
+ *     · `<a href>` / `<input>` / `<select>`
+ *     · 只加了 `tabindex`、靠键盘 Enter 触发的元素
+ *   ⇒ `[CR]` 把它换成下面这个显式判据，并**逐条写出它抓什么、不抓什么、为什么**。
+ *
+ * ── 为什么必须显式读 Vue 的 vnode props ──────────────────────────────────
+ *   `@click` 在 Vue 3 里**不是 DOM 属性**：`patchProp` 对 `on*` 走
+ *   `addEventListener`，`el.attributes()` 里**看不到** `onclick`。
+ *   ⇒ 只能读 `el.__vnode.props`（runtime-dom 在 patch 时挂上去的）。
+ *   这是一个 Vue 内部字段，所以下面用 `in` 探测 + 降级：拿不到就退化成
+ *   「只按 DOM 侧特征判」，**宁可少抓也不误报**。
+ */
+/**
+ * 「孩子能**主动**点到」的事件 —— 精确名单，**不按 `^on[A-Z]` 泛匹配**。
+ *
+ * ⚠️📌 `[CR]` 2026-10-17：首版这里写的是 `/^on[A-Z]/`，当场数出 16 个而不是 1 个 ——
+ *   多出来的绝大多数是**根本点不到**的元素：
+ *     · `HeartRow` 的 `heart-row__shape` 带 `@animationend`（1.13 的心碎动画收尾）
+ *     · `OptionCard` / `HandCard` 的 `*__image` 带 `@error`（图片降级，1.7）
+ *   ⇒ 判据必须问「这个 handler 是不是**用户输入**」，不是「有没有 handler」。
+ *   这一条就是本仓库反复记着的「判据比它声称的窄**或宽**，两边都算错」。
+ */
+const USER_INPUT_EVENT_PROPS = new Set([
+  'onClick',
+  'onDblclick',
+  'onPointerdown',
+  'onPointerup',
+  'onMousedown',
+  'onMouseup',
+  'onTouchstart',
+  'onTouchend',
+  'onContextmenu',
+  'onKeydown',
+  'onKeyup',
+  'onKeypress',
+])
+
+function hasUserInputHandler(el: Element): boolean {
+  const vnode = (el as Element & { __vnode?: { props?: Record<string, unknown> } }).__vnode
+  if (vnode === undefined || vnode.props === undefined) return false
+  return Object.entries(vnode.props).some(
+    ([key, value]) => USER_INPUT_EVENT_PROPS.has(key) && typeof value === 'function',
+  )
+}
+
+/** DOM 侧的特征选择器 —— 「元素自带可点语义」的那些形态。 */
+const CLICKABLE_SELECTOR =
+  'button, a[href], input, select, textarea, [role="button"], [role="link"], [tabindex], [contenteditable="true"], .option-card, .hand-card'
+
+/**
+ * 战场本体 —— **显式排除**，理由逐字写在这里（`[CR]` 2026-10-17）：
+ *
+ * `BattleField.vue` 的 `.battle-grid` 带 `@click.self="onGridBlank"`，
+ * 45 个 `.battle-cell` 各带 `@pointerdown` / `@pointerup` / `@pointercancel`。
+ * 若按「任何带 `on*` 的元素」判，这条断言会数到 46 个 —— 但那**不是** AC-D5
+ * 要防的「假可点」，理由两条：
+ *   ① **战场在终态下必须仍在**（AC-D2 逐字：「孩子通关时应当看得见自己守住的那片地」）。
+ *      它不是「本该消失却留着的交互残留」，恰恰是本 story 刻意保留的东西。
+ *   ② `onGridBlank` 的全部作用是 `selectedEntryId.value = null`，
+ *      而 `selectedEntryId` 在相位离开 `awaiting-build` 时**已被自动清空**
+ *      （`store.ts` 的 `clearSelectionIfLeavingBuildPhase`）⇒ 终态下点它是**无副作用的空操作**，
+ *      屏幕上不会有任何东西变化 —— 与「孩子点了以为能干什么、却毫无反应」不同类。
+ * ⚠️ 这条排除是**判据的一部分**，不是「让它绿」的通融：战场里若新加一个
+ *   `button` / `[role=button]` / `<a>`，上面那个选择器**照样抓得到**（选择器不看祖先）。
+ *   1.12 交付，非 1.16 引入。
+ */
+const BATTLEFIELD_SELECTOR = '.battle-grid'
+
+/** 找出视图树里全部「AC-D5 意义上可点」的元素，并给出可读的失败清单。 */
+function findClickable(w: VueWrapper): DOMWrapper<Element>[] {
+  return w
+    .findAll<Element>('*')
+    .filter(
+      (el) => !el.element.matches(BATTLEFIELD_SELECTOR) && !el.element.closest(BATTLEFIELD_SELECTOR),
+    )
+    .filter((el) => el.element.matches(CLICKABLE_SELECTOR) || hasUserInputHandler(el.element))
+}
+
+describe('AC-D5 —— 终态下没有可点的假东西（集成在真 <LevelView /> 上）', () => {  /**
    * 走真实链路：进关（待答题）→ 挂载视图 → 答对一题 → 进建造期。
    *
    * 🚨🚨 **mount 必须在 `awaiting-answer` 上做，顺序不能换**（实测踩过两次）：
@@ -434,20 +518,42 @@ describe('AC-D5 —— 终态下没有可点的假东西（集成在真 <LevelVi
     expect(w.find('[data-testid="level-outcome"]').exists(), `${kind} 下浮层必须在`).toBe(true)
   })
 
+  it('判据自检：建造期 `findClickable` 抓得到东西（否则下面那条是恒绿）', async () => {
+    // ⚠️ **必须独立成一条用例**（`[CR]` 2026-10-17）：自检要再跑一遍
+    //   `enterLevelAndBuild()`，而它会把 `state.value` 重置回 `PRISTINE` 并再答一题。
+    //   写在终态那条**里面**时，它把 state 又推回建造期 ⇒ 被测对象已经不是终态。
+    //   ⇒ 一条用例只驱动一次 store，判据自检单独一条。
+    const w = await enterLevelAndBuild()
+
+    const clickable = findClickable(w)
+    expect(
+      clickable.length,
+      `判据自检：建造期应当抓到多个可点元素（四张 .option-card + 手牌 + 开战）；实际 ${clickable.length} 个`,
+    ).toBeGreaterThan(4)
+    // 顺带钉住「战场被显式排除」这条判据的分寸：战场**有** handler，但不算可点。
+    expect(
+      clickable.some((el) => el.classes().join(' ').includes('battle-grid') || el.classes().join(' ').includes('battle-cell')),
+      '判据自检：战场本体已被显式排除（BATTLEFIELD_SELECTOR 的理由见其定义处）',
+    ).toBe(false)
+  })
+
   it('终态下**全部**可点元素加起来只有浮层那一个按钮', async () => {
     // ⚠️ **不与上面两条重复**：上面验的是「那几个具体元素不见了」，
     //   这一条从**整棵视图树**兜一次 —— 将来有人给别的元素接了 handler 或 role，
     //   上面两条不会红，这条会。
+    // ⚠️📌 `[CR]` 2026-10-17：判据从半截 CSS 选择器换成 `findClickable()`
+    //   （抓 DOM 特征**或** Vue vnode 上的**用户输入** handler，且显式排除战场本体）。
+    //   「什么算可点、战场为什么不算」的完整理由见那个函数的头注释。
     const w = await enterLevelAndBuild()
 
     pushInto('level-failed')
     await nextTick()
 
-    const clickable = w.findAll('button, [role="button"], .option-card, .hand-card')
+    const clickable = findClickable(w)
     expect(
       clickable.length,
       `终态下可点元素应当只有浮层那一个按钮；实际有 ${clickable.length} 个：${clickable
-        .map((el) => el.classes().join('.'))
+        .map((el) => `${el.element.tagName.toLowerCase()}.${el.classes().join('.')}`)
         .join(' / ')}`,
     ).toBe(1)
     expect(clickable[0].classes().join(' '), '那唯一一个必须是浮层的按钮').toContain('level-outcome__button')

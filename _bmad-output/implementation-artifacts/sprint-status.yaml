@@ -44,10 +44,11 @@
 #   epics.md 的销项说明处理。
 
 generated: 2026-10-12
-last_updated: 2026-10-17  # 1-17 [CR] 15 条 patch 全部修完 → done（baseline 976bf4f，测试 1647→1692）
+last_updated: 2026-10-17  # 1-16 [CR] 三层评审 30 条 ⇒ 7 patch 全修完 → done（测试 1692→1694）
+                        # 1-17 [CR] 15 条 patch 全部修完 → done（baseline 976bf4f，测试 1647→1692）
                         # 下一任务按同一循环取下一个（1-18 是 backlog ⇒ 先跑它的 CS）
                         # 运行记录见各 story 文档的 Dev Agent Record
-                        # 1-17 的裁决与全部运行记录见归档文档（R-40 / R-42）
+                        # 1-16 / 1-17 的裁决与全部运行记录见归档文档（R-40 / R-42）
 project: plants-game
 project_key: NOKEY
 tracking_system: file-system
@@ -72,7 +73,7 @@ development_status:
   1-13-hud-阳光-心与进度: done
   1-14-音效与-bgm-接入: review
   1-15-存档与断点续学: review
-  1-16-关卡流程-通关-失败与推进: review
+  1-16-关卡流程-通关-失败与推进: done
   1-17-调试工具与会话回放: done
   1-18-目标平板落地-竖屏布局-离线与部署: backlog
   1-19-单元-1-首次试玩验证-epic-1-的生死线: backlog
