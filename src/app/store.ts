@@ -37,11 +37,13 @@ import { entriesOf, UNITS } from '../content'
 import {
   advanceProgress,
   advanceUnit,
+  answer,
   assertInvariants,
   cellKey,
   continueRound,
   createInitialState,
   endBuild,
+  isCorrect,
   placementBlockedReason,
   placeTower,
   reduce,
@@ -76,6 +78,7 @@ export {
   devSetInfiniteHearts,
   devSetInfiniteSun,
   isDebugPanelRequested,
+  isTowerRangeOverlayRequested,
 } from './dev-adjust'
 export type { DevFlags } from './dev-adjust'
 
@@ -649,4 +652,105 @@ export function speakQuestion(): void {
   //   再包一层会把「哪一层出的问题」这个信息抹掉，正是本文件 `initialState()`
   //   上方注释里说的那种损失。
   playPronunciation(phase.question.card.promptText, phase.question.entryId)
+}
+
+// ── 跳回合（Story 1.17 / AR40、裁决 7）──────────────────────────────────────
+
+/** 跳回合的结果 —— 面板照它如实显示，不自己猜。 */
+export interface JumpResult {
+  /** 实际停下的回合号。 */
+  readonly reachedTurn: number
+  /**
+   * 为什么停在这儿。
+   * ⚠️ `reached` **不是**「一定到了目标回合」——目标回合 ≤ 当前回合时也是它
+   *   （那本来就该是「原样不动」）。
+   */
+  readonly stoppedBy: 'reached' | 'level-failed' | 'level-complete' | 'not-in-play'
+}
+
+/**
+ * 步数上限 —— 防「目标回合写成 99999」把浏览器挂死。
+ *
+ * ⚠️ 正常路径根本走不到它：循环体每次都推进一个相位，而相位是有限的
+ *   （答题 → 开战 → 结算 → 推进）。它是**兜底**，不是流程的一部分。
+ */
+const MAX_JUMP_STEPS = 500
+
+/**
+ * 「跳到任意回合」（AR40）—— 调试面板上那个输入框 + 按钮的唯一入口。
+ *
+ * ── 为什么必须经 `enterLevel()`（裁决 7）────────────────────────────────
+ * `deferred-work.md`（Story 1.15 第 4 条）逐字：「任何新增的『回到战场』路径
+ * 若不经过 `enterLevel()`，**就读不到存档**」。而 G86 只管「谁调 `readSave`」，
+ * **管不到「每条进关路径都调了」**（1.16 偏离表第 2 条已登记过这个缺口）。
+ * ⇒ 不在战场上就先 `enterLevel()`，让读档这一步发生。
+ * ⚠️ **已经在战场上时不重复调 `enterLevel()`**：它内部会 `restoreFromSave`，
+ *   而盘上这一刻存着的正是当前这一局 ⇒ 重复调等于把内存里正在玩的局面丢掉。
+ *   这与 1.16 裁决 4(a)「重打按钮绝不调 `enterLevel()`」是同一个坑的两面。
+ *
+ * ── 为什么链发真 action 而不是直接摆一个 state ───────────────────────────
+ * ① `applyAction` 的四步（reduce → dev 补偿 → 进度 → 副作用）是架构的一部分，
+ *   绕开它就绕开了写盘与音效；守卫 **G118** 断言「跳完之后盘上的回合号也跟着到了」。
+ * ② 裁判与判定仍由 `core/` 出：答哪一题走 `isCorrect`，这里**不重写一遍判定**
+ *   （与 AC-D1 那条「判定只有一个出处」同款）。
+ *
+ * ── 它**不做**什么 ────────────────────────────────────────────────────────
+ * · 不建塔、不选卡 —— 「跳回合」只推进回合，建塔由人接着做；
+ * · 不改胜负判定 —— 心耗尽就停在 `level-failed`，如实在 `JumpResult` 里报告。
+ *   想跳更远请勾上「无限心」再跳（那是另一个开关的语义，本门面不偷偷替你开）。
+ *
+ * ⚠️ **跳完清掉会话录制**（与 1.16 偏离 3 同款理由）：这些回合不是玩家按出来的，
+ *   留在录制里会让导出的 JSON 从一个**假局面**开始播，而复现要求是真输入。
+ *
+ * @param targetTurn 目标回合号（1 基）。非有限值或 < 1 一律按 **1** 处理 ——
+ *   面板上的输入框可以是空的，而 `Math.max(1, NaN)` 是 `NaN`。
+ */
+export function jumpToTurn(targetTurn: number): JumpResult {
+  if (view.value !== 'level') enterLevel()
+
+  const target = Number.isFinite(targetTurn) ? Math.max(1, Math.trunc(targetTurn)) : 1
+
+  for (let step = 0; step < MAX_JUMP_STEPS && state.value.turn < target; step += 1) {
+    // ⚠️ 直接读 `phase` 而不是 `currentPhaseKind()`：那个 helper 只返回 `kind`
+    //   （`State['phase']['kind']`），**判别联合到这一步已经收窄了**，
+    //   `phase.question` 取不到。`tests/app/session-replay` 里同款处置见
+    //   `tests/core/session-replay.test.ts:110` 的注释。
+    const phase = state.value.phase
+    if (phase.kind === 'awaiting-answer') {
+      const { card } = phase.question
+      const correct = card.options.find((option) => isCorrect(card, option.id))
+      // ⚠️ 「没有正确项」只可能来自坏内容数据（`isCorrect` 是纯函数，
+      //   卡上没有 `correct` 的项时它对每一项都返回 false）。
+      //   ⇒ 停下来如实报告，而不是 dispatch 一条会被 reducer 判非法态的 ANSWER。
+      if (correct === undefined) break
+      applyAction(answer(correct.id))
+      continue
+    }
+    if (phase.kind === 'awaiting-build') {
+      startRound()
+      continue
+    }
+    // ⚠️ `round-over` 只在 dev 补偿把 `level-failed` 翻回来之后才会出现
+    //   （裁决 5 判据 1 + 偏离 6）—— 那种局面下回合**已经结算完**，
+    //   要继续往后走就得再按一次推进。生产构建里这段不可达（dev 补偿被 tree-shake）。
+    if (phase.kind === 'round-over') {
+      applyAction(continueRound())
+      continue
+    }
+    break
+  }
+
+  resetSession()
+
+  const kind = currentPhaseKind()
+  const stoppedBy: JumpResult['stoppedBy'] =
+    state.value.turn >= target
+      ? 'reached'
+      : kind === 'level-failed'
+        ? 'level-failed'
+        : kind === 'level-complete'
+          ? 'level-complete'
+          : 'not-in-play'
+
+  return { reachedTurn: state.value.turn, stoppedBy }
 }

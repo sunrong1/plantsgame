@@ -142,6 +142,29 @@ export function isDebugPanelRequested(): boolean {
   return new URLSearchParams(search).get('debug') === '1'
 }
 
+/**
+ * 家长在 URL 上带 `?ranges=1` 时，是否画出**已建成塔**的射程覆盖（AR42 / 裁决 12 ①）。
+ *
+ * ⚠️ **与 {@link isDebugPanelRequested} 的三行刻意重复，不抽公共 helper**：
+ *   守卫 G112 的判据是「**在这个函数的函数体里**，`import.meta.env.DEV` 出现在
+ *   `URLSearchParams` 之前」。抽成 `devParam(name)` 之后两个函数体里都不再出现
+ *   `URLSearchParams` ⇒ 判据当场失明（它会报「判据已失明」而不是静默放过）。
+ *   ⇒ 这里选择**让判据继续咬得住**，代价是两处各写三行。
+ *   真要收敛，判据必须先改成「追进 helper」，那是另一次带 R-57 留痕的改动。
+ *
+ * ⚠️ **为什么是 URL 参数而不是面板上的第四个开关**：AC-D3 逐字列的是
+ *   **三个**开关（无限心 / 无限阳光 / 直接通关），多加一个就是超出 AC；
+ *   而裁决 12 逐字写的就是「DEV + **URL 参数**门控」。
+ *
+ * ⚠️ **它只控制「画不画」，不碰形状** —— 画哪几格由 `core/build.ts` 的
+ *   `coverCellsAt` 说了算（守卫 G119 逐格比对）。
+ */
+export function isTowerRangeOverlayRequested(): boolean {
+  if (!import.meta.env.DEV) return false
+  const search = typeof globalThis.location === 'undefined' ? '' : globalThis.location.search
+  return new URLSearchParams(search).get('ranges') === '1'
+}
+
 // ── 三个开关的门面（AC-D2：组件只调 `store` 的门面，守卫 G110）────────────
 //
 // ⚠️ **为什么是三个 `boolean` 入参而不是一个「反转」的无参函数**：

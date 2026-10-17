@@ -30,6 +30,11 @@
  *   放行，与 1.14 裁决 5 的 `startBgmIfReady` 同构。
  *   另两个（`saveDegradations` / `assetDegradations`）没有这条限制，
  *   仍然走门面是**为了同一个理由**：G110 只盯这一个文件。
+ *
+ * ── ⚠️ 「跳回合」是面板的第四**段**，不是第四个开关 ────────────────────────
+ *   AC-D3 逐字列的是三个开关（无限心 / 无限阳光 / 直接通关），多加一个就是超出 AC。
+ *   「跳到任意回合」（AR40 / 裁决 7）是独立的一段：目标回合 + 按钮 + 结果行，
+ *   经 `store` 的 `jumpToTurn` 门面执行（守卫 G118 盯的是**门面那份**的实现）。
  */
 import { computed, ref } from 'vue'
 
@@ -40,11 +45,13 @@ import {
   devSetDirectWin,
   devSetInfiniteHearts,
   devSetInfiniteSun,
+  jumpToTurn,
   progress,
   retrySaveWrite,
   saveDegradations,
   state,
 } from '../../app/store'
+import type { JumpResult } from '../../app/store'
 import { heartSlots } from '../../core'
 
 /** 每颗心的占位（`true` = 还在）。心数上限由 `heartSlots` 决定，面板不自己数。 */
@@ -111,6 +118,49 @@ const saveDegraded = computed(() => {
 function onRetrySaveWrite(): void {
   retrySaveWrite(progress.value, state.value)
   bump.value += 1
+}
+
+// ── 跳回合（AR40 / 裁决 7）─────────────────────────────────────────────────
+
+/**
+ * 目标回合（输入框的值）。
+ *
+ * ⚠️ 类型是 `number | string` 而不是 `number`：输入框被清空时 `v-model.number`
+ *   给回的是**空串**。写成 `number` 就是拿类型骗自己 —— 而 AR40 的用法里
+ *   「先把框清掉再输」是最正常的手势。
+ */
+const targetTurn = ref<number | string>(1)
+
+/** 上一次跳回合的结果。`null` = 还没跳过 —— 此时面板不显示任何结果行。 */
+const jumpResult = ref<JumpResult | null>(null)
+
+/**
+ * 把结果说成人话（AC-D3 同款纪律）。
+ *
+ * ⚠️ **没说到达就是没到达**：跳不远时（心耗尽 / 已通关 / 当前相位推不动）
+ *   报的是「停在第几回合」，不是目标回合。
+ *   面板报一个够不着的数字，等于把「没跳到」说成「跳到了」。
+ */
+const jumpSummary = computed(() => {
+  const result = jumpResult.value
+  if (result === null) return ''
+  if (result.stoppedBy === 'reached') return `已到第 ${result.reachedTurn} 回合`
+  const why = {
+    'level-failed': '这一局已经失败',
+    'level-complete': '这一局已经通关',
+    'not-in-play': '当前不在能推进的阶段',
+  }[result.stoppedBy]
+  return `停在第 ${result.reachedTurn} 回合：${why}`
+})
+
+/**
+ * 点「跳回合」：把输入框的值原样交给 `store` 的门面。
+ *
+ * ⚠️ **转换只做 `Number()`** —— 夹取（≥ 1、非整数取整）都在 `jumpToTurn` 里，
+ *   面板不重写一遍口径，否则两处会各自漂移（守卫 G118 盯的是门面那份）。
+ */
+function onJumpTurn(): void {
+  jumpResult.value = jumpToTurn(Number(targetTurn.value))
 }
 </script>
 
@@ -219,6 +269,44 @@ function onRetrySaveWrite(): void {
         重试写入
       </button>
     </section>
+
+    <!--
+      「跳到任意回合」（AR40 / 裁决 7）。
+      ⚠️ **这一段刻意不是第四个开关** —— AC-D3 逐字列的是三个，多加一个就是超出 AC。
+    -->
+    <section class="debug-panel__jump">
+      <h3 class="debug-panel__subtitle">
+        跳回合
+      </h3>
+
+      <label class="debug-panel__jump-row">
+        <span class="debug-panel__jump-label">到第几回合</span>
+        <input
+          v-model.number="targetTurn"
+          class="debug-panel__jump-input"
+          type="number"
+          min="1"
+          step="1"
+          data-action="target-turn"
+        >
+      </label>
+      <button
+        type="button"
+        class="debug-panel__button"
+        data-action="jump-turn"
+        @click="onJumpTurn"
+      >
+        跳回合
+      </button>
+
+      <p
+        v-if="jumpResult"
+        class="debug-panel__jump-result"
+        data-action="jump-result"
+      >
+        {{ jumpSummary }}
+      </p>
+    </section>
   </aside>
 </template>
 
@@ -316,5 +404,28 @@ function onRetrySaveWrite(): void {
   color: inherit;
   font: inherit;
   cursor: pointer;
+}
+
+.debug-panel__jump-row {
+  align-items: center;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: auto 1fr;
+}
+
+.debug-panel__jump-input {
+  /* 触控目标 ≥ `--touch-min` —— 输入框也是可点元素（AC-1）。 */
+  min-height: var(--touch-min);
+  padding: 0 8px;
+  border: 1px solid var(--color-overlay-inert);
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+
+.debug-panel__jump-result {
+  margin: 8px 0 0;
+  opacity: 0.9;
 }
 </style>

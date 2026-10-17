@@ -67,7 +67,7 @@ import {
   placementBlockedReason,
 } from '../../core'
 import type { HandCard, Tower as TowerEntity, Zombie as ZombieEntity } from '../../core'
-import { placeSelectedAt, selectedEntryId, state } from '../../app/store'
+import { isTowerRangeOverlayRequested, placeSelectedAt, selectedEntryId, state } from '../../app/store'
 
 import RangeOverlay from './RangeOverlay.vue'
 import Tower from './Tower.vue'
@@ -213,6 +213,34 @@ const coveredKeys = computed<ReadonlySet<string>>(() => {
 const showInertRows = computed(
   () => selectedCard.value !== null && state.value.phase.kind === 'awaiting-build',
 )
+
+/**
+ * 📎 **Story 1.17 / AR42、裁决 12 ①：dev 下的「已建成塔射程」覆盖层。**
+ *
+ * ⚠️ **零新形状**：直接调 `core/build.ts` 的 `coverCellsAt`，
+ *   与放塔预览那条路径**同一个函数、同一份形状** —— 裁决 1 的口径
+ *   （预览 = 真实伤害形状）在这里继续成立，AR43 的「两套形状」不许加回来。
+ *   守卫 **G119** 逐格比对：画出来的集合必须与 `coverCellsAt` 的并集逐格相等。
+ *
+ * ⚠️ **为什么需要它**：1.12 的覆盖层只在「选中卡 + 指向一格」时出现（放塔预览），
+ *   于是「场上这株塔到底盖哪几格」在界面上没有任何东西能核对 ——
+ *   而那正是 AR42 要肉眼核对的那件事。
+ *
+ * ⚠️ **门控是 `?ranges=1` 且只在 DEV 下**（`isTowerRangeOverlayRequested`，
+ *   与 `?debug=1` 同一纪律，守卫 G112 逐个函数查）。生产构建里 Vite 把它
+ *   静态替换成 `false`，这段连同 `coverCellsAt` 的循环一起被 tree-shake。
+ *
+ * ⚠️ **不读相位**：这一层是「给开发者核对判据」的，不参与孩子看到的东西 ——
+ *   在哪个相位都该画，否则「换个相位看看」这个用法本身就没了。
+ */
+const devTowerRangeKeys = computed<ReadonlySet<string>>(() => {
+  if (!isTowerRangeOverlayRequested()) return new Set()
+  const keys = new Set<string>()
+  for (const tower of state.value.towers) {
+    for (const key of coverCellsAt(tower.row, tower.col, tower.towerType)) keys.add(key)
+  }
+  return keys
+})
 
 /** 这一格此刻能不能放（唯一判据：`placementBlockedReason`）。 */
 function blockedAt(cell: Cell): boolean {
@@ -389,6 +417,12 @@ watch(selectedEntryId, () => {
           （见 `RangeOverlay.vue` 的文件头）。把这段往上挪，覆盖层就会钻到房子罩底下，
           而那道改动**不会让任何测试变红**。
       -->
+      <!-- ⓪ 📎 Story 1.17：dev 下已建成塔的射程（`?ranges=1`，只在 DEV 生效）。
+           与 ① 同为 `variant="range"` —— **零新形状**（裁决 12）。 -->
+      <RangeOverlay
+        v-if="devTowerRangeKeys.has(cell.key)"
+        variant="range"
+      />
       <!-- ① 射程覆盖：该格落在 `coverCellsAt(指向格, 塔型)` 里。 -->
       <RangeOverlay
         v-if="coveredKeys.has(cell.key)"

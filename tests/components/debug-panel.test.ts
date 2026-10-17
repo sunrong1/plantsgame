@@ -36,7 +36,9 @@ import {
   devSetDirectWin,
   devSetInfiniteHearts,
   devSetInfiniteSun,
+  resetSession,
   state,
+  view,
 } from '../../src/app/store'
 import { createInitialState } from '../../src/core'
 import { afterEachUninstall, installFakeStorage } from '../fixtures/fake-storage'
@@ -258,5 +260,91 @@ describe('G113 —— 面板不是可路由到达的页面（Story 1.17 / AC-D5�
       /components\/debug/.test(app) || /components\/debug/.test(level),
       '面板谁都没挂 —— 它写完了却不可见，等于没写',
     ).toBe(true)
+  })
+})
+
+// ── 组 F：跳回合的控件（Story 1.17 / Task 7.1、AR40）────────────────────────
+//
+// ⚠️ **这一段是 AR40 的最后一环**：门面 `jumpToTurn` 有了（`tests/app/jump-turn.test.ts`），
+//   但界面上没有控件的话开发者在面板上按不到它 —— AR40 逐字要的是
+//   「**使用**「跳到任意回合」**无需重打 10 回合**」，不是「代码里有这个函数」。
+
+describe('组 F —— 面板上的「跳到任意回合」（Story 1.17 / Task 7.1、AR40）', () => {
+  it('面板上有一个数字输入框 + 「跳回合」按钮（AR40 说的那个「使用」）', () => {
+    const panel = mount(DebugPanel)
+    expect(
+      panel.find('input[type="number"]').exists(),
+      '面板上没有目标回合输入框 —— AR40 的功能按不到',
+    ).toBe(true)
+    expect(panel.find('button[data-action="jump-turn"]').exists()).toBe(true)
+  })
+
+  it('⚠️ 跳回合控件**不是第四个开关**（AC-D3 逐字列的是三个）', () => {
+    const panel = mount(DebugPanel)
+    expect(panel.findAll('input[type="checkbox"]'), '多加一个开关就是超出 AC-D3').toHaveLength(3)
+  })
+
+  it('输入 6 点按钮 ⇒ 盘上真的到了第 6 回合，面板如实报出来', async () => {
+    // ⚠️ 先落到战场上：还在开始界面时 `jumpToTurn` 会先 `enterLevel()` 读档
+    //   （裁决 7 的原意），那样量到的是「读档把局面换了」，不是「跳回合」。
+    view.value = 'level'
+    devSetInfiniteHearts(true)
+    const panel = mount(DebugPanel)
+
+    await panel.find('input[type="number"]').setValue(6)
+    await panel.find('button[data-action="jump-turn"]').trigger('click')
+    await nextTick()
+
+    expect(state.value.turn, '面板点了按钮但局面没动').toBe(6)
+    expect(panel.text()).toContain('已到第 6 回合')
+  })
+
+  it('跳不远时**不说到达**（未勾无限心 ⇒ 如实报「停在第几回合」）', async () => {
+    view.value = 'level'
+    devSetInfiniteHearts(false)
+    const panel = mount(DebugPanel)
+
+    await panel.find('input[type="number"]').setValue(12)
+    await panel.find('button[data-action="jump-turn"]').trigger('click')
+    await nextTick()
+
+    const text = panel.text()
+    expect(text, '心耗尽了却报「已到第 12 回合」—— 那是撒谎').not.toContain('已到第 12 回合')
+    expect(text, '跳不远时没有把停在哪写出来 —— 家长看到的是「按了没反应」').toContain('停在第')
+    // 报的回合号必须是**真的**：目标 12 却被失败拦停，报出来的数就得小于 12。
+    const stoppedAt = Number(/停在第 (\d+) 回合/.exec(text)?.[1])
+    expect(stoppedAt).toBeGreaterThan(0)
+    expect(stoppedAt).toBeLessThan(12)
+    expect(stoppedAt).toBe(state.value.turn)
+  })
+
+  it('输入框空着或填负数 ⇒ 夹到第 1 回合，不崩也不乱跳', async () => {
+    view.value = 'level'
+    devSetInfiniteHearts(true)
+    for (const raw of ['', '-5']) {
+      resetSession()
+      const panel = mount(DebugPanel)
+      await panel.find('input[type="number"]').setValue(raw)
+      await panel.find('button[data-action="jump-turn"]').trigger('click')
+      await nextTick()
+      expect(state.value.turn, `输入 ${JSON.stringify(raw)} 把局面弄坏了`).toBe(1)
+      expect(panel.text()).toContain('已到第 1 回合')
+      panel.unmount()
+    }
+  })
+
+  it('G110：跳回合经的是 `store` 的门面（面板不许直连 store 以外的东西）', () => {
+    const source = panelSource()
+    expect(source, '面板调的不是 store 的 jumpToTurn 门面').toContain('jumpToTurn')
+    expect(panelImports(source)).toContain('../../app/store')
+    expect(panelImports(source), '跳回合不许自己 import core/actions 去造 action').not.toContain(
+      '../../core/actions',
+    )
+  })
+
+  it('反向自测：「撒谎式」的结果文案会被上面两条判据抓到', () => {
+    // 判据自检：文案层分得清「到达」与「停在」，两者不可互换。
+    expect('已到第 6 回合'.includes('停在第')).toBe(false)
+    expect('停在第 3 回合'.includes('已到第')).toBe(false)
   })
 })
