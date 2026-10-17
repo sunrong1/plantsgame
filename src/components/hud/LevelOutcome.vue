@@ -28,7 +28,7 @@
  * 不直接改 `state` / `view`。守卫 **G93** 钉住 `RESTART_LEVEL` 的唯一调用点。
  */
 
-import { computed } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 
 import { restartLevel, backToStart, state } from '../../app/store'
 
@@ -47,6 +47,49 @@ const terminal = computed(() => phaseKind.value === 'level-complete' || phaseKin
 
 /** 这一次是赢了还是输了。只有终态下有值。 */
 const won = computed(() => phaseKind.value === 'level-complete')
+
+/*
+ * ── 📎 Story 1.18 / AC-D5：焦点管理 ────────────────────────────────────────
+ *
+ * ⚠️ **模态浮层不接管焦点会怎样**：Tab 会跑到浮层**背后**的战场格子与手牌卡上，
+ *   而那些东西孩子看不见自己「按」到了哪里 —— 焦点框落在看不见的地方。
+ *   读屏则继续读浮层背后的战场与手牌，等于模态性根本不存在。
+ *
+ * ⚠️ **为什么 `nextTick` 不可省**：模板里的按钮由 `v-if` 渲染。
+ *   `terminal` 由 `false` 变 `true` 的那一刻，watcher 跑在**DOM 更新之前**
+ *   （默认 flush 是 `'pre'`）⇒ 此时 `buttonEl.value === null`，
+ *   `focus()` 在 `null` 上调用是**静默失败**（不抛、也不聚焦）。
+ *   症状极其有欺骗性：代码里 `focus()` 明明写了，读起来也对，
+ *   而焦点一动不动 —— 与「忘了写 focus」的观感一模一样。
+ */
+const buttonEl = ref<HTMLButtonElement | null>(null)
+/** 打开浮层前的焦点 —— 关闭后还回去，否则键盘用户要从页面开头重新 Tab。 */
+let previousFocus: HTMLElement | null = null
+
+watch(
+  terminal,
+  (isTerminal) => {
+    if (isTerminal) {
+      previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
+      void nextTick(() => {
+        buttonEl.value?.focus()
+      })
+      return
+    }
+    previousFocus?.focus()
+    previousFocus = null
+  },
+  // ⚠️ **`flush: 'post'`**：见上面 `nextTick` 那段 —— 我们要的就是「DOM 已更新」那一刻。
+  //   同 tick 内多次相位变化会被合并，这正是我们要的（终态只进一次、只出一次）。
+  { flush: 'post' },
+)
+
+onBeforeUnmount(() => {
+  // 组件被整体卸载时（`view` 切回开始页）把引用还回去，
+  // 否则 `activeElement` 指向一个已被移除的节点，`.focus()` 静默无效。
+  previousFocus?.focus()
+  previousFocus = null
+})
 </script>
 
 <template>
@@ -55,11 +98,25 @@ const won = computed(() => phaseKind.value === 'level-complete')
     不是空 div、不是透明遮罩 —— 空壳会让「战场是否还可见」的断言失去参照，
     而 G31 那类「子元素恰好 45 个」的判据会多出一个数。
   -->
+  <!--
+    📎 **Story 1.18 / AC-D5 补齐的模态语义。**
+
+    ⚠️ **为什么 1.16 只补了文案没补这三样**：浮层是 `position: absolute`
+      叠在战场上，而无障碍树里**通用 div 没有模态语义** ——
+      读屏不会把它当对话，也不会挡住背后的战场与手牌。
+    ⚠️ `aria-modal="true"` 依赖 **`aria-labelledby` 给出可访问名**：
+      没有名字的 dialog 读屏只会念出一串无名容器，比没有 dialog 更让人迷路。
+    ⚠️ **`aria-labelledby` 指向的 id 必须真实存在**（守卫 G136 会核对），
+      指向一个空 id 等于没给名字 —— 这是「看起来做了无障碍」的最常见形态。
+  -->
   <div
     v-if="terminal"
     class="level-outcome"
     :class="won ? 'level-outcome--won' : 'level-outcome--lost'"
     data-testid="level-outcome"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="level-outcome-title"
   >
     <p
       class="level-outcome__emoji"
@@ -67,7 +124,10 @@ const won = computed(() => phaseKind.value === 'level-complete')
     >
       {{ won ? '🌟' : '🌱' }}
     </p>
-    <h2 class="level-outcome__title">
+    <h2
+      id="level-outcome-title"
+      class="level-outcome__title"
+    >
       {{ won ? '读完啦！' : '再试一次吧' }}
     </h2>
     <p class="level-outcome__hint">
@@ -80,6 +140,7 @@ const won = computed(() => phaseKind.value === 'level-complete')
       {{ won ? '这个单元的全部单词都读过了。' : '答错的单词，下次再见到就认识啦。' }}
     </p>
     <button
+      ref="buttonEl"
       type="button"
       class="level-outcome__button"
       @click="won ? backToStart() : restartLevel()"
@@ -116,7 +177,23 @@ const won = computed(() => phaseKind.value === 'level-complete')
   /* 半透明白板：底下的战场仍隐约可见（AC-D2）。 */
   background-color: rgba(255, 255, 255, 0.94);
   border-radius: 16px;
-  padding: var(--space-panel-pad);
+  /*
+   * 📎 **Story 1.18 / AC-D5：补安全区。**
+   *
+   * ⚠️ **1.16 的浮层是 `inset: 0`（撑满 `.level-view`），而 `.level-view` 已经在
+   *   自己那份 padding 里加了 `env(safe-area-inset-*)`** —— 那留的是**整页的边距**。
+   *   这里加的不是重复：浮层自己的 `padding` 决定**内容**离浮层边缘多远，
+   *   而在矮视口（`responsive.css` 的 `max-height: 900px` 分支）里
+   *   `.level-view` 改成了 `height: 100dvh` + 可滚动，
+   *   内容可以贴着视口底边滚过去 ⇒ 浮层的内容必须自己避开手势条。
+   *
+   * ⚠️ **只加上下，不加左右**：左右由 `.level-view` 的 padding 统一处理，
+   *   两处都加会让横屏下左右被叠加两次（安全区左右值在横屏时非零）。
+   */
+  padding-top: calc(var(--space-panel-pad) + env(safe-area-inset-top, 0px));
+  padding-bottom: calc(var(--space-panel-pad) + env(safe-area-inset-bottom, 0px));
+  padding-left: var(--space-panel-pad);
+  padding-right: var(--space-panel-pad);
 
   /* 触控目标不得小于 `--touch-min`（与 1.12 的建塔格子同一口径）。 */
   text-align: center;

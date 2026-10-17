@@ -1,0 +1,36 @@
+{
+  "compilerOptions": {
+    "composite": true,
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.sw.tsbuildinfo",
+    "target": "ES2023",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    // ⚠️ **lib 是 `WebWorker` 而不是 `DOM`**（Story 1.18）——
+    //   Service Worker 跑在 Worker 全局作用域里，`ServiceWorkerGlobalScope` /
+    //   `ExtendableEvent` / `FetchEvent` 这些类型**不在 `DOM` lib 里**，
+    //   而反过来 `document` / `HTMLElement` 也不在 `WebWorker` lib 里。
+    //   归到 `tsconfig.app.json`（那里是 `DOM`）会同时丢掉两侧的类型。
+    //   另开这个项目的收益就在这条边界上：往 `sw/` 里写一行 `document` 会当场红。
+    "lib": ["ES2023", "WebWorker"],
+    // ⚠️ `types: []` —— `sw/` 是浏览器代码，不该看见 node 的全局类型
+    //   （`process` / `Buffer`）。留空是最诚实的口径。
+    "types": [],
+    "strict": true,
+    "noEmit": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    // ⚠️ 与 `tsconfig.node.json` 同一个理由（Story 1.18）：Vite 用原生 loader
+    //   加载配置文件，无扩展名的相对导入每次构建都刷一条警告，
+    //   而 `sw.ts` 的 `./sw-rules` 正是这种形态。它要求 `noEmit`，本项目是。
+    "allowImportingTsExtensions": true
+  },
+  // ⚠️ **只有 `sw/`**（`sw.ts` 与纯规则的 `sw-rules.ts`），不含 `src/` 任何文件。
+  //
+  // ⚠️ R-61 同款纪律：`sw/` **不得 import `src/`**。SW 与应用代码是两个独立的
+  //   全局作用域，共享一份模块反而让两侧的类型互相打架（这里 lib 是 WebWorker，
+  //   那边是 DOM）。
+  //
+  // ⚠️ 纯规则那份（`sw-rules.ts`）之所以能单开一个文件、被 vitest 在 node 下直接测，
+  //   靠的就是它**零 DOM / 零 Worker 全局**。判据的落点在那里，不在 `sw.ts`。
+  "include": ["sw/**/*.ts"]
+}

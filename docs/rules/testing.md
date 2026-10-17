@@ -43,6 +43,14 @@
 
 **守卫** ⚠️ **无守卫**（元规则，只能靠写断言时自觉 + R-50 的变异坐实）
 
+📎 **Story 1.18 补充的第 4 类失效：「`toThrow()` 被错误的理由满足」**，与第 1 类同源 —— 断言**允许**的那件事，正是让它该红的那件事。
+实测：`tests/core/skip-question.test.ts` 的 G144 用 `.toThrow()` 断言「题单空时 `rejectAction` 抛错」，
+而 `assertInvariants` 抓到 `null` 题面时**也抛** ⇒ 变异把题单搞空（`rejectAction` **根本没抛**）之后，
+断言仍绿 —— 它是被**另一个函数**的抛出满足的。
+⇒ 修法：**匹配错误消息**（`toThrow(/题单里已经没有别的题可考了/)`），
+并补一条**对照用例**：让 `assertInvariants` 真的抛一次，断言那条错误**不**满足消息匹配器。
+⇒ 同类还有「按规则体 / 按文件判，粒度比被豁免的那一项更粗」，那条登记在 R-56 的判据版本表里。
+
 ---
 
 ### R-52 源码匹配型守卫必须先剥注释
@@ -115,7 +123,26 @@ epics 的 AC（`[CR]` 时按 AC 逐条对账靠的就是「出处锚点」）；
 
 **首现** Story 1.6
 
-**守卫** `tests/content/palette.test.ts`（WCAG 对比度实算）
+**守卫** `tests/content/palette.test.ts`（WCAG 对比度实算）；`tests/components/portrait-layout.test.ts` G138（可点命中区尺寸必须引用 `var(--touch-min)` 而不是写死像素）
+
+⚠️ **G138 的判据在 [DS] 里收紧过两次，两次都是变异验证逼出来的，登记在案（R-57 要求的「改判据要留痕」）：**
+
+| 版本 | 判据形状 | 为什么不够 |
+|---|---|---|
+| 初版 | 文件级：`!source.includes('var(--touch-min')` | ① `vueFiles()` 用的是**非递归** `readdirSync`，只扫到 `src/App.vue` 一个文件（19 个 `.vue` 里的 1 个）⇒ **自打出来起就是空转的**；② 文件级看不见「`.question-card__tappable` 是靠子元素撑大的纵向容器」，一递归就误报 |
+| 二版 | 规则级：`min-*` 有声明 ⇒ **该规则体内**出现过 token 即放行 | 同一规则体里 `min-width: var(--touch-min)` 会替写死的 `min-height: 48px` **洗白** ⇒ 变异 M161 写死 `min-height` 之后判据**仍然全绿** |
+| 三版（现役） | **属性级**：每一项 `min-height`/`min-width` 声明单独取值、单独判 | —— |
+
+📎 **`verify-deploy.ts` 的两条产物级判据也是收尾阶段自查出来的漏项，一并登记**（同一课：清单要数得清）：
+
+| 判据 | 初版 | 现在 | 漏掉了什么 |
+|---|---|---|---|
+| `all-root-relative-refs-carry-base` | `asset-refs-carry-base` 只认 `(?:src\|href)="…\.(?:js\|css)"` | 判**所有**根相对 `src`/`href`，与扩展名无关 | 手写的 `<link rel="manifest" href="/manifest.webmanifest">` —— **`.webmanifest` 不在 Vite 的资源属性表里，它不会被重写**，部署到子路径后 404 且排在插件注入那条前面 ⇒ 整个 manifest 失效 |
+| `icon-*` | `REQUIRED_ICONS` 只有 `icon-192/512` | 四张，含 `maskable-192/512` | Android 自适应图标那一对。漏掉时 `any` 那一对照样在、主屏照样装得上，症状是「图标被裁成一块看不出是什么的图形」 |
+
+⚠️ 两条都是**真跑 `vite build` 的端到端变异**（不是夹具）坐实的，产物级判据只有这样才算验过。
+
+⇒ **可复用的教训**：判「某个规则是否合规」时，**粒度不能比「被允许豁免的那一项」更粗**。一处合规不能替另一项背书。同型还有 `verify-deploy.ts` 里那条**被 OR 合并**的 SW 缓存清理判据（`caches.delete` 与 `caches.keys` 合成一个 OR ⇒ 删掉清理仍绿），已拆成两条。
 
 ---
 
@@ -127,7 +154,7 @@ epics 的 AC（`[CR]` 时按 AC 逐条对账靠的就是「出处锚点」）；
 
 **首现** Story 1.6
 
-**守卫** ⚠️ **无守卫**
+**守卫** ⚠️ **无守卫**（本条只能靠人守：每次改判据必须同时回写 R-56 那张「判据版本表」）
 
 ---
 

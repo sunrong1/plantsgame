@@ -49,10 +49,12 @@ import {
   reduce,
   resolveRound,
   restartLevel as restartLevelAction,
+  skipQuestion,
 } from '../core'
-import type { Action, Progress, State } from '../core'
+import type { Action, OptionId, Progress, State } from '../core'
 import { playPronunciation } from '../services/pronunciation'
 import { readSave } from '../services/save'
+import { prefetchNextUnit, prefetchUnit } from '../services/asset-prefetch'
 
 import { runEffectsFromStore, startBgmIfReady } from './effects-runner'
 import { devAdjust } from './dev-adjust'
@@ -247,6 +249,20 @@ export function enterLevel(): void {
   //     因为复现要求是真输入 —— 从孩子**接下来真按的那一下**重播才对得上。
   resetSession()
   restoreFromSave()
+  // 📎 **Story 1.18 / AC-E2：读档之后发起本单元的图片预取。**
+  // ⚠️ **顺序**：必须排在 `restoreFromSave()` 之后 —— 它换掉 `state.value`，
+  //   排在它前面会按**上一个**单元号去预取，断点续学的孩子看到的是
+  //   「这一关的图迟迟不出来、上一关的图全 preload 好了」。
+  // ⚠️ **排在最后是为了零 await**（AC-E1 / 裁决 4）：本函数是**同步**的，
+  //   整段没有一个 `await`，所以 `StartView.onStart()` 里
+  //   `unlockAudioSequence()` → `enterLevel()` 之间的手势上下文仍然完整。
+  // ⚠️ **`void` 不是装饰**：它让「这一行不等」在源码里肉眼可查，
+  //   而预取模块内部的 `await` 只在它自己的微任务里跑。
+  void prefetchUnit(state.value.unitNumber)
+  // 📎 **AC-E3：后台预取下一个单元。** 刻意**不**传回调 ——
+  //   调用方拿不到「下一个单元预取好了」的通知，因此它在结构上
+  //   不可能拿预取结果去改 `State`（见 `asset-prefetch.ts` 文件头第 2 条）。
+  void prefetchNextUnit(state.value.unitNumber)
 }
 
 
@@ -281,12 +297,25 @@ function restoreFromSave(): void {
     return
   }
 
+  // 📎 **Story 1.18 / AC-E4：先补字段，再进不变量。**
+  //   1.18 之前的存档没有 `skippedEntryIds`（盘上真实的存档就是这样）。
+  //   若直接进 `assertInvariants`，它会读 `undefined.includes(...)` 抛
+  //   `TypeError` ⇒ 落进下面的 catch ⇒ 一份**完全合法**的在途对局被当成
+  //   「存档坏了」连进度一起清空。症状是「升级后回来发现单元要从头再学」，
+  //   而报错只在 console 里，且不指向版本差异。
+  //   ⇒ 缺字段补 `[]`，让「旧存档」走**补齐**而不是走**降级**。
+  //   ⚠️ 补齐是安全的：跳过记录只影响本局还没考的题，缺失时退化成
+  //   「旧行为」（那些题照旧会再出现）—— 最坏情况是多考一题，不是崩。
+  const normalised: State = Array.isArray(restored.skippedEntryIds)
+    ? restored
+    : { ...restored, skippedEntryIds: [] }
+
   try {
     // ⚠️ **不变量违反时让 `core/` 照抛**（NFR12 第一层：「逻辑层必须 `throw`，禁止 catch」）。
     //   是**这一层**去接住它并降级 —— 不是让 `core/` 学会不抛。
     //   存档是外部数据，而 `assertInvariants` 是为「合法状态空间」写的；
     //   内容回滚或存档来自别的内容版本时，它会在这里拦下那份不可信的对局。
-    state.value = assertInvariants(restored)
+    state.value = assertInvariants(normalised)
   } catch (err) {
     // AC-D4：安全降级为「从头开始」，**不弹窗、不 alert、不抛**。
     // 孩子看到的是一局新开局，而不是一个技术错误（NFR13）。
@@ -489,6 +518,45 @@ export function applyAction(action: Action): void {
   //     不会每次 action 都重算。守卫 G54 正是靠这一点才有鉴别力。
   //   🔥 **1.16 把它与单元推进合并成一次赋值**（AC-C2）：算一次、赋一次。
   progress.value = nextProgress
+}
+
+/**
+ * 📎 **Story 1.18 / AC-E4：上报「某个选项的词图加载失败」。**
+ *
+ * ⚠️ **判定为什么落在门面而不在组件里**：守卫 **G21** 逐字要求组件
+ *   「既不 import `isCorrect`、也不读 `option.correct`」（`tests/components/quiz-card.test.ts`）。
+ *   而「破的是不是正确项」是跳过的**唯一**前提 ——
+ *   干扰项破图时那道题**仍然答得了**（孩子从剩下三项里选就行），
+ *   跳掉它就是白扔一道好题。
+ *   ⇒ 组件只上报 `optionId`（`QuestionCard` → `OptionCard` 的 `imageFailed`），
+ *     判定在这里做：`isCorrect` 是 `core` 的**唯一一份**判定实现，
+ *     门面问它、**不复现**它（R-08：`app → core` 是合法方向）。
+ *
+ * ⚠️ **三道守卫，一道都不省**（缺一道就有具体的崩法）：
+ *   ① `awaiting-answer` 之外**不上报**（AC-C5 让卡面在 `awaiting-build` 期间
+ *      继续渲染，那时的 `imageFailed` 与当前题无关）。
+ *   ② **这个 id 还得属于当前这张卡** —— 一张卡有多个选项破图时，
+ *      跳题之后到达的后续上报带着的是**上一张卡**的 optionId。
+ *      `isCorrect` 对不存在的 id 是**抛错**的（AC-7 逐字），
+ *      而抛错发生在 `@error` 事件回调里、无人接 ⇒ 一张图 404 就崩整局。
+ *      ⇒ 先做成员检查再问判定。
+ *   ③ **不是正确项就不跳** —— 否则 `reducer.applySkip` 的 `rejectAction`
+ *      会**抛错**，理由同 ②。
+ *   `reducer` 里还会把 ③ 再核一遍（双保险）。真抛出来说明有别的调用点绕过了门面 ——
+ *      那时抛出来才是对的。
+ *
+ * ⚠️ **幂等**：一道题只跳一次。跳完之后后续上报带着的是已被换掉的题的 id，
+ *   由 ② 丢掉。
+ * ⚠️ **不 throw、不 catch**（NFR12 运行时层）：三道守卫之后没有任何会抛的路径 ——
+ *   `isCorrect` 只在 optionId 不属于这张卡时抛，而 ② 已经把它挡住了。
+ */
+export function reportImageFailure(optionId: OptionId): void {
+  const phase = state.value.phase
+  if (phase.kind !== 'awaiting-answer') return
+  const question = phase.question
+  if (!question.card.options.some((option) => option.id === optionId)) return
+  if (!isCorrect(question.card, optionId)) return
+  applyAction(skipQuestion(question.entryId, optionId))
 }
 
 /**

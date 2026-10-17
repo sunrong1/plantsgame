@@ -1659,3 +1659,67 @@ M101–M110 共 25 红无 0 红），**无一条守卫假绿**。以下 8 条真
 - **恢复条件**：Epic 2 出现第二个单元时重新评估「钳到合法范围」还是「显式清零」。
   ⚠️ 本 story 对它的**措辞不一致**已单列为 patch，不在本条。
   — `src/app/store.ts`
+
+## Deferred from: story-1-18-目标平板落地-竖屏布局-离线与部署 `[DS]` (2026-10-17)
+
+### 1. 🔥 AC-H1：架构组件树/模块表**没有**本 story 新增的模块
+
+- **事实**：`game-architecture.md` 的组件树与模块表里**列不出**下列模块，本 story 也没有改那份文档：
+  `src/core/hud.ts`、`src/services/asset-prefetch.ts`、`src/services/sw-registration.ts`、
+  `src/services/pronunciation-status.ts`，外加 `src/components/hud/PronunciationOverlay.vue` /
+  `UpdateNotice.vue` 与 `sw/sw.ts`、`sw/sw-rules.ts`。
+  ⚠️ 其中 `core/hud.ts` 在那份文档里**出现过两次**，但都是「上面那两个 `progress` 键名的唯一实现方是
+  `src/core/hud.ts` 的 `Progress` 接口」这类**旁注** —— 它仍然不在组件树/模块表里。
+  ⇒ **不得声称「架构已定」**（R-32：架构文档的原文优先；这里**原文没有这一项**）。
+  ⇒ 逐项检索结果：`grep -c 'asset-prefetch\|sw-registration\|pronunciation-status\|PronunciationOverlay\|UpdateNotice\|sw-rules' game-architecture.md` = **0**。
+- **本 story 的处置**：只登记，不代劳改架构文档 —— 改它是 `[GA]` 的职责。
+- **恢复条件**：**下一次改架构文档（`[GA]`）时补进组件树/模块表**。
+  ⚠️ 补的时候注意两处不是「照抄进列表」就行的：
+  ① `sw/` 与 `scripts/` **不在 `src/` 里**，且 R-61 明令它们不得 import `src/` ——
+     它们在架构图上属于**构建期 / 运行时外壳**，不是应用组件；
+  ② `asset-prefetch.ts` 必须在图上标明它**不被任何组件直接调用**（由 `app/store.ts` 的
+     `enterLevel()` 之后起异步），否则下游会以为可以改成组件内触发 ——
+     那正是裁决 4 要避开的硬约束 8 冲突。
+  — `_bmad-output/planning-artifacts/game-architecture.md`
+
+### 2. AC-H2：8 项在 `game-architecture.md` / `gdd.md` / `epics.md` 中**均无原文**
+
+- 逐条给出**本 story 的定案 + 守卫**，或显式标为待办 —— 不留「实现者自行决定」的口头空白。
+
+| # | 条目 | 本 story 的处置 | 守卫 / 落点 |
+|---|---|---|---|
+| ① | CSS 断点 | **定案**：`src/styles/responsive.css`，全文件**只有一条**媒体查询 `@media (max-height: 900px)`。⚠️ 它是**高度**断点、不是宽度断点 —— 本 story 的形态问题是「竖屏 800×1280 下 HUD 把战场顶出视口」，可用的量是**高度**，不是宽度。⚠️ **宽度断点刻意为零**（本 story 之前全仓 `@media` 数量为 0，实测）：竖屏平板的宽度区间恰好由 `min-width: 0` + 列轨布局自然适配，硬加 `min-width` 断点只会带来第二套要重测的排版。**不写进 `tokens.css`**（R-12：已定稿 token 的值一个都不许改） | `portrait-layout.test.ts`（源码级） |
+| ② | viewport meta 取值 | **定案**，架构文档无原文但仓库 `index.html` 一直有：实测 `width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover`。`maximum-scale=1` 有实测依据（Android 双击缩放的 300ms 延迟会击穿 FR78 的 ≤100ms 预算），`viewport-fit=cover` 让 `env(safe-area-inset-*)` 生效。⚠️ **不许动** | `portrait-layout.test.ts`（源码级断言，非 PWA 组） |
+| ③ | 像素密度 / DPR | **显式不做** —— 战场格子靠 `aspect-ratio` 与列轨布局，图标是 SVG（矢量），PNG 只用于 PWA 主屏图标（由浏览器自己缩放）。⇒ 无需在架构文档登记 DPR 策略 | —— |
+| ④ | manifest 字段清单 | **定案**（架构无原文）：8 个必填文本字段 + `icons`；`start_url`/`scope`/`id` 三者一律 `/plantsgame/`（换域名时 `id` 不失效）。⚠️ `id` **故意不是** `https://…` 形式 | `verify-deploy.ts` ② 组 12 项 + `pwa-manifest.test.ts` |
+| ⑤ | precache 与 runtime cache 的分层比例 | **定案**：应用外壳（html/js/css）precache；`.mp3`/`.svg` 走 runtime `CacheFirst`。⚠️ **不是全量 precache** —— 架构决策 6 逐字「全量预载 400 张必超冷启动 3s」；本 story 只 precache 外壳，图片是进入单元后异步预取（AC-E2） | `sw/sw-rules.ts` + `pwa-sw-guard.test.ts` |
+| ⑥ | gzip / 缓存头 / CI | **部分定案、部分待办**：缓存头要求写进 `docs/deployment.md` §3 —— `sw.js`/`manifest` 必须 `no-cache`（SW 脚本自身长缓存会让换代永远不生效），带哈希的 JS/CSS 可 `immutable`，**媒体 mp3/svg 必须单独一段**（它们的 URL 稳定，如 `u1-dog.mp3`，长缓存会把旧录音冻住）。⚠️ **待办**：当前托管方（GitHub Pages）**没有官方的自定义缓存头能力**，只有全局 10 分钟 ⇒ 要真正生效必须换托管或加 CDN | `docs/deployment.md` §3；缓存头本身列入**人工待验清单** |
+| ⑦ | SW 注册失败在三层错误策略中的归类 | **定案**：归**运行时层** —— 非安全上下文不注册、`[sw] WARN`、静默继续；**禁止白屏或错误页**（裁决 7）。⚠️ 这与架构把「内容错误」归内容层、「渲染错误」归渲染层的两分法不同：**离线能力缺失不得让孩子看见任何东西** | `sw-insecure-context.test.ts` / `sw-registration.test.ts` |
+| ⑧ | 语音浮层的定位约束 | **定案**：`PronunciationOverlay` 排在 `<BattleField />` **之前**、是普通流元素 ⇒ 几何上不可能遮挡战场任何一格（AC-D1）；高度恒定，朗读开始/结束都不让战场位移。⚠️ 刻意**不用** `position: absolute` —— 那要赌「它不会在某个视口下压到战场上」 | `portrait-layout.test.ts`（模板顺序 + 零绝对/固定定位 + 零负 margin） |
+
+- **恢复条件**：下一次 `[GA]` 时，①②④⑤⑦⑧ 按上表补进架构文档；③ 保持「显式不做」并在文档里写明
+  「引入位图素材时必须重新评估」；⑥ 的托管侧能力属运维事项，不进架构组件树。
+
+### 3. ✅ 已闭合：1.13 遗留的「`/favicon.ico` 404」与「战场 3px 横向溢出」
+
+- **① 3px 溢出**（本文件 story-1-13 那一节第 11 条第 ① 项）—— ✅ **已闭合**：AC-D4 把
+  `repeat(9, 1fr)` 改成 `repeat(9, minmax(0, 1fr))`（`BattleField.vue`）。
+  ⚠️ **不得**为此改 `.battle-grid` 的 `flex`（1.10 实测 `1 1 auto` 横向撑破到 1351px）。
+- **② `/favicon.ico` 404** —— ✅ **已闭合**：AC-B9 新增 `public/favicon.svg` 并在
+  `index.html` 链上（站点根相对，**由 Vite 按 `base` 重写**，实测产物为 `/plantsgame/favicon.svg`）。
+  ⚠️ 顺带新增 `public/icons/icon-192.png` 供 iOS/鸿蒙添加到主屏取用。
+
+### 4. ⏸ 仍需**真机**，本 story 自动化证明不了（AC-B8 / AC-F5）
+
+- **① AC-B8 离线可玩**（飞行模式下打开已缓存的单元，可打开、可答题、可通关）——
+  单元 1 全量资源实测 1.8 MB，装得下。⚠️ **jsdom 与 headless 都证明不了**：
+  spec §13.5 明令禁止用 headless 浏览器代替真机，`DevTools` 的离线开关结果也不许说成「离线验证已通过」。
+  **恢复条件**：Story 1.19 真机试玩时验，结论回填本条。
+- **② `--color-hud-panel: #1f2d11` 的真机校准**（本文件 story-1-13 那一节第 8 条）——
+  实测算出的对比度是**算术**结论，不是「孩子看得清」的结论。
+  **恢复条件**：真机上复算阳光 / 心 / 白字三条；要改值必须先跑 `palette.test.ts`。
+- **③ `--dur-slow`(400ms) 用于掉心动画**（本文件 story-1-13 那一节第 10 条）——
+  **恢复条件**：1.18/1.19 真机录制里若「心碎了」看不见或拖沓，只许改这一处。
+- **④ 竖屏的布局数值**（HUD 变高时页面是否滚动、战场是否被推出视口、
+  `minmax(0, 1fr)` 之后 `scrollWidth` 是否真的 ≤ `clientWidth`）——
+  jsdom **不做布局**，`getComputedStyle` / `getBoundingClientRect` 在 jsdom 里是**假绿**（AC-D7）。

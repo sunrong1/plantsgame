@@ -3,6 +3,14 @@
  */
 
 @import './tokens.css';
+/*
+ * 📎 **Story 1.18：响应式断点紧跟 tokens 之后导入。**
+ *   ⚠️ 顺序有讲究：断点里要读 `--touch-min` / `--text-body` 等 token，
+ *     而 CSS 自定义属性在 `@import` 层面就已完成解析 —— 真正的约束是
+ *     **后导入的规则在同等特异性下胜出**，所以断点必须排在组件样式之后加载。
+ *     本文件由 `main.ts` 在 `App` 之后导入，天然满足。
+ */
+@import './responsive.css';
 
 * {
   box-sizing: border-box;

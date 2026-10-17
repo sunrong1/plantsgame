@@ -83,6 +83,8 @@ function makeState(towers: readonly TowerSpec[]): State {
     // ⚠️ `unlocked ⊆ mastered` 是 `assertDeckRelations` 的一条不变量
     //   （解锁的唯一途径是答对），照 1.12 的夹具同样品。
     masteredEntryIds: [...unlocked],
+    // 📎 Story 1.18 / AC-E4 新增的 State 字段。本夹具不测跳题，只为过编译。
+    skippedEntryIds: [],
     unlocked,
   }
 }

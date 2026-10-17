@@ -20,12 +20,24 @@
 
 import { describe, expect, it } from 'vitest'
 
-import { answer, actionName, continueRound, endBuild, placeTower, resolveRound, restartLevel } from '../../src/core'
+import {
+  answer,
+  actionName,
+  continueRound,
+  endBuild,
+  placeTower,
+  resolveRound,
+  restartLevel,
+  skipQuestion,
+} from '../../src/core'
 import type { Action } from '../../src/core'
 
 describe('AC-2 —— Action 构造器保证 type 字面量不漂移', () => {
-  it('六个构造器各自产出约定的 type 字面量', () => {
+  it('构造器各自产出约定的 type 字面量', () => {
     // 少一条或漂一个字面量，reducer 的阶段转换表就会静少一条边而测试仍全绿。
+    // ⚠️📎 下面两条的**条数**是硬编码的联合大小（1.18 起是 **7**）：
+    //   新增 action 时它们会红，而那正是要的效果 —— 联合长了一个成员，
+    //   「两两不同」那条的期望数必须同步改，否则它会拿 7 个名字去比 6。
     const cases: readonly { readonly actual: Action; readonly expected: Action['type'] }[] = [
       { actual: answer('u1-word-01-o1'), expected: 'ANSWER' },
       { actual: placeTower('u1-word-01', '2,4'), expected: 'PLACE_TOWER' },
@@ -33,6 +45,8 @@ describe('AC-2 —— Action 构造器保证 type 字面量不漂移', () => {
       { actual: resolveRound(), expected: 'RESOLVE_ROUND' },
       { actual: continueRound(), expected: 'CONTINUE' },
       { actual: restartLevel(), expected: 'RESTART_LEVEL' },
+      // 📎 Story 1.18 / AC-E4（裁决 11）。
+      { actual: skipQuestion('u1-word-01', 'u1-word-01-o1'), expected: 'SKIP_QUESTION' },
     ]
     for (const { actual, expected } of cases) {
       expect(
@@ -42,7 +56,7 @@ describe('AC-2 —— Action 构造器保证 type 字面量不漂移', () => {
     }
   })
 
-  it('六个构造器的 type 字面量两两不同（联合的六个分支互不覆盖）', () => {
+  it('构造器的 type 字面量两两不同（联合的七个分支互不覆盖）', () => {
     // 两个构造器共用一个字面量会让其中一条转换永远走不到 —— 那正是本文件要抓的形态。
     const names = [
       answer('x'),
@@ -51,8 +65,9 @@ describe('AC-2 —— Action 构造器保证 type 字面量不漂移', () => {
       resolveRound(),
       continueRound(),
       restartLevel(),
+      skipQuestion('x', 'x-o1'),
     ].map((a) => a.type)
-    expect(new Set(names).size, `六个构造器必须产出六个不同的 type，收到 ${names.join('、')}`).toBe(6)
+    expect(new Set(names).size, `构造器必须产出七个不同的 type，收到 ${names.join('、')}`).toBe(7)
   })
 
   it('ANSWER 原样携带 optionId', () => {
@@ -141,6 +156,9 @@ describe('AC-15 —— actionName 覆盖全部 type（回合日志 action=<T> �
       ['RESOLVE_ROUND', 'RESOLVE_ROUND'],
       ['CONTINUE', 'CONTINUE'],
       ['RESTART_LEVEL', 'RESTART_LEVEL'],
+      // 📎 Story 1.18 / AC-E4。跳过也要进对局日志：真机上「为什么这道题没被考」
+      //   是最难自查的一类问题，而回合日志是唯一的线索来源。
+      ['SKIP_QUESTION', 'SKIP_QUESTION'],
     ]
     for (const [type, want] of expected) {
       const sample = {
@@ -150,6 +168,7 @@ describe('AC-15 —— actionName 覆盖全部 type（回合日志 action=<T> �
         RESOLVE_ROUND: resolveRound(),
         CONTINUE: continueRound(),
         RESTART_LEVEL: restartLevel(),
+        SKIP_QUESTION: skipQuestion('u1-word-0', 'u1-word-0-o1'),
       }[type] as Action
       expect(actionName(sample), `${type} 的日志名必须逐字一致 —— 名字与字面量不一致等于对局日志不可对照`).toBe(want)
     }

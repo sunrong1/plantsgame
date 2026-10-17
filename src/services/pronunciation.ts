@@ -2,6 +2,17 @@
 /**
  * TTS 朗读服务 —— 教材文字发声的唯一出口（Story 1.2）。
  *
+ * 📎 **Story 1.18 / AC-D1：本文件额外向 `pronunciation-status.ts` 发布朗读状态。**
+ *   ⚠️ 只**发布**、不读取，且只在五个收敛点上动（见各处的 `publishPronunciationStatus`）：
+ *     ① `playPronunciation` 入口 → `playing`
+ *     ② 录音 `ended` 事件 → `idle`
+ *     ③ TTS 分块念完（`index >= chunks.length`）→ `idle`
+ *     ④ TTS 被同代打断（`canceled` / `interrupted`）→ `idle`
+ *     ⑤ `fallbackToRecording`（整条降级链的终点）→ `idle`
+ *   ⚠️ **「被后一次 playPronunciation 接管」那条不算收敛**：
+ *     那时新的一次调用已经把状态置成 `playing` 了，旧链再发一次 `idle`
+ *     会让浮层在孩子连点卡面时**闪一下又灭掉** —— 那是错的状态，不是新的状态。
+ *
  * ⚠️ 本文件在音频解锁链路上，**不允许出现任何 `await`**（架构决策 4 / 硬约束 8），
  * 由 eslint 的 `no-restricted-syntax` 守卫（见 eslint.config.js）。
  *
@@ -12,6 +23,13 @@
  * 继承 legacy 的**算法**（preheat 的三条踩坑知识、音色优先级链），
  * 不继承 legacy 的**形态**，也不继承它的错误注释（见 §4.1 的理由更正）。
  */
+
+// 📎 **Story 1.18 / AC-D1**：朗读状态只**发布**给界面层，本文件不读它。
+//   之所以要在本文件发，而不是让浮层去猜 `speechSynthesis.speaking`：
+//   `speaking` **只覆盖 TTS 辅路**，而主通路是预生成录音（架构决策 7）——
+//   录音播放期间 `synth.speaking === false` ⇒ 浮层会在最常用的路径上永远不亮，
+//   而「点了卡面有声音却没有任何反馈」比没有反馈更让人困惑。
+import { publishPronunciationStatus } from './pronunciation-status'
 
 // ── 可配置常量（AR34；长句 0.9 是起点，Epic 3 / Story 3.4 现场调）────────────────
 
@@ -142,6 +160,10 @@ function isEnglish(lang: string): boolean {
  */
 function fallbackToRecording(text: string): void {
   console.warn(`[tts] 朗读不可用（录音与设备 TTS 均失败）：${text}`)
+  // 📎 **Story 1.18 / AC-D1：这是整条降级链的终点 ⇒ 朗读状态必须收敛回 idle。**
+  //   两条主通路（录音 / TTS）各自有独立的收敛点，而**这个函数是它们共同的终点** ——
+  //   换句话说这里不发，任何一条通路失败后浮层都会卡在「朗读中」直到下次朗读开始。
+  publishPronunciationStatus('idle')
 }
 
 // ── 预生成录音（架构决策 7 主通路）─────────────────────────────────────────
@@ -248,6 +270,10 @@ function playRecording(entryId: string, onUnplayable: () => void): boolean {
     if (activeRecording === el) {
       activeRecording = null
     }
+    // 📎 **Story 1.18 / AC-D1：五个收敛点之一 —— 录音播完。**
+    //   ⚠️ 必须排在「被接管就早退」**之前**：`ended` 只在真的播完时派发，
+    //   而 `error` 路径会转 TTS 继续发声（那时不能灭灯）。
+    publishPronunciationStatus('idle')
   })
 
   try {
@@ -695,6 +721,11 @@ export function playPronunciation(text: string, entryId?: string): void {
     return
   }
 
+  // 📎 **Story 1.18 / AC-D1：五个收敛点之一 —— 起声。**
+  //   位置在两道「文本无效」早退**之后**：空文本根本没发起任何发声，
+  //   在那之前置 `playing` 会让浮层亮起却永远等不到 `idle`（本次调用没有后续收敛点）。
+  publishPronunciationStatus('playing')
+
   // ⚠️ **代次作废必须排在 takeOverPlayback() 之前**（`[CR]` 2026-10-16 修）。
   //   原先这个 `+= 1` 藏在 `speakWithTts` / `playRecording` 内部，而接管发生在
   //   它们之前，于是 cancel 派发的 `error('canceled')` 到达 `onerror` 时
@@ -747,7 +778,18 @@ function speakWithTts(text: string): void {
 
   const speakChunkAt = (index: number): void => {
     // 被后一次 playPronunciation 接管 —— 旧链就此终止，不再抢发声权。
-    if (generation !== playbackGeneration || index >= chunks.length) {
+    //
+    // ⚠️📎 **Story 1.18 / AC-D1：这两种早退必须分开处理，不能合成一条。**
+    //   · `generation !== playbackGeneration`（被接管）**不发** `idle` ——
+    //     新的一次 `playPronunciation` 已经把状态置成 `playing`，
+    //     旧链再发一次 `idle` 会让浮层在孩子连点卡面时闪一下又灭掉。
+    //   · `index >= chunks.length`（全部念完）**要发** `idle` ——
+    //     这是 TTS 通路唯一的自然终点，不发的话浮层会一直亮到下一次朗读。
+    if (generation !== playbackGeneration) {
+      return
+    }
+    if (index >= chunks.length) {
+      publishPronunciationStatus('idle')
       return
     }
 
@@ -846,6 +888,10 @@ function speakWithTts(text: string): void {
         // 「不推进」不等于「不收敛」。
         finish(() => {
           console.warn(`[tts] 朗读被打断（${reason}），停止后续分块：${chunk}`)
+          // 📎 **Story 1.18 / AC-D1：五个收敛点之一 —— 同代打断。**
+          //   这一条链不会再有后续分块，而下面的 `finish` 分支会走
+          //   `fallbackToRecording`（它自己发 idle），所以这里必须自己发。
+          publishPronunciationStatus('idle')
         })
         return
       }

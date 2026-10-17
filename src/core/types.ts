@@ -338,6 +338,19 @@ export interface State {
   readonly deck: readonly DeckEntry[]
   /** 本局已答对的 `entryId`。`nextQuestion()` 跳过它们 —— 「已答对不再出现」全靠它表达。 */
   readonly masteredEntryIds: readonly string[]
+  /**
+   * 🔥 **Story 1.18 / AC-E4：本局已跳过的 `entryId`（正确项词图加载失败）。**
+   *
+   * ⚠️ **它与 `masteredEntryIds` 是两件事，绝不能合并**：
+   *   `mastered` = 「孩子学会了」；`skipped` = 「这道题**没机会**被答」。
+   *   塞进 mastered 会让进度条显示一个假的「已读 N/60」——
+   *   而那个词孩子一个字都没听懂，下次进关也再也不会被问到。
+   *
+   * ⚠️ **为什么必须有它**：`nextQuestion()` 取的是「第一个未答对者」。
+   *   不记跳过的话，跳过之后它仍然吐同一道题 ⇒ 死局照旧，
+   *   而这次的死局比 1.11 那次更难归因（界面上连「置灰」都没有，只有原地打转）。
+   */
+  readonly skippedEntryIds: readonly string[]
   /** 已解锁塔卡的 `entryId` 列表（自主设计 #10：存 entryId，不存对象）。是数组不是集合 —— FR33 允许反复建同一张卡。 */
   readonly unlocked: readonly string[]
 }
@@ -387,6 +400,35 @@ export interface RestartLevelAction {
   readonly type: 'RESTART_LEVEL'
 }
 
+/**
+ * 🔥 **Story 1.18 / AC-E4（裁决 11）：跳过一道题 —— 正确项那张图加载失败时。**
+ *
+ * ⚠️ **载荷带 `entryId` 不是冗余**：reducer 要拿它与「当前题」比对。
+ *   不带载荷的话，界面可以把「跳 A」发成「跳 B」而 core 无从发现 ——
+ *   而那种错会让一道**好着的**题凭空消失，界面与日志里都看不出少了什么。
+ *
+ * 🔥 **`optionId` 是这道 action 存在的理由本身**（1.18 `[DS]` 补，裁决 11 的原文
+ *   写的是「`OptionCard` 在正确项 `failed` 时 dispatch 一个 `SKIP_QUESTION`」，
+ *   但**组件不许读 `option.correct`** —— `tests/components/quiz-card.test.ts`
+ *   的守卫逐字禁止 `.correct` 出现在组件里）。
+ *   ⇒ 载荷必须带上「破的是哪个选项」，由 `reducer` 拿 `isCorrect` 去核对。
+ *   ⚠️ **为什么不只在组件里判完再发一个不带 `optionId` 的跳过**：
+ *   那会让「这道题仍然答得了」这个事实只存在于组件的一行判断里，
+ *   而 core 无从复核 —— 于是「任意一张图 404 就跳整题」这个误用
+ *   会在**每一张图失败时**都发生，且没有任何守卫会红。
+ *   守卫 G144 的第 3 条钉住「`optionId` 不是正确项时必须被拒绝」。
+ *
+ * ⚠️ **它不是 `ANSWER` 的兄弟而是它的替代**：跳过与答题在界面上互斥
+ *   （正确项被禁用 ⇒ 孩子点不到它），而在 `core` 里必须严格二选一 ——
+ *   允许「先跳过再对同一题答题」会让 `turn` 与战场从此对不上。
+ */
+export interface SkipQuestionAction {
+  readonly type: 'SKIP_QUESTION'
+  readonly entryId: string
+  /** 加载失败的那个选项。reducer 会核对它**确实**是正确项。 */
+  readonly optionId: OptionId
+}
+
 export type Action =
   | AnswerAction
   | PlaceTowerAction
@@ -394,6 +436,7 @@ export type Action =
   | ResolveRoundAction
   | ContinueAction
   | RestartLevelAction
+  | SkipQuestionAction
 
 /**
  * 答题判定 —— **全项目唯一的一份实现**（架构模式 B `:861-864`，FR14）。

@@ -38,7 +38,7 @@ import { computed, ref, watch } from 'vue'
 
 import { answer } from '../../core'
 import type { OptionId, Question } from '../../core'
-import { applyAction, speakQuestion, state } from '../../app/store'
+import { applyAction, reportImageFailure, speakQuestion, state } from '../../app/store'
 
 import AnswerFeedback from './AnswerFeedback.vue'
 import OptionCard from './OptionCard.vue'
@@ -232,6 +232,29 @@ function onPick(optionId: OptionId): void {
   applyAction(answer(optionId))
 }
 
+/**
+ * 📎 **Story 1.18 / AC-E4：某个选项的词图加载失败 → 交给 store 门面处置。**
+ *
+ * ⚠️ **本组件只「上报」，不判定** —— 这不是省事，是守卫 **G21** 逐字要求的：
+ *   「组件里既不 import `isCorrect`、也不读 `option.correct`」。
+ *   而「破的是不是正确项」正是跳过的**唯一**前提（干扰项破图时那道题仍然答得了）。
+ *   ⇒ 判定落在 `app/store.ts` 的 {@link reportImageFailure} 门面里：
+ *     它 import `isCorrect`（core 的**唯一一份**判定实现），
+ *     判完再决定 dispatch 还是什么都不做。
+ *
+ * ⚠️ **这里刻意没有「一道题只报一次」的守卫**（1.18 `[DS]` 踩过，记在这里防复犯）：
+ *   初版有 `skippedFor` 一次性 ref，理由是「第二张破图带着的是已被换掉的题」。
+ *   **它是错的**：若**第一张**破的是干扰项（门面什么都没做），
+ *   第二张破的是正确项，这道守卫会把它挡掉 ⇒ 题目永远跳不掉、整关不可通 ——
+ *   正是 AC-E4 要治的那个病。
+ *   ⇒ 组件**每次**都报；「这张 id 还属于当前题吗」由门面的成员检查判
+ *     （它必须判，因为 `isCorrect` 对不存在的 id 是**抛错**的）。
+ */
+function onOptionImageFailed(optionId: OptionId): void {
+  if (!answering.value) return
+  reportImageFailure(optionId)
+}
+
 /** 重听：FR1「重听无任何代价或次数限制」。只在 `awaiting-answer` 提供（AC-C5 ⑥）。 */
 function onReplay(): void {
   if (!answering.value) return
@@ -293,6 +316,7 @@ function onReplay(): void {
           :right="pickedOptionId === option.id && pickedRight"
           :wrong="pickedOptionId === option.id && !pickedRight"
           @pick="onPick"
+          @image-failed="onOptionImageFailed"
         />
       </div>
     </div>

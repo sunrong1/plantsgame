@@ -55,6 +55,12 @@ import SunCounter from '../components/hud/SunCounter.vue'
 //   终态浮层（Story 1.16 / AC-D2）。它**无条件**挂载 —— 是否渲染由它自己的
 //   `v-if` 决定（AC-D1），所以这里不需要 `v-if`，也不该加。
 import LevelOutcome from '../components/hud/LevelOutcome.vue'
+// 📎 **Story 1.18 / AC-D1：朗读状态浮层。**
+//   ⚠️ **模板位置在 `<BattleField />` 之前**，这是 AC-D1「不遮挡战场任何一格」的兑现方式：
+//     它是 `.level-view`（`flex-direction: column`）的普通流子项，排在战场之前 ⇒
+//     几何上不可能与战场重叠，不需要靠「position 摆在哪」这种在某台平板上才会翻车的假设。
+//   ⚠️ 守卫 G135 逐条钉住（模板顺序 + 零绝对/固定定位 + 零负 margin）。
+import PronunciationOverlay from '../components/hud/PronunciationOverlay.vue'
 import { entriesOf } from '../content'
 import { state } from '../app/store'
 
@@ -121,6 +127,14 @@ const unitTotal = computed(() => {
       <!-- 分母来自内容层查表，不在组件里写死（见 script 里的注释）。 -->
       <ProgressBar :unit-total="unitTotal" />
     </div>
+    <!--
+      📎 **朗读状态浮层（Story 1.18 / AC-D1）** —— 恒定高度的一条细带，
+         闲时空白、朗读时显示「正在读…」。
+      ⚠️ 它排在战场**之上**，且是正常流元素 ⇒ 战场一格都不会被盖住。
+      ⚠️ 它的**高度恒定**（见组件内注释）：朗读开始/结束都不会让战场上下位移。
+      ⚠️ 不写死高度、不加过渡：时长归 CSS（R-05），而这里刻意是**零动画**。
+    -->
+    <PronunciationOverlay />
     <BattleField />
     <!--
       📎 **给 Story 1.12 的手牌区预留的位置**：卡面区在战场之下，

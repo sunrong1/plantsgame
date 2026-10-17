@@ -112,12 +112,29 @@
   //   归 `tsconfig.app.json`，而本项目已经通过 `src/app/**/*.ts` 与
   //   `src/services/**/*.ts` 覆盖了 store 与 asset-url。多列不会报错，
   //   但会让「谁拥有哪个文件」变得没法一眼看出来。
+  //
+  // ⚠️ `sw/**/*.ts` 是 Story 1.18 加进来的（实测阻断 TS6307）：
+  //   `tests/scaffold/pwa-sw-guard.test.ts` 要 import `sw/sw-rules.ts`（纯函数，
+  //   缓存名与媒体判定的判据在它上面），而 composite 项目要求「所有文件必须被列出」。
+  //   少了这一行，`npm run typecheck` 立刻报
+  //   `tests/scaffold/pwa-sw-guard.test.ts(n,m): error TS6307`。
+  //
+  //   为什么不改成 reference 指向 tsconfig.sw.json：那是 noEmit 项目，
+  //   被引用的项目不允许关闭 emit（TS6310）—— 与上面每一段同一个理由。
+  //   与 tsconfig.sw.json 重叠是允许的（两者都 noEmit），**不要**为了
+  //   「单一归属」把这一行删掉，删了立刻撞回 TS6307（AC-G9 逐字同款处置）。
+  //
+  //   ⚠️ 这里**只列 `sw/sw-rules.ts` 而不是整个 `sw/**`**：`sw/sw.ts` 依赖
+  //   `self` / `caches` / `ServiceWorkerGlobalScope`，那些类型来自
+  //   `tsconfig.sw.json` 的 `lib: ["WebWorker"]`。把它拉进本项目会让
+  //   `self` 与 `window` 同时可见，两套全局互相污染。本项目只取纯函数那份。
   "include": [
     "tests/**/*.ts",
     "vitest.config.ts",
     "vite.config.ts",
     "eslint.config.js",
     "scripts/**/*.ts",
+    "sw/sw-rules.ts",
     "src/services/**/*.ts",
     "src/app/**/*.ts",
     "src/content/**/*.ts",

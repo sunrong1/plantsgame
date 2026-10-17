@@ -28,6 +28,7 @@ import type {
   PlaceTowerAction,
   ResolveRoundAction,
   RestartLevelAction,
+  SkipQuestionAction,
 } from './types.js'
 
 /** 答题（子任务 2.1）。 */
@@ -75,6 +76,26 @@ export function restartLevel(): RestartLevelAction {
 }
 
 /**
+ * 🔥 **Story 1.18 / AC-E4（裁决 11）：跳过一道正确项词图加载失败的题。**
+ *
+ * ⚠️ **`entryId` 是必填**：reducer 拿它与「当前题」比对，
+ *   而载荷缺了它就会出现「界面想跳 A、core 跳了 B」—— 一道好着的题凭空消失。
+ *
+ * ⚠️ **`optionId` 同样必填**（理由逐字写在 `types.ts` 的 `SkipQuestionAction` 上）：
+ *   组件**不许**读 `option.correct`（守卫 `quiz-card.test.ts` 逐字禁止），
+ *   所以「破的是不是正确项」这件事只有一条路可走：载荷告诉 core，
+ *   由 core 用 `isCorrect` 核对。
+ *   本构造器**不**做核对 —— 构造器一旦开始判断，组件就有了两套入口。
+ *
+ * ⚠️ 本构造器**不做**「还有没有下一题」的判断：那是 `reducer` 的职责
+ *   （它在唯一出口 `assertInvariants` 之前就该拒绝掉那条会让关卡变成
+ *   「没答却通关」的动作）。构造器若开始判断，组件就有了两套入口。
+ */
+export function skipQuestion(entryId: string, optionId: OptionId): SkipQuestionAction {
+  return { type: 'SKIP_QUESTION', entryId, optionId }
+}
+
+/**
  * action 的日志名 —— 回合日志 `[core] turn N action=<T> ...` 的取值处（架构 `:620-628`）。
  *
  * ⚠️ **返回联合外的 `type` 时抛错，不返回 `'unknown'`**：脏 type 只能来自存档或
@@ -98,6 +119,10 @@ export function actionName(action: Action): string {
       return 'CONTINUE'
     case 'RESTART_LEVEL':
       return 'RESTART_LEVEL'
+    case 'SKIP_QUESTION':
+      // 📎 Story 1.18：跳过也要有名字 —— 真机上「为什么这道题没被考」是
+      //   最难自查的一类问题，而回合日志是唯一的线索来源。
+      return 'SKIP_QUESTION'
     default:
       return assertNeverAction(action)
   }

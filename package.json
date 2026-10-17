@@ -9,12 +9,14 @@
     "dev": "vite",
     "prebuild": "npm run validate:content",
     "build": "vue-tsc -b --force && vite build",
+    "postbuild": "npm run verify:deploy",
     "preview": "vite preview",
     "pretest": "npm run validate:content",
     "test": "vitest run",
     "typecheck": "vue-tsc -b",
     "lint": "eslint .",
     "validate:content": "tsx scripts/validate-content.ts",
+    "verify:deploy": "tsx scripts/verify-deploy.ts",
     "balance-sim": "tsx scripts/balance-sim.ts",
     "generate:voice": "tsx scripts/generate-voice.ts",
     "word-image-metrics": "tsx scripts/word-image-metrics.ts"
@@ -34,6 +36,7 @@
     "typescript": "~6.0.3",
     "typescript-eslint": "^8.71.1",
     "vite": "^8.3.4",
+    "vite-plugin-pwa": "^1.3.0",
     "vitest": "^5.0.3",
     "vue-eslint-parser": "^10.4.1",
     "vue-tsc": "^3.3.13"

@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="PVZ Pixel">
+  <!-- 应用图标（any 形态）。底为 HUD 面板色 #1f2d11，中间为阳光色 #fdd835 的太阳，八道白光芒。
+       光芒外缘半径 200px，安全区半径是 204.8px（画布 512 的 40%）⇒ 主体整个落在 maskable 安全区内，
+       所以 maskable 版本可以复用同一套图形，只把底从圆角方块改成满幅方块。 -->
+  <rect x="0" y="0" width="512" height="512" rx="112" fill="#1f2d11" />
+  <g fill="#ffffff">
+    <rect x="236" y="56" width="40" height="112" rx="20" />
+    <rect x="236" y="56" width="40" height="112" rx="20" transform="rotate(45 256 256)" />
+    <rect x="236" y="56" width="40" height="112" rx="20" transform="rotate(90 256 256)" />
+    <rect x="236" y="56" width="40" height="112" rx="20" transform="rotate(135 256 256)" />
+    <rect x="236" y="56" width="40" height="112" rx="20" transform="rotate(180 256 256)" />
+    <rect x="236" y="56" width="40" height="112" rx="20" transform="rotate(225 256 256)" />
+    <rect x="236" y="56" width="40" height="112" rx="20" transform="rotate(270 256 256)" />
+    <rect x="236" y="56" width="40" height="112" rx="20" transform="rotate(315 256 256)" />
+  </g>
+  <circle cx="256" cy="256" r="124" fill="#fdd835" />
+</svg>

@@ -106,6 +106,10 @@ export type {
   Question,
   ResolveRoundAction,
   RestartLevelAction,
+  // 📎 Story 1.18 / AC-E4。单独一个 action 类型，而不是给 `AnswerAction` 加个可选字段 ——
+  //   「答了」与「没答成所以跳过」是两种事实，混在一个载荷里会让阶段转换表的分支
+  //   退化成「读那个布尔再 if」，而那条 if 迟早会被复制到别处。
+  SkipQuestionAction,
   State,
   TextOption,
   Tower,
@@ -121,7 +125,17 @@ export { resolveCombatRound } from './turn.js'
 export type { ResolveRoundResult } from './turn.js'
 
 // 📎 回合层（Story 1.5）：构造器与判别式辅助函数。`Action` 联合本身在 types.ts。
-export { actionName, answer, continueRound, endBuild, placeTower, resolveRound, restartLevel } from './actions.js'
+//   `skipQuestion` 是 📎 Story 1.18 / AC-E4 加进来的：跳过一道「正确项词图 404 了」的题。
+export {
+  actionName,
+  answer,
+  continueRound,
+  endBuild,
+  placeTower,
+  resolveRound,
+  restartLevel,
+  skipQuestion,
+} from './actions.js'
 
 // 📎 回合状态机（Story 1.5 / AC-1…AC-13）。唯一的状态变更点（决策 2）。
 export { assertInvariants, createInitialState, nextQuestion, reduce } from './reducer.js'

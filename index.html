@@ -11,10 +11,47 @@
       name="viewport"
       content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover"
     />
-    <!-- 色板已由 Story 1.6 定稿（docs/art-direction.md §2），但 **theme-color 仍留空**：
-         它是浏览器地址栏/任务栏的品牌色，属于「应用层外观」，归 Story 1.7 的应用化。
-         随手填一个会被后续 story 当成「已定稿」继承。 -->
-    <meta name="theme-color" content="" />
+    <!--
+      📎 **Story 1.18 落地 theme-color**（原注逐字：「色板已由 Story 1.6 定稿
+      （docs/art-direction.md §2），但 **theme-color 仍留空**：它是浏览器地址栏/任务栏的
+      品牌色，属于「应用层外观」，归 Story 1.7 的应用化。随手填一个会被后续 story
+      当成「已定稿」继承。」—— 1.18 因为要装 PWA 而必须填它（standalone 模式靠它着色））。
+
+      ⚠️ **取值依据（R-12：已定稿 token 的值一个都不许改，这里也不新增颜色）**：
+        `#1f2d11` 逐字等于 `src/styles/tokens.css` 的 `--color-hud-panel`，
+        它是 HUD 面板色，也就是「这个应用长什么样」最接近的颜色；
+        启动画面的 `background_color` 取 `--color-bg`（`#7cb342`）—— 语义上就是
+        游戏的第一眼：草地。**本 story 定案，不是 Story 1.7 定的**，下游勿误继承为上游结论。
+        守卫 G122 把这两个 hex 钉回 `tokens.css`，并断言本 meta 与 `manifest.theme_color` 同值
+        （否则安装横幅、地址栏、启动画面三处会露出两种品牌色）。
+    -->
+    <meta name="theme-color" content="#1f2d11" />
+    <!--
+      📎 **PWA manifest 的 `<link rel="manifest">` 刻意不在本文件里写**（Story 1.18 / AC-B3）。
+
+      ⚠️ **实测**：手写一条会让构建产物出现**两条** manifest link ——
+        手写那条 Vite **不重写**（`.webmanifest` 不在它的资源属性表里，
+        而同批的 `favicon.svg` 与 `icons/icon-192.png` 都被重写成了 `/plantsgame/...`），
+        ⇒ 部署后它 404，且排在插件注入的那条**前面**，manifest 整个失效。
+      ⇒ 交给 `vite-plugin-pwa` 注入：它知道 `base`，且保证只有一条。
+        「产物里恰好一条、且带 base 前缀」由 `scripts/verify-deploy.ts` 断言。
+      完整理由见 `docs/deployment.md` 与 Story 1.18 文档的 Completion Notes。
+    -->
+    <!--
+      顺带闭合 deferred-work 的「`/favicon.ico` 404」一条（AC-B9 逐字：PWA 本来就要有图标）。
+      ⚠️ 这两条写**站点根相对、不带前缀**：Vite 会按 `base` 重写它们（实测已验证），
+        手写前缀等于把 `base` 复制一份到这里，而 `base` 是预期会被改的那一处。
+    -->
+    <link
+      rel="icon"
+      href="/favicon.svg"
+      type="image/svg+xml"
+    />
+    <!-- iOS / 鸿蒙添加到主屏时取这张；不写会被截成网页截图。 -->
+    <link
+      rel="apple-touch-icon"
+      href="/icons/icon-192.png"
+    />
     <title>PVZ Pixel</title>
   </head>
   <body>

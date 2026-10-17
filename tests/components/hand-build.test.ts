@@ -149,6 +149,8 @@ function makeState(options: BuildStateOptions = {}): State {
     //   有一条**比 AC-13 更强**的不变量「unlocked ⊆ mastered」——
     //   解锁的唯一途径是答对（`reducer.ts:495`）。这里给一份能过断言的 state。
     masteredEntryIds: [...unlocked],
+    // 📎 Story 1.18 / AC-E4 新增的 State 字段。本夹具不测跳题，只为过编译。
+    skippedEntryIds: [],
     unlocked: [...unlocked],
   }
 }
@@ -1426,10 +1428,13 @@ describe('G38 / G39 —— 动效写 CSS、不引入拖拽', () => {
   })
 
   it('G39：core 不出现删除塔的 action（FR31：无铲除/拖拽/建造模式）', () => {
-    // 判据 = `Action` 联合的 `type` 判别式字面量集合**恰好等于**那六个。
+    // 判据 = `Action` 联合的 `type` 判别式字面量集合**恰好等于**下面这一组。
     // ⚠️ 为什么要写死「恰好等于」而不是「不含 remove」：只查关键词，
     //   将来有人加一个叫 `PICK_UP` / `MOVE_TOWER` 的变体就悄悄放过了 ——
     //   而那正是 FR31 要禁的形态（把塔从格子里拿走的一切机制）。
+    // 📎 **白名单式的新成员必须同时改这里**：Story 1.18 / AC-E4 加了 `SKIP_QUESTION`
+    //   （跳过一道正确项词图 404 了的题 —— 不碰战场，因此不违反 FR31），
+    //   加进来时本条立刻红，那正是它的设计意图。
     const variants = [...typesSource.matchAll(/readonly type: '([A-Z_]+)'/g)].map((m) => m[1])
     expect(variants).toEqual([
       'ANSWER',
@@ -1438,6 +1443,7 @@ describe('G38 / G39 —— 动效写 CSS、不引入拖拽', () => {
       'RESOLVE_ROUND',
       'CONTINUE',
       'RESTART_LEVEL',
+      'SKIP_QUESTION',
     ])
   })
 

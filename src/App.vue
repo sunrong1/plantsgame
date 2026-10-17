@@ -31,6 +31,7 @@
 import { isDebugPanelRequested, view } from './app/store'
 
 import DebugPanel from './components/debug/DebugPanel.vue'
+import UpdateNotice from './components/hud/UpdateNotice.vue'
 import LevelView from './views/LevelView.vue'
 import StartView from './views/StartView.vue'
 </script>
@@ -39,4 +40,15 @@ import StartView from './views/StartView.vue'
   <StartView v-if="view === 'start'" />
   <LevelView v-else />
   <DebugPanel v-if="isDebugPanelRequested()" />
+  <!--
+    📎 **Story 1.18 / AC-C1、C3：离线准备 / 新版本提示。**
+
+    ⚠️ **挂在根组件上而不是 `LevelView.vue`**，理由与上面那个调试面板同款：
+      它是**跨视图的全局状态** —— 首次安装时孩子停在开始页，
+      而「正在准备离线，下次启动生效」这条恰恰是最该在开始页就看见的。
+    ⚠️ 它**无条件**挂载，是否显示由组件自己的 `v-if` 决定（两种状态之外一律不渲染）。
+    ⚠️ **它没有「立即刷新」按钮**（AC-C2）：一旦给了按钮，
+      就等于提供了「在孩子正在玩的那一局里强制刷新」的路径。
+  -->
+  <UpdateNotice />
 </template>

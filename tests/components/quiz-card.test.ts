@@ -33,7 +33,7 @@ import { enableAutoUnmount, mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { applyAction, speakQuestion, state } from '../../src/app/store'
+import { applyAction, reportImageFailure, speakQuestion, state } from '../../src/app/store'
 import QuestionCard from '../../src/components/quiz/QuestionCard.vue'
 import {
   answer,
@@ -50,13 +50,23 @@ import { entriesOf } from '../../src/content'
 //   `vi.spyOn(mod, 'applyAction')` 通常抛 `Cannot redefine property`。
 //   `state` 保持**真实**（不 mock），用例里直接 `state.value = …` 组装 ——
 //   与 `battle-field.test.ts:37,253-255` 的既有先例一致。
+//
+// 📎 **Story 1.18 加的第三个 mock：`reportImageFailure`**（AC-E4）。
+//   ⚠️ **必须 mock，否则这个文件里大半用例都会在断言一件**没发生**的事**：
+//   `vi.mock` 用的是 `{ ...actual }`，所以 `reportImageFailure` 是**真函数**，
+//   它内部调的是模块作用域里那个**真的** `applyAction`（不是本文件的 mock）
+//   ⇒ 正确项破图会真的换题 ⇒ G28 那几条「破图后卡片还在且被禁用」的断言
+//   在破的**是正确项**时全部落空。
+//   ⇒ 组件层只断言**交接**（谁报了哪个 optionId、报了几次）；
+//     门面的判定与 dispatch 归 `tests/app/skip-facade.test.ts`。
 vi.mock('../../src/app/store', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../src/app/store')>()
-  return { ...actual, applyAction: vi.fn(), speakQuestion: vi.fn() }
+  return { ...actual, applyAction: vi.fn(), speakQuestion: vi.fn(), reportImageFailure: vi.fn() }
 })
 
 const applyActionMock = vi.mocked(applyAction)
 const speakMock = vi.mocked(speakQuestion)
+const reportImageFailureMock = vi.mocked(reportImageFailure)
 
 /**
  * 🚨 **每个用例结束后必须卸载组件**（实测踩过：漏了它这条文件里大部分「调了几次」
@@ -557,13 +567,25 @@ describe('G28 —— 词图加载失败降级', () => {
     expect(wrapper.find('.option-card__placeholder svg').exists()).toBe(true)
   })
 
-  it('点击降级选项：applyAction 调用次数为 0，且不产生反馈', async () => {
+  it('点击降级选项：不产生反馈，也**不**派发 ANSWER', async () => {
     const wrapper = mountCard(firstQuestionOfKind('word'))
     await wrapper.find('.option-card__image').trigger('error')
+    applyActionMock.mockReset()
 
     await wrapper.find('.option-card').trigger('click')
 
-    expect(applyActionMock).toHaveBeenCalledTimes(0)
+    // ⚠️📎 **Story 1.18 / AC-E4 改了这条的判据**（R-57 留痕）：
+    //   原文案是「`applyAction` 调用次数为 0」。1.18 起**破图本身**会派发一条
+    //   `SKIP_QUESTION`（正确项破图 ⇒ 跳过那道题），所以「0 次」不再成立。
+    //   但这条断言**要守的东西没变**：点降级选项不许产生一次**答题**。
+    //   ⚠️ 判据从「计数为 0」改成「没有一条是 ANSWER」——
+    //   若照抄原来的 0 次，1.18 的机制会让它一直红，而红的原因是 AC 要求的。
+    //   守卫方向见 store 门面的测试（`tests/app/skip-facade.test.ts`）。
+    expect(
+      applyActionMock.mock.calls.map((call) => (call[0] as { type: string }).type),
+      '点了降级选项却派发了答题 —— 孩子点的是一张点不出来的图，' +
+        '而 `onPick` 的 `if (failed.value) return` 就是防这个的',
+    ).not.toContain('ANSWER')
     expect(wrapper.find('.answer-feedback').exists()).toBe(false)
   })
 
@@ -575,6 +597,65 @@ describe('G28 —— 词图加载失败降级', () => {
 
     expect(withDisabled).toContain('disabled')
     expect(cssOnly).not.toContain('disabled')
+  })
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // 📎 G152 —— 破图往上报的交接（Story 1.18 / AC-E4）
+  //
+  // 组件层**只**交接，不判定也不 dispatch：判定在 `app/store.ts` 的门面里
+  // （理由与守卫 G21 的逐字要求见 `QuestionCard.onOptionImageFailed` 的注释）。
+  // ⇒ 本组断言「谁报了哪个 id、报了几次、什么情况下不报」；
+  //   门面的判定与派发归 `tests/app/skip-facade.test.ts`。
+  // ════════════════════════════════════════════════════════════════════════════
+
+  it('G152：破图上报给门面，带的是**那个选项自己的 id**', async () => {
+    const question = firstQuestionOfKind('word')
+    const wrapper = mountCard(question)
+    const target = question.card.options[2]!
+
+    await wrapper.findAll('.option-card__image')[2]!.trigger('error')
+
+    expect(
+      reportImageFailureMock.mock.calls.map((call) => call[0]),
+      '破图没有上报给门面 —— AC-E4 的整条链（跳过那道题）根本不会启动',
+    ).toEqual([target.id])
+  })
+
+  it('G152：一张卡上多个选项破图 ⇒ **每张报一次**（一次性守卫按题，不按图）', async () => {
+    // ⚠️ 「一道题只跳一次」那条守卫在**换题之后**才生效；同一道题上
+    //   两张图同时破图时，两次上报都要送到门面 ——
+    //   门面对第一张（若它是正确项）换题，对第二张因「当前题已不是那道」而丢弃。
+    const question = firstQuestionOfKind('word')
+    const wrapper = mountCard(question)
+
+    await wrapper.findAll('.option-card__image')[0]!.trigger('error')
+    await wrapper.findAll('.option-card__image')[1]!.trigger('error')
+
+    expect(reportImageFailureMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('G152：非 `awaiting-answer` 相位下**不上报**（卡面在 awaiting-build 期间仍渲染）', async () => {
+    // ⚠️ AC-C5 让卡面在 `awaiting-build` 期间**继续渲染** ⇒ 那时到达的
+    //   `imageFailed` 与「当前该答哪道题」无关，报上去只会被门面的相位检查丢掉。
+    const question = firstQuestionOfKind('word')
+    const wrapper = mountCard(question)
+    state.value = { ...state.value, phase: { kind: 'awaiting-build', unlocked: [], sun: 0 } } as never
+    await wrapper.vm.$nextTick()
+    reportImageFailureMock.mockClear()
+
+    await wrapper.findAll('.option-card__image')[0]!.trigger('error')
+
+    expect(reportImageFailureMock, '非等答案相位也上报了 —— 门面会丢掉，但白跑一趟且掩盖真正的相位').toHaveBeenCalledTimes(
+      0,
+    )
+  })
+
+  it('反向自测：探针（一个**不**上报的交接）会让上面三条一起红', () => {
+    // R-51：若 `onOptionImageFailed` 被写成空函数，上面三条全绿。
+    // 这里给出对照 —— 判据问的是「有没有真的调门面」，而不是「有没有渲染出降级态」。
+    const deadHandoff = 'function onOptionImageFailed(){ /* 忘了 emit */ }'
+    expect(deadHandoff).not.toMatch(/reportImageFailure\(/)
+    expect(reportImageFailureMock).not.toHaveBeenCalled()
   })
 
   // ════════════════════════════════════════════════════════════════════════════

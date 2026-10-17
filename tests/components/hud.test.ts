@@ -111,6 +111,8 @@ function makeState(options: HudStateOptions = {}): State {
     // ⚠️ `mastered ⊆ unlocked` 是 reducer 比 AC-13 更强的不变量（`reducer.ts:495`），
     //   这里造的 state 必须过它，否则 `applyAction` 会在断言里炸。
     masteredEntryIds: [...mastered],
+    // 📎 Story 1.18 / AC-E4 新增的 State 字段。本夹具不测跳题，只为过编译。
+    skippedEntryIds: [],
     unlocked: [...mastered],
   }
 }

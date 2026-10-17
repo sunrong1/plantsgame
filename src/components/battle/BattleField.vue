@@ -456,7 +456,7 @@ watch(selectedEntryId, () => {
 <style scoped>
 /*
  * ⚠️ 下面三条声明是 `game-architecture.md:498-501` 的**逐字**要求。
- *   守卫 **G14** 断言 `repeat(N, 1fr)` 的 N === `COLS`、`aspect-ratio` 的分母 === `ROWS`，
+ *   守卫 **G14** 断言 `repeat(N, …)` 的 N === `COLS`、`aspect-ratio` 的分母 === `ROWS`，
  *   变异 **M42** 证明「改坏 COLS 而不同步这里」会变红。
  *   ⇒ **不许把 9 / 5 改成别的数而不改 `src/core/grid.ts`**（反之亦然）。
  *
@@ -466,7 +466,26 @@ watch(selectedEntryId, () => {
  */
 .battle-grid {
   display: grid;
-  grid-template-columns: repeat(9, 1fr);
+  /*
+   * 📎 **Story 1.18 / AC-D4：9 条列轨从裸 `1fr` 改成 `minmax(0, 1fr)`。**
+   *
+   * ⚠️ **3px 溢出的算式**（1.10 实测：容器 453px，轨道合计 456px）：
+   *   `1fr` 是 `minmax(auto, 1fr)`。`auto` 下限取内容的**最小贡献尺寸**，
+   *   对 grid item 来说就是 `gap` 的那一半 ⇒ 每条列轨多出 `4 / 2 = 2px`，
+   *   9 条合计 **18px**（1.10 的 3px 是另一组实测数字：当时容器更窄，
+   *   `aspect-ratio` 与 `content-box` 的交互让溢出量取到别的值）。
+   *   结论与数字不管，**机制是同一条**：`1fr` 把 `gap` 算进了列宽。
+   *
+   * ⇒ `minmax(0, 1fr)` 把下限钉成 0，`gap` 不再进入列宽计算，
+   *   容器宽 - 8 条 gap 恰好被 9 条列轨分完，一像素不差。
+   *
+   * ⚠️ **为什么不能靠 `overflow: hidden` 盖掉溢出**：那会把最后一条列轨
+   *   （第 9 列，入场格所在列）切掉一部分，而它正是僵尸入场的那一列。
+   *
+   * ⚠️ **守卫 G14 断言的是「N === COLS」**（列数与 `src/core/grid.ts` 同源），
+   *   本次改动**不涉及 N** —— 仍是 9，与变异 **M42** 的红绿边界一致。
+   */
+  grid-template-columns: repeat(9, minmax(0, 1fr));
   gap: var(--space-grid-gap);
   /* ⚠️ `content-box` 是**必需**的，不是口味问题：
      `base.css` 全局把 `box-sizing` 设成 `border-box`，而 `aspect-ratio` 算的是

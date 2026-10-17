@@ -33,7 +33,7 @@ import {
   createZombie,
   isCorrect,
 } from './types.js'
-import type { Action, DeckEntry, State, Zombie } from './types.js'
+import type { Action, DeckEntry, SkipQuestionAction, State, Zombie } from './types.js'
 
 /** `createInitialState()` 的入参。deck 是本局题单的全集（AC-5）。 */
 export interface CreateInitialStateInput {
@@ -80,6 +80,9 @@ export function createInitialState(input: CreateInitialStateInput): State {
     //   条目本身是 `readonly` 对象，只复制数组即可。
     deck: [...input.deck],
     masteredEntryIds: [],
+    // 📎 Story 1.18 / AC-E4：跳过记录同样从空开始。见 `types.ts` 的说明 ——
+    //   它是**第三个**记账字段，不是 `masteredEntryIds` 的子集。
+    skippedEntryIds: [],
     unlocked: [],
   }
   // AC-6 / 自主设计 #5：僵尸入场发生在「回合开始」，而 Phase 联合没有 round-start 变体，
@@ -90,16 +93,30 @@ export function createInitialState(input: CreateInitialStateInput): State {
 }
 
 /**
- * 取下一个该考的问题：题单里第一个尚未答对的条目。
+ * 取下一个该考的问题：题单里第一个尚未答对、也未被跳过的条目。
  *
  * 全部答对时返回 `null`（由调用方转 `level-complete`）—— 不返回「随便挑一个」，
  * 因为那会让孩子已经学会的词又被考一遍，而界面上看不出任何异常。
  *
  * 答错的题**仍在题单里、仍未 mastered**，所以它会被再次选中（AC-4/AC-5 的重考）。
+ *
+ * 🔥📎 **`skippedEntryIds` 是 Story 1.18 / AC-E4 加的第三个参数。**
+ *   ⚠️ **刻意给了默认值 `[]` 而不是必填** —— 理由与它造成的风险都写在这里：
+ *     · 给默认值的好处：`applyAnswer` / `applySkip` 两处调它时**必须显式传**才能拿到
+ *       正确语义，而任何**新写的**调用点（脚本、未来的工具）在漏传时会立刻少排除一层，
+ *       症状是「跳过的那道题又回来了」—— 可见、且指向本函数。
+ *     · 必填的坏处：会让 1.x 已有的三处调用点（`createInitialState`、本文件两处）
+ *       与既有测试一起改，而它们本来就不涉及跳过。
+ *   ⇒ 守卫 G143 断言「跳过之后 `nextQuestion` 不再抽中那道题」，
+ *     那条判据直接覆盖「`applySkip` 漏传第三个参数」这个最可能的错法。
  */
-export function nextQuestion(deck: readonly DeckEntry[], masteredEntryIds: readonly string[]): DeckEntry | null {
+export function nextQuestion(
+  deck: readonly DeckEntry[],
+  masteredEntryIds: readonly string[],
+  skippedEntryIds: readonly string[] = [],
+): DeckEntry | null {
   for (const entry of deck) {
-    if (!masteredEntryIds.includes(entry.entryId)) {
+    if (!masteredEntryIds.includes(entry.entryId) && !skippedEntryIds.includes(entry.entryId)) {
       return entry
     }
   }
@@ -118,6 +135,11 @@ export function nextQuestion(deck: readonly DeckEntry[], masteredEntryIds: reado
 export function reduce(state: State, action: Action): State {
   switch (state.phase.kind) {
     case 'awaiting-answer':
+      // 🔥📎 Story 1.18 / AC-E4：`SKIP_QUESTION` 与 `ANSWER` 同处这个相位，
+      //   但走的是**另一个** apply —— 见 `applySkip` 的注释。
+      if (action.type === 'SKIP_QUESTION') {
+        return assertInvariants(applySkip(state, action))
+      }
       return assertInvariants(applyAnswer(state, action))
     case 'awaiting-build':
       return assertInvariants(applyBuild(state, action))
@@ -166,6 +188,7 @@ function applyAnswer(state: State, action: Action): State {
       '还在等孩子答题，此刻不能做别的事 —— 先答题才能拿到建塔的阳光，塔卡也是答对的奖励',
     )
   }
+
   // ⚠️ 这是**类型守卫**，不是运行时检查（`[CR]` 2026-10-14 更正）。
   //   `applyAnswer` 只有 `case 'awaiting-answer'` 一个调用点，而**调用点的收窄不会
   //   传进函数体** —— 不在这里自己收窄，`state.phase` 就还是那个六变体联合，
@@ -193,6 +216,76 @@ function applyAnswer(state: State, action: Action): State {
     unlocked: correct ? [...state.unlocked, question.entryId] : state.unlocked,
   }
   return withBuildPhase(next)
+}
+
+/**
+ * 🔥 **Story 1.18 / AC-E4（裁决 11）：跳过一道正确项词图加载失败的题。**
+ *
+ * ── 为什么它是「换一道题」而不是「结算这一回合」 ─────────────────────────
+ * 跳过时**什么都没发生**：孩子没答题、没有战斗、没有僵尸推进。
+ * 若把它做成「结算空回合」，战场上的僵尸会在没有任何交互的情况下被打一次，
+ * `turn` 会 +1，而这一回合孩子什么也没做 ⇒ 界面上「我啥也没干僵尸却动了」，
+ * 而塔防的全部意义就是「你做的事有后果」。
+ * ⇒ 跳过只做三件事：**记一笔跳过**、**换下一道题**、**其余一律不动**。
+ *
+ * ⚠️ **`turn` 与 `zombies` 一律不动**（守卫 G142 逐项断言）：
+ *   僵尸是按回合入场的，而跳过**不是**一个回合 —— 没有发生任何事，
+ *   不该有新的敌人出现在场上。
+ *
+ * ⚠️ **题单被抽空时必须拒绝**（裁决 11 ③）：
+ *   `nextQuestion` 返回 `null` 在 `CONTINUE` 里意味着「全部答对 ⇒ 通关」。
+ *   跳过若也接到那个 `null` 上，一个字都没答的孩子会看到「读完啦！」——
+ *   本项目能造出的最糟的假陈述。
+ *   ⇒ 这里 `rejectAction` 抛错；`app/store.ts` 的门面在 dispatch 前先问一遍，
+ *     所以正常路径不会有异常冒到界面上（NFR13）。
+ */
+function applySkip(state: State, action: SkipQuestionAction): State {
+  if (state.phase.kind !== 'awaiting-answer') {
+    throw new Error(`内部错误：applySkip 被 ${state.phase.kind} 阶段调用 —— reduce 的阶段分发被改坏了`)
+  }
+  const { question } = state.phase
+  if (action.entryId !== question.entryId) {
+    rejectAction(
+      state,
+      action,
+      `要跳过的是 ${action.entryId}，而当前问的是 ${question.entryId} —— ` +
+        '跳过只能作用于当前这一道，否则会有一道好着的题凭空消失，而界面上看不出少了什么',
+    )
+  }
+  // 🔥 1.18 `[DS]` 补的一条：**必须核对破掉的确实是正确项**。
+  //   组件不许读 `option.correct`，所以「是不是正确项」只能由 core 判。
+  //   ⚠️ 不核对的后果：一张**干扰项**的图 404 也会把整道题跳掉 ——
+  //     而干扰项破图时那道题**仍然答得了**（孩子从剩下的选项里选就行），
+  //     于是每一张干扰项的 404 都会白扔掉一道好题。
+  //   ⚠️ `isCorrect` 在 id 不存在时**抛错**（AC-7），而 id 来自这张卡自己的选项，
+  //     所以这里正常路径不会抛；若真抛了，那是组件传错了 id，抛出来是对的。
+  if (!isCorrect(question.card, action.optionId)) {
+    rejectAction(
+      state,
+      action,
+      `选项 ${action.optionId} 不是当前这道题的正确项 —— 跳过只对「正确项那张图加载失败」成立。` +
+        '干扰项破图时这道题仍然答得了（把它跳掉就是白扔一道好题）',
+    )
+  }
+  // ⚠️ 先记跳过**再**取下一题：顺序反了的话 `nextQuestion` 会把当前这道
+  //   （它此刻还不在 skipped 里）当成合法候选，返回一道和现在完全相同的题 ——
+  //   症状是「跳过了但界面没换题」，而回合日志里明明记了一条 SKIP_QUESTION。
+  const skippedEntryIds = [...state.skippedEntryIds, question.entryId]
+  const next = nextQuestion(state.deck, state.masteredEntryIds, skippedEntryIds)
+  if (next === null) {
+    rejectAction(
+      state,
+      action,
+      '题单里已经没有别的题可考了 —— 继续跳过去只会让这一局走进「全部答对 ⇒ 通关」那一支，' +
+        '而孩子一个词都没答。这是内容或部署出了问题（正确项词图全部加载失败），' +
+        '请先查 public/assets/words/ 是否部署完整、以及 BASE_URL 是否与站点前缀一致',
+    )
+  }
+  return {
+    ...state,
+    skippedEntryIds,
+    phase: { kind: 'awaiting-answer', question: next },
+  }
 }
 
 // ── awaiting-build ────────────────────────────────────────────────────────
@@ -326,7 +419,10 @@ function applyContinue(state: State, action: Action): State {
       '本回合已经结算完 —— 在结算与推进之间插入别的动作，会让下一题的僵尸在错误的场况里入场',
     )
   }
-  const question = nextQuestion(state.deck, state.masteredEntryIds)
+  // 📎 Story 1.18 / AC-E4：第三参数**必须**传 —— 漏传的话这一回合结束后，
+  //   上一轮被跳过的那道题会重新回到题面上（症状：跳了跟没跳一样）。
+  //   判据见守卫 G143 的「CONTINUE 之后仍不抽中被跳过的那道题」。
+  const question = nextQuestion(state.deck, state.masteredEntryIds, state.skippedEntryIds)
   if (question === null) {
     // 全部答对 ⇒ 通关。判定放在 CONTINUE 而不是 RESOLVE_ROUND：
     // 「这一回合答对了最后一道题」到「这一局通关」之间还隔着结算（孩子要看塔打完僵尸）。
@@ -368,6 +464,13 @@ function applyContinue(state: State, action: Action): State {
  *
  * ⚠️ 战场整体清空（FR51）：进度与对局是两套独立持久化，战场每局清空、进度只增不减。
  * 带着上一局的塔重打 = 换个词不换局面，孩子会以为已经学会了。
+ *
+ * 📎 **Story 1.18 / AC-E4：`skippedEntryIds` 也一并清空** —— 不必在这里显式写，
+ *   因为 `restart` 直接复用 `createInitialState`，而那里的初始值就是 `[]`。
+ *   ⚠️ 这个「靠别处清空」的性质值得写出来：将来若 `restart` 改成在既有 state 上
+ *   打补丁（而不是重建），跳过记录就会**静默地留下来**，孩子重打一遍仍然遇不到
+ *   那个词 —— 而此时所有不变量都不会报错（跳过记录本身完全合法）。
+ *   守卫 G145 钉住「重打后 `skippedEntryIds` 为空」。
  */
 function restart(state: State): State {
   return createInitialState({ unitNumber: state.unitNumber, deck: state.deck })
@@ -505,11 +608,42 @@ function assertDeckRelations(state: State): void {
       throw new Error(`masteredEntryIds 含题单之外的 entryId ${id} —— 存档与题单已失配，重考时会去找一个不存在的题`)
     }
   }
+  // 📎 Story 1.18 / AC-E4：`skippedEntryIds` 的两条不变量。
+  // ⚠️ **越界的 id 为什么必须在唯一出口挡掉**：它不匹配任何题单条目 ⇒
+  //   在 `nextQuestion` 的排除集合里**毫无效果**（过滤是按 id 比对题单条目的），
+  //   而孩子面对的仍是一道答不了的题。症状是「跳过了但那张图还是不出来」，
+  //   且没有任何东西指向存档里那个多出来的 id。
+  //   存档来自旧内容版本、题单被回滚时，这真的会发生。
+  for (const id of state.skippedEntryIds) {
+    if (!entryIds.has(id)) {
+      throw new Error(
+        `skippedEntryIds 含题单之外的 entryId ${id} —— ` +
+          '它在 nextQuestion 的排除集合里匹配不到任何题单条目，等于什么都没排除，' +
+          '孩子仍会面对那道答不了的题（存档与题单已失配）。',
+      )
+    }
+    if (state.masteredEntryIds.includes(id)) {
+      throw new Error(
+        `skippedEntryIds 与 masteredEntryIds 同时含 ${id} —— ` +
+          '同一个词既「没学会所以跳过」又「已答对」，两条路径各自声称它不用再考，' +
+          '这个词到底学会没有已经无法判断。',
+      )
+    }
+  }
   // 正在问的题必须还没答对：否则那道题一挂上去就等于「刚学会又考一遍」。
   if (state.phase.kind === 'awaiting-answer' && state.masteredEntryIds.includes(state.phase.question.entryId)) {
     throw new Error(
       `正在考 ${state.phase.question.entryId}，而它已在 masteredEntryIds 里 —— ` +
         '已答对的题不该再出现，否则孩子刚学会的词会被反复重考',
+    )
+  }
+  // 同理：正在问的题不能是**被跳过**的那一道。
+  // ⚠️ 这条不是「重复考已会的词」那么温和：它意味着跳过压根没生效，
+  //   孩子会一直对着四个选项点不动的那张图。
+  if (state.phase.kind === 'awaiting-answer' && state.skippedEntryIds.includes(state.phase.question.entryId)) {
+    throw new Error(
+      `正在考 ${state.phase.question.entryId}，而它在 skippedEntryIds 里 —— ` +
+        '被跳过的题不该再挂上来，否则「跳过」这个动作等于什么都没做',
     )
   }
 }

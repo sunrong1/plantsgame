@@ -40,7 +40,21 @@ const props = defineProps<{
   readonly wrong: boolean
 }>()
 
-const emit = defineEmits<{ pick: [optionId: OptionId] }>()
+/**
+ * 📎 **Story 1.18 / AC-E5：`imageFailed` 事件。**
+ *
+ * ⚠️ **为什么 OptionCard 自己不发 `SKIP_QUESTION`、只把 optionId 往上抛**：
+ *   跳过的前提是「破掉的**是正确项**」，而本组件**不许**知道哪个是正确项 ——
+ *   文件头第 10 行逐字写着「不读 `option.correct`」，守卫 G21 也钉着那条。
+ *   ⇒ 本组件只报告「这张图破了（是谁：optionId）」，
+ *     由上层拿 `core` 的 `isCorrect` 核对后再决定要不要跳。
+ *   ⚠️ **不抛、不切 view、不改任何 state** —— 这里只 `emit` 一个 id。
+ */
+const emit = defineEmits<{
+  pick: [optionId: OptionId]
+  /** 📎 1.18：这张图的 `<img>` 加载失败（`optionId` 是谁破了图）。 */
+  imageFailed: [optionId: OptionId]
+}>()
 
 /**
  * 🚨 **分派依据是 `card.kind`，不是「这个选项有没有 `imageSrc`」**（AC-C3）。
@@ -86,13 +100,25 @@ const failed = ref(false)
 function onImageError(): void {
   if (failed.value) return
   failed.value = true
+  // 📎 **Story 1.18 / AC-E5：文案随机制同步改**（裁决 11 的文案诚实性条款）。
+  //   原文案只说「回合流转不受影响」—— 那在 1.18 之前是对的，
+  //   1.18 之后**不再完整**：正确项那张图破了，这道题会被自动跳过。
+  //   ⚠️ **本组件不知道哪个是正确项**（文件头第 10 行），所以文案只能说两种可能：
+  //   「如果破的是干扰项，这道题照答；如果破的是正确项，这道题会被跳过，
+  //   不扣心、不计分，也不会算进进度」。
+  //   ⚠️ 不写成「已跳过」是因为那会是一句**可能是假**的话 ——
+  //     而本项目最贵的一类 bug 正是「界面陈述了一件没发生的事」。
   console.warn(
     `[content] 词图加载失败：${imageSrc.value}（选项 ${props.option.id}）—— ` +
-      '已降级为内联占位图形并禁用该选项，回合流转不受影响。' +
+      '已降级为内联占位图形并禁用该选项。破的若是干扰项，这道题照答；' +
+      '破的若是正确项，1.18 起这道题会被自动跳过（不扣心、不计分、不进进度）。' +
       '若部署后普遍发生，先查 `import.meta.env.BASE_URL` 是否与站点前缀一致（守卫 G22）。',
   )
   // 📎 **Story 1.17 / AC-E2：登记这一条**（理由与 `Tower.vue` 同款，逐字理由见那里）。
   markAssetDegraded(imageSrc.value, `词图（选项 ${props.option.id}）`)
+  // 📎 **Story 1.18 / AC-E5：往上抛「是谁破了图」。** 只抛 id，不判定、不 dispatch ——
+  //   「是不是正确项」由上层用 `core` 的 `isCorrect` 核对（理由见 `defineEmits` 上方）。
+  emit('imageFailed', props.option.id)
 }
 
 function onPick(): void {

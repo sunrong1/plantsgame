@@ -93,6 +93,10 @@ function makeState(towers: readonly TowerEntity[], zombies: readonly ZombieEntit
     zombies,
     deck,
     masteredEntryIds: [],
+    // 📎 Story 1.18 / AC-E4：`State` 新增的第三个记账字段。
+    //   本文件不测跳题（那是 `tests/core/skip-question.test.ts` 的事），
+    //   但 State 是**必填**字段 ⇒ 不填就编译不过。
+    skippedEntryIds: [],
     unlocked: [],
   }
 }
@@ -162,9 +166,16 @@ export function g14Violation(css: string, cols: number, rows: number): string | 
     return '读不到 .battle-grid 的规则块 —— G14 无从取值（CSS 结构变了？）'
   }
 
-  const repeatMatch = /grid-template-columns:\s*repeat\(\s*(\d+)\s*,\s*1fr\s*\)/.exec(grid)
+  // ⚠️📎 **轨道形态从裸 `1fr` 放宽成 `minmax(0, 1fr)`（Story 1.18 / AC-D4）** ——
+  //   `1fr` 等价于 `minmax(auto, 1fr)`，而 `auto` 下限把 `gap` 算进了列宽
+  //   （实测溢出 3px，第 9 列被切）。判据只取 N，两种轨道写法都接受 ——
+  //   **轨道形态本身由 G133 逐字钉住**（`repeat(N, minmax(0, 1fr))`），
+  //   两处分工：G14 管「N 与 COLS 同源」，G133 管「轨道是 minmax 形态」。
+  //   ⚠️ 别把这条正则收窄回 `1fr`：那会让 AC-D4 的修法当场把 G14 变红，
+  //     而两个 AC 都是真的 —— 那说明判据的分工没写清，不是任一方错了。
+  const repeatMatch = /grid-template-columns:\s*repeat\(\s*(\d+)\s*,\s*(?:minmax\(\s*0\s*,\s*1fr\s*\)|1fr)\s*\)/.exec(grid)
   if (repeatMatch === null) {
-    return '读不到 .battle-grid 的 grid-template-columns: repeat(N, 1fr) —— G14 无从取 N'
+    return '读不到 .battle-grid 的 grid-template-columns: repeat(N, minmax(0, 1fr)) —— G14 无从取 N'
   }
   const n = Number(repeatMatch[1])
   if (n !== cols) {
@@ -217,10 +228,16 @@ describe('G14 —— .battle-grid 的重复次数与 aspect-ratio 与网格常�
   })
 
   it('M42：把 repeat() 的次数改坏（不同步 COLS），G14 必须红', () => {
-    // 用**真实文件**当底稿，只把 `repeat(9, 1fr)` 换成 `repeat(12, 1fr)` ——
+    // 用**真实文件**当底稿，只把 `repeat(9, minmax(0, 1fr))` 的 N 换成 N+3 ——
     // 这正是「COLS 从 9 改成 12 而忘了同步 CSS」留下的样子。
-    const mutated = css.replace(/repeat\(\s*(\d+)\s*,\s*1fr\s*\)/, `repeat(${COLS + 3}, 1fr)`)
+    // ⚠️ 替换模式必须跟着实际写法走（AC-D4 之后是 `minmax(0, 1fr)`），
+    //   否则这个变异改不动任何东西，`toContain` 断言会因为「原文无违规」而**假红**。
+    const mutated = css.replace(
+      /repeat\(\s*(\d+)\s*,\s*minmax\(\s*0\s*,\s*1fr\s*\)\s*\)/,
+      `repeat(${COLS + 3}, minmax(0, 1fr))`,
+    )
 
+    expect(css, '变异没改到任何东西 —— 替换模式与实际写法对不上，这条是假红').not.toBe(mutated)
     expect(g14Violation(mutated, COLS, ROWS)).toContain('重复次数')
   })
 
