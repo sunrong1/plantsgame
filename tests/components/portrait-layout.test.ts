@@ -661,3 +661,533 @@ describe('G140 —— 布局判据不读 jsdom 的假布局（Story 1.18 / AC-D7
     ).toEqual([])
   })
 })
+
+// ── G166..G169 —— 宽屏分栏（Story 1.19 / AC-H1..H5）────────────────────────
+
+/**
+ * 宽屏分栏守卫（Story 1.19 / AC-H 组 —— 「孩子把平板转过来」）。
+ *
+ * ── 守的是哪一个已经付过代价的 bug ──────────────────────────────────────────
+ * 2026-10-17 真机试玩反馈「不能种植植物」，逐层排查后定位到横屏：
+ * `@media (max-height: 900px)` 把 `height: 100%`（整个视口）**全部分给战场**，
+ * 而 HUD、朗读浮层、题卡、手牌是它的四个兄弟节点，一分都没算进去
+ * （实测：`.level-view` 内容盒 784px，战场吃掉 736，剩下 48px 要装 558px）。
+ * ⇒ 题卡 `top=875` 落在 800 的折叠线下方 ⇒ 孩子看不见题 ⇒ 永远答不出
+ * ⇒ 手牌永远为空 ⇒ 点任何格子都无反应。
+ *
+ * ── 为什么判据仍然是源码级 ─────────────────────────────────────────────────
+ * 同 G134 的理由：jsdom 不做布局，特异度与像素都证明不了。
+ * ⚠️ **但有一条源码级判据证明不了**：全局 `.level-view` 是 (0,1,0)，
+ *   压不过 SFC scoped 编译出的 `.level-view[data-v-*]` (0,2,0) ——
+ *   实测注入 `display: grid` 无效、`!important` 才生效。
+ *   G166 守的是「那行 `!important` 还在」，**不是**「它真的赢了层叠」。
+ *   后者由 story 文档里记的浏览器实测背书，本文件不假装测过。
+ *
+ * ── 判据设计上防的三种假绿 ─────────────────────────────────────────────────
+ * ① 「不许出现 X」类一律先跑**反向自测**（R-53）：三条判据各配一个正例探针。
+ * ② G168 **不写死五个子节点的名字** —— 它去解析 `LevelView.vue` 模板里
+ *    `<main class="level-view">` 的**真实直接子元素集合**，再回查每个子元素的
+ *    根节点类名有没有 `grid-area`。写死名字的判据在新增第 6 个子元素那天就失明。
+ * ③ 唯一的豁免项（`.level-outcome`）**同时**断言它仍是 `position: absolute` ——
+ *    豁免的前提一旦不成立，豁免当场失效。
+ */
+
+describe('G166 —— 宽屏分栏块存在且是左右两栏（Story 1.19 / AC-H1、H5）', () => {
+  const responsive = sourceOf('src/styles/responsive.css')
+
+  it('反向自测：三条判据的正则确实能匹配到违规形态（判据本身没写坏）', () => {
+    // ① **本条判据要咬住的正是今天那个失效写法**：不带 `!important` 的 `display: grid`
+    //    会被 SFC scoped 压过（实测 getComputedStyle 仍是 flex）。
+    //    正例匹配、违规不匹配，两边都写出来，否则这条自测只是走过场。
+    expect('.level-view { display: grid !important; }').toMatch(LANDSCAPE_DISPLAY)
+    expect(
+      '.level-view { display: grid; }',
+      '探针应当被判据认出来 —— 它就是会被 scoped 压过的那条死规则',
+    ).not.toMatch(LANDSCAPE_DISPLAY)
+    // ② 单栏写法必须能被认出来
+    expect('.level-view { grid-template-columns: minmax(0, 1fr); }').not.toMatch(
+      LANDSCAPE_TWO_COLUMNS,
+    )
+    // ③ `orientation` 写法必须会被 G134 那条拦下（证明禁令不是洁癖）
+    expect('@media (orientation: landscape)').toMatch(/orientation\s*:/)
+    // ④ `grid-template-areas` 的行解析：多行与单行两种合法写法都要拆对
+    expect(
+      gridAreaRows(`\n  'hud     hud'\n  'field   quiz'\n`),
+      '多行写法拆错了 ⇒ 战场与题面在同一列那条判据会恒真',
+    ).toEqual([
+      ['hud', 'hud'],
+      ['field', 'quiz'],
+    ])
+    expect(gridAreaRows(`'hud hud' 'field quiz'`)).toEqual([
+      ['hud', 'hud'],
+      ['field', 'quiz'],
+    ])
+    // ⑤ 顶层切分：`minmax(0, 1fr)` 内部的空格不得被当成轨道分隔符
+    expect(
+      topLevelTokens('minmax(0, 1fr) 25rem'),
+      '把 minmax 内部空格当分隔符 ⇒ 轨道数算成 3，与区域图的 2 格对不上账',
+    ).toEqual(['minmax(0, 1fr)', '25rem'])
+    // ⑥ 非矩形具名区域必须被认出来（变异 M181 第一形态）
+    //    ⚠️ 夹具**报出两个**名字（`quiz` 与 `hand`）不是笔误：那个变异里
+    //    `quiz` 落在 (1,1)(2,0)(3,1)，外接矩形 3×2=6 而只有 3 格，同样不是矩形。
+    //    初版夹具只写了 `['hand']`，跑出来才发现 —— 记在这里免得下一个人
+    //    「顺手改成只报一个」。
+    expect(
+      raggedAreaNames([
+        ['hud', 'hud'],
+        ['overlay', 'quiz'],
+        ['field', 'hand'],
+        ['hand', 'quiz'],
+      ]),
+      'hand 同时落在 (2,1) 与 (3,0)，quiz 落在 (1,1)(2,0)(3,1) —— 两个都不是矩形',
+    ).toEqual(['quiz', 'hand'])
+    expect(
+      raggedAreaNames([
+        ['hud', 'hud'],
+        ['overlay', 'quiz'],
+        ['field', 'quiz'],
+        ['hand', 'quiz'],
+      ]),
+      '合规的矩形区域图不得被误报',
+    ).toEqual([])
+  })
+
+  it('断点用「视口比高更宽」表达，而不是 orientation 媒体查询', () => {
+    // ⚠️ G134 逐字禁止 `orientation:`，而这里的判据比「不许 orientation」更具体：
+    //   它要求**存在**这一条判据。manifest 的 `orientation: portrait` 在 Android
+    //   浏览器里本就不可靠（`vite.config.ts` 的注释已记录），布局不能拿它当前提。
+    expect(
+      responsive,
+      'responsive.css 里没有「视口比高更宽」的断点 —— 孩子把平板转过来时' +
+        '整个关卡页仍是单列，题卡被推到折叠线以下（实测 1280×800：题卡 top=875 > vh=800）',
+    ).toMatch(/@media[^{]*min-aspect-ratio/)
+  })
+
+  it('`.level-view` 在宽屏下真的切成了 grid（且带 !important，见 G166 的头注释）', () => {
+    const rule = ruleBodyFor(landscapeBlock(responsive), '.level-view')
+    expect(
+      rule,
+      '宽屏块里没有 `.level-view` 的规则 —— 战场与题面仍在同一条纵向流里，' +
+        '横屏下题卡必然被推出视口',
+    ).not.toBeNull()
+    expect(rule, '.level-view 在宽屏下没有切 grid ⇒ 左右分栏根本没发生').toMatch(
+      LANDSCAPE_DISPLAY,
+    )
+    expect(
+      rule,
+      '`.level-view { display: grid }` 没带 `!important` —— 实测（Chromium）：' +
+        'SFC scoped 把 `.level-view` 编译成 `.level-view[data-v-*]`（0,2,0），' +
+        '压得过全局的 `.level-view`（0,1,0）。实测注入不带 important 的 `display:grid` ' +
+        '后 getComputedStyle 仍是 flex，带了才变 grid ⇒ 不带就是一条死规则',
+    ).toMatch(/display:\s*grid\s*!important/)
+    expect(
+      rule,
+      '`.level-view` 在宽屏下没锁 `height` —— 战场那一行就没有「剩余多少」的确定答案，' +
+        '而这正是矮视口那套规则当初要治的病',
+    ).toMatch(/height:\s*100dvh/)
+  })
+
+  it('宽屏块声明了两栏与具名区域（战场在左、题面在右）', () => {
+    const block = landscapeBlock(responsive)
+    expect(
+      ruleBodyFor(block, '.level-view'),
+      '`.level-view` 在宽屏下没有两栏列定义 —— 战场与题面仍会上下堆叠',
+    ).toMatch(LANDSCAPE_TWO_COLUMNS)
+    const areas = /grid-template-areas:([^;]+);/.exec(block)?.[1] ?? ''
+    expect(
+      areas,
+      '宽屏块没有 `grid-template-areas` —— 五个面板会落回 grid 自动排布并互相压盖，' +
+        '而症状是「某个面板不见了」，界面上没有任何东西会报错',
+    ).not.toBe('')
+    // ⚠️ 这一条锁的是**形状**（战场那一格与题面那一格不同列），
+    //   而不是「哪一格叫什么」—— 后者由 G168 从模板反查。
+    const rows = gridAreaRows(areas)
+    /*
+     * ⚠️ 这条是**变异 M181 第一形态逼出来的**（见 story 文档的假绿登记）：
+     *   把区域图改成 `'field hand' / 'hand quiz'` 时，判据是绿的 ——
+     *   `field` 仍在第 1 列、`quiz` 仍在第 2 列，守的不变量确实没被破坏。
+     *   但那个写法让 `hand` 同时出现在 (3,2) 与 (4,1)，**不是矩形** ——
+     *   而 CSS 逐字要求每个具名区域是矩形，浏览器会**整条丢弃**
+     *   `grid-template-areas`，五个面板当场落回自动布局。
+     *   ⇒ 判据必须先确认区域图本身**合法**，否则它在为一份没人会执行的 CSS 背书。
+     */
+    const widths = new Set(rows.map((cells) => cells.length))
+    expect(
+      widths.size,
+      `区域图每一行的格子数不一致（实际：${rows.map((c) => c.length).join(' / ')}）—— ` +
+        '浏览器会整条丢弃 `grid-template-areas`，五个面板落回自动布局并互相压盖',
+    ).toBe(1)
+    const trackCount = topLevelTokens(/grid-template-columns:\s*([^;]+);/.exec(block)?.[1] ?? '').length
+    expect(
+      rows[0]?.length,
+      `区域图每行 ${rows[0]?.length} 格，而 grid-template-columns 声明了 ${trackCount} 条轨道 —— ` +
+        '两者对不上时浏览器同样丢弃整条声明',
+    ).toBe(trackCount)
+    /*
+     * ⚠️ 「每行格子数一致」**不够** —— 变异 M181 第一形态把区域图改成
+     *   `'field hand' / 'hand quiz'` 时每一行都还是 2 格，但 `hand` 同时落在
+     *   (第3行,第2列) 与 (第4行,第1列)：它的外接矩形是 2×2 = 4 格，
+     *   而实际只有 2 格被它占着 ⇒ **不是矩形** ⇒ 浏览器整条丢弃该声明。
+     * ⇒ 判据按 CSS 的真实定义逐个名字算：格子数必须**填满外接矩形**。
+     */
+    const ragged = raggedAreaNames(rows)
+    expect(
+      ragged,
+      `这些具名区域不是矩形：${ragged.join('、')} —— CSS 逐字要求每个具名区域是矩形，` +
+        '浏览器会整条丢弃 `grid-template-areas`，五个面板落回自动布局并互相压盖',
+    ).toEqual([])
+    const fieldRow = rows.find((cells) => cells.includes('field'))
+    const quizRow = rows.find((cells) => cells.includes('quiz'))
+    expect(
+      fieldRow,
+      '`grid-template-areas` 里没有名为 `field` 的格子 —— 战场没被排版，' +
+        '它会落回自动布局并压在别的面板上',
+    ).toBeDefined()
+    expect(
+      quizRow,
+      '`grid-template-areas` 里没有名为 `quiz` 的格子 —— 题面没被排版，孩子在横屏下看不见它',
+    ).toBeDefined()
+    expect(
+      fieldRow?.indexOf('field'),
+      '战场（field）与题面（quiz）落在了同一列 —— 那样它们仍会上下堆叠，' +
+        '横屏下一个字都没多出来。战场必须在左栏、题面在右栏',
+    ).not.toBe(quizRow?.indexOf('quiz'))
+  })
+})
+
+describe('G167 —— 宽屏下战场那格的两个必需声明（Story 1.19 / AC-H2）', () => {
+  const block = landscapeBlock(sourceOf('src/styles/responsive.css'))
+  const rule = ruleBodyFor(block, '.battle-grid')
+
+  it('反向自测：两条判据的正则确实能匹配到违规形态', () => {
+    expect('.battle-grid { align-self: start; height: auto; }').toMatch(/align-self:\s*start/)
+    expect('.battle-grid { flex: 0 0 auto; }').not.toMatch(/align-self:\s*start/)
+    expect('.battle-grid { height: calc(100% - 48px); }').not.toMatch(/height:\s*auto/)
+  })
+
+  it('战场那一格对齐到行首 —— 缺它会被 1fr 行高拉伸，9/5 比例当场失效', () => {
+    // 🔥 格子是 `aspect-ratio: 1 / 1` 的正方形，塔与僵尸是扁平矢量；
+    //   grid item 默认 `align-self: stretch`，在 `minmax(0, 1fr)` 撑满的行里
+    //   会被拉到整行高度 ⇒ 战场从 9:5 变成别的比例 ⇒ 整幅图被拉变形。
+    expect(
+      rule,
+      '宽屏块里 `.battle-grid` 没有 `align-self: start` —— 它会被 1fr 行高拉满，' +
+        '`aspect-ratio: 9 / 5` 失效，战场与塔、僵尸一起变形',
+    ).toMatch(/align-self:\s*start/)
+  })
+
+  it('战场那一格的高度归零 —— 缺它就被上一条媒体查询的高度预算压住', () => {
+    // ⚠️ 同文件里还有 `@media (max-height: 900px)` 的
+    //   `.level-view .battle-grid { height: calc(100% - var(--touch-min) - …) }`。
+    //   宽屏（1280×800）**同时命中两条**，两条特异度相同、靠后者胜出。
+    //   ⇒ 宽屏块必须显式把 `height` 归零，否则战场会被那条「把整个视口都算给它」
+    //   的规则重新撑大——**也就是今天这个 bug 原样复活**。
+    expect(
+      rule,
+      '宽屏块里 `.battle-grid` 没有 `height: auto` —— 它会被 @media (max-height: 900px) ' +
+        '那条 `height: calc(100% - …)` 接管（横屏同时命中两条，同特异度靠后者胜），' +
+        '战场重新吃满整个视口高度，题卡被推出折叠线（2026-10-17 实测故障的根因）',
+    ).toMatch(/height:\s*auto/)
+  })
+})
+
+describe('G168 —— 宽屏下每个面板都被排了版（Story 1.19 / AC-H1、H5）', () => {
+  const block = landscapeBlock(sourceOf('src/styles/responsive.css'))
+  const levelViewTemplate = templateOf(levelViewSource)
+
+  it('反向自测：模板解析器能认出直接子元素（含嵌套在内的那些不算）', () => {
+    // ⚠️ R-53：不自测的话，「解析出来是空数组」会让下面每条 `for` 都不执行 ——
+    //   那正是恒绿的样子。
+    const children = directChildrenOfLevelView(levelViewTemplate)
+    expect(
+      children.map((child) => child.tag).join(','),
+      '模板解析器没认出任何直接子元素 —— 下面的逐项断言会整段空转',
+    ).toBe('div,PronunciationOverlay,BattleField,QuestionCard,HandDeck,LevelOutcome')
+  })
+
+  it('`.level-view` 的每个直接子元素都有 `grid-area`（豁免项另行断言）', () => {
+    const vueByName = new Map<string, string>()
+    for (const file of vueFiles()) {
+      vueByName.set(file.slice(file.lastIndexOf('/') + 1, -4), readFileSync(file, 'utf8'))
+    }
+    const assigned = panelsWithGridArea(block)
+    const unplaced: string[] = []
+    for (const child of directChildrenOfLevelView(levelViewTemplate)) {
+      const rootClass = child.rootClass ?? rootClassOfComponent(child.tag, vueByName)
+      if (rootClass === null) {
+        unplaced.push(`${child.tag}（读不到根节点类名，判据失明）`)
+        continue
+      }
+      // ⚠️ 终态浮层是**绝对定位**的，它不属于 grid 流 —— 豁免由 G168 下一条守住。
+      if (rootClass === 'level-outcome') continue
+      if (!assigned.has(rootClass)) unplaced.push(`${child.tag} → .${rootClass}`)
+    }
+    expect(
+      unplaced,
+      `这些面板没有排进宽屏的 grid：${unplaced.join('、')} —— ` +
+        '没排版的面板会落回 grid 自动布局并压在别的面板上，' +
+        '症状是「某个东西不见了」，界面上没有任何报错',
+    ).toEqual([])
+  })
+
+  it('反向自测：判据分得清「格子名」与「面板类名」（第一版的恒真形态）', () => {
+    // ⚠️ 这一条守的是本守卫**自己**那处假绿：初版拿 `grid-area` 的格子名
+    //   （field/hud/overlay/quiz/hand）去比面板类名（battle-grid/…），
+    //   而两套名字里恰好都有 `hud` ⇒ `.hud` 碰巧通过、其余四个全报红。
+    //   正例：`.battle-grid` 的规则体里带 `grid-area` ⇒ 必须被认出来。
+    expect(
+      [...panelsWithGridArea('.level-view .battle-grid { grid-area: field; height: auto; }')],
+      '带 `grid-area` 的规则，其面板类名必须被认出来',
+    ).toEqual(['level-view', 'battle-grid'])
+    // 反例：同名的**格子**不该被当成面板类名 —— `grid-area: battle-grid` 是
+    //   「把战场放到名叫 battle-grid 的格子里」，它没给 `.battle-grid` 排版。
+    expect(
+      [...panelsWithGridArea('.level-view .hud { grid-area: battle-grid; }')],
+      '把格子**命名**成面板类名，不等于给那个面板排了版 —— 判据不许被这个形态骗过',
+    ).toEqual(['level-view', 'hud'])
+    expect(
+      [...panelsWithGridArea('.level-view .battle-grid { width: 100%; }')],
+      '规则体里没有 `grid-area` 就不该算排过版',
+    ).toEqual([])
+  })
+
+  it('豁免的 `.level-outcome` 确实仍是绝对定位（豁免的前提一旦不成立，豁免当场失效）', () => {
+    const outcome = ruleBodyFor(sourceOf('src/components/hud/LevelOutcome.vue'), '.level-outcome')
+    expect(
+      outcome,
+      '`.level-outcome` 不再是绝对定位 —— 它参与了正常流，' +
+        '于是 G168 上一条对它的豁免就变成了一条真实的漏排',
+    ).toMatch(/position:\s*absolute/)
+  })
+})
+
+describe('G169 —— 竖屏基准没有被宽屏改动污染（Story 1.19 / AC-H4）', () => {
+  const responsive = sourceOf('src/styles/responsive.css')
+
+  it('`.level-view` 的竖屏基准仍是 flex 列 + min-height（AC-H4：竖屏七个尺寸零变化）', () => {
+    const rule = ruleBodyFor(levelViewSource, '.level-view')
+    expect(
+      rule,
+      '`.level-view` 的竖屏基准不再是 flex 列 —— 竖屏平板（800×1280 等七个尺寸）会被一起改坏',
+    ).toMatch(/display:\s*flex/)
+    expect(
+      rule,
+      '`.level-view` 的 `min-height: 100dvh` 不见了 —— G137 逐字要求保留它，' +
+        '改 `height` 不改 `min-height` 是当时刻意的（见 responsive.css 的注释）',
+    ).toMatch(/min-height:\s*100dvh/)
+  })
+
+  it('宽屏块自身不引入 `orientation` 媒体查询（裁决 13 / G134 的延伸）', () => {
+    const block = landscapeBlock(responsive)
+    expect(
+      block,
+      '宽屏块里出现了 `orientation` —— 布局不许依赖「我知道现在是横屏」这个' +
+        '在部分 WebView 上读不到的信号（裁决 13）',
+    ).not.toMatch(/orientation\s*:/)
+  })
+})
+
+// ── G166..G169 的共用夹具 ─────────────────────────────────────────────────
+
+/** 宽屏块的判据：必须带 `!important`（见 G166 的头注释里那段实测）。 */
+const LANDSCAPE_DISPLAY = /display:\s*grid\s*!important/
+
+/** 宽屏块必须有的两栏列定义。 */
+const LANDSCAPE_TWO_COLUMNS = /grid-template-columns:[^;]*minmax\(0,\s*1fr\)[^;]*\S+\s*;/
+
+/**
+ * 从 `responsive.css` 里抽出「视口比高更宽」那个媒体查询的**块体**（不含 `@media` 行）。
+ *
+ * ⚠️ 为什么要自己配平花括号而不是用正则 `[\s\S]*?\}`：后者会在块体里的
+ *   第一条嵌套规则处就截断，而本块体里恰恰每条规则都有自己的花括号。
+ */
+function landscapeBlock(responsive: string): string {
+  const at = /@media[^{]*min-aspect-ratio/.exec(responsive)
+  if (at === null) return ''
+  const open = responsive.indexOf('{', at.index)
+  if (open === -1) return ''
+  let depth = 0
+  for (let i = open; i < responsive.length; i += 1) {
+    const ch = responsive[i]
+    if (ch === '{') depth += 1
+    else if (ch === '}') {
+      depth -= 1
+      if (depth === 0) return responsive.slice(open + 1, i)
+    }
+  }
+  return ''
+}
+
+/**
+ * 取 `selector` 在 `source` 里**第一条**匹配规则的花括号内容。
+ *
+ * ⚠️ 复刻 `tests/helpers/contrast.ts` 的 `cssDecl` 语义：取**首次出现**。
+ *   这不是偷懒 —— G133 与 G30 两条既有守卫都建立在「首次出现」上，
+ *   本文件必须和它们看到同一个规则体，否则同一个文件会同时「对」和「错」。
+ */
+function ruleBodyFor(source: string, selector: string): string {
+  const at = source.indexOf(`${selector} {`)
+  if (at === -1) return ''
+  const open = source.indexOf('{', at)
+  const close = source.indexOf('}', open)
+  if (open === -1 || close === -1) return ''
+  return source.slice(open + 1, close)
+}
+
+/**
+ * 找出**不是矩形**的具名区域名（CSS 逐字要求每个具名区域必须是矩形）。
+ *
+ * 判据 = 「格子数 ≠ 外接矩形面积」。对 `.`（空格子）不算。
+ * 例：`[['hud','hud'],['overlay','quiz'],['field','hand'],['hand','quiz']]`
+ *   ⇒ `hand` 在 (2,1) 与 (3,0)，外接矩形 2×2=4 而只有 2 格 ⇒ 返回 `['hand']`。
+ */
+function raggedAreaNames(rows: readonly string[][]): readonly string[] {
+  const cells = new Map<string, { r: number; c: number }[]>()
+  rows.forEach((line, r) =>
+    line.forEach((name, c) => {
+      if (name === '.') return
+      cells.set(name, [...(cells.get(name) ?? []), { r, c }])
+    }),
+  )
+  const bad: string[] = []
+  for (const [name, points] of cells) {
+    const rs = points.map((p) => p.r)
+    const cs = points.map((p) => p.c)
+    const box = (Math.max(...rs) - Math.min(...rs) + 1) * (Math.max(...cs) - Math.min(...cs) + 1)
+    if (box !== points.length) bad.push(name)
+  }
+  return bad
+}
+
+/**
+ * 按**顶层**空白切分一条 CSS 值（括号内的空白不算分隔符）。
+ *
+ * ⚠️ 不能直接 `split(/\s+/)`：`minmax(0, 1fr) 25rem` 会被切成三片
+ *   （`minmax(0,` / `1fr)` / `25rem`），数出来的「轨道数」是 3 而不是 2 ——
+ *   而判据正是要拿它和区域图的格子数对账。
+ */
+function topLevelTokens(value: string): readonly string[] {
+  const out: string[] = []
+  let depth = 0
+  let current = ''
+  for (const ch of value.trim()) {
+    if (ch === '(') depth += 1
+    else if (ch === ')') depth -= 1
+    if (depth === 0 && /\s/.test(ch)) {
+      if (current !== '') out.push(current)
+      current = ''
+      continue
+    }
+    current += ch
+  }
+  if (current !== '') out.push(current)
+  return out
+}
+
+/**
+ * `grid-template-areas` 的值拆成「每行一格」：行内格子名数组。
+ *
+ * ⚠️ **按引号切而不是按分号切**：CSS 语法要求**每一行各自是一个字符串**
+ *   （`"hud hud" "overlay quiz"`），写成一整条不带引号是无效的。
+ *   而按 `;` 切会把「四个引号包着的行」当成一行，随后
+ *   `indexOf('field')` 拿到 -1 —— 症状是判据恒假。
+ *   正反两例都在本函数上方的自测里带着。
+ */
+function gridAreaRows(areas: string): readonly string[][] {
+  return [...areas.matchAll(/["']([^"']*)["']/g)]
+    .map((m) => m[1].trim().split(/\s+/))
+    .filter((cells) => cells.length > 0 && cells[0] !== '')
+}
+
+/**
+ * 宽屏块里「**被排了版的面板**」的类名集合。
+ *
+ * 🔥 **这一版是改过的，第一版是个恒真判据**（登记在 story 1.19 的假绿表里）：
+ *   初版返回的是 `grid-area` 的**格子名**（`field`/`hud`/`overlay`/`quiz`/`hand`），
+ *   而调用方拿它去比对面板的**根节点类名**（`battle-grid`/`question-card`/…）。
+ *   两套名字里恰好都有 `hud` ⇒ 面板 `.hud` 是**碰巧**通过的，
+ *   而真正的四个面板全部报「没排版」。若不是先把实现写出来跑一遍，
+ *   这条守卫会以「只有 4 个面板没排版」的形态一路绿到合并。
+ *   ⚠️ 形态同 R-51 第 4 类：**判据粒度与被比的对象不是一回事**。
+ *   ⇒ 现在返回的是**规则体里带 `grid-area` 声明的那些规则的选择器类名**，
+ *     粒度才与「面板有没有被排版」对齐。
+ */
+function panelsWithGridArea(block: string): ReadonlySet<string> {
+  const out = new Set<string>()
+  // ⚠️ 注释已剥（R-52）⇒ 块里除规则体外没有花括号，`[^{}]` 是安全的分隔符。
+  const rulePattern = /([^{}]+)\{([^{}]*)\}/g
+  let match: RegExpExecArray | null
+  while ((match = rulePattern.exec(block)) !== null) {
+    if (!/grid-area\s*:/.test(match[2])) continue
+    for (const cls of match[1].matchAll(/\.([A-Za-z][\w-]*)/g)) out.add(cls[1])
+  }
+  return out
+}
+
+/**
+ * `<template>` 正文（去掉 `<style>` 块，避免把 CSS 当成标签）。
+ *
+ * ⚠️🔥 **顺带必须剥掉 HTML 注释**（`<!-- -->`），这是 R-52 在模板侧的同一课：
+ *   `stripComments` 只认 `//` 与块注释两种形态（它的文档逐字写了「故意不处理」其它），
+ *   而本仓库的模板注释里**大量用反引号提到真实标签** ——
+ *   `LevelView.vue` 的手牌区注释就写着「接在 `<QuestionCard />` **之后**」。
+ *   ⇒ 不剥的话，扫描器会把注释里那句话当成一个真的 `<QuestionCard />` 节点，
+ *   直接子元素集合多出一项，而 G168 是**按集合逐项断言**的 ——
+ *   同一块面板被数两遍。
+ *   剥法复刻 `stripComments` 的规矩：换成等长空白而不是删掉，保持位置不变。
+ */
+function templateOf(source: string): string {
+  const open = source.indexOf('<template>')
+  const close = source.lastIndexOf('</template>')
+  if (open === -1 || close === -1) return ''
+  return source
+    .slice(open + '<template>'.length, close)
+    .replace(/<!--[\s\S]*?-->/g, (match) => match.replace(/[^\n]/g, ' '))
+}
+
+interface DirectChild {
+  /** 小写是原生标签（`div`），首字母大写是子组件（`BattleField`）。 */
+  tag: string
+  /** 原生标签自带 `class` 时用它；子组件要回查它自己的模板。 */
+  rootClass: string | null
+}
+
+/**
+ * `<main class="level-view">` 的**直接**子元素（嵌套在它们内部的标签不算）。
+ *
+ * ⚠️ 用扫描而不是正则，是因为正则没法区分「直接子元素」与「孙元素」，
+ *   而 G168 的全部价值就在于这个区分 —— 它要抓的正是
+ *   「新增了一个直接子元素却忘了排版」。
+ */
+function directChildrenOfLevelView(template: string): readonly DirectChild[] {
+  const mainAt = /<main\b[^>]*class="[^"]*\blevel-view\b[^"]*"[^>]*>/.exec(template)
+  if (mainAt === null) return []
+  const body = template.slice(mainAt.index + mainAt[0].length)
+  const out: DirectChild[] = []
+  let depth = 0
+  const tagPattern = /<(\/?)([A-Za-z][\w.-]*)((?:[^<>"]|"[^"]*")*?)(\/?)>/g
+  let match: RegExpExecArray | null
+  while ((match = tagPattern.exec(body)) !== null) {
+    const [, closing, tag, attrs, selfClosing] = match
+    if (closing === '/') {
+      depth -= 1
+      continue
+    }
+    if (depth === 0) {
+      const cls = /class="([^"]*)"/.exec(attrs)?.[1] ?? null
+      out.push({ tag, rootClass: cls === null ? null : cls.split(/\s+/)[0] })
+    }
+    if (selfClosing !== '/') depth += 1
+  }
+  return out
+}
+
+/** 子组件模板根元素的第一个类名（`BattleField.vue` ⇒ `battle-grid`）。 */
+function rootClassOfComponent(tag: string, vueByName: ReadonlyMap<string, string>): string | null {
+  const file = vueByName.get(tag)
+  if (file === undefined) return null
+  const template = templateOf(stripComments(file))
+  const root = /<([A-Za-z][\w.-]*)\b((?:[^<>"]|"[^"]*")*?)>/.exec(template)
+  if (root === null) return null
+  return /class="([^"]*)"/.exec(root[2])?.[1]?.split(/\s+/)[0] ?? null
+}

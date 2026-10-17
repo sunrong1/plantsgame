@@ -93,6 +93,65 @@ export function createInitialState(input: CreateInitialStateInput): State {
 }
 
 /**
+ * 🔥📎 **造出「这个单元已经学完」的终态**（Story 1.19 / AC-B6）。
+ *
+ * ⚠️ **为什么它必须存在**：`createInitialState` 对空题单**抛错**
+ *   （理由逐字写在上面：空题单会让开局卡在 `awaiting-answer`）。
+ *   而 Story 1.19 起（裁决 1）「一局 = 10 题」，孩子把这个单元的 37 条全部掌握之后，
+ *   切片结果就是**空题单** ⇒ 开局组装撞上那条抛错。
+ *   ⇒ 抛错的调用点之一是**孩子点的「开始游戏」** —— NFR13 压倒性原则
+ *     「孩子面前永不出现技术错误」。
+ *
+ * ⚠️ **为什么不选「退回开始界面」**：孩子点一次按钮回到开始界面、再点一次又回来，
+ *   读起来就是「这个按钮按了没反应」。而**造一份终态**给孩子看到的是
+ *   **他打完整单元后看过的那一张通关卡** —— 同一句话、同一个按钮、同一份布局。
+ *   即「本单元已学完」是**如实报告**，不是技术错误。
+ *
+ * ⚠️ **战场三件套全空**（`towers` / `grid` / `zombies`），与 `CONTINUE`
+ *   判定「全部答对」时造出的终态**逐项同形** —— 那条分支的注释逐字写着
+ *   「终态里留着塔会让『通关了但还能改局面』成立」。这里同理：
+ *   一份带塔的「已学完」会被持久化层当成「正在进行中的对局」。
+ *
+ * ⚠️ **三份记账字段全空**：`masteredEntryIds` / `skippedEntryIds` / `unlocked`
+ *   与 {@link createInitialState} 的初值一致 —— 这正是切片不撞
+ *   `assertDeckRelations` 的原因（「本局」是 `State.masteredEntryIds`，
+ *   「跨局」是 `Progress.masteredWordIds`，两套独立记账，R-06）。
+ *
+ * ⚠️ **心数取满、阳光取开局值、回合号取 1**：这份 state **没有对应的局**可打，
+ *   而这三个字段会显示在 HUD 上。取「打了一局之后的残值」是编造，取开局值是诚实。
+ *   （`LevelOutcome` 浮层只读 `phase.kind`，这三项只在它背后的 HUD 上可见。）
+ *
+ * ⚠️ **单元号未填档位时抛错**：与 {@link createInitialState} 同款 ——
+ *   静默回退到首档会让整个 Epic 跑在未校准的数值上。
+ *
+ * ⚠️ **`deck` 是空数组**：跨局的全部掌握记录在 `Progress.masteredWordIds` 里
+ *   （`src/app/store.ts` 的切片读它），不在这份 state 里。
+ *   ⇒ 存档存下这份 state 后再读回来，仍然是终态，不会变回一局（AC-B9）。
+ *
+ * @param unitNumber 1 基单元号（与 `State.unitNumber` 同一基准）。
+ */
+export function createUnitCompletedState(unitNumber: number): State {
+  const state: State = {
+    unitNumber,
+    phase: { kind: 'level-complete' },
+    turn: 1,
+    hearts: HEARTS,
+    // 📎 同一行同时完成「单元号是否落在已填档位上」的校验，理由与
+    //   `createInitialState` 里那行逐字相同 —— 不静默回退（R-20 的前提是数值可复现）。
+    sun: initialSunFor(unitNumber),
+    grid: {},
+    towers: [],
+    zombies: [],
+    deck: [],
+    masteredEntryIds: [],
+    skippedEntryIds: [],
+    unlocked: [],
+  }
+  assertInvariants(state)
+  return state
+}
+
+/**
  * 取下一个该考的问题：题单里第一个尚未答对、也未被跳过的条目。
  *
  * 全部答对时返回 `null`（由调用方转 `level-complete`）—— 不返回「随便挑一个」，

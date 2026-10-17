@@ -138,9 +138,24 @@ export {
 } from './actions.js'
 
 // 📎 回合状态机（Story 1.5 / AC-1…AC-13）。唯一的状态变更点（决策 2）。
-export { assertInvariants, createInitialState, nextQuestion, reduce } from './reducer.js'
+//   📎 Story 1.19 / AC-B6：`createUnitCompletedState` 是「这个单元已学完」的构造器
+//   —— 一局 = 10 题之后，全部掌握会切出空题单，而空题单进 `createInitialState` 会抛。
+export {
+  assertInvariants,
+  createInitialState,
+  createUnitCompletedState,
+  nextQuestion,
+  reduce,
+} from './reducer.js'
 
 export type { CreateInitialStateInput } from './reducer.js'
+
+// 📎 一局的题单切片（Story 1.19 / AC-B1）。架构硬约束 2 的落点：
+//   「本局该考哪几条」只能问这两个导出，app / 组件层出现第二份切片实现即为架构漂移
+//   （R-02，守卫 G161 钉住）。
+//   ⚠️ `QUESTIONS_PER_LEVEL` 是**全仓唯一**的每局题数出处，值由 AC 的
+//     「单局 3-5 分钟 / 每题 20-30 秒」反推（R-20：改它要问人）。
+export { QUESTIONS_PER_LEVEL, sliceDeckForLevel } from './deck-slice.js'
 
 // 📎 建造判据（Story 1.12 / AC-B1）。架构硬约束 2 的落点：组件关于
 //   「能不能放 / 会打到哪里 / 多少钱 / 手上有几张卡」的问题**只能**问这三个函数，

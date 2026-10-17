@@ -101,3 +101,165 @@
     margin-bottom: calc(var(--space-panel-pad) * 0.5);
   }
 }
+
+/*
+ * ── 宽屏（视口比高更宽）：战场在左、题面在右 ───────────────────────────────
+ *
+ * ⚠️🔥 **这一块是为一个已经上过一次真机的故障写的**（Story 1.19 / AC-H 组）：
+ *
+ *   2026-10-17 真机试玩反馈「不能种植植物」。逐层排查（词图 HTTP、解锁判定、
+ *   种植判定、录音时长全部逐项排除）后定位到**横屏**：1280×800 下
+ *   `.question-card` 的 `top=875` 而视口只有 800 —— **题目卡整个在折叠线以下**。
+ *   孩子看不见题 ⇒ 永远答不出 ⇒ 手牌永远为空 ⇒ 点任何格子都无反应
+ *   ⇒ 家长读成的就是「不能种植」。
+ *
+ * ── 🔥 为什么上面那个矮视口块救不了横屏 ─────────────────────────────────────
+ *   它做的事是「把整个视口高度全部分给战场」：`height: calc(100% - …)`，
+ *   而 `100%` 是 `.level-view` 的**全部内容盒高度**（实测 784px），减 48px 得 736px。
+ *   ⚠️ **它没算 HUD、朗读浮层、题卡、手牌这四个兄弟节点** ——
+ *     实测这四个加起来 75 + 16 + 375 + 92 = 558px，而战场用完之后只剩 48px。
+ *   ⇒ 上面那个块修的是「战场把**兄弟节点**挤出视口」，
+ *     横屏真正的问题是「战场把**自己的兄弟**挤出视口」，两件事的形状不一样。
+ *   ⇒ 而且这条路走不通到底：把战场压进剩下的 226px，格子边长就掉到 25px，
+ *     远低于 `--touch-min` 的 48px ⇒ 4–8 岁孩子**点不中**。
+ *   ⇒ 唯一正解是**不再上下堆叠**：横屏的宽本来就该用来并排放战场与题面。
+ *
+ * ── 为什么断点写 `min-aspect-ratio` 而不是 `orientation`（裁决 13 的延续）──
+ *   G134 逐字禁止 `orientation:` 媒体查询，且 `vite.config.ts` 里 manifest 的
+ *   `orientation: 'portrait'` 自带注释写着「布局不许依赖它」。
+ *   `min-aspect-ratio: 1/1` 说的是**可量的事实**（视口宽 ≥ 高），
+ *   不是「设备声称它是什么姿态」—— 后者在部分 WebView 上读不到。
+ *   ⚠️ 它同时覆盖桌面浏览器被压矮的窗口，那是同一副形状，理应同一套布局。
+ */
+@media (min-aspect-ratio: 1/1) {
+  /*
+   * ① `.level-view` 从「一列纵向流」切成「两栏具名网格」。
+   *
+   * ⚠️🔥 **`display: grid !important` 是全仓唯一一处 `!important`**，理由是实测：
+   *   SFC 的 scoped 样式把 `.level-view` 编译成 `.level-view[data-v-fe83c2bc]`，
+   *   那是**两个**限定符 (0,2,0)，压得过全局的 `.level-view` (0,1,0)。
+   *   Chromium 实测（Story 1.19）：注入不带 important 的 `.level-view{display:grid}`
+   *   后 `getComputedStyle().display` **仍是 flex**；加上 `!important` 才变 grid。
+   *   ⚠️ 没有它，这一整块就是**一条死规则** —— 而死规则不会报任何错，
+   *     症状与没写一模一样：横屏下题卡照样在折叠线以下。
+   *   ⚠️ 为什么**只有这一行**需要：下面五条子规则都用 `.level-view X` 的**后代**
+   *     选择器，天然拿到 (0,3,0)，压得过各组件自己的 `.X[data-v-*]` (0,2,0)。
+   *     守卫 G166 逐字钉住这行 `!important` 还在。
+   */
+  .level-view {
+    display: grid !important;
+
+    /*
+     * ⚠️ **右栏固定 `25rem`，不用 `minmax(0, 25rem)`** ——
+     *   答题阶段有 `question-card`、建塔阶段没有（它是 `v-if`）。
+     *   按内容撑宽的话，**答完题那一下战场会突然变宽重排**，
+     *   孩子会看见整片地在他眼前动一次。固定栏宽 ⇒ 两个阶段形状一模一样。
+     *
+     * ⚠️ 这里的 `rem` 是刻意的：`tokens.css` 里没有任何「面板宽度」类 token，
+     *   而 R-12 禁的是改既有 token 的**值**、不是不许写新 token ——
+     *   但为一个只在横屏出现的栏宽去动定稿的 token 表不划算（Story 1.13 定稿）。
+     *   1rem = 16px（浏览器默认根字号）⇒ 右栏 400px。
+     */
+    grid-template-columns: minmax(0, 1fr) 25rem;
+    /*
+     * ⚠️ **行高为什么要写死 `1fr` 给战场那一行**：`minmax(0, 1fr)` 而不是 `auto`。
+     *   `auto` 会让战场那一行按它自己的内容（宽度推出的高度）撑开，
+     *   超出的部分把题面栏顶下去；`1fr` 让战场拿到**剩下的**高度，
+     *   战场宽高比仍由 `.battle-grid` 自己的 `aspect-ratio: 9 / 5` 说了算（见 ②）。
+     */
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
+    /*
+     * ── 布局形状（.level-view 的六个直接子元素，一个不落）────────────────────
+     *     行1  HUD          全宽
+     *     行2  朗读浮层 | 题面 ┐
+     *     行3  战场       | 题面 ├ 题面栏跨 2–4 行
+     *     行4  手牌区     | 题面 ┘
+     *
+     * ⚠️ **HUD 为什么仍然全宽横跨**：它在竖屏下就是横排三块（阳光/心/进度），
+     *   压进 400px 宽的栏里每块只剩 133px ⇒ 「进度 3/37」这类文本会折行 ⇒
+     *   HUD 变高 ⇒ 战场被压扁。横跨全宽让这三块维持它本来的一行。
+     *
+     * ⚠️ **`.level-outcome` 不出现在这张表里**：它是 `position: absolute; inset: 0`
+     *   （`LevelView.vue` 逐字注明这是 AC-D2 的一部分），不在正常流里，
+     *   `inset: 0` 相对 `.level-view` 的定位上下文解析 ⇒ 浮层照样盖满整页。
+     *   守卫 G168 把这个豁免和它「仍是绝对定位」这件事**绑在一起**断言 ——
+     *   豁免的前提一旦不成立，豁免当场失效。
+     *
+     * ⚠️ 这张表里的格子名是 G166 锁的**形状**（战场与题面不同列）；
+     *   「哪些面板必须被排版」由 G168 从 `LevelView.vue` 模板反查，不写死在这里。
+     */
+    grid-template-areas:
+      'hud     hud'
+      'overlay quiz'
+      'field   quiz'
+      'hand    quiz';
+
+    /*
+     * ⚠️ `height: 100dvh` 而 `min-height: 100dvh` 仍留在 `LevelView.vue`（G137）：
+     *   与上面那个矮视口块同一个理由 —— 要「剩余多少」有确定答案就得有确定的盒子。
+     * ⚠️ `overflow-y: auto` 是**安全网不是布局手段**：极矮的横屏（例如
+     *   桌面窗口被压到 1280×400）装不下时至少能滚，而不是被静默裁掉。
+     *   正常横屏（1280×800 及以上）实测不产生滚动。
+     */
+    height: 100dvh;
+    overflow-y: auto;
+  }
+
+  /*
+   * ② 战场那一格。
+   *
+   * 🔥 **`align-self: start` 是本块最容易漏的一行**：grid item 默认 `align-self: stretch`，
+   *   而战场那一行是 `minmax(0, 1fr)` 撑满的 ⇒ 战场会被拉到整行高度。
+   *   它的 `aspect-ratio: 9 / 5` 只在「另一边尺寸不确定」时才推出另一边，
+   *   两边都确定时**比例直接失效** ⇒ 整片战场连同塔与僵尸一起被拉变形。
+   *   `start` 之后它按宽度推出高度，比例守住。
+   *
+   * 🔥 **`height: auto` 同样必需**：横屏（1280×800）**同时命中**
+   *   `@media (max-height: 900px)` 那条 `.level-view .battle-grid { height: calc(100% - …) }`。
+   *   两条特异度相同（同为 `.level-view .battle-grid`），本块在后 ⇒ 胜出。
+   *   少了这一行，战场会被那条「把整个视口都算给它」的规则重新撑大，
+   *   **也就是上面那个故障原样复活**。
+   *   守卫 G167 逐条钉住这两行。
+   */
+  .level-view .battle-grid {
+    grid-area: field;
+    align-self: start;
+    height: auto;
+    /* 战场比左栏窄时居中：左右不对称会被 4–8 岁孩子读成「画面坏了」。 */
+    margin-inline: auto;
+  }
+
+  /* ③ 五个面板各就各位（`.battle-grid` 见 ②）。 */
+  .level-view .hud {
+    grid-area: hud;
+  }
+
+  .level-view .pronunciation-overlay {
+    grid-area: overlay;
+  }
+
+  .level-view .question-card {
+    grid-area: quiz;
+  }
+
+  .level-view .hand-deck {
+    grid-area: hand;
+  }
+
+  /*
+   * ④ 题面里的四个选项在横屏改成 **2×2**。
+   *
+   * ⚠️ 竖屏是 `repeat(4, 1fr)`，四张并排铺满整个屏宽；右栏只有 400px，
+   *   并排的话每张只剩 ~88px 宽 —— 而 `.option-card__image` 是 `aspect-ratio: 1 / 1`
+   *   的词图，88px 的图对 4–8 岁孩子**认不出词**。
+   *   2×2 时每张 (366 − 12) / 2 = 177px，与竖屏单张同量级。
+   *
+   * ⚠️ 为什么写三段后代选择器 `.level-view .question-card .question-card__options`
+   *   （0,3,0）而不是直接写 `.question-card__options`（0,1,0）：
+   *   后者压不过 `QuestionCard.vue` 自己 scoped 的 `.question-card__options[data-v-*]`
+   *   (0,2,0)。多带两级不是啰嗦，是这里唯一的办法。
+   */
+  .level-view .question-card .question-card__options {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

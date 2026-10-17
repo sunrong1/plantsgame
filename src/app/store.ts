@@ -42,6 +42,7 @@ import {
   cellKey,
   continueRound,
   createInitialState,
+  createUnitCompletedState,
   endBuild,
   isCorrect,
   placementBlockedReason,
@@ -50,6 +51,9 @@ import {
   resolveRound,
   restartLevel as restartLevelAction,
   skipQuestion,
+  // 📎 Story 1.19 / AC-B1：题单切片判据的**唯一**出处（R-02）。
+  //   app 层只调它，不自己写「取前 N 条未掌握的」。
+  sliceDeckForLevel,
 } from '../core'
 import type { Action, OptionId, Progress, State } from '../core'
 import { playPronunciation } from '../services/pronunciation'
@@ -120,12 +124,78 @@ export { saveDegradationsVersion, onSaveDegradationsChanged } from '../services/
  */
 const FIRST_UNIT_NUMBER = 1
 
+// ── 跨局进度（Story 1.13 / 裁决 3）────────────────────────────────────────
+//
+// ⚠️🔥📎 **Story 1.19 把它上移到 {@link buildStateFor} 之前，理由只有一个：TDZ。**
+//   `buildStateFor` 现在要读 `progress.value.masteredWordIds` 来切题单（裁决 2），
+//   而 `state` 是**模块求值期**建出来的（`ref(initialState())`）——
+//   `progress` 若仍声明在它后面，那一行会撞 `ReferenceError: Cannot access
+//   'progress' before initialization`。
+//   ⚠️ **这不只是「换个位置」**：`progress` 的初值与 `state` 无关（它不读任何
+//   别的模块级量），所以上移不改变任何行为；反过来，**将来若 `progress` 的初值
+//   依赖 `state`，这个上移就会变成一个真 bug** —— 那时必须把组装改成显式传参。
+//
+// ⚠️ **`progress` 与 `state` 是两个不同的生命周期**，这是它必须独立持有的原因：
+//   `restartLevel()` 重置的是 `State`（含 `masteredEntryIds`），
+//   而「孩子已经学会哪些词」不随重打消失 —— FR58「累计所得只增不减」。
+//   若把它塞进 `State`，`RESTART_LEVEL` 一执行进度就归零，孩子会发现
+//   「刚才答对的白答了」，而界面上没有任何东西指向原因。
+//
+// ⚠️ **不入 `State`** —— 与 `view` / `selectedEntryId` 不同，`progress` 是
+//   **业务事实**而非 UI 态：它要被存档（1.15）。但它仍然不进 reducer，
+//   因为 reducer 的输入输出必须是一局之内的状态，而它是跨局的（架构决策 5）。
+//
+// ⚠️ **`currentUnitIndex` 在 Epic 1 恒为 0** —— `advanceUnit` 的判据
+//   `hasNextUnit()` 逐字是「`phase.kind === 'level-complete'`」+「下一个单元录了没有」，
+//   而 Epic 1 只录了单元 1 ⇒ 恒 false。
+//   📎 **Story 1.19 / 裁决 5：这条判据即将失效。** 一局从一个单元变成 4 局之后，
+//   **每局通关都会命中它的第一条**；今天被第二条挡住，Story 2.5 录入单元 2 的那一天
+//   第一条就会放行 ⇒ 打完单元 1 的第一局就被推进到单元 2，剩下 27 个词永久学不到。
+//   ⇒ 已登记 `deferred-work.md`，**恢复条件写死为「Story 2.5 录入单元 2 之前」**。
+//   ⚠️ **本 story 不改它** —— 关卡推进语义是产品决策，属 `[CC]`（R-35 只登记不擅改）。
+
 /**
- * 组装**指定单元**的初始 state。失败时抛出带上下文的错。
+ * 跨局进度。唯一的变更点是 {@link applyAction} 末尾那行 `advanceProgress`。
+ *
+ * ⚠️ `currentUnitIndex` 初值是 **0**，与裁决 3 逐字一致（「本 story 初值 0」）。
+ *   `[DS]` 交付时曾取 `1`，理由写作「AC-B5『1 起』」—— **AC-B5 全文没有「1 起」**
+ *   （它只讲键名逐字锁死与 `readonly` 宽窄）。那是 R-37 的凭记忆改判据。
+ *   `[CR]` 2026-10-16 已裁决**改回 0**，并同时删掉 `core/hud.ts` 里自加的「1 起」注释。
+ *   ⇒ 0 基还有一条独立佐证：裁决 3 逐字写「**不用** `progress.currentUnitIndex + 1`」，
+ *     那句话预设的正是 0 基。
+ *   ⚠️ 改这个数前先看 `docs/rules/range-and-balance.md`（R-20..R-24）——
+ *     它会被 1.15 **逐字序列化进存档**，基错了只能走迁移。
+ *   （显示路径不依赖它：`ProgressBar` 用 `state.value.unitNumber`，故此改动对 HUD 可见输出零影响。）
+ *
+ * 📎 **Story 1.19 / AC-B8：它是切片的唯一输入。** 「本局该考哪 10 条」
+ *   按这个跨局清单排除已掌握的条目 ⇒ 第 2 局与第 1 局**零交集**。
+ */
+export const progress: Ref<Progress> = ref({ currentUnitIndex: 0, masteredWordIds: [] })
+
+/**
+ * 组装**指定单元**的一局 state：按「跨局已掌握」切出本局题单（Story 1.19 / 裁决 2）。
+ *
+ * ⚠️ **📎 Story 1.19：题单从「整个单元」变成「本局至多 10 条」。**
+ *   原实现逐字是 `createInitialState({ unitNumber, deck: entriesOf(unitNumber) })`
+ *   —— 把单元 1 的全部 37 条当一局的题单，按 AC 自己的 20-30 秒/题算是
+ *   12.3-18.5 分钟，是 AC「单局 3-5 分钟」上限的 2.5-3.7 倍（裁决 1）。
+ *
+ * ⚠️🔥 **切片必须读 `progress.masteredWordIds`（跨局），不是 `state.masteredEntryIds`（本局）。**
+ *   读错的那一版会让**每一局都从第 1 题重开**，而 `assertDeckRelations` 全程绿灯 ——
+ *   三条不变量（`unlocked ⊆ deck` / `unlocked ⊆ mastered` / `masteredEntryIds ⊆ deck`）
+ *   在两套记账下都成立（裁决 2），所以**没有任何东西会指向原因**。
+ *   R-06：「跨局进度」是 `Progress.masteredWordIds`，「本局」是 `State.masteredEntryIds`。
+ *
+ * ⚠️ **两个调用点（模块求值期的 {@link initialState} 与 {@link restoreNextUnit}）
+ *   都经过本函数** ⇒ 一处改动两条路径同时生效（AC-B2）。
+ *
+ * ⚠️ **空切片走「已学完」分支，不抛**（AC-B6）：`createInitialState` 对空题单抛错，
+ *   而本函数的调用点之一是**孩子点的「开始游戏」** ⇒ NFR13 压倒性原则
+ *   「孩子面前永不出现技术错误」。详见 {@link createUnitCompletedState} 的注释。
  *
  * ⚠️ **try/catch 归 app 层，这是本文件存在它的唯一理由。**
  *   `createInitialState` 会抛两种错，两种都指向**内容数据**而不是战斗逻辑：
- *     · 空题单 —— 会让开局卡在 `awaiting-answer` 等一个不存在的选项
+ *     · 空题单 —— 已在上面被「已学完」分支接住，**不该再抛到这里**
  *     · 单元号未填档位 —— 静默回退到首档会让整个 Epic 跑在未校准的数值上
  *   在 `core/` 里包一层 try/catch 会把「哪一层的问题」这个信息抹掉，
  *   而报错现场离错误源头（某个单元 JSON）很远 —— 这正是
@@ -142,7 +212,18 @@ const FIRST_UNIT_NUMBER = 1
  */
 function buildStateFor(unitNumber: number): State {
   try {
-    return createInitialState({ unitNumber, deck: entriesOf(unitNumber) })
+    // ⚠️📎 **模块求值期读到的是空的 `masteredWordIds`** —— 那不是「读错了」，
+    //   那一刻读档**还没发生**（`restoreFromSave()` 由 `enterLevel()` 触发，
+    //   不在模块求值期）。有存档时这份 state 随即被读档结果替换；
+    //   没有存档时「空进度」就是真答案。⇒ 两边都对。
+    const deck = sliceDeckForLevel(entriesOf(unitNumber), progress.value.masteredWordIds)
+    // 🔥 **空题单 = 这个单元学完了**，不是故障（AC-B6）。造一份终态给孩子看
+    //   「通关卡」，与打完整单元后他看过的那张**逐字同形**。
+    //   ⚠️ 不要在这里 `catch` 之后回退成空题单 —— 那正是「孩子面前出现技术错误」。
+    if (deck.length === 0) {
+      return createUnitCompletedState(unitNumber)
+    }
+    return createInitialState({ unitNumber, deck })
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error)
     throw new Error(
@@ -167,37 +248,6 @@ function initialState(): State {
  * 而它让 Story 1.13 的 HUD、1.16 的关卡流程不必考虑「我这份 state 是深是浅」。
  */
 export const state: Ref<State> = ref(initialState())
-
-// ── 跨局进度（Story 1.13 / 裁决 3）────────────────────────────────────────
-//
-// ⚠️ **`progress` 与 `state` 是两个不同的生命周期**，这是它必须独立持有的原因：
-//   `restartLevel()` 重置的是 `State`（含 `masteredEntryIds`），
-//   而「孩子已经学会哪些词」不随重打消失 —— FR58「累计所得只增不减」。
-//   若把它塞进 `State`，`RESTART_LEVEL` 一执行进度就归零，孩子会发现
-//   「刚才答对的白答了」，而界面上没有任何东西指向原因。
-//
-// ⚠️ **`currentUnitIndex` 本 story 不推进** —— 单元推进 / 通关 / 失败判定
-//   属 Story 1.16（AC-H1 明令不许在本 story 动它）。它现在只是随 `Progress`
-//   原样带过，让 1.15 序列化时形状就已经是对的。
-//
-// ⚠️ **不入 `State`** —— 与 `view` / `selectedEntryId` 不同，`progress` 是
-//   **业务事实**而非 UI 态：它要被存档（1.15）。但它仍然不进 reducer，
-//   因为 reducer 的输入输出必须是一局之内的状态，而它是跨局的（架构决策 5）。
-
-/**
- * 跨局进度。唯一的变更点是 {@link applyAction} 末尾那行 `advanceProgress`。
- *
- * ⚠️ `currentUnitIndex` 初值是 **0**，与裁决 3 逐字一致（「本 story 初值 0」）。
- *   `[DS]` 交付时曾取 `1`，理由写作「AC-B5『1 起』」—— **AC-B5 全文没有「1 起」**
- *   （它只讲键名逐字锁死与 `readonly` 宽窄）。那是 R-37 的凭记忆改判据。
- *   `[CR]` 2026-10-16 已裁决**改回 0**，并同时删掉 `core/hud.ts` 里自加的「1 起」注释。
- *   ⇒ 0 基还有一条独立佐证：裁决 3 逐字写「**不用** `progress.currentUnitIndex + 1`」，
- *     那句话预设的正是 0 基。
- *   ⚠️ 改这个数前先看 `docs/rules/range-and-balance.md`（R-20..R-24）——
- *     它会被 1.15 **逐字序列化进存档**，基错了只能走迁移。
- *   （显示路径不依赖它：`ProgressBar` 用 `state.value.unitNumber`，故此改动对 HUD 可见输出零影响。）
- */
-export const progress: Ref<Progress> = ref({ currentUnitIndex: 0, masteredWordIds: [] })
 
 // ── 视图状态（Story 1.10 / 裁决 1）────────────────────────────────────────
 //
@@ -570,6 +620,18 @@ export function reportImageFailure(optionId: OptionId): void {
  * ⚠️ **用 `UNITS.some` 而不是 `getUnit` + try/catch**：内容层「这个单元没录」
  *   抛错是刻意设计，不是失败路径 —— 用异常表达一个**预期状态**，
  *   会把正常结局记成降级（1.17 的面板会给孩子报一个不存在的故障）。
+ *
+ * 🔥📎 **Story 1.19 / 裁决 5 —— 这条判据隐含「一局 = 一个单元」，1.19 起不再成立。**
+ *   本函数**刻意保持原样**（改关卡推进语义属 `[CC]`，本 story 只登记不擅改，R-35）。
+ *   但后果要写在这里，因为它从「一个理论隐患」变成「一个带日期的 bug」：
+ *     · 1.19 起「一局」是**至多 10 题**，单元 1 因此变成 **4 局**；
+ *     · 于是**每一局通关**都会命中本函数的第一条判据；
+ *     · 今天它被第二条（下一个单元录了没有）挡住 —— Epic 1 只录了单元 1 ⇒ 恒 false；
+ *     · **Story 2.5 录入单元 2 的那一天，第二条放行** ⇒ 打完单元 1 的**第一局**
+ *       就被推进到单元 2，剩下 27 个词**永久学不到**。
+ *   ⇒ 已登记 `deferred-work.md`，**恢复条件写死为「Story 2.5 录入单元 2 之前」**。
+ *   ⚠️ 正确的修法是让「本单元全部词已掌握」成为推进条件，而不是「打了一局」——
+ *     但那是关卡推进语义的产品决策，**不许在本 story 顺手改**。
  */
 function hasNextUnit(next: State): boolean {
   if (next.phase.kind !== 'level-complete') return false
