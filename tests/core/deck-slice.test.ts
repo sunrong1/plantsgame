@@ -349,15 +349,18 @@ describe('G173 —— 相邻两题的塔型不同（Story 1.20 / A1..A3、裁决
   })
 
   it('① 非合规输入被重排成「相邻不同型」（A1）', () => {
-    const out = sliceDeckForLevel(deckOf(7, 0, VIOLATING), [])
+    const source = deckOf(7, 0, VIOLATING)
+    const out = sliceDeckForLevel(source, [])
     expect(
       sameTypeAdjacencies(out),
       '重排之后仍有相邻两题同型 —— 一局打完孩子会连着见同一株植物',
     ).toEqual([])
-    // ⚠️ 逐字钉住顺序：这一条顺带证明**它不是洗牌**（洗牌会把 e0 挪走）。
-    expect(ids(out), '不是洗牌，是最小必要的交换').toEqual([
-      'e0', 'e2', 'e1', 'e4', 'e3', 'e5', 'e6',
-    ])
+    // ⚠️📎 **`[CR]` 2026-10-19 按 R-57 改判据**：这一条原先逐字钉住输出等于
+    //   `['e0','e2','e1','e4','e3','e5','e6']`，那是**旧单向贪心恰好产出的那一个排列**。
+    //   判据比豁免项细：合规排列**不唯一**，钉死一个就会把「换一种同样正确的排法」
+    //   判成回归 —— 真正的判据是上面那条「零相邻同型」。
+    //   「不是空转」交给下面这两条，它们不依赖具体排列：⑤ 钉确定性，⑥ 钉内容守恒。
+    expect(ids(out), '输入本来就不合规，输出却与输入同序 —— 重排没生效').not.toEqual(ids(source))
   })
 
   it('② 已合规输入返回原序，逐条 id 与塔型都不变（A2 —— 硬 AC）', () => {
@@ -381,18 +384,29 @@ describe('G173 —— 相邻两题的塔型不同（Story 1.20 / A1..A3、裁决
     expect(ids(sliceDeckForLevel(source, [])), '无解时必须退回原序').toEqual(ids(source))
   })
 
-  it('④ 局部无解时降级，**且只降级那几处**（A3 的部分形态）', () => {
-    // `direct slow slow slow slow`：第 2 位起后面全是 slow ⇒ 换不出来。
+  it('④ 局部无解时降级，且**降级到最优**，不抛错（A3 的部分形态）', () => {
+    // `direct slow slow slow slow`：4 条 slow / 1 条 direct，n=5 ⇒ `maxCount 4 > ceil(5/2)=3`
+    //   ⇒ 「相邻不同型」在数学上**无解**。
     // 与 ③ 分开写成两条：一条判「全同型」，一条判「局部无解」，
     // 二者的坏法不同，**判据粒度不能粗于豁免项**（R-51 第四种形态 / AC 3.3）。
-    const out = sliceDeckForLevel(deckOf(5, 0, ['direct', 'slow', 'slow', 'slow', 'slow']), [])
-    expect(ids(out), '换不出来的位置必须保持原序，不许丢条目也不许抛错').toEqual([
-      'e0', 'e1', 'e2', 'e3', 'e4',
-    ])
+    //
+    // ⚠️📎 **`[CR]` 2026-10-19 按 R-57 改判据**：这一条原先断言输出等于原序
+    //   `['e0'..'e4']` 且 `sameTypeAdjacencies` 等于 `[2,3,4]`（3 处）。
+    //   两个问题：① 「降级 = 保持原序」只在**前面没换过**的输入上成立，
+    //   那是实现细节不是 AC（A3 只承诺不抛错）；② `[2,3,4]` 比**最优**还差一处
+    //   ——穷举实测该多重集的最少相邻同型数是 **2**，旧的贪心产出 3 处，
+    //   等于把「做得不够好」钉成了期望值。
+    // ⇒ 现在只断言**真 AC**：不抛错、条数守恒、相邻同型数 = 最优 2 处。
+    const source = deckOf(5, 0, ['direct', 'slow', 'slow', 'slow', 'slow'])
+    let out: readonly DeckEntry[] = []
+    expect(() => {
+      out = sliceDeckForLevel(source, [])
+    }, '无解时必须降级，绝不抛错').not.toThrow()
+    expect(out, '降级不许靠丢条目达成').toHaveLength(source.length)
     expect(
-      sameTypeAdjacencies(out),
-      '判据本该只在这里降级 —— 若全绿说明连降级路径都被改成了乱序',
-    ).toEqual([2, 3, 4])
+      sameTypeAdjacencies(out).length,
+      '无解时的降级必须落到**最优**（该多重集的最少相邻同型数是 2），不是随便凑',
+    ).toBe(2)
   })
 
   it('⑤ 确定性：同一份输入连跑三次，逐条输出完全相同（A4 / 零随机）', () => {
@@ -433,5 +447,103 @@ describe('G173 —— 相邻两题的塔型不同（Story 1.20 / A1..A3、裁决
     expect(result).not.toBe(source)
     result.splice(0, result.length)
     expect(source).toHaveLength(10)
+  })
+})
+
+// ── G175 ─────────────────────────────────────────────────────────────────
+
+describe('G175 —— 「有解就必须排干净」（Story 1.20 `[CR]` 补，A1 的可解分支）', () => {
+  /**
+   * ⚠️📎 **这一组存在的理由：G173 对 F1 那一整类坏法零覆盖。**
+   *
+   * 主评审 2026-10-19 实测（变异 **CR1**）：把
+   * `return reorderAdjacentTowerTypes(pending.slice(…))` 改回 `return pending.slice(…)`、
+   * `unit-01.json` **一个字不动** ⇒ **69 条里只有 `G173①` 红，`G174` 三条全绿**。
+   * 根因：`G173①` 的 `VIOLATING` 恰好是贪心**能**修的形状，`G173④` 的夹具**真无解**。
+   * ⇒ 「尾部同型**且有解**」这一类，此前一条夹具都没有。
+   */
+  function sameTypeAdjacencies(deck: readonly DeckEntry[]): number[] {
+    const hits: number[] = []
+    for (let i = 1; i < deck.length; i += 1) {
+      if (deck[i].towerType === deck[i - 1].towerType) hits.push(i)
+    }
+    return hits
+  }
+
+  /** 可解判据：`maxCount ≤ ceil(n/2)`（鸽笼的紧条件）。n=5 的 4:1 ⇒ 无解。 */
+  function isSolvable(types: readonly TowerType[]): boolean {
+    const counts = new Map<TowerType, number>()
+    for (const t of types) counts.set(t, (counts.get(t) ?? 0) + 1)
+    return Math.max(...counts.values()) <= Math.ceil(types.length / 2)
+  }
+
+  /** 旧单向贪心在这个形状上会放弃：同型集中在**尾部**，伙伴只在**左侧**。 */
+  const TAIL_RUN: readonly TowerType[] = ['direct', 'direct', 'slow', 'slow', 'slow']
+
+  it('判据自测：夹具本身「非合规」且「有解」（R-53 —— 两条前提都要先证明）', () => {
+    expect(sameTypeAdjacencies(deckOf(5, 0, TAIL_RUN)), '夹具必须本来就不合规').toEqual([1, 3, 4])
+    expect(isSolvable(TAIL_RUN), '夹具必须是有解的，否则这条会退化成 G173④ 那条降级判据').toBe(true)
+    expect(isSolvable(['direct', 'slow', 'slow', 'slow', 'slow']), '对照组：4:1 确实无解').toBe(false)
+  })
+
+  it('⑨ 尾部同型且有解 → 排干净（旧实现在这里会放弃，A1）', () => {
+    // ⚠️ 这一条正是旧实现的漏网形状：同型集中在尾部，而往后找不到伙伴。
+    const out = sliceDeckForLevel(deckOf(5, 0, TAIL_RUN), [])
+    expect(
+      sameTypeAdjacencies(out),
+      '尾部同型且**有解**（2:3，max 3 ≤ ⌈5/2⌉）仍留了相邻同型 —— 有解就必须排干净',
+    ).toEqual([])
+  })
+
+  it('⑩ 单元 1 的真实反例形状（单点录入扰动）也能排干净', () => {
+    // 把单元 1 前 10 条的第 8 题由 `slow` 改成 `direct` —— 这是 Epic 2 手工录入
+    // 13 个新单元时**预期内的失败模式**，不是假想的输入。
+    // `[CR]` 实测旧实现在这里产出 `… direct aoe direct direct`（末两题同型）。
+    const perturbed: readonly TowerType[] = [
+      'direct', 'slow', 'aoe', 'direct', 'slow', 'aoe', 'direct', 'direct', 'aoe', 'direct',
+    ]
+    expect(isSolvable(perturbed), '反例必须是有解的').toBe(true)
+    expect(
+      sameTypeAdjacencies(sliceDeckForLevel(deckOf(10, 0, perturbed), [])),
+      '单点录入扰动导致的重排失败 —— 正是本 story 要拦的那一类',
+    ).toEqual([])
+  })
+
+  it('⑪ 穷举：长度 1..10 的**全部**三型序列 —— 有解的必零相邻同型，无解的不抛错', () => {
+    // ⚠️ 为什么穷举而不用抽样：A1 的成立与否只取决于塔型的**多重集 + 排列**，
+    //   3 型 × 长度 ≤ 10 的空间只有 88572 条 —— 小到可以**证明**，不必抽样。
+    //   「抽样没抽到」与「不存在反例」在守卫里长得一模一样（R-50 第 4 条的教训）。
+    const TYPES: readonly TowerType[] = ['direct', 'slow', 'aoe']
+    let solvable = 0
+    let unsolvable = 0
+    for (let n = 1; n <= 10; n += 1) {
+      for (let code = 0; code < 3 ** n; code += 1) {
+        let rest = code
+        const types: TowerType[] = []
+        for (let i = 0; i < n; i += 1) {
+          types.push(TYPES[rest % 3])
+          rest = Math.floor(rest / 3)
+        }
+        const source = deckOf(n, 0, types)
+        const out = sliceDeckForLevel(source, [])
+        // 条数与内容守恒（A1 不许靠丢条目达成）—— 穷举顺带覆盖，不再单列判据。
+        expect(out.length, `长度 ${n} 的 ${types.join(',')} 丢了条目`).toBe(n)
+        if (isSolvable(types)) {
+          solvable += 1
+          expect(
+            sameTypeAdjacencies(out),
+            `长度 ${n} 的 ${types.join(',')} 本来有解却留了相邻同型（A1）`,
+          ).toEqual([])
+        } else {
+          unsolvable += 1
+        }
+      }
+    }
+    // ⚠️ 自测：确认这段穷举**真的覆盖了无解输入** —— 否则降级路径就是零覆盖。
+    //   穷举实测（2026-10-19）：长度 1..10 共 88572 条，其中**有解 70191 条、无解 18381 条**
+    //   （无解按长度：n2:3 / n3:3 / n4:27 / n5:33 / n6:219 / n7:297 / n8:1731 / n9:2505 / n10:13563
+    //     —— 短序列与极端偏斜的多重集才是无解的来源）。
+    expect(unsolvable, '穷举里一条无解输入都没抽到 ⇒ 降级路径这条就没被覆盖').toBe(18381)
+    expect(solvable, '可解输入的条数变了 ⇒ 穷举空间或判据被改动过，需要复核').toBe(70191)
   })
 })

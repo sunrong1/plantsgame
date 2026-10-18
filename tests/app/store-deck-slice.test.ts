@@ -225,16 +225,45 @@ describe('G174 —— 真实单元 1 上「相邻不同型」由代码保证（S
   })
 
   it('切片结果在真实词表上没有任何相邻同型（A1）', () => {
-    // 🔥 这条是「规则由代码保证」与「规则由手写 JSON 碰巧满足」的**分界线**：
-    //   JSON 合规时，两者都绿；JSON 被改坏时，只有**这条**能区分出来
-    //   —— 前提是切片实现也被破坏（成对变异 M196，见 story 文档）。
-    for (const mastered of [[], ALL_IDS.slice(0, 10), ALL_IDS.slice(0, 30), ALL_IDS]) {
-      const deck = core.sliceDeckForLevel(content.entriesOf(1), mastered)
+    // 🔥 这条是「规则由代码保证」与「规则由手写 JSON 碰巧满足」的**分界线**。
+    //
+    // ⚠️📎 **`[CR]` 2026-10-19 重写**：原版四个 `mastered` 全是「前 N 条」这种**连续**切法，
+    //   而单元 1 在 JSON 原序上本就合规（紧邻的「前置」那条已断言）⇒ 任何连续切片都是
+    //   一段合规序列的**子序列**，相邻关系是它的子集 ⇒ **必然合规**。
+    //   ⇒ 把整个重排删掉，这一条照样全绿。主评审实测（变异 CR1）确认：69 条里
+    //   **只有 `G173①` 红**，本组三条全绿。**这一条原本对本特性零鉴别力。**
+    //
+    // 现在这一轮用的是**留下两处「洞」**的进度：pending 因此不是连续段，
+    // 其原始顺序**自己就带相邻同型**（下面那条自测钉住这个前提）⇒ 拆掉重排它必红。
+    const holey = ALL_IDS.filter(
+      (_, i) => ![10, 13].includes(i) && i < 29,
+    )
+    for (const [label, mastered] of [
+      ['开局（连续 10 条）', [] as string[]],
+      ['第一局后（连续 20 条）', ALL_IDS.slice(0, 10)],
+      ['前三局后（连续 30 条）', ALL_IDS.slice(0, 30)],
+      ['留下两处「洞」的非连续进度', holey],
+    ] as const) {
+      const deck = core.sliceDeckForLevel(content.entriesOf(1), [...mastered])
       expect(
         sameTypeAdjacencies(deck),
-        `已掌握 ${mastered.length} 条的那一局仍有相邻同型 —— 重排没生效`,
+        `${label}（已掌握 ${mastered.length} 条）的那一局仍有相邻同型 —— 重排没生效`,
       ).toEqual([])
     }
+  })
+
+  it('判据自测：非连续进度那一轮的**原始顺序本来就违规**（R-53 —— 没有它这条是恒绿的）', () => {
+    // ⚠️ 没有这一条，上面第 4 轮就退化成「和另外三轮一样的恒绿断言」——
+    //   这正是主评审实测到的那一整类零覆盖。
+    const mastered = new Set(
+      ALL_IDS.filter((_, i) => ![10, 13].includes(i) && i < 29),
+    )
+    const rawPending = content.entriesOf(1).filter((e) => !mastered.has(e.entryId))
+    expect(rawPending.length, '夹具前提：pending 必须够切一局（≥ 10 条）').toBeGreaterThanOrEqual(10)
+    expect(
+      sameTypeAdjacencies(rawPending),
+      '这一轮已经合规了 ⇒ 拆掉重排它也绿 ⇒ 白白浪费一轮断言',
+    ).not.toEqual([])
   })
 
   it('四局连起来仍然正好是整个词表（原序承诺未被重排破坏，A2 的接线侧）', () => {

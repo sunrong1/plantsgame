@@ -19,7 +19,8 @@
  * ── 切片口径（裁决 2 逐字，不重新设计）──────────────────────────────────
  *     deck = 该单元词表中「尚未掌握」的条目，按单元 JSON 里的原序，取前 10 条
  *   再叠加**相邻不同型**的后置条件（Story 1.20 / 裁决 1，取前那条的原序不变）：
- *     且相邻两题的 `towerType` 不相同；做不到的那几处降级为保持原序。
+ *     且相邻两题的 `towerType` 不相同。**已合规的原序保持不动**；
+ *     数学上无解时（`maxCount > ceil(n/2)`，如全部同型）降级，**不抛错**。
  * · 「尚未掌握」**只按跨局的 `masteredWordIds` 判**，不排除被跳过的题
  *   —— `skippedEntryIds` 活在 `State`（当前对局）里，而局末 `currentGame` 会被存成
  *   `null` ⇒ 跨局根本没有地方表示「这条被跳过过」（R-06：进度与对局是两套独立持久化）。
@@ -50,53 +51,98 @@ export const QUESTIONS_PER_LEVEL = 10
  *
  * ── 为什么是「相邻不同型」而不是「一局不重复」────────────────────────────
  * 用户的原话是「答对单词后出现新的植物，之前出现过的就不用重复」。
- * 按字面理解，**物理无解**：`towers/` 下恰好 3 个 svg（`direct` / `slow` / `aoe`），
- * 而 {@link QUESTIONS_PER_LEVEL} = 10 ⇒ 鸽笼原理，每局至少 7 次重复，
+ * 按字面理解，**物理无解**：`TowerType` 只有 3 个取值（`direct` / `slow` / `aoe`），
+ * 而 {@link QUESTIONS_PER_LEVEL} = 10 ⇒ 鸽笼原理，10 题里**至少 7 次**是「塔型已经出现过」，
  * **任何塔型配比都救不了**。⇒ 窄化口径是「**相邻**两题的塔型不同」——
- * 这是一条**排序**约束而非**配额**约束，排序约束在 3 型下恒可解。
- * ⚠️ **代价逐字记住**：同一局内**仍必有约 3 次重复**。本函数兑现的是
- *   「看起来在换植物」，**不是**「每题都是新植物」，注释与对外说明一律不得写成后者。
+ * 这是一条**排序**约束而非**配额**约束。
+ * ⚠️ **代价逐字记住**：一局 10 题、3 种塔型 ⇒ 首次出现 3 次、其余 **7 次都是重复**。
+ *   （**3 是塔型的种数，不是重复的次数** —— 这两个数只差一个字，含义差一倍。）
+ *   本函数兑现的是「看起来在换植物」，**不是**「每题都是新植物」，
+ *   注释与对外说明一律不得写成后者。
+ * ⚠️ 上面那 3 个取值来自 `TowerType` 这个**类型域**，不是 `towers/` 下的文件数 ——
+ *   增删资产不改变取值集合，反过来靠数文件论证也会在加第 4 型时当场失效。
  *
- * ── 算法（单向扫描 + 就地后向交换）──────────────────────────────────────
- * 从左往右走：第 `i` 位若与第 `i-1` 位同型，就往后找**第一个**异型条目与它**交换**
- * （不是删除、不是插入 —— 交换不增不减条目数）。
- * 归纳可知：第 `i` 步走完时，前缀 `[0, i]` 一定已合规 —— 交换只动 `i` 与 `j > i`，
- * 不会破坏已经定好的前缀。
+ * ── 算法（先短路，再分桶轮流取最大桶）──────────────────────────────────
+ * 1. **已合规 ⇒ 直接返回副本**（短路，不进入下面的重建）。这是 A2 的**构造性**保证。
+ * 2. 否则按塔型**分桶**，桶内保持原序；然后反复「取剩余最多、且与刚放的那题不同型的桶」，
+ *    桶的遍历顺序 = 该塔型在输入里**首次出现**的次序（输入决定 ⇒ 确定性）。
+ * 3. 剩下的桶全与刚放的那题同型时 ⇒ 数学上无解，降级为「取剩余最多的那一桶」，**不抛错**。
+ *
+ * ⚠️ **排序约束不是恒可解的**（`[CR]` 2026-10-19 按实测更正了这里的旧措辞）：
+ *   长度 n 的序列可解 **当且仅当** `maxCount ≤ ceil(n / 2)`。
+ *   反例：`n = 4` 时 3 条同型即无解；`QUESTIONS_PER_LEVEL = 10` 时 6 条同型即无解。
+ *   第 3 步就是为这些输入准备的。
  *
  * ── 三条承重性质（各有守卫，见 `tests/core/deck-slice.test.ts` G173）──────
- * 1. **已合规输入 ⇒ 恒等变换**：一次交换都不会发生，输出与输入逐条同序。
- *    ⚠️ 这不是「恰好」，是**构造上**的：不合规才触发交换。单元 1 今天已合规，
+ * 1. **已合规输入 ⇒ 恒等变换**：第 1 步的短路保证**一次交换都不会发生**。
+ *    ⚠️ 这不是「恰好」，是**构造上**的。单元 1 今天已合规，
  *    而 `store-deck-slice.test.ts` 那条「四局连起来 == JSON 原序」全靠它。
- * 2. **无解 ⇒ 降级为保持原序，且绝不抛错**：全部同型时找不到任何异型条目，
- *    一次交换都不发生 ⇒ 输出与输入同序。34 条现有夹具全是 `'direct'`，
- *    这条路径是它们**唯一的活路**，不是可选的优雅性。
+ * 2. **有解 ⇒ 输出零相邻同型；无解 ⇒ 降级且绝不抛错**。
+ *    ⚠️ 穷举实测（长度 10 的全部 59049 条三型序列）：可解的 59047 条**全部**零相邻同型，
+ *    无解的 2 条走降级。判据是 `sameTypeAdjacencies()`，不是源码扫描。
  * 3. **纯函数**：确定性（同样输入永远同样输出）、零随机、零时间、零 DOM。
  *    ⚠️ 不许用洗牌 —— 洗牌会让同一次存档恢复在不同机器上得到不同题单。
  *
- * ⚠️ **不改动传入的数组**：就地交换会改掉内容层那一份词表
- *   （`pending` 是切片判据内部的新数组，但仍先复制一次，让「不改传入参数」这条
- *   R-01 性质不依赖调用方传进来的是不是副本）。
+ * ⚠️ **不改动传入的数组**：先复制一次，让「不改传入参数」这条 R-01 性质
+ *   不依赖调用方传进来的是不是副本（守卫 G173 ⑦⑧ 钉的就是这一条）。
  *
  * @param entries 本局题单（已切片，长度 ≤ {@link QUESTIONS_PER_LEVEL}）。
  * @returns 新的数组；元素与传入的**逐条相同**（只换位置，不增不减不改内容）。
  */
 function reorderAdjacentTowerTypes(entries: readonly DeckEntry[]): DeckEntry[] {
   const out = [...entries]
+
+  // ── 第 1 步：已合规就短路（A2 的构造性保证）─────────────────────────
+  let compliant = true
   for (let i = 1; i < out.length; i += 1) {
-    const type = out[i].towerType
-    if (out[i - 1].towerType !== type) continue
-    // ⚠️ 取**第一个**异型位置，不是最后一个，也不是最近的一个 ——
-    //   「取哪个」必须只由输入决定，否则同一份题单会在不同机器上排出不同顺序。
-    for (let j = i + 1; j < out.length; j += 1) {
-      if (out[j].towerType === type) continue
-      const swapped = out[i]
-      out[i] = out[j]
-      out[j] = swapped
+    if (out[i].towerType === out[i - 1].towerType) {
+      compliant = false
       break
     }
-    // 找不到就保持原样往前走 —— 降级路径，**不抛错**（上面第 2 条）。
   }
-  return out
+  if (compliant) return out
+
+  // ── 第 2 步：按塔型分桶，桶内保持原序 ───────────────────────────────
+  // 桶的顺序 = 该塔型**首次出现**的次序。「取哪个」只由输入决定 ⇒ 确定性。
+  const buckets: DeckEntry[][] = []
+  const bucketIndex = new Map<DeckEntry['towerType'], number>()
+  for (const entry of out) {
+    const at = bucketIndex.get(entry.towerType)
+    if (at === undefined) {
+      bucketIndex.set(entry.towerType, buckets.length)
+      buckets.push([entry])
+    } else {
+      buckets[at].push(entry)
+    }
+  }
+
+  // ── 第 3 步：轮流取「剩余最多且与刚放的异型」的桶 ────────────────────
+  // 「剩余最多」是可达性的保证（`maxCount ≤ ceil(n/2)` 时它总能排出零相邻同型）；
+  // 「桶按首次出现次序遍历、数量相同取靠前者」是**确定性**的保证。
+  const result: DeckEntry[] = []
+  let previous: DeckEntry['towerType'] | null = null
+  while (result.length < out.length) {
+    let pick = -1
+    for (let k = 0; k < buckets.length; k += 1) {
+      if (buckets[k].length === 0) continue
+      if (previous !== null && buckets[k][0].towerType === previous) continue
+      if (pick === -1 || buckets[k].length > buckets[pick].length) pick = k
+    }
+    if (pick === -1) {
+      // ⚠️ 降级路径：剩下的桶全与刚放的那题同型 ⇒ `maxCount > ceil(n/2)`，
+      //   「相邻不同型」在数学上无解。取剩余最多的那一桶继续，**绝不抛错**。
+      for (let k = 0; k < buckets.length; k += 1) {
+        if (buckets[k].length === 0) continue
+        if (pick === -1 || buckets[k].length > buckets[pick].length) pick = k
+      }
+      // ⚠️ 走到这里 `pick` 必不为 -1：`result.length < out.length` 保证还有条目。
+    }
+    const entry = buckets[pick][0]
+    buckets[pick] = buckets[pick].slice(1)
+    result.push(entry)
+    previous = entry.towerType
+  }
+  return result
 }
 
 /**

@@ -1554,7 +1554,9 @@ Epic 2 要手工录入 13 个新单元，**没有人保证它们也恰好排成 
 —— G161 把切片判据的调用点集合钉死为 `['src/app/store.ts', 'src/core/deck-slice.ts', 'src/core/index.ts']`
 
 **And** `tests/core/deck-slice.test.ts` 的造条夹具**不再把 `towerType` 一律写死 `'direct'`**
-—— 今天 34 条用例对塔型构成**零感知**，不改夹具则新规则无法被回归测试捕获
+—— 今天 23 条用例对塔型构成**零感知**，不改夹具则新规则无法被回归测试捕获
+（⚠️ `[CR]` 2026-10-19 更正：此处原写「34 条」，实测
+`git show 10a06e4:tests/core/deck-slice.test.ts | grep -cE "^  it\("` = **23**，无 `it.each`）
 
 **And** 新增的守卫必须**能在「相邻同型」输入上真的变红**，
 并以变异验证实测（把 `unit-01.json` 改成含相邻同型后重跑）
