@@ -44,13 +44,14 @@
 #   epics.md 的销项说明处理。
 
 generated: 2026-10-12
-last_updated: 2026-10-19  # [CC] 完成：4 条待裁决全部裁决（用户选「局内相邻不重复」），
-                        #   注入 Story 1.20（backlog）；1-19 同步更正 AC-B 取序口径 + 给
-                        #   「不要为了凑整数去重排词表顺序」那条反向禁令加显式边界
-                        #   🔥 单元 1 实测**已天然满足**相邻不同型（全 37 条相邻重复 = 0），
-                        #     但 sliceDeckForLevel 是三行纯函数、完全不看 towerType ⇒
-                        #     今天的满足纯属手写 JSON 的巧合，1.20 的价值在 Epic 2 的 13 个新单元
-                        #   1-19 状态**仍留 in-progress** —— 与本轮无关：
+last_updated: 2026-10-19  # [CS] 完成：Story 1.20「相邻不同型」上下文文件已生成 → ready-for-dev
+                        #   （[CC] 注入 + 取证见 planning-artifacts/sprint-change-proposal-2026-10-19.md）
+                        #   🔥 三条承重约束写进了 story：已合规输入必须**恒等**（否则打红
+                        #     store-deck-slice 那条「四局连起来 == JSON 原序」）、全同型输入必须
+                        #     **降级恒等且不抛错**（34 条现有夹具全是 'direct'）、守卫必须是
+                        #     **行为判据**而非源码扫描（M172′ 有等比缩放逃逸的实测记录）
+                        #   起号已 grep 实测：G173 / M192
+                        #   1-19 状态**仍留 in-progress** —— 与 1.20 无关：
                         #   Task 3 还差 3.4 / 3.5 / 3.6 / 3.7 / 3.8 / 3.10 / 3.11 七条真机实测
                         # 1-19 真机复验：3.9（中途退出重进）与 6.11（横屏旋转对照）已验过并勾上
                         #   ⚠️ Task 3 仍差 3.4 / 3.5 / 3.6 / 3.7 / 3.8 / 3.10 / 3.11
@@ -114,7 +115,7 @@ development_status:
   1-18-目标平板落地-竖屏布局-离线与部署: review
   1-19-单元-1-首次试玩验证-epic-1-的生死线: in-progress
   # 1-20 由 [CC] 2026-10-19 注入；理由与取证见 1-19 的 Change Log 与 planning-artifacts/sprint-change-proposal-2026-10-19.md
-  1-20-相邻不同型-把植物不重复从巧合变成代码保证: backlog
+  1-20-相邻不同型-把植物不重复从巧合变成代码保证: ready-for-dev
   1-retrospective: optional
   epic-2: backlog
   2-1-词图产能验证: backlog
