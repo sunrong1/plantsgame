@@ -1971,3 +1971,59 @@ M101–M110 共 25 红无 0 红），**无一条守卫假绿**。以下 8 条真
 - **恢复条件** 用户对「植物不重复出现」这条需求给出裁决之后。
 
 - — `_bmad-output/implementation-artifacts/1-19-单元-1-首次试玩验证-epic-1-的生死线.md`
+
+## Deferred from: code review of 1-19-单元-1-首次试玩验证-epic-1-的生死线 `[CR]` 第六轮 — 批次 A（生产代码 src/）（2026-10-19）
+
+> 评审范围 `cd49c679..168054c` 的 **src/ 批次**（1266 行 / 10 文件）。三层对抗评审，14 条原始发现 → 11 条保留 → 2 条驳回。
+
+### 16. `jumpToTurn` 目标回合极大时，单击可产生约 1500 次 `localStorage.setItem`
+
+- `src/app/store.ts` 的 `jumpToTurn`（`MAX_JUMP_STEPS = 500`）+ 1.19 给写盘表新增的 `awaiting-answer` 那一格（`src/core/effects.ts`）。
+- 每个 jump 步走 `startRound()` 的三连同步 dispatch，其中两次触发写盘；加上每次 `answer` 一次 ⇒ 最坏 500 × 3 ≈ 1500 次写盘集中在一次点击里。
+- `store.ts` 里那条 500 次写盘的注释是 1.19 之前就有的；**新增的 `awaiting-answer` 格把它大约翻了一倍**，本 story 没有加去抖或批量。
+- ✅ 只影响调试面板（生产包打不开，见 1.19 裁决 6）⇒ 对孩子零影响。
+- **恢复条件** 若把 `jumpToTurn` 暴露到生产包，或低端平板上调试时观察到卡顿时。
+
+### 17. 一次 `startRound()` 里连续两次写盘（`round-over` 紧接 `awaiting-answer`）
+
+- 1.19 `[CR]` 第一轮给写盘表补了 `awaiting-answer`，而 `startRound()` 的 `endBuild → resolveRound → continueRound` 是**同步三连** ⇒ `round-over` 那份刚写完就被 `awaiting-answer` 覆盖。
+- ⚠️ 规格注释逐字说了「**不要**因此把 `round-over` 那格删掉」（旧存档已经出去了）⇒ **这是有意保留的**，但新存档确实每次多一次写盘。
+- **恢复条件** 存档深层校验加固时（那时可以论证把 `round-over` 那格降级成只在真异常时写）。
+
+### 18. G163 用 200 字符窗口的纯函数正则守「切片读的是跨局进度」，接线层变形可绕过
+
+- 判据：`/sliceDeckForLevel\([\s\S]{0,200}?progress\.value\.masteredWordIds/`（`tests/guards/deck-slice-boundaries.test.ts`）。
+- 写成 `const ids = progress.value.masteredWordIds; … sliceDeckForLevel(entriesOf(n), ids)` 这类**抽成局部变量**的形态仍落在窗口内（绿），而把实参换成 `[]` 且中间超过 200 字符的形态会绕过。
+- ✅ **行为测试兜住了**：`tests/app/store-deck-slice.test.ts` 的「第二局与第一局零交集」会红。这与 1.18「纯函数正则护不住接线层」是同一条已登记的教训。
+- **恢复条件** 想把 G163 从「文本判据」升级为「接线行为判据」时。
+
+### 19. 横屏分栏的 CSS 特异度平局：G166/G167 只查源码文本，查不出真机层叠结果
+
+- `src/styles/responsive.css` 里 `.level-view .battle-grid` 是 `(0,2,0)`，SFC scoped 的 `.battle-grid[data-v-*]` **也是 `(0,2,0)`**；赢面取决于源码顺序与 Vite 注入次序，而这两条守卫**只断言那行文本存在**。
+- 同理，`.level-view` 上的 `grid-template-areas` / `-columns` / `-rows` **没有 `!important` 保护**（全仓唯一的 `!important` 只加在 `display` 上）⇒ 将来 `BattleField.vue` 里加一句 `height: 100%` 或 `grid-template-areas: …`，横屏会静默退回它要修的那个 bug，而**全套守卫绿灯**。
+- ✅ 今天的实测机型（2000×2560 / 1200×1920）横屏正常；`.battle-grid` 今天确实不声明 `height` / `align-self`。
+- **恢复条件** 需要在真浏览器里做一次层叠实测（jsdom 不做布局，R-01 说的那类假绿），或改用真浏览器 e2e 断言 `getComputedStyle`。
+
+### 20. `.level-outcome` 不在 `grid-template-areas` 里，靠 `position: absolute; inset: 0` 定位
+
+- 若将来把它移进正常流，网格模板没有它的槽位 ⇒ 要么落进自动生成的空格（只是不好看），要么与其他面板重叠（功能性）。G168 抓得到「模板变了」，但诊断信息会指向「网格缺一个面板」而不是「横屏以这个特定方式坏掉了」。
+- **恢复条件** 横屏布局下一次结构性改版。
+
+### 21. `grid-template-columns: minmax(0, 1fr) 25rem` 的 `25rem` 没有设计令牌锚点
+
+- 注释把它标成「刻意的非令牌」。将来若 Epic 要改右栏宽度，只能改这里，且没有 token 可对照（R-56 说的「断言不读 tokens 就写死字面值」那类债）。
+- **恢复条件** 横屏布局改版，或引入布局类令牌时。
+
+### 22. `sliceDeckForLevel` 返回**可变**的 `DeckEntry[]`，与「纯函数 + 不改动传入」的注释纪律不成类型级约束
+
+- 注释逐字承诺「不改动传入的两个参数」，但返回类型是 `DeckEntry[]` 而非 `readonly DeckEntry[]`。将来任何调用点写 `state.deck.sort(...)` / `.push(...)` 会静默改到 `state.deck`（它会被 `JSON.stringify` 存盘），而**没有任何类型或测试会红**。
+- ⚠️ 与本文档更早的一条同源（元素是内容层共享引用那条）—— 两者都是「纯度只写在注释里，没落到类型上」。
+- **恢复条件** 若要把 `core/` 的返回类型系统性收紧为 `readonly`（那是一次跨模块的签名改动）。
+
+### 23. 建造期锁定时，反馈文案仍是「再想想」，与「选项已置灰不可点」在观感上打架
+
+- `AnswerFeedback` 的文案沿用既有组件；`[CR]` 第四轮已**明确裁决保留**（理由逐字：「`pickedRight` 读的是 `masteredEntryIds`，跨刷新仍成立，且**答错也进建造期**（AC-4）时它会说『再想想』，不是假陈述」），且那条裁决经过用户 `[CC]`。
+- ⚠️ 新增的 `locked` 态确实让观感更矛盾（孩子看到选项全灰 + 一个「再想想」），但**这不是实现缺陷，是文案取舍**，且已裁决过。
+- **恢复条件** 平板真机试玩时若家长/孩子实际表现困惑（AC-D5 的观察项），再走 `[CC]` 改文案。
+
+- — `_bmad-output/implementation-artifacts/1-19-单元-1-首次试玩验证-epic-1-的生死线.md`

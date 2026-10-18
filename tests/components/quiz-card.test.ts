@@ -1667,3 +1667,76 @@ describe('G172 —— 建造期的卡面只读：选项必须真的点不动、�
     expect(wrapper.find('.answer-feedback').text()).toBe('答对了')
   })
 })
+
+// 🔥📎 G177 —— 建造期锁定的**视觉与命中**两半都封死（Story 1.19 `[CR]` 第六轮）
+//
+// ⚠️ **判据形态的诚实声明**：本组是**源码文本判据**，不是层叠实测。
+//   本仓库逐字记着「jsdom 不做布局，`getBoundingClientRect` 是假绿」（R-01），
+//   而这两条要守的恰恰是**层叠与命中测试** —— 那只有真浏览器能判。
+//   ⇒ 这里能证明的是「**判据所依赖的那个源码前提**没有被人悄悄改掉」，
+//     不能证明真机上像素正确。平板复验仍是 AC-D5 的责任，本组不替代它。
+describe('G177 —— 建造期锁定：词图不被透明度洗掉 + 触摸设备上不再假可点', () => {
+  // ⚠️ 用文件顶部已 import 的 `?raw` 源码 + `sharedStripComments`（R-52）：
+  //   注释里全是逐字引用，不剥会误判。
+  const optionCard = sharedStripComments(optionCardSource)
+  const questionCard = sharedStripComments(questionCardSource)
+
+  /** 判据本体：`.is-locked` 是否排在 `.is-degraded:not(.is-picked)` **之后**。 */
+  function lockedAfterDegraded(src: string): boolean {
+    const lockedAt = src.indexOf('.option-card.is-locked')
+    const degradedAt = src.indexOf('.option-card.is-degraded:not(.is-picked)')
+    return lockedAt > -1 && degradedAt > -1 && lockedAt > degradedAt
+  }
+
+  it('`.is-locked` 必须排在 `.is-degraded:not(.is-picked)` **之后**（同特异度靠源码顺序决胜）', () => {
+    expect(
+      lockedAfterDegraded(optionCard),
+      '`.is-locked` 排在 `.is-degraded:not(.is-picked)` **之前** —— 两者特异度同为 (0,2,0)，' +
+        '后写的赢，而只有后者设 `opacity: 0.55` ⇒ 建造期 + 破图时那张词图被压到 55%，' +
+        '正是这条规则自己的注释声明要避免的那件事',
+    ).toBe(true)
+  })
+
+  it('判据自测：两种顺序被判据区分开（R-53 —— 不自测就不知道它咬不咬得住）', () => {
+    // ⚠️ 首版的自测夹具是**错的**：用 `slice` 拼一个「顺序反过来」的字符串，
+    //   拼出来的东西根本没有反转顺序，于是自测自己红了。
+    //   ⇒ 改成两份**完整的最小 CSS**，顺序是唯一变量。
+    const degraded = '.option-card.is-degraded:not(.is-picked) {\n  opacity: 0.55;\n}\n'
+    const locked = '.option-card.is-locked {\n  opacity: 1;\n}\n'
+    // ⚠️ 正确的顺序是「degraded 在前、locked 在后」（后写的赢）。
+    //   ⚠️⚠️ **首版把这两行写反了**（拿 `locked + degraded` 当正确形态），
+    //     于是自测自己红了 —— 好在这正是自测存在的意义：它抓的是**判据自己写反**，
+    //     而如果不自测，判据反了也没人知道（R-53）。
+    expect(
+      lockedAfterDegraded(degraded + locked),
+      '判据把「正确的顺序」判成了违规 —— 判据反了',
+    ).toBe(true)
+    expect(
+      lockedAfterDegraded(locked + degraded),
+      '判据抓不住「顺序写反」—— 这条守卫是装饰',
+    ).toBe(false)
+  })
+
+  it('`.is-locked` 必须显式写 `opacity: 1`（不靠源码顺序赢）', () => {
+    const at = optionCard.indexOf('.option-card.is-locked')
+    expect(at, '判据范围消失').toBeGreaterThan(-1)
+    const body = optionCard.slice(at, optionCard.indexOf('}', at))
+    expect(
+      body,
+      '`.is-locked` 没有显式 `opacity: 1` —— 只靠源码顺序压过 `.is-degraded`，' +
+        '任何人往两者之间插一条规则就会静默退回 0.55',
+    ).toMatch(/opacity:\s*1\b/)
+  })
+
+  it('`.question-card__tappable.is-locked` 必须有 `pointer-events: none`（平板上 `cursor` 不可见）', () => {
+    const at = questionCard.indexOf('.question-card__tappable.is-locked')
+    expect(at, '判据范围消失：锁定的可点容器规则找不到了').toBeGreaterThan(-1)
+    const body = questionCard.slice(at, questionCard.indexOf('}', at))
+    expect(
+      body,
+      '🔴 建造期锁着时，题面区在**触摸设备**上仍是假可点：`cursor: default` 在平板上根本不可见，' +
+        '而容器仍挂着 `@click="onReplay"`，守门静默丢弃 ⇒ 孩子点下去什么都没有。' +
+        'AC-D5 逐字说的正是这个（CR 第四轮修的是选项那半，重听入口这半没修完）',
+    ).toMatch(/pointer-events:\s*none/)
+  })
+})

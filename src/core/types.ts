@@ -324,7 +324,14 @@ export type Question = DeckEntry
  *
  * ⚠️ **它不参与 `assertPhaseMirror` 的镜像比对** —— `unlocked` / `sun` 在 `State`
  *   侧各有一份同名字段可比，而 `question` **没有** State 侧对应物，
- *   比对它是拿自己比自己。`assertInvariants()` 改为断言它**属于本题单**。
+ *   比对它是拿自己比自己。
+ *   📎📎 **`[CR]` 第六轮更正归属**：本行原文写的是「`assertInvariants()` 改为断言它
+ *   **属于本题单**」—— **落在 `assertPhaseMirror()` 里**，不是 `assertInvariants()`。
+ *   （`assertInvariants()` 只是**调用**它。）写成 `assertInvariants()` 会让照注释
+ *   改代码的人去找错函数，误以为这条检查被丢了或被搬走了（R-37 那条复制链）。
+ *   ⚠️ 同一轮还把这条判据**上提**成对 `awaiting-answer` 与 `awaiting-build`
+ *   **两个带题面的相位都成立** —— 原文只覆盖后者，而 `awaiting-answer` 是
+ *   联合里另一个携带 `Question` 的变体。
  */
 export type Phase =
   | { readonly kind: 'awaiting-answer'; readonly question: Question }

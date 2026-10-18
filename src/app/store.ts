@@ -382,11 +382,22 @@ function restoreFromSave(): void {
   } catch (err) {
     // AC-D4：安全降级为「从头开始」，**不弹窗、不 alert、不抛**。
     // 孩子看到的是一局新开局，而不是一个技术错误（NFR13）。
-    // ⚠️ 进度**已经喂回去了且不回滚** —— 它是独立的、已通过结构校验的数据，
-    //   而丢掉它才是 R-06 说的那个错误（「局末清空战场时会连带把『21/60』一起清掉」）。
-    progress.value = { currentUnitIndex: 0, masteredWordIds: [] }
+    //
+    // 🔥📎 **`[CR]` 第六轮裁决 1：降级**只丢当前这一局**，不动 `progress`。**
+    //   此前这里逐字写着 `progress.value = { currentUnitIndex: 0, masteredWordIds: [] }`
+    //   —— 也就是**一份内容回滚的存档就能抹掉孩子全部跨局已学**（FR58）。
+    //   ⚠️ 上面那段注释本来就写着「进度已经喂回去了且**不回滚**」，
+    //     而它下面紧跟的就是把它清空的那句 —— **注释与自己的代码相反**。
+    //   ⇒ 理由：AC-D4 逐字要的是「**对局**退回从头开始」（丢的是那一局），
+    //     连带清空「**进度**」是本轮才被认下来的、没人裁决过的副作用。
+    //   ⇒ 跨局进度是**独立的、已通过结构校验**的数据（R-06）：
+    //     丢掉它才是「局末清空战场时把『21/60』一起清掉」那个错误。
+    // ⚠️ **代价如实记**：若存档的 `progress` 本身已经与内容失配（`masteredWordIds`
+    //   里全是别的单元的词），孩子会看到「我学过的东西好像没学过」——
+    //   那一档在 `sliceDeckForLevel` 那侧另有兜底（空切片 ⇒ 「已学完」终态），
+    //   **而那一条只在整单元被认完时才会走到**，不是这里的责任。
     console.warn(
-      `[save] 存档里的对局不合法，已退回从头开始（进度也一并重置）：${describeRestore(err)}`,
+      `[save] 存档里的对局不合法，已退回从头开始（**跨局进度保留**）：${describeRestore(err)}`,
     )
   }
 }
@@ -477,10 +488,18 @@ function describeRestore(err: unknown): string {
  * ⚠️ 代价如实记：答对后离开的那一次会**跳过一道题**（下次它会在后面的某一局重新出现，
  *   因为它没进 `masteredWordIds`）。这是**换掉一个死局**，不是丢进度。
  *
- * ⚠️ **`nextQuestion()` 抽不到题时走「已学完」终态**：那是唯一如实的一支
- *   （题单全被掌握或跳过）。这一支在真实对局里**构造上不可达** ——
- *   题单答完时 `CONTINUE` 会把相位推成 `level-complete`，不会停在 `awaiting-build`；
- *   它挡的是「存档来自另一个内容版本、题单更短」这种脏数据。
+ * ⚠️ **`nextQuestion()` 抽不到题时走「已学完」终态**：题单全被掌握或跳过时，
+ *   那是唯一如实的一支。
+ *   🔥📎 **`[CR]` 第六轮：原注释写的「在真实对局里构造上不可达」已被推翻，如实更正。**
+ *   原文的理由是「题单答完时 `CONTINUE` 会把相位推成 `level-complete`，
+ *   不会停在 `awaiting-build`」—— 那句话**只覆盖正常对局**。
+ *   ⚠️ 它在下面那条「存档来自另一个内容版本、题单更短」的脏数据上**恰恰可达**，
+ *     而那正是同一段注释自己给出的第二个来源 ⇒ **原文自相矛盾**。
+ *   ⚠️ 更硬的证据：主评审的 jsdom 探针**真的走到了这一支**（脏存档形态）。
+ *   ⚠️ 且同文件下面 `jumpToTurn` 的步数上限处写着「它**不是**构造上不可达
+ *     （`[CR]` 2026-10-17 实测更正）」—— **同一个前提，这个仓库已经被证伪过一次。**
+ *   ⇒ 结论（按 R-57 留痕）：**正常对局不可达，脏存档可达**。
+ *     本函数存在的理由就是后者，所以它必须**假设自己会被调用**。
  */
 function backfillLegacyBuildPhase(state: State): State {
   const phase = state.phase
@@ -489,11 +508,34 @@ function backfillLegacyBuildPhase(state: State): State {
   }
   const next = nextQuestion(state.deck, state.masteredEntryIds, state.skippedEntryIds)
   if (next === null) {
-    console.warn(
-      `[save] 存档里的建造期局面来自旧版本且题单已答尽，已按「本单元已学完」处理` +
-        `（单元 ${state.unitNumber}，已掌握 ${state.masteredEntryIds.length} 条 / 题单 ${state.deck.length} 条）`,
-    )
-    return createUnitCompletedState(state.unitNumber)
+    // 🔥📎 **`[CR]` 第六轮：这一支必须**自己**兜住，不许把异常抛给调用方。**
+    //   ⚠️ 实测（jsdom 探针）：本函数被**刻意放在 AC-D4 的 `try` 之外**
+    //     （调用点注释逐字：「都必须在 `assertInvariants` 之前」），
+    //     而 `createUnitCompletedState(state.unitNumber)` 内部走 `initialSunFor`
+    //     → `tierForUnit` → **对未填档位的单元号抛错**。
+    //   ⚠️ `state.unitNumber` 是**不受信任的存档数据** —— `parseSaveFile` 逐字写着
+    //     `currentGame` 只校验「是对象或 null」、**不深校验对局**。
+    //   ⇒ 实测结果：`Error: 单元 999 落在未填档位上` **穿透 `restoreFromSave`
+    //     一路抛到 `enterLevel()`**，孩子的界面直接卡在调用方那次异常上。
+    //   而 AC-D4 / NFR13 的逐字要求是「**孩子看到的是一局新开局，不是一个技术错误**」。
+    //   ⇒ 局部降级而不是抛穿：`progress` 一概不动，**对局**退回一个能安全组装的终态。
+    //   ⚠️ 退路不是 `createInitialState({ deck: [] })` —— 那条对空题单**抛错**
+    //     （「题单不能为空」），会把这个洞从另一个方向再捅一次。
+    //   ⇒ 退路是「先试这个单元号，试不成退到单元 1」：`BALANCE_TIERS` 逐字覆盖 **1-4**，
+    //     所以单元 1 是**恒可组装**的那一个。
+    try {
+      console.warn(
+        `[save] 存档里的建造期局面来自旧版本且题单已答尽，已按「本单元已学完」处理` +
+          `（单元 ${state.unitNumber}，已掌握 ${state.masteredEntryIds.length} 条 / 题单 ${state.deck.length} 条）`,
+      )
+      return createUnitCompletedState(state.unitNumber)
+    } catch (err) {
+      console.warn(
+        `[save] 存档里的建造期局面题单已答尽，且单元 ${String(state.unitNumber)} ` +
+          `无法组装终态（${describeRestore(err)}）—— 已退到单元 1 的「已学完」终态，跨局进度保留`,
+      )
+      return createUnitCompletedState(1)
+    }
   }
   console.warn(
     `[save] 存档里的建造期局面来自旧版本（没有题面），已推进到下一道可答题：${next.entryId}`,

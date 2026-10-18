@@ -408,10 +408,19 @@ function onReplay(): void {
  * 📎 **1.19 `[CR]`：建造期不再假装可点。**
  * `onReplay` 的守门 `if (!answering.value) return` 与 `onPick` 是同一条，
  * 而 AC-D5 的「假可点」对**重听入口**同样成立 —— 指针光标 + 点了没反应。
- * ⇒ 只改光标，不改 DOM 结构（`onReplay` 仍留在原处，`onReplay` 的守门不删）。
+ *
+ * 🔥📎 **`[CR]` 第六轮更正：只改光标在触摸设备上是无效的。**
+ *   目标机型是**平板**，`cursor` 在触摸设备上根本不可见；而容器仍挂着
+ *   `@click="onReplay"`，守门静默丢弃 ⇒ 孩子点题面区 / 点选项周围的空白，
+ *   **什么都没有发生**，正是 AC-D5 逐字说的「假可点」。
+ *   ⚠️ 该容器**同时包着题面区与选项区**（见模板注释）⇒ 点选项旁边也一样。
+ *   ⇒ 补 `pointer-events: none`：**从命中测试里摘掉**，而不是只换光标。
+ *   `onReplay` 本身与它的守门都留着（`pointer-events` 只挡真实指针，
+ *   而 jsdom 的合成事件不参与命中测试 ⇒ 组件测试不受影响）。
  */
 .question-card__tappable.is-locked {
   cursor: default;
+  pointer-events: none;
 }
 
 .question-card__prompt {

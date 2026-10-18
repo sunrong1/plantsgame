@@ -973,3 +973,78 @@ describe('AC-15 —— state 是模拟器可直接驱动的形状', () => {
     expect(COLS > HOUSE_COL, '网格常量仍然自洽 —— 模拟器按常量建列，不写死格数').toBe(true)
   })
 })
+
+// 🔥📎 G178 —— 两个**带题面**的相位，题面都必须属于本题单（Story 1.19 `[CR]` 第六轮）
+//
+// ⚠️ **为什么单独成一条而不是并进建造期那条**：原判据只覆盖 `awaiting-build`，
+//   而 `awaiting-answer` 是联合里**另一个携带 `Question` 的变体** ——
+//   同型的损坏在它上面结构上完全可能，判据却纹丝不动（变异 N6 实测 0 红）。
+describe('G178 —— 「题面 ∈ deck」对两个带题面的相位都成立', () => {
+  /** 造一份题单只有 1 条、而题面指向一条**不在题单里**的 state。 */
+  function orphanQuestionState(kind: 'awaiting-answer' | 'awaiting-build'): State {
+    const deck = makeSyntheticDeck(1)
+    const orphan = { ...deck[0], entryId: 'not-in-deck', wordId: 'not-in-deck' }
+    const base = createInitialState({ unitNumber: 1, deck })
+    const phase: State['phase'] =
+      kind === 'awaiting-answer'
+        ? { kind: 'awaiting-answer', question: orphan }
+        : { kind: 'awaiting-build', question: orphan, unlocked: [], sun: base.sun }
+    return { ...base, phase }
+  }
+
+  it('`awaiting-build` 携带题单外的题面 ⇒ 抛错', () => {
+    expect(
+      () => assertInvariants(orphanQuestionState('awaiting-build')),
+      '建造期渲染一道题单外的题：`pickedRight` 恒 false，而界面上没有任何东西指向原因',
+    ).toThrow(/不在本题单里/)
+  })
+
+  it('`awaiting-answer` 携带题单外的题面 ⇒ **同样**抛错（🔴 变异 N6 的落点）', () => {
+    // ⚠️ **症状说明**：`nextQuestion` 永远不会重选一道不在题单里的题
+    //   （它只在题单条目里筛），而孩子仍能点、能看到反馈条
+    //   —— 于是被**卡在一道够不着的题**上，唯一出路是打输本局重开。
+    expect(
+      () => assertInvariants(orphanQuestionState('awaiting-answer')),
+      '🔴 `awaiting-answer` 上的题面逃过了校验 —— 它是联合里另一个带 question 的变体，' +
+        '同型的损坏在它上面结构上完全可能，而原判据只覆盖了 `awaiting-build`',
+    ).toThrow(/不在本题单里/)
+  })
+
+  it('判据自测：两个变体用的是**同一条**判据，不是两条各写一遍的（R-53）', () => {
+    // ⚠️ 这条不是测现状，是把「判据是共用的一条」钉住 ——
+    //   若有人把 `awaiting-answer` 那支复制成第二份实现，两份会各自漂移。
+    const buildMsg = (() => {
+      try {
+        assertInvariants(orphanQuestionState('awaiting-build'))
+        return ''
+      } catch (err) {
+        return String(err)
+      }
+    })()
+    const answerMsg = (() => {
+      try {
+        assertInvariants(orphanQuestionState('awaiting-answer'))
+        return ''
+      } catch (err) {
+        return String(err)
+      }
+    })()
+    expect(buildMsg, '建造期那一支居然没抛 —— 前置坏了').not.toBe('')
+    expect(answerMsg, '答题期那一支居然没抛 —— 前置坏了').not.toBe('')
+    expect(
+      answerMsg.replace('awaiting-answer 携带', 'awaiting-build 携带'),
+      '两个变体的报错只差相位名 ⇒ 判据是共用的一条；若差异更大，说明有人复制了实现',
+    ).toBe(buildMsg)
+  })
+
+  it('正常对局两条路径都不受影响（题面来自题单 ⇒ 一路绿）', () => {
+    const deck = makeSyntheticDeck(3)
+    const fresh = createInitialState({ unitNumber: 1, deck })
+    expect(() => assertInvariants(fresh), '开局态的前置坏了').not.toThrow()
+    const phase = fresh.phase
+    if (phase.kind !== 'awaiting-answer') throw new Error('夹具坏了')
+    const hit = phase.question.card.options.find((o) => o.correct)
+    if (hit === undefined) throw new Error('夹具坏了')
+    expect(() => assertInvariants(reduce(fresh, answer(hit.id))), '答对后的建造期前置坏了').not.toThrow()
+  })
+})

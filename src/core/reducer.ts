@@ -753,30 +753,46 @@ function assertPhaseMirror(state: State): void {
   //   ⚠️ 这不是「为了让类型过而加的一行」——它同时让断言体读起来是同一份 `phase`，
   //   而不是三处各写一遍 `state.phase`（那三处本来就该是同一个事实）。
   const phase = state.phase
-  if (phase.kind !== 'awaiting-build') {
+  if (phase.kind !== 'awaiting-build' && phase.kind !== 'awaiting-answer') {
     return
   }
-  // 🔥📎 **1.19 CR 新增：`question` 必须是本题单里的某一条。**
-  //   ⚠️ **它为什么进 `assertPhaseMirror` 而不是新开一个断言函数**：这一组断言的
-  //   职责就是「`awaiting-build` 上 Phase 携带的东西是不是真的」——
-  //   `unlocked` / `sun` 比的是「与 State 侧是否一致」，`question` 没有 State 侧
-  //   对应物可比，但同样是「Phase 上这份东西可不可信」。开第二个函数会让
-  //   「建造期相位带了三样东西，其中两样有人查」这种半吊子状态成立。
-  //
-  //   ⚠️ **不变量写的是「属于 deck」而不是「等于 deck[0]」**：建造期显示的那道题
-  //   是**孩子刚答的那一道**，AC-4 的重考机制下它完全可能是 deck 的任何一条。
-  //   写死 `deck[0]` 会让「连错 3 题」这种正常路径当场红，而红的原因与 bug 无关。
-  //
-  //   ⚠️ **它挡的是哪一种坏**：存档来自旧版本（`question` 字段压根不存在）
-  //   或内容回滚（题单里已经没有这道题）时，卡面会渲染一道
-  //   **「点哪里都不对」的题**——`pickedRight` 恒 false，而界面看不出任何异常。
+  // 🔥📎 **`[CR]` 第六轮：把「题面 ∈ deck」对 `awaiting-answer` 也查一遍。**
+  //   ⚠️ 原判据只覆盖 `awaiting-build`，而它是联合里**另一个带 `question` 的变体**
+  //     —— 同型的损坏在它上面**结构上完全可能**。
+  //   ⚠️ `assertDeckRelations` 查的是 `unlocked` / `masteredEntryIds` /
+  //     `skippedEntryIds` 三套账 ⊆ deck，**没有一条查 `phase.question`** ⇒
+  //     题单外的题面一路绿灯。
+  //   ⇒ 症状：卡面渲染一道题单外的题；`pickedRight` 读 `masteredEntryIds` 恒 false；
+  //     而 `nextQuestion` **永远不会重选它**（它不在题单里）
+  //     ⇒ 孩子被卡在一道够不着的题上，唯一出路是打输本局重开。
+  //   ⚠️ 补成**抛错**（而不是像 `backfillLegacyBuildPhase` 那样归一化）是安全的：
+  //     `[CR]` 第六轮裁决 1 已经把 `restoreFromSave` 的降级改成**不动 `progress`**，
+  //     这条抛错落进去的代价只是「这一局退回开局」。
   if (!state.deck.some((entry) => entry.entryId === phase.question.entryId)) {
     throw new Error(
-      `建造期携带的题面 ${phase.question.entryId} 不在本题单里 —— 题单只有 ` +
+      `${phase.kind} 携带的题面 ${phase.question.entryId} 不在本题单里 —— 题单只有 ` +
         `${state.deck.length} 条。旧存档（尚无该字段）与内容回滚是仅有的两个来源；` +
         '放过它的话卡面会渲染一道答不对的题，而界面上没有任何东西指向原因。',
     )
   }
+  if (phase.kind !== 'awaiting-build') {
+    // ⚠️ `awaiting-answer` 上 Phase 只带 `question`，`unlocked` / `sun` 两条镜像是
+    //   `awaiting-build` 独有的 ⇒ 到这里就结束，别拿 undefined 比 State。
+    return
+  }
+  // 📎 原先这里有一段逐字相同的「题面 ∈ deck」判据，只挂在 `awaiting-build` 上。
+  //   `[CR]` 第六轮把它**上提**成对两个带题面相位都成立的那一条（见本函数开头），
+  //   原注释里三条理由一并搬过去：
+  //   ① **它为什么在 `assertPhaseMirror` 而不是新开一个断言函数**：这一组断言的职责
+  //      就是「Phase 携带的东西是不是真的」——`unlocked` / `sun` 比的是「与 State 侧
+  //      是否一致」，`question` 没有 State 侧对应物可比，但同样是「Phase 上这份东西
+  //      可不可信」。开第二个函数会让「两个带题面的相位，其中一个没人查」这种半吊子成立。
+  //   ② **不变量写的是「属于 deck」而不是「等于 deck[0]」**：建造期显示的那道题是
+  //      **孩子刚答的那一道**，AC-4 的重考机制下它完全可能是 deck 的任何一条。
+  //      写死 `deck[0]` 会让「连错 3 题」这种正常路径当场红，而红的原因与 bug 无关。
+  //   ③ **它挡的是哪一种坏**：存档来自旧版本（`question` 字段压根不存在）或内容回滚
+  //      （题单里已经没有这道题）时，卡面会渲染一道**「点哪里都不对」的题**——
+  //      `pickedRight` 恒 false，而界面看不出任何异常。
   if (phase.unlocked.length !== state.unlocked.length || phase.unlocked.some((id, i) => id !== state.unlocked[i])) {
     throw new Error(
       'Phase 上的 unlocked 与 State 不一致 —— 镜像过期会让组件读到上一次的值。' +

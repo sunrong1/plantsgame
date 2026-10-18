@@ -92,10 +92,13 @@
  */
 
 import { mount } from '@vue/test-utils'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { entriesOf } from '../../src/content'
 import { afterEachUninstall, installFakeStorage } from '../fixtures/fake-storage'
+import { stripComments } from '../fixtures/strip-comments'
 import type { FakeStorage } from '../fixtures/fake-storage'
 import type { State } from '../../src/core'
 
@@ -298,6 +301,17 @@ describe('G170-b —— 建造期恢复也要有卡面（裁决 B：题面落进
         '起始页是 awaiting-answer（有卡），点「开始游戏」后变成 awaiting-build（无卡）',
     ).toBe(true)
     expect(wrapper.findAll('.option-card').length, '卡面在而选项不在，孩子看到的仍是一张空面板').toBe(4)
+    // 🔥📎 **`[CR]` 第六轮补的第三条判据：卡面在**不等于**卡面是「那道题」。**
+    //   ⚠️ 上面两条量的是「存在」，判据粒度**粗于它要守的东西**（R-51 第四种形态）：
+    //     若恢复时把题面错写成 deck 里的另一道，孩子看到的是一道**长得像但不是自己
+    //     刚答的那道题**的卡面 —— 上面两条全绿，而症状是「回来以后题目变了」。
+    //   ⇒ 逐字比对：渲染出来的题面必须**就是盘上那份 state 的题面**。
+    const onDisk = store.state.value.phase
+    if (onDisk.kind !== 'awaiting-build') throw new Error(`前置：相位是 ${onDisk.kind}`)
+    expect(
+      wrapper.find('.question-card__prompt').text(),
+      '渲染出来的题面与盘上那份对不上 —— 恢复时把题换成了另一道，孩子看到的是「回来后题目变了」',
+    ).toBe(onDisk.question.card.promptText)
   })
 
   it('G170 可行动层（第二轮）：建造期恢复出来的四个选项**全部点不动** —— 不许是「假可点」', () => {
@@ -366,5 +380,153 @@ describe('G170-b —— 建造期恢复也要有卡面（裁决 B：题面落进
       store.state.value.deck.some((entry) => entry.entryId === phase.question.entryId),
       '归一化出来的题必须属于本题单（它由 `nextQuestion(deck, …)` 选出）',
     ).toBe(true)
+  })
+})
+
+describe('G175 —— 存档对局不合法时**只丢这一局，不丢跨局进度**（1.19 `[CR]` 第六轮裁决 1）', () => {
+  /**
+   * 造一份「**对局不合法**但**进度合法**」的存档，让 `restoreFromSave` 的
+   * AC-D4 兜底 catch 真的触发。
+   *
+   * ⚠️ 用什么脏数据触发 catch 是有讲究的：必须落在 **`try` 之内**那一段
+   *   （`assertInvariants`），不能落在 `try` 之外的补齐函数上 ——
+   *   否则测的是另一条路径。
+   * ⇒ 这里用「建造期携带的题面不在题单里」：那份 `deck` 只有第一条，
+   *   而 `question` 指向一条不在其中的 entryId ⇒ `assertPhaseMirror` 抛。
+   */
+  function seedDirtyGameWithProgress(mastered: readonly string[]): void {
+    const first = entriesOf(1)[0]
+    const dirtyGame = {
+      unitNumber: 1,
+      phase: {
+        kind: 'awaiting-build',
+        // ⚠️ 指向一条**不在题单里**的 id —— 这是内容回滚/旧存档的唯一形态
+        question: { ...first.card, entryId: 'u1-not-in-deck' },
+        unlocked: [],
+        sun: 50,
+      },
+      turn: 2,
+      hearts: 3,
+      sun: 50,
+      grid: {},
+      towers: [],
+      zombies: [],
+      deck: [first],
+      masteredEntryIds: [],
+      skippedEntryIds: [],
+      unlocked: [],
+    }
+    storage.data.set(
+      saveApi.SAVE_KEY,
+      JSON.stringify({
+        schemaVersion: saveApi.SAVE_SCHEMA_VERSION,
+        savedAt: 1_700_000_000_000,
+        progress: { currentUnitIndex: 0, masteredWordIds: mastered },
+        currentGame: dirtyGame,
+      }),
+    )
+  }
+
+  it('脏对局 ⇒ 那一局退回开局，但 `progress.masteredWordIds` **逐条不变**', () => {
+    const learned = entriesOf(1).slice(0, 21).map((e) => e.entryId)
+    seedDirtyGameWithProgress(learned)
+
+    expect(() => store.enterLevel(), 'AC-D4：孩子点「开始游戏」不许炸（NFR13）').not.toThrow()
+
+    expect(
+      store.progress.value.masteredWordIds,
+      '🔴 跨局已学被一并清空了 —— FR58 逐字「累计所得只增不减」，' +
+        '而一个孩子因为内容改了一版就赔上全部学习成果，是本作最不可接受的失败形态。' +
+        '（判据：`restoreFromSave` 的 catch 只丢**对局**，不动 `progress`）',
+    ).toEqual(learned)
+  })
+
+  it('同一次降级之后，界面是一个**能接着玩**的状态，不是技术错误', () => {
+    seedDirtyGameWithProgress(entriesOf(1).slice(0, 5).map((e) => e.entryId))
+
+    store.enterLevel()
+
+    // AC-D4 逐字：「孩子看到的是一局新开局，而不是一个技术错误」。
+    expect(store.view.value, '视图必须已经进关 —— 退回开始界面会让按钮看起来没反应').toBe('level')
+    expect(
+      ['awaiting-answer', 'awaiting-build'],
+      `降级后停在不可行动的相位 ${store.state.value.phase.kind} —— 孩子看到的是一张动不了的战场`,
+    ).toContain(store.state.value.phase.kind)
+  })
+
+  it('⚠️ 反向自测：把 catch 里的清空加回去，本文件必须变红（R-53 / R-50）', () => {
+    // 这条不是测现状，是**把守卫的鉴别力钉住** —— 变异 N1 实测过：
+    // 在补这条守卫之前，把 `progress.value = { currentUnitIndex: 0, masteredWordIds: [] }`
+    // 加回 catch 里，**1952 条测试全绿**。
+    // ⇒ 「这条判据真的会因为那个改动而红」这件事本身要被写下来，
+    //   否则下一次有人清理那段代码时会以为它没有作用。
+    const learned = entriesOf(1).slice(0, 21).map((e) => e.entryId)
+    const source = readFileSync(
+      join(process.cwd(), 'src/app/store.ts'),
+      'utf8',
+    )
+    // 判据本体：AC-D4 的 catch 里**不许**出现对 `progress.value` 的赋值。
+    const catchBody = /\} catch \(err\) \{([\s\S]*?)\n {2}\}/.exec(stripComments(source))?.[1] ?? ''
+    expect(
+      catchBody,
+      '判据取不到 AC-D4 的 catch 体 —— 这条守卫自己失效了（R-53：判据要先在真实文本上自测）',
+    ).not.toBe('')
+    expect(
+      /progress\.value\s*=/.test(catchBody),
+      'AC-D4 的降级里不许写 `progress.value = …` —— 它只丢**对局**（裁决 1 / FR58）',
+    ).toBe(false)
+
+    // 而正确形态下，上面那条判据必须是绿的（否则它恒红，是装饰）。
+    seedDirtyGameWithProgress(learned)
+    store.enterLevel()
+    expect(store.progress.value.masteredWordIds).toEqual(learned)
+  })
+})
+
+describe('G176 —— 读档**不抛穿**：存档里的单元号未填档位时也不许炸（1.19 `[CR]` 第六轮）', () => {
+  it('`enterLevel()` 不抛，且跨局进度不动', () => {
+    // 🔥📎 **这条来自实测，不是推演。** 主评审的 jsdom 探针摆出下面这份存档后：
+    //   ```
+    //   THROWN = Error: 单元 999 落在未填档位上。已填档位：1-4。未填档位不回退默认值（AC-3）……
+    //   ```
+    //   异常**穿透 `restoreFromSave` 一路抛到 `enterLevel()`**，而那个 catch 存在的
+    //   全部意义就是「孩子看到的是一局新开局，不是一个技术错误」（AC-D4 / NFR13）。
+    // ⚠️ 根因是三件事叠起来，缺一件都不成立：
+    //   ① `backfillLegacyBuildPhase` 被**刻意放在 `try` 之外**；
+    //   ② 它的 `next === null` 分支调 `createUnitCompletedState(state.unitNumber)`；
+    //   ③ `parseSaveFile` 逐字写着 `currentGame` **只校验「是对象或 null」**，
+    //      而 `state.unitNumber` 直接来自存档 ⇒ **不受信任的值直达 `tierForUnit`**。
+    const learned = entriesOf(1).slice(0, 21).map((e) => e.entryId)
+    storage.data.set(
+      saveApi.SAVE_KEY,
+      JSON.stringify({
+        schemaVersion: saveApi.SAVE_SCHEMA_VERSION,
+        savedAt: 1_700_000_000_000,
+        progress: { currentUnitIndex: 0, masteredWordIds: learned },
+        currentGame: {
+          unitNumber: 999, // ⚠️ 未填档位（`BALANCE_TIERS` 只覆盖 1-4）
+          phase: { kind: 'awaiting-build', unlocked: [], sun: 50 }, // ⚠️ 旧存档：没有 question 字段
+          turn: 2,
+          hearts: 3,
+          sun: 50,
+          grid: {},
+          towers: [],
+          zombies: [],
+          deck: [], // ⚠️ 空题单 ⇒ `nextQuestion()` 返回 null ⇒ 走那一支
+          masteredEntryIds: [],
+          skippedEntryIds: [],
+          unlocked: [],
+        },
+      }),
+    )
+
+    expect(
+      () => store.enterLevel(),
+      '🔴 读档把「单元 999 落在未填档位上」抛给了孩子 —— AC-D4 / NFR13 逐字：孩子面前永不出现技术错误',
+    ).not.toThrow()
+    expect(
+      store.progress.value.masteredWordIds,
+      '同一份存档下跨局进度也不许丢 —— 降级只丢**对局**（裁决 1）',
+    ).toEqual(learned)
   })
 })

@@ -194,10 +194,19 @@ describe('AC-D4 —— 恢复失败安全降级：不抛、不弹窗、照常开
 
     expect(store.state.value.hearts, '对局必须退回初始那一局').toBe(3)
     expect(store.state.value.turn).toBe(1)
-    expect(store.progress.value, '对局非法 ⇒ 进度一并退回，避免留下半截事实').toEqual({
-      currentUnitIndex: 0,
-      masteredWordIds: [],
-    })
+    // 🔥📎 **`[CR]` 第六轮裁决 1（用户 2026-10-19）改判据，按 R-57 留痕。**
+    //   原文逐字是「**对局非法 ⇒ 进度一并退回，避免留下半截事实**」，
+    //   断言 `toEqual({ currentUnitIndex: 0, masteredWordIds: [] })`。
+    //   ⇒ 判据**方向整个翻过来了**：降级只丢**对局**，**跨局进度保留**。
+    //   理由：FR58 逐字「累计所得只增不减」；`progress` 是独立的、已通过结构校验的数据
+    //   （R-06）；而「对局」与「进度」是两套持久化，AC-D4 逐字要丢的是前者。
+    //   ⚠️ 旧判据里那句括注「避免留下半截事实」今天**不成立** ——
+    //     丢的是「这一局」，而跨局已学的那 N 个词是**独立事实**，不因这一局作废而变假。
+    //   ⇒ 行为守卫另见 `tests/app/resume-actionable.test.ts` 的 G175。
+    expect(
+      store.progress.value,
+      '🔴 对局不合法就把跨局进度一并清空了 —— 裁决 1：降级只丢**对局**，不动进度（FR58）',
+    ).toEqual(busyProgress)
     expect(
       warn.mock.calls.filter((c: unknown[]) => String(c[0]).startsWith('[save]')).length,
       '必须留一条 [save] WARN 说明为什么退回',
@@ -223,10 +232,11 @@ describe('AC-D4 —— 恢复失败安全降级：不抛、不弹窗、照常开
 
     expect(() => store.enterLevel(), '负心数不得冒给孩子').not.toThrow()
     expect(store.state.value.hearts, '负心数必须退回初始值').toBe(3)
-    expect(store.progress.value, '对局非法 ⇒ 进度一并退回').toEqual({
-      currentUnitIndex: 0,
-      masteredWordIds: [],
-    })
+    // 📎 同上，`[CR]` 第六轮裁决 1：降级只丢**对局**，不动跨局进度（留痕见上面那条）。
+    expect(
+      store.progress.value,
+      '🔴 负心数就把跨局进度一并清空了 —— 裁决 1：降级只丢**对局**（FR58）',
+    ).toEqual(busyProgress)
   })
 
   it('localStorage 读不到（无痕模式）⇒ 降级为 read，不抛', () => {

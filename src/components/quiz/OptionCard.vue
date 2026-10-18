@@ -222,25 +222,6 @@ function onPick(): void {
   cursor: default;
 }
 
-/*
- * 📎 **Story 1.19 `[CR]`：`.is-locked`（建造期只读）。**
- *
- * ⚠️ **写在 `.is-degraded` 之后、`.is-picked` 之前** —— 三个状态类的特异度
- *   完全相同（同为 `.option-card` + 一个类 = `(0,2,0)`），胜负只由源码顺序决定：
- *   · 排在 `.is-picked` **之前** ⇒ 孩子刚答完那 ≤100ms 里，`is-right` / `is-wrong`
- *     的绿底/红底说了算，置灰不会把 AC-D2 的主反馈载体洗掉
- *     （这与 `.is-degraded:not(.is-picked)` 是同一条纪律的同一个理由）。
- *   · 排在 `.is-degraded` **之后** ⇒ 两者同时成立时（建造期 + 图破了）以置灰为准。
- *
- * ⚠️ **刻意不加 `opacity`** —— 与降级态相反：那张词图正是孩子刚答完的那道题，
- *   它必须**看得清**，置灰靠背景与边框表达，不用透明度把它洗掉。
- */
-.option-card.is-locked {
-  background: #eceff1;
-  border-color: var(--color-overlay-blocked);
-  cursor: default;
-}
-
 .option-card.is-picked {
   /*
    * 🚨 **刻意不复用 `--color-overlay-range`**（`[CR]` 2026-10-16）。
@@ -291,6 +272,33 @@ function onPick(): void {
   background: #eceff1;
   border-color: var(--color-overlay-blocked);
   opacity: 0.55;
+}
+
+/*
+ * 📎 **Story 1.19 `[CR]`：`.is-locked`（建造期只读）。**
+ *
+ * ⚠️🔥 **`[CR]` 第六轮更正位置：这条规则原本写在 `.is-picked` 之前、
+ *   也就是 `.is-degraded:not(.is-picked)` 的上面** —— 而它自己的注释逐字写着
+ *   「排在 `.is-degraded` **之后** ⇒ 两者同时成立时（建造期 + 图破了）以置灰为准」。
+ *   ⇒ **注释与源码顺序相反**，而且后果是真的：三个选择器特异度同为 `(0,2,0)`，
+ *   后写的 `.is-degraded` 赢，而**只有它设 `opacity: 0.55`**
+ *   ⇒ `locked + failed + !picked` 时那张词图被压到 55% ——
+ *   **恰好是下一段注释声明要避免的那件事发生了。**
+ *   ⇒ 现在它排在 `.is-degraded:not(.is-picked)` **之后**，并显式补 `opacity: 1`，
+ *     让「看得清」不再依赖源码顺序。
+ *
+ * ⚠️ **仍排在 `.is-picked` 之后**：孩子刚答完那 ≤100ms 里，`is-right` / `is-wrong`
+ *   的绿底/红底才是 AC-D2 的主反馈载体，置灰不该把它洗掉
+ *   （这与 `.is-degraded:not(.is-picked)` 用 `:not(.is-picked)` 是同一个理由）。
+ *
+ * ⚠️ **`opacity: 1` 是必需的，不是冗余**：只靠位置赢，`locked + failed` 时
+ *   仍是 `.is-degraded` 的 0.55 在生效 —— 显式写出来才让判据读得懂意图。
+ */
+.option-card.is-locked {
+  background: #eceff1;
+  border-color: var(--color-overlay-blocked);
+  cursor: default;
+  opacity: 1;
 }
 
 /*
