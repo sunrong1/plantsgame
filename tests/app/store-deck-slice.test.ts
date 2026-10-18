@@ -201,6 +201,54 @@ describe('AC-B9 —— 断点续学不受切片影响', () => {
   })
 })
 
+describe('G174 —— 真实单元 1 上「相邻不同型」由代码保证（Story 1.20 / A1、裁决 3）', () => {
+  /**
+   * 判据本体：真的跑一次切片、真的逐对比较 `towerType`。
+   * ⚠️ 放在本文件而不是 `tests/core/deck-slice.test.ts`，是因为它**必须吃真实内容层**
+   *   （`tests/core/` 整层不引 `src/content/`，那是同款纪律）。
+   */
+  function sameTypeAdjacencies(deck: readonly { towerType: string }[]): number[] {
+    const hits: number[] = []
+    for (let i = 1; i < deck.length; i += 1) {
+      if (deck[i].towerType === deck[i - 1].towerType) hits.push(i)
+    }
+    return hits
+  }
+
+  it('前置：单元 1 在 JSON 原序上今天恰好已合规（那正是「巧合」的那一半）', () => {
+    // ⚠️ 这条不是为了让守卫红，而是**把巧合显式记下来**：
+    //   实测 2026-10-19 全 37 条相邻重复 0、分布 {direct:13, slow:13, aoe:11}。
+    //   若哪天录入的人改了 JSON 而让这条变红，那是**巧合没了**，
+    //   规则仍在（G173 / 本组的后两条），但那条恒等捷径也没了 —— 值得知道。
+    const raw = content.entriesOf(1)
+    expect(sameTypeAdjacencies(raw), '单元 1 的 JSON 原序不再天然合规').toEqual([])
+  })
+
+  it('切片结果在真实词表上没有任何相邻同型（A1）', () => {
+    // 🔥 这条是「规则由代码保证」与「规则由手写 JSON 碰巧满足」的**分界线**：
+    //   JSON 合规时，两者都绿；JSON 被改坏时，只有**这条**能区分出来
+    //   —— 前提是切片实现也被破坏（成对变异 M196，见 story 文档）。
+    for (const mastered of [[], ALL_IDS.slice(0, 10), ALL_IDS.slice(0, 30), ALL_IDS]) {
+      const deck = core.sliceDeckForLevel(content.entriesOf(1), mastered)
+      expect(
+        sameTypeAdjacencies(deck),
+        `已掌握 ${mastered.length} 条的那一局仍有相邻同型 —— 重排没生效`,
+      ).toEqual([])
+    }
+  })
+
+  it('四局连起来仍然正好是整个词表（原序承诺未被重排破坏，A2 的接线侧）', () => {
+    // ⚠️ 与上面那条 AC-B4 的那条**逐字重复**不是冗余：
+    //   AC-B4 那条守「切片对不对」，这条守「重排有没有偷偷换词」——
+    //   两者在「重排丢了一条」时红，在「重排把 e3 挪到了别局」时红的形态不同。
+    const g1 = playOneRoundWith([])
+    const g2 = playOneRoundWith(g1)
+    const g3 = playOneRoundWith([...g1, ...g2])
+    const g4 = playOneRoundWith([...g1, ...g2, ...g3])
+    expect([...g1, ...g2, ...g3, ...g4], '重排动过了词条归属 —— 原序承诺被破坏').toEqual(ALL_IDS)
+  })
+})
+
 describe('AC-B5 —— 重打不重新切片', () => {
   it('RESTART_LEVEL 走原题单（10 条，不多不少不少）', () => {
     seedSave(ALL_IDS.slice(0, 10))

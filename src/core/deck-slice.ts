@@ -18,6 +18,8 @@
  *
  * ── 切片口径（裁决 2 逐字，不重新设计）──────────────────────────────────
  *     deck = 该单元词表中「尚未掌握」的条目，按单元 JSON 里的原序，取前 10 条
+ *   再叠加**相邻不同型**的后置条件（Story 1.20 / 裁决 1，取前那条的原序不变）：
+ *     且相邻两题的 `towerType` 不相同；做不到的那几处降级为保持原序。
  * · 「尚未掌握」**只按跨局的 `masteredWordIds` 判**，不排除被跳过的题
  *   —— `skippedEntryIds` 活在 `State`（当前对局）里，而局末 `currentGame` 会被存成
  *   `null` ⇒ 跨局根本没有地方表示「这条被跳过过」（R-06：进度与对局是两套独立持久化）。
@@ -44,11 +46,68 @@ import type { DeckEntry } from './types.js'
 export const QUESTIONS_PER_LEVEL = 10
 
 /**
+ * 把题单重排成「相邻两题的塔型不同」（Story 1.20 / 裁决 1）。
+ *
+ * ── 为什么是「相邻不同型」而不是「一局不重复」────────────────────────────
+ * 用户的原话是「答对单词后出现新的植物，之前出现过的就不用重复」。
+ * 按字面理解，**物理无解**：`towers/` 下恰好 3 个 svg（`direct` / `slow` / `aoe`），
+ * 而 {@link QUESTIONS_PER_LEVEL} = 10 ⇒ 鸽笼原理，每局至少 7 次重复，
+ * **任何塔型配比都救不了**。⇒ 窄化口径是「**相邻**两题的塔型不同」——
+ * 这是一条**排序**约束而非**配额**约束，排序约束在 3 型下恒可解。
+ * ⚠️ **代价逐字记住**：同一局内**仍必有约 3 次重复**。本函数兑现的是
+ *   「看起来在换植物」，**不是**「每题都是新植物」，注释与对外说明一律不得写成后者。
+ *
+ * ── 算法（单向扫描 + 就地后向交换）──────────────────────────────────────
+ * 从左往右走：第 `i` 位若与第 `i-1` 位同型，就往后找**第一个**异型条目与它**交换**
+ * （不是删除、不是插入 —— 交换不增不减条目数）。
+ * 归纳可知：第 `i` 步走完时，前缀 `[0, i]` 一定已合规 —— 交换只动 `i` 与 `j > i`，
+ * 不会破坏已经定好的前缀。
+ *
+ * ── 三条承重性质（各有守卫，见 `tests/core/deck-slice.test.ts` G173）──────
+ * 1. **已合规输入 ⇒ 恒等变换**：一次交换都不会发生，输出与输入逐条同序。
+ *    ⚠️ 这不是「恰好」，是**构造上**的：不合规才触发交换。单元 1 今天已合规，
+ *    而 `store-deck-slice.test.ts` 那条「四局连起来 == JSON 原序」全靠它。
+ * 2. **无解 ⇒ 降级为保持原序，且绝不抛错**：全部同型时找不到任何异型条目，
+ *    一次交换都不发生 ⇒ 输出与输入同序。34 条现有夹具全是 `'direct'`，
+ *    这条路径是它们**唯一的活路**，不是可选的优雅性。
+ * 3. **纯函数**：确定性（同样输入永远同样输出）、零随机、零时间、零 DOM。
+ *    ⚠️ 不许用洗牌 —— 洗牌会让同一次存档恢复在不同机器上得到不同题单。
+ *
+ * ⚠️ **不改动传入的数组**：就地交换会改掉内容层那一份词表
+ *   （`pending` 是切片判据内部的新数组，但仍先复制一次，让「不改传入参数」这条
+ *   R-01 性质不依赖调用方传进来的是不是副本）。
+ *
+ * @param entries 本局题单（已切片，长度 ≤ {@link QUESTIONS_PER_LEVEL}）。
+ * @returns 新的数组；元素与传入的**逐条相同**（只换位置，不增不减不改内容）。
+ */
+function reorderAdjacentTowerTypes(entries: readonly DeckEntry[]): DeckEntry[] {
+  const out = [...entries]
+  for (let i = 1; i < out.length; i += 1) {
+    const type = out[i].towerType
+    if (out[i - 1].towerType !== type) continue
+    // ⚠️ 取**第一个**异型位置，不是最后一个，也不是最近的一个 ——
+    //   「取哪个」必须只由输入决定，否则同一份题单会在不同机器上排出不同顺序。
+    for (let j = i + 1; j < out.length; j += 1) {
+      if (out[j].towerType === type) continue
+      const swapped = out[i]
+      out[i] = out[j]
+      out[j] = swapped
+      break
+    }
+    // 找不到就保持原样往前走 —— 降级路径，**不抛错**（上面第 2 条）。
+  }
+  return out
+}
+
+/**
  * 切出本局的题单（AC-B1 / 裁决 2）。
  *
  * @param entries 该单元的**全量词表**，按单元 JSON 里的原序。
  * @param masteredWordIds 跨局已掌握的 `entryId`（来自 `Progress.masteredWordIds`）。
  * @returns 本局题单，最多 {@link QUESTIONS_PER_LEVEL} 条；全部掌握时返回**空数组**。
+ *
+ * ⚠️ **已合规输入返回原序**（Story 1.20 / A2）：这是**硬 AC**，
+ *   `tests/app/store-deck-slice.test.ts` 那条「四局连起来 == 整个词表」全靠它。
  *
  * ⚠️ **返回空数组而不是抛错**：空题单意味着「这个单元学完了」，
  *   那是**如实状态**不是故障。抛不抛、以及孩子看到什么，由 `app/store.ts`
@@ -70,5 +129,8 @@ export function sliceDeckForLevel(
   // ⚠️ `slice` 而不是循环里数到 N 就 break：后者在「待考条目不足 N 条」时
   //   需要一个额外的终止条件，而写错它的形态是「多切一条」——
   //   第四局 7 条切成 8 条，界面上没有任何东西会报错。
-  return pending.slice(0, QUESTIONS_PER_LEVEL)
+  // ⚠️ **先 slice、再重排，两步分开写**（Story 1.20 / B1）：守卫 G160 的判据是
+  //   `/pending\.slice\(\s*0,\s*QUESTIONS_PER_LEVEL\s*\)/` 这一行的逐字形态，
+  //   揉成一棵树会把它改掉。
+  return reorderAdjacentTowerTypes(pending.slice(0, QUESTIONS_PER_LEVEL))
 }

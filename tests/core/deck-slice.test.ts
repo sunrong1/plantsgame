@@ -14,6 +14,9 @@
  * ⚠️ **`deck` 在一局内不变**（AC-B7）：切片只发生在开局组装那一刻，
  *   而 `RESTART_LEVEL` 走的是 `createInitialState({ deck: state.deck })`。
  *   那条路径由本文件末尾的「重打不重新切片」一组覆盖。
+ *
+ * 📎 **Story 1.20 续写了这份文件的夹具**：塔型默认改成三型轮转（见 `deckOf` 的注释），
+ *   并在末尾新增「相邻不同型」一组 —— 守卫 G173。
  */
 
 import { describe, expect, it } from 'vitest'
@@ -33,15 +36,21 @@ import {
   restartLevel,
   sliceDeckForLevel,
 } from '../../src/core/index.js'
-import type { DeckEntry, State } from '../../src/core/types.js'
+import type { DeckEntry, State, TowerType } from '../../src/core/types.js'
 
-/** 造一条题单条目。`id` 即 `entryId`；卡型与塔型不参与本判据，但要填合法。 */
-function entry(id: string): DeckEntry {
+/**
+ * 三种塔型的轮转 —— 单元 1 在 JSON 序上就是这个形状
+ * （实测 2026-10-19：前 10 条 = `direct slow aoe` 轮转 ×3 余 `direct`，全 37 条相邻重复 0）。
+ */
+const TOWER_TYPE_CYCLE: readonly TowerType[] = ['direct', 'slow', 'aoe']
+
+/** 造一条题单条目。`id` 即 `entryId`；卡型不参与本判据，但要填合法。 */
+function entry(id: string, towerType: TowerType = 'direct'): DeckEntry {
   const cardId = `c-${id}`
   return {
     entryId: id,
     wordId: id,
-    towerType: 'direct',
+    towerType,
     card: {
       kind: 'word',
       promptText: `prompt ${id}`,
@@ -53,9 +62,27 @@ function entry(id: string): DeckEntry {
   }
 }
 
-/** 造一份 n 条的题单，顺序即数组顺序（单元 JSON 的原序）。 */
-function deckOf(n: number, offset = 0): DeckEntry[] {
-  return Array.from({ length: n }, (_, i) => entry(`e${i + offset}`))
+/**
+ * 造一份 n 条的题单，顺序即数组顺序（单元 JSON 的原序）。
+ *
+ * ⚠️ **塔型默认走 `TOWER_TYPE_CYCLE` 轮转，不再一律 `'direct'`**（Story 1.20 / B3）。
+ *   改之前这份文件的 34 条用例**零条能感知塔型构成** —— 夹具逐字注释还写着
+ *   「卡型与塔型不参与本判据」，于是 1.20 新增的「相邻不同型」规则
+ *   **根本不可能被这套用例回归到**。默认改成轮转之后，这 34 条用例全部落在
+ *   「已合规输入」这一支上，钉的是 A2（恒等变换）。
+ *   要造别的形状走第三个参数；要造全同型（A3 的降级路径）走 {@link allDirectDeckOf}。
+ */
+function deckOf(
+  n: number,
+  offset = 0,
+  types: readonly TowerType[] = TOWER_TYPE_CYCLE,
+): DeckEntry[] {
+  return Array.from({ length: n }, (_, i) => entry(`e${i + offset}`, types[i % types.length]))
+}
+
+/** 造一份**全部同型**的题单 —— 「相邻不同型」在它上面数学无解（Story 1.20 / A3）。 */
+function allDirectDeckOf(n: number, offset = 0): DeckEntry[] {
+  return deckOf(n, offset, ['direct'])
 }
 
 /** entryId 列表 —— 切片结果的断言只比 id 序列，比整个对象更可读。 */
@@ -280,5 +307,131 @@ describe('重打不重新切片（Story 1.19 / AC-B5、AC-B7）', () => {
     expect(ids(s.deck)).toEqual(before)
     s = reduce(s, continueRound())
     expect(ids(s.deck)).toEqual(before)
+  })
+})
+
+// ── G173 ─────────────────────────────────────────────────────────────────
+
+describe('G173 —— 相邻两题的塔型不同（Story 1.20 / A1..A3、裁决 1）', () => {
+  /**
+   * 判据本体：**真的去跑重排、真的逐对比较 `towerType`**。
+   *
+   * ⚠️📎 **必须是行为判据，不能是源码扫描**（AC B5）：1.19 的变异 **M172′** 留下过
+   *   实测记录 —— 「不许写死数字」+「必须出现 `entriesOf(...).length`」两条文本判据
+   *   对 `entriesOf(1).length * 1.62` 这种**等比缩放**全绿。
+   *   文本判据盯的是「写法像不像」，本函数盯的是「输出对不对」。
+   *
+   * @returns 相邻同型的**下标**（即 `deck[i]` 与 `deck[i-1]` 同型的那些 `i`）。
+   *   返回下标而不是布尔/计数：变异之后能逐字报出「第几题还撞着」，
+   *   而一个 `count === 0` 只能告诉你「红了」，不知道红在哪。
+   */
+  function sameTypeAdjacencies(deck: readonly DeckEntry[]): number[] {
+    const hits: number[] = []
+    for (let i = 1; i < deck.length; i += 1) {
+      if (deck[i].towerType === deck[i - 1].towerType) hits.push(i)
+    }
+    return hits
+  }
+
+  /** 一份**故意非合规**的题单：塔型逐位给定，形状刻意贴着「连着同型」造。 */
+  const VIOLATING = ['direct', 'direct', 'slow', 'direct', 'aoe', 'aoe', 'slow'] as const
+
+  it('判据自测：它能在「非合规」上报出下标、在「合规」上报空（R-53）', () => {
+    expect(
+      sameTypeAdjacencies(deckOf(7, 0, VIOLATING)),
+      '判据在已知非合规的夹具上报不出下标 —— 守卫是装饰（R-53）',
+    ).toEqual([1, 5])
+    expect(
+      sameTypeAdjacencies(deckOf(7)),
+      '判据把天然合规的轮转题单也判成违规 —— 判据错了（R-53）',
+    ).toEqual([])
+    expect(sameTypeAdjacencies([]), '空题单不该有任何相邻对').toEqual([])
+  })
+
+  it('① 非合规输入被重排成「相邻不同型」（A1）', () => {
+    const out = sliceDeckForLevel(deckOf(7, 0, VIOLATING), [])
+    expect(
+      sameTypeAdjacencies(out),
+      '重排之后仍有相邻两题同型 —— 一局打完孩子会连着见同一株植物',
+    ).toEqual([])
+    // ⚠️ 逐字钉住顺序：这一条顺带证明**它不是洗牌**（洗牌会把 e0 挪走）。
+    expect(ids(out), '不是洗牌，是最小必要的交换').toEqual([
+      'e0', 'e2', 'e1', 'e4', 'e3', 'e5', 'e6',
+    ])
+  })
+
+  it('② 已合规输入返回原序，逐条 id 与塔型都不变（A2 —— 硬 AC）', () => {
+    // 🔥 这条是**保住 10+ 条现有测试的唯一办法**：
+    //   `tests/app/store-deck-slice.test.ts` 逐字断言「四局连起来 == 整个词表」，
+    //   任何非恒等的重排都会打红它。**看到那条红了，先怀疑这里，不要改那条测试。**
+    const source = deckOf(10)
+    const out = sliceDeckForLevel(source, [])
+    expect(ids(out), '已合规输入被改了顺序 —— 原序承诺被悄悄废掉').toEqual(ids(source))
+    expect(
+      out.map((e) => e.towerType),
+      '连塔型都变了 —— 那就不是重排而是换题',
+    ).toEqual(source.map((e) => e.towerType))
+  })
+
+  it('③ 全同型输入降级为原序，**且不抛错**（A3）', () => {
+    // ⚠️ 全同型时「相邻不同型」数学上无解。这条降级路径**不是可选的优雅性**——
+    //   本文件原先 34 条用例的夹具全是 `'direct'`，一条抛错或死循环的实现在那里当场炸掉。
+    const source = allDirectDeckOf(10)
+    expect(() => sliceDeckForLevel(source, [])).not.toThrow()
+    expect(ids(sliceDeckForLevel(source, [])), '无解时必须退回原序').toEqual(ids(source))
+  })
+
+  it('④ 局部无解时降级，**且只降级那几处**（A3 的部分形态）', () => {
+    // `direct slow slow slow slow`：第 2 位起后面全是 slow ⇒ 换不出来。
+    // 与 ③ 分开写成两条：一条判「全同型」，一条判「局部无解」，
+    // 二者的坏法不同，**判据粒度不能粗于豁免项**（R-51 第四种形态 / AC 3.3）。
+    const out = sliceDeckForLevel(deckOf(5, 0, ['direct', 'slow', 'slow', 'slow', 'slow']), [])
+    expect(ids(out), '换不出来的位置必须保持原序，不许丢条目也不许抛错').toEqual([
+      'e0', 'e1', 'e2', 'e3', 'e4',
+    ])
+    expect(
+      sameTypeAdjacencies(out),
+      '判据本该只在这里降级 —— 若全绿说明连降级路径都被改成了乱序',
+    ).toEqual([2, 3, 4])
+  })
+
+  it('⑤ 确定性：同一份输入连跑三次，逐条输出完全相同（A4 / 零随机）', () => {
+    // ⚠️ 洗牌型实现在这一条上会红（随机源每次不同），而**本仓库已经踩过它**：
+    //   洗牌会让同一次存档恢复在不同机器上得到不同题单。
+    const source = deckOf(10, 0, VIOLATING)
+    const first = ids(sliceDeckForLevel(source, []))
+    for (let run = 0; run < 2; run += 1) {
+      expect(ids(sliceDeckForLevel(source, [])), `第 ${run + 2} 次输出与第一次不同 —— 不是纯函数`).toEqual(
+        first,
+      )
+    }
+  })
+
+  it('⑥ 条数与内容守恒：只换位置，不增不减不改内容（A1 不许靠丢条目达成）', () => {
+    const source = deckOf(10, 0, VIOLATING)
+    const out = sliceDeckForLevel(source, [])
+    expect(out, '条数变了 —— 重排不许增删').toHaveLength(source.length)
+    expect(
+      out.map((e) => e.entryId).sort(),
+      '条目集合变了 —— 重排不许改内容',
+    ).toEqual(source.map((e) => e.entryId).sort())
+  })
+
+  it('⑦ 不改动传入的两个参数（R-01 / A4 的纯函数那一半）', () => {
+    const source = deckOf(10, 0, VIOLATING)
+    const mastered = ['e3']
+    const beforeEntries = ids(source)
+    const beforeMastered = [...mastered]
+    sliceDeckForLevel(source, mastered)
+    expect(ids(source), '就地改动会改掉内容层那一份词表').toEqual(beforeEntries)
+    expect(mastered, '就地改动会改掉存档层那一份进度').toEqual(beforeMastered)
+  })
+
+  it('⑧ 输出是新数组：就地改动结果不影响源词表', () => {
+    const source = deckOf(10, 0, VIOLATING)
+    const result = sliceDeckForLevel(source, [])
+    expect(result).not.toBe(source)
+    result.splice(0, result.length)
+    expect(source).toHaveLength(10)
   })
 })
