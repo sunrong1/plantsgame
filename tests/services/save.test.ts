@@ -281,9 +281,15 @@ describe('AC-E2 / G78 —— 🔥 R-06 的守卫：局末清战场不得连带�
   })
 })
 
-describe('AC-C2 / G79 —— 写盘点 5 行表逐行钉死，含两条负向', () => {
+describe('AC-C2 / G79 —— 写盘点表逐行钉死，含一条负向', () => {
   /**
-   * 六种相位各自的「该不该写盘」与理由，判据**逐字**来自裁决 6 的表。
+   * 六种相位各自的「该不该写盘」与理由。
+   *
+   * 📎 **[1.19 CR / 2026-10-18]** 原为「5 行表、含**两条**负向」
+   *   （`awaiting-answer` 与 `resolving` 判 ❌）；试玩实测后 `awaiting-answer`
+   *   改为 ✅，理由与证据逐字记在表里那一行 ⇒ **负向只剩 `resolving` 一条**。
+   *   ⚠️ **别把「负向只剩一条」当成可以放宽负向断言的理由** ——
+   *     下面那条 `toBe(0)` 写死的注释逐字有效，一条也不许改成 `<= 1`。
    *
    * ⚠️ `makePhase` 是函数而不是字面量：`awaiting-answer` 变体**必带 `question`**，
    *   手写一个 `{ kind: 'awaiting-answer' }` 过不了 TS —— 而用 `as` 硬压过去
@@ -298,12 +304,35 @@ describe('AC-C2 / G79 —— 写盘点 5 行表逐行钉死，含两条负向', 
     {
       kind: 'awaiting-answer',
       makePhase: (base) => base.phase,
-      shouldWrite: false,
-      why: '刚 CONTINUE 出来，与上一份内容相同',
+      // 📎 **[1.19 CR / 2026-10-18 试玩实测] 由 `false` 改为 `true`（R-57 留痕）。**
+      //
+      //   原判据逐字是「刚 CONTINUE 出来，与上一份内容相同」——
+      //   ⚠️ **该理由为假**：`applyContinue`（`reducer.ts:501-508`）会 `turn + 1`、
+      //   换掉整个 `phase`、给 `zombies` 多 append 一只，两份状态实质不同。
+      //
+      //   而判 ❌ 的**后果**才是那个 P0：`Phase` 只有 `awaiting-answer` 带 `question`，
+      //   `QuestionCard` 的渲染源正是它；`HandDeck` 又只在 `awaiting-build` 渲染
+      //   ⇒ 盘上从不出现 `awaiting-answer` 时，**每一个**可落盘点都落在
+      //     「卡面拿不到题」或「连按钮都没有」的一侧。
+      //   实测症状：**读题时离开（每题 20-30 秒）必然复现** —— 重进后只剩 45 格空战场。
+      //   守卫见 `tests/app/resume-actionable.test.ts`（本表钉的是「产出几条 SAVE」，
+      //   那一条钉的是「恢复出来的那张脸对不对」——两处都不是对方的替代品）。
+      shouldWrite: true,
+      why: '孩子停留最久的相位；不写盘则读题时离开必然恢复到无按钮的 round-over',
     },
     {
       kind: 'awaiting-build',
-      makePhase: () => ({ kind: 'awaiting-build', unlocked: ['u1-hello'], sun: 50 }),
+      // 📎 **1.19 CR 加 `question`**：`Phase.awaiting-build` 现在自带题面（存档恢复时
+      //   卡面靠它渲染，见 `core/types.ts`）。这里取 `base.deck[0]` 而不是编一条 ——
+      //   本表只判「产出几条 SAVE」，但**夹具本身必须是合法的**，
+      //   否则将来有人给 `runEffects` 加一道 `assertInvariants` 时，
+      //   这条会红在一个与存档毫无关系的地方。
+      makePhase: (base) => ({
+        kind: 'awaiting-build',
+        question: base.deck[0],
+        unlocked: ['u1-hello'],
+        sun: 50,
+      }),
       shouldWrite: true,
       why: 'AC 逐字要求包括 awaiting-build 的局面',
     },

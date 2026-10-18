@@ -47,7 +47,7 @@ import {
 } from '../../src/core'
 import { entriesOf } from '../../src/content'
 
-import { correctOptionId, makeSyntheticDeck } from '../fixtures/synthetic-deck'
+import { correctOptionId, makeSyntheticDeck, questionOf } from '../fixtures/synthetic-deck'
 
 // ── 测试用的题单与常量 ──────────────────────────────────────────────────────
 
@@ -94,9 +94,15 @@ function baseBuildState(
   unlocked: readonly string[] = ALL_ENTRY_IDS,
   deck: readonly DeckEntry[] = DECK,
 ): State {
+  // 📎 **1.19 CR：先建一次开局 state，再从它上面取题面。**
+  //   建成的那份相位恒为 `awaiting-answer`，它正在问的那道题逐字取自上面这个
+  //   `deck` 构造出来的题单 ⇒ 满足新增的「题面属于题单」断言。
+  //   ⚠️ **不要用 `unlocked[0]` 当题面**：本夹具的 `unlocked` 会被调用方改成任意子集，
+  //   而它与题单之间没有「一条对一条」的保证（合成题单的 id 与 `ALL_ENTRY_IDS` 未必同源）。
+  const base = createInitialState({ unitNumber: 1, deck })
   return {
-    ...createInitialState({ unitNumber: 1, deck }),
-    phase: { kind: 'awaiting-build', unlocked: [...unlocked], sun },
+    ...base,
+    phase: { kind: 'awaiting-build', question: questionOf(base), unlocked: [...unlocked], sun },
     sun,
     unlocked: [...unlocked],
     // ⚠️ `unlocked ⊆ mastered` 是 reducer 出口一条**比 AC-13 更强**的不变量
@@ -126,7 +132,12 @@ function withTower(base: State, row: number, col: number): State {
 function atPhase(base: State, kind: State['phase']['kind']): State {
   if (kind === 'awaiting-build') {
     // 保住镜像：解锁集合与阳光都可能已被调用方改过。
-    return { ...base, phase: { kind: 'awaiting-build', unlocked: [...base.unlocked], sun: base.sun } }
+    // 📎 **1.19 CR：题面同理从 `base.phase` 取**（`base` 的相位恒带题面，
+    //   而那条题面属于它自己的题单 ⇒ 换相位不会让新断言失效）。
+    return {
+      ...base,
+      phase: { kind: 'awaiting-build', question: questionOf(base), unlocked: [...base.unlocked], sun: base.sun },
+    }
   }
   return { ...base, phase: { kind } as State['phase'] }
 }

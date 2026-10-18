@@ -20,6 +20,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { afterEachUninstall, installFakeStorage } from '../fixtures/fake-storage'
 import type { FakeStorage } from '../fixtures/fake-storage'
+import { questionOf } from '../fixtures/synthetic-deck'
 
 let storage: FakeStorage
 let warn: ReturnType<typeof vi.spyOn>
@@ -229,7 +230,10 @@ describe('AC-B10 —— 手牌区随切片收缩（不是 37 张）', () => {
       ...s,
       unlocked,
       masteredEntryIds: unlocked,
-      phase: { kind: 'awaiting-build', unlocked, sun: s.sun },
+      // 📎 **1.19 CR：补题面。** `s` 此刻是 `enterLevel()` 之后的开局 state，
+      //   相位恒为 `awaiting-answer`，它那道题逐字属于 `s.deck`
+      //   ⇒ 满足「题面属于本题单」这条新增断言。
+      phase: { kind: 'awaiting-build', question: questionOf(s), unlocked, sun: s.sun },
     })
     const cards = core.handCards(s2)
     expect(cards).toHaveLength(10)

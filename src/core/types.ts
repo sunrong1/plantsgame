@@ -303,10 +303,37 @@ export type Question = DeckEntry
  * （架构 `:846-847` 的字面形状不可改）。唯一可写事实源是 `State`；
  * `assertInvariants()` 断言两者恒等，组件**只读 `State`** ——
  * 详见本 story Dev Notes §自主设计清单第 2 条。
+ *
+ * 🔥📎 **`awaiting-build` 上的 `question` 不是镜像，是唯一一份**（1.19 CR，2026-10-18）。
+ *   它加在这里的原因逐字是一条实测出来的硬锁：卡面在建造期必须继续显示
+ *   「刚刚答完的那道题」（AC-C5 的 ≤100ms 反馈），而**存档恢复时组件是全新挂载的** ——
+ *   组件本地那份 `lastQuestion` ref 恒为 `null`，于是重进后卡面整个消失。
+ *   ⚠️ 1.15 当年把这件事判成「这是正确的：重启本来就不该停在『刚刚答完』的反馈上」，
+ *     **实测证明那个判定只覆盖了「没有存档的当场离开」，没覆盖「存档恢复」** ——
+ *     而后者才是孩子真的会遇到的形态（关掉页面明天再来）。
+ *   ⇒ 题面改由 `State` 携带，`QuestionCard` 直接读 `phase.question`，
+ *     `lastQuestion` 随之整个删除（它当初存在就是因为 `State` 不带这道题）。
+ *
+ * ⚠️ **代价：存档里这道题会和 `deck` 里的那一条重复一份。**
+ *   `Question` 就是 `DeckEntry`（见上方别名），`JSON.stringify` 不认引用 ⇒ 落盘时
+ *   两份各写一次。一条词条含 4 个选项与词图路径，实测增量在**几百字节到 2 KB** 量级，
+ *   而存档里 `deck` 本身就有 10 条。**这是刻意接受的**：换成 `questionEntryId: string`
+ *   能省下这份重复，但组件就得多一次查表 + 一条「查不到怎么办」的失败路径，
+ *   而查表失败在孩子面前就是**卡面空白且不报错**（1.18 的词图 404 已经演过一次）。
+ *   ⇒ 一致性（与 `awaiting-answer` 同样携带条目）比省几百字节重要。
+ *
+ * ⚠️ **它不参与 `assertPhaseMirror` 的镜像比对** —— `unlocked` / `sun` 在 `State`
+ *   侧各有一份同名字段可比，而 `question` **没有** State 侧对应物，
+ *   比对它是拿自己比自己。`assertInvariants()` 改为断言它**属于本题单**。
  */
 export type Phase =
   | { readonly kind: 'awaiting-answer'; readonly question: Question }
-  | { readonly kind: 'awaiting-build'; readonly unlocked: readonly string[]; readonly sun: number }
+  | {
+      readonly kind: 'awaiting-build'
+      readonly question: Question
+      readonly unlocked: readonly string[]
+      readonly sun: number
+    }
   /** 真实的一帧状态，不是瞬时值：`END_BUILD` 只切 phase，`RESOLVE_ROUND` 才结算（自主设计 #3）。 */
   | { readonly kind: 'resolving' }
   | { readonly kind: 'round-over' }

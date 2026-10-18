@@ -88,6 +88,25 @@ function playRound(state: State, correct: boolean, build?: (after: State) => Act
   return reduce(reduce(next, endBuild()), resolveRound())
 }
 
+/**
+ * 📎 **1.19 CR 新增**：取出 state 上那份**收窄过的** `awaiting-build` 相位。
+ *
+ * ⚠️ **为什么需要它而不是写 `as`**：`Phase` 是六变体联合，直接写
+ *   `base.phase.question` 编译不过（另外五个变体没有这个字段），
+ *   而本仓库对 `as` 的态度是「它常用来把断言变得不再断言」。
+ *   ⇒ 收窄写在**判据之外的一个具名 helper** 里，读代码的人一眼知道
+ *     「这里断言过前置」，而不是「这里被按了一下类型」。
+ *
+ * ⚠️ **收窄失败就抛**：静默返回一个假的 build 相位，会让下面那些
+ *   「必须抛」/「必须不抛」的判据变成在测另一个东西。
+ */
+function buildPhaseOf(state: State): Extract<State['phase'], { readonly kind: 'awaiting-build' }> {
+  if (state.phase.kind !== 'awaiting-build') {
+    throw new Error(`前置：当前相位是 ${state.phase.kind}，不是 awaiting-build`)
+  }
+  return state.phase
+}
+
 /** 走到某个阶段的 state。用法：`atPhase('round-over')`。 */
 function atPhase(kind: Phase['kind'], deck: readonly DeckEntry[] = DECK): State {
   let state = createInitialState({ unitNumber: 1, deck })
@@ -668,12 +687,24 @@ describe('AC-13 —— 不变量断言', () => {
       make: (base) => ({ ...base, zombies: [{ ...base.zombies[0], hp: ZOMBIE_HP + 1 }] }),
     },
     {
+      // 📎 **1.19 CR**：改成 `{ ...phase, unlocked: [] }` 而不是重写整个 phase 字面量。
+      //   理由与 `assertPhaseMirror` 那条新断言同款：**这两条要考的分别是
+      //   「unlocked 镜像过期」与「sun 镜像过期」**。若顺手把 `question` 填错/填漏，
+      //   `assertInvariants` 就会先被新断言拦下 —— `toThrow()` 照样绿，
+      //   而它绿的原因是**另一条规则**，判据就此失去鉴别力
+      //   （本仓库记过多次的「守卫红得指错了地方」）。
       name: 'awaiting-build 的 unlocked 镜像与 State 不一致',
-      make: (base) => ({ ...base, phase: { kind: 'awaiting-build', unlocked: [], sun: base.sun } }),
+      make: (base) => {
+        const phase = buildPhaseOf(base)
+        return { ...base, phase: { ...phase, unlocked: [] } }
+      },
     },
     {
       name: 'awaiting-build 的 sun 镜像与 State 不一致',
-      make: (base) => ({ ...base, phase: { kind: 'awaiting-build', unlocked: base.unlocked, sun: base.sun + 1 } }),
+      make: (base) => {
+        const phase = buildPhaseOf(base)
+        return { ...base, phase: { ...phase, sun: phase.sun + 1 } }
+      },
     },
     {
       name: '回合号不是 >= 1 的整数',
@@ -703,6 +734,36 @@ describe('AC-13 —— 不变量断言', () => {
       ).toThrow()
     })
   }
+
+  // 📎 **1.19 CR 新增：`awaiting-build` 题面那条断言的正反两面。**
+  //   ⚠️ **反向自测不是形式**：上面那个矩阵里的每一条都是「必须抛」，
+  //   而 `assertInvariants` 现在多了一条「题面必须在题单里」的断言 ——
+  //   若它写得太宽（任何 awaiting-build 都抛），矩阵**全绿**，
+  //   而「镜像一致就该放过」这条规则从此没人守（一条恒真的守卫守着恒真的规则）。
+  it('G171 反向自测：题面属于题单时，`assertInvariants` 必须**放行**', () => {
+    const base = atPhase('awaiting-build')
+    const phase = buildPhaseOf(base)
+    // 只重建一份「逐字等于 phase 上那份」的镜像 state —— 没有任何一处不一致。
+    const intact: State = { ...base, phase: { ...phase, unlocked: [...phase.unlocked], sun: phase.sun } }
+
+    expect(
+      () => assertInvariants(intact),
+      '题面属于本题单 + 两个镜像都与 State 一致 ⇒ 必须放行。它抛的话说明那条新断言写成了恒真',
+    ).not.toThrow()
+  })
+
+  it('G171：题面不在题单里时必须抛（内容回滚 / 旧存档的形态）', () => {
+    const base = atPhase('awaiting-build')
+    const phase = buildPhaseOf(base)
+    // ⚠️ **刻意用一道题单里没有的题**（把 `wordId` 改掉而 `entryId` 不动 ——
+    //   那样断言仍会挂，因为判据逐字是「`entryId` 在不在 `deck` 里」）。
+    const foreign: DeckEntry = { ...phase.question, entryId: 'u1-not-in-deck' }
+
+    expect(
+      () => assertInvariants({ ...base, phase: { ...phase, question: foreign } }),
+      '题面不属于本题单 ⇒ 必须抛。放过它的话卡面会渲染一道答不对的题，而界面上看不出任何异常',
+    ).toThrow()
+  })
 
   it('reduce 之后的不变量自动成立（断言挂在 reduce 出口）', () => {
     // AC-13 允许「测试里每次 reduce 后调用」或「内置于断言路径」。本实现选后者，

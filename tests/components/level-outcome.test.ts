@@ -33,6 +33,7 @@ import LevelView from '../../src/views/LevelView.vue'
 
 import levelOutcomeSource from '../../src/components/hud/LevelOutcome.vue?raw'
 import { stripComments } from '../helpers/contrast'
+import { questionOf } from '../fixtures/synthetic-deck'
 
 enableAutoUnmount(afterEach)
 
@@ -242,9 +243,13 @@ function pushOutOfTerminal(kind: 'awaiting-answer' | 'awaiting-build' | 'resolvi
     return
   }
   if (kind === 'awaiting-build') {
+    // 📎 **1.19 CR：补上题面。** 取 `PRISTINE` 自己那道正在问的题 ——
+    //   `PRISTINE` 是 `createInitialState` 的产物，它的相位恒为 `awaiting-answer`，
+    //   所以那道题逐字属于 `PRISTINE.deck`（满足新增的「题面属于题单」断言）。
+    const question = questionOf(PRISTINE)
     state.value = {
       ...PRISTINE,
-      phase: { kind, unlocked: [...PRISTINE.unlocked], sun: PRISTINE.sun },
+      phase: { kind, question, unlocked: [...PRISTINE.unlocked], sun: PRISTINE.sun },
     }
     return
   }

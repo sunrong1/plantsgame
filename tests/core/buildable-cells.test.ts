@@ -46,7 +46,7 @@ import {
   type State,
 } from '../../src/core'
 
-import { makeSyntheticDeck } from '../fixtures/synthetic-deck'
+import { makeSyntheticDeck, questionOf } from '../fixtures/synthetic-deck'
 
 /** 全部 45 格的坐标。**独立枚举**，不从被测代码的同一份循环推出来。 */
 function everyCell(): readonly { row: number; col: number }[] {
@@ -141,9 +141,15 @@ describe('AC-12 漂移守卫 —— canBuildAt 与 placeTower 的真实接受 / 
     // 不会是因为阳光不足或未解锁（那两条是 ①⑤ 号规则，不在本守卫的范围内）。
     const unlocked = deck.map((entry) => entry.entryId)
     const sun = 1_000_000
+    // 📎 **1.19 CR：先建一次开局 state，题面从它上面取** ——
+    //   它逐字取自上面这个 `deck` ⇒ 满足「题面属于本题单」。
+    //   ⚠️ 本守卫把 `unlocked` 设成 `deck.map(...)`（题单**全部**），看着像能当题面用，
+    //   但 `unlocked[0]` 只是「碰巧」等于题面第一条 —— 换个 id 命名规则就不成立，
+    //   而那时红的是「题面不属于题单」，指向一个与「哪一格能建塔」毫无关系的原因。
+    const base = createInitialState({ unitNumber: 1, deck })
     const state: State = {
-      ...createInitialState({ unitNumber: 1, deck }),
-      phase: { kind: 'awaiting-build', unlocked, sun },
+      ...base,
+      phase: { kind: 'awaiting-build', question: questionOf(base), unlocked, sun },
       sun,
       unlocked,
       // ⚠️ 必须同步 `masteredEntryIds`：`reduce` 出口的 `assertInvariants`

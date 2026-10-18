@@ -94,9 +94,14 @@ interface HudStateOptions {
 function makeState(options: HudStateOptions = {}): State {
   const sun = options.sun ?? 1000
   const mastered = options.mastered ?? [ENTRY.entryId]
+  // 📎 **1.19 CR：`awaiting-build` 那一支补上题面。**
+  //   用 `ENTRY` 而不是从 `mastered` 里查：题面属于本题单现在是 `assertInvariants`
+  //   的硬失败，而 `ENTRY` 逐字取自 `REAL_DECK`（下方 `deck` 用的就是它）⇒ 必属本题单。
+  //   ⚠️ **`mastered` 里那些 id 不参与选题面**：它们多数不在本题单里（跨局词汇表），
+  //   拿它们当题面会造出一份过不了断言的 state，红在一个与 HUD 毫无关系的地方。
   const phase: Phase =
     options.phase === 'awaiting-build'
-      ? { kind: 'awaiting-build', unlocked: [...mastered], sun }
+      ? { kind: 'awaiting-build', question: ENTRY, unlocked: [...mastered], sun }
       : { kind: 'awaiting-answer', question: ENTRY }
   return {
     unitNumber: options.unitNumber ?? 1,

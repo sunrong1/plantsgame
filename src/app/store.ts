@@ -45,6 +45,7 @@ import {
   createUnitCompletedState,
   endBuild,
   isCorrect,
+  nextQuestion,
   placementBlockedReason,
   placeTower,
   reduce,
@@ -356,16 +357,28 @@ function restoreFromSave(): void {
   //   ⇒ 缺字段补 `[]`，让「旧存档」走**补齐**而不是走**降级**。
   //   ⚠️ 补齐是安全的：跳过记录只影响本局还没考的题，缺失时退化成
   //   「旧行为」（那些题照旧会再出现）—— 最坏情况是多考一题，不是崩。
-  const normalised: State = Array.isArray(restored.skippedEntryIds)
-    ? restored
-    : { ...restored, skippedEntryIds: [] }
+  //
+  // 🔥📎 **1.19 CR 追加第二条补齐：`awaiting-build` 的题面**（见 {@link backfillLegacyBuildPhase}）。
+  //   ⚠️ **两条补齐的先后无所谓，但都必须在 `assertInvariants` 之前** ——
+  //     缺字段的旧存档一旦落进下面那个 try，catch 会把**进度一起清空**（AC-D4），
+  //     而「升级回来发现要从头再学」是本作最不可接受的失败形态。
+  const normalised: State = backfillLegacyBuildPhase(
+    Array.isArray(restored.skippedEntryIds) ? restored : { ...restored, skippedEntryIds: [] },
+  )
 
   try {
     // ⚠️ **不变量违反时让 `core/` 照抛**（NFR12 第一层：「逻辑层必须 `throw`，禁止 catch」）。
     //   是**这一层**去接住它并降级 —— 不是让 `core/` 学会不抛。
     //   存档是外部数据，而 `assertInvariants` 是为「合法状态空间」写的；
     //   内容回滚或存档来自别的内容版本时，它会在这里拦下那份不可信的对局。
-    state.value = assertInvariants(normalised)
+    //
+    // 🔥📎 **1.19 `[CR]` 第四轮：`advanceLegacyRoundOver` 放在 try 之内**，
+    //   而不是跟 `backfillLegacyBuildPhase` 一起算在 try 之外 ——
+    //   它内部调 `reduce`，而 `reduce` 的出口挂着 `assertInvariants`；
+    //   放在外面的话，一份**结构不合法**的 round-over 存档会当场抛穿
+    //   `restoreFromSave`，而这一层存在的全部意义就是「孩子看到一局新开局，
+    //   不是一个技术错误」（AC-D4 / NFR13）。
+    state.value = assertInvariants(advanceLegacyRoundOver(normalised))
   } catch (err) {
     // AC-D4：安全降级为「从头开始」，**不弹窗、不 alert、不抛**。
     // 孩子看到的是一局新开局，而不是一个技术错误（NFR13）。
@@ -434,6 +447,114 @@ function restoreNextUnit(savedProgress: Progress): void {
 /** 把一个 unknown 变成一句可读的说明（不抛，NFR14）。 */
 function describeRestore(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
+}
+
+/**
+ * 🔥📎 **1.19 CR / 2026-10-18：补齐旧存档的建造期题面。**
+ *
+ * ── 为什么需要它 ───────────────────────────────────────────────────────────
+ * `Phase.awaiting-build` 上的 `question` 是这一轮新加的字段。**盘上已有的存档
+ * （包括家长平板上那份正在玩到一半的）没有它**，而 `assertInvariants` 会断言
+ * 「题面属于本题单」—— 缺字段时那个断言读到 `undefined.entryId` 就抛
+ * ⇒ 落进 `restoreFromSave` 的 catch ⇒ **连跨局进度一起清空**（AC-D4）。
+ * ⇒ 所以必须在进断言**之前**补齐，理由与 1.18 补 `skippedEntryIds` 完全同款。
+ *
+ * ⚠️ **为什么不递增 `SAVE_SCHEMA_VERSION` 让它整体作废**（这是本函数最该被追问的一点）：
+ *   版本不匹配走的是「安全降级为从上一个单元重新开始」（FR61），
+ *   代价是**孩子已经学会的词当场归零**（FR58「只增不减」当场被破）。
+ *   而这里的实际形状差异**只有一个字段、且只影响一个相位**，补齐即可完全覆盖。
+ *   ⇒ 「作废整份存档」比「少一个字段」贵得多。**这条判断的前提是本函数真的能补齐**；
+ *     一旦将来某个改动让旧存档出现**无法补齐**的差异，就该回去递增版本号。
+ *
+ * ── 为什么归一化成 `awaiting-answer` 而不是「造一道题面塞回去」──────────────
+ * 建造期显示的那道题是**孩子刚答的那一道**，而从一份旧存档里**推不出**它是哪一道：
+ *   · 答**对**了 → 那道题已进 `masteredEntryIds`，`nextQuestion()` 返回的是**下一道**；
+ *   · 答**错**了 → 那道题没进，`nextQuestion()` 返回的**恰好就是它**。
+ * 两者从存档里**不可区分** ⇒ 硬造一个「大概率对」的值，是在给孩子渲染一道
+ * **点哪里都不对**的题（`pickedRight` 恒 false，而界面看不出任何异常）——
+ * 那比没有题面更难排查。
+ * ⇒ 老实按 `nextQuestion()` 推进到一道**真的能答**的题。
+ * ⚠️ 代价如实记：答对后离开的那一次会**跳过一道题**（下次它会在后面的某一局重新出现，
+ *   因为它没进 `masteredWordIds`）。这是**换掉一个死局**，不是丢进度。
+ *
+ * ⚠️ **`nextQuestion()` 抽不到题时走「已学完」终态**：那是唯一如实的一支
+ *   （题单全被掌握或跳过）。这一支在真实对局里**构造上不可达** ——
+ *   题单答完时 `CONTINUE` 会把相位推成 `level-complete`，不会停在 `awaiting-build`；
+ *   它挡的是「存档来自另一个内容版本、题单更短」这种脏数据。
+ */
+function backfillLegacyBuildPhase(state: State): State {
+  const phase = state.phase
+  if (phase.kind !== 'awaiting-build' || hasOwn(phase, 'question')) {
+    return state
+  }
+  const next = nextQuestion(state.deck, state.masteredEntryIds, state.skippedEntryIds)
+  if (next === null) {
+    console.warn(
+      `[save] 存档里的建造期局面来自旧版本且题单已答尽，已按「本单元已学完」处理` +
+        `（单元 ${state.unitNumber}，已掌握 ${state.masteredEntryIds.length} 条 / 题单 ${state.deck.length} 条）`,
+    )
+    return createUnitCompletedState(state.unitNumber)
+  }
+  console.warn(
+    `[save] 存档里的建造期局面来自旧版本（没有题面），已推进到下一道可答题：${next.entryId}`,
+  )
+  return { ...state, phase: { kind: 'awaiting-answer', question: next } }
+}
+
+/**
+ * 🔥📎 **1.19 `[CR]` 第四轮：把 `round-over` 的存档推进到下一道题。**
+ *
+ * ── 为什么会有 `round-over` 的存档 ─────────────────────────────────────────
+ *   `startRound()` 的三连 dispatch 是**同步**的（`endBuild` → `resolveRound`
+ *   → `continueRound`），所以 `round-over` 在正常游玩里只是**中间一帧**。
+ *   ⚠️ **但 1.15 的写盘表含 `round-over`，而那时的 `CONTINUE` 不写盘**
+ *   ⇒ 孩子点一次「开战」，盘上就**永久**留下一份 `round-over` 快照。
+ *   （1.19 第一轮给 `awaiting-answer` 补了写盘点之后，`CONTINUE` 也会写，
+ *   同一帧就被覆盖掉了 —— 但**旧存档已经出去了**，回不来的那种。）
+ *
+ * ── 为什么它是硬锁而不只是「不好看」─────────────────────────────────────────
+ *   实测（jsdom 走完整链路）：恢复出来是 **卡面 0 个节点 / 手牌不渲染 /
+ *   「⚔ 开战」不存在** —— 45 格空战场上**一个可点的元素都没有**，
+ *   而界面上没有任何东西指向原因（AC-D5 的「假可点」的极端形态：
+ *   连假可点的东西都没有）。
+ *
+ * ── 为什么处置是「替他按一次继续」而不是「不恢复」────────────────────────
+ *   `round-over` 的**唯一**出口就是 `CONTINUE` —— 孩子当时看到的就是
+ *   「这一回合打完了，点继续」。恢复时替他按那一下，落点是 `nextQuestion`
+ *   给的那道**待答题**，于是重进就有卡面、有选项、能接着玩。
+ *   ⇒ 这不是发明新语义，是**补上孩子离开时没来得及按的那一下**。
+ *
+ * ⚠️ **代价如实记**：他看不到那一回合的结算画面了。那一帧在真实对局里
+ *   **不可停**（三连同步），只有在存档里才会成为落点 ⇒ 丢的不是任何
+ *   「停下来就能看到」的东西。
+ *
+ * ⚠️ **`reduce` 而不是 `applyAction`**：这一层要的是**纯的状态推进**，
+ *   不该在读档时顺手播一串音效/重下一轮 BGM。副作用由孩子接下来真按的那一下
+ *   照常触发（`applyAction` 的职责）。
+ */
+function advanceLegacyRoundOver(state: State): State {
+  if (state.phase.kind !== 'round-over') return state
+  console.warn(
+    `[save] 存档停在一回合的结算帧（round-over）—— 那是旧版本写盘点留下的，` +
+      '孩子当时没来得及按「继续」。已替他推进到下一道题。',
+  )
+  return reduce(state, continueRound())
+}
+
+/**
+ * 「这个相位上真的有 `question` 这个键吗」—— 判的是**字段在不在**，不是值。
+ *
+ * ⚠️ **刻意不用 `phase.question !== undefined`**：`types.ts` 改完之后 `question`
+ *   是**非可选**字段，拿它比 `undefined` 在类型层面恒真、在运行期又是脆的
+ *   （真值判据与类型判据一旦分家，改类型的人不会收到任何提醒）。
+ *   `hasOwnProperty` 只讲一件事——**这份 JSON 里写没写这个键**，
+ *   而那正是「旧存档」与「新存档」唯一的区别。
+ *   ⚠️ 走 `Object.prototype.hasOwnProperty.call` 而不是 `in`：后者沿原型链查，
+ *     而存档是 `JSON.parse` 出来的纯对象、原型链上没有 `question`，
+ *     今天两者等价 —— 但 `call` 那一种不会因为将来给 `Object.prototype` 加东西而变语义。
+ */
+function hasOwn(value: object, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(value, key)
 }
 
 // ── 建造交互的视图状态与门面（Story 1.12 / AC-D4、AC-D5、AC-F2、AC-F3）──────

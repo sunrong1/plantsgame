@@ -103,7 +103,14 @@ const PHASE_KINDS = [
 ] as const
 
 function phaseOf(kind: (typeof PHASE_KINDS)[number], unlocked: readonly string[], sun: number): Phase {
-  if (kind === 'awaiting-build') return { kind, unlocked: [...unlocked], sun }
+  // 📎 **1.19 CR：`awaiting-build` 现在自带题面**（存档恢复时卡面靠它渲染）。
+  //   与下面 `awaiting-answer` 那一支**用同一个取法**：从 `REAL_DECK` 里按
+  //   `unlocked[0]` 找，找不到就退回第 1 条 —— 两者都保证题面属于本题单，
+  //   而「题面不属于题单」现在是 `assertInvariants` 的一条硬失败。
+  if (kind === 'awaiting-build') {
+    const question = REAL_DECK.find((entry) => entry.entryId === unlocked[0]) ?? REAL_DECK[0]
+    return { kind, question, unlocked: [...unlocked], sun }
+  }
   if (kind === 'awaiting-answer') {
     const question = REAL_DECK.find((entry) => entry.entryId === unlocked[0]) ?? REAL_DECK[0]
     return { kind, question }

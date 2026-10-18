@@ -25,7 +25,7 @@
  * 不该耦合测试 fixture（架构 `:649` 与 AC-15）。脚本自建一份合成题单。
  */
 
-import type { Card, DeckEntry, OptionId, TowerType } from '../../src/core'
+import type { Card, DeckEntry, OptionId, Question, State, TowerType } from '../../src/core'
 
 /** 三塔型轮转表（与 `TOWER_TYPES` 同序，内容无关，只是轮转顺序）。 */
 const TOWER_TYPE_CYCLE: readonly TowerType[] = ['direct', 'slow', 'aoe']
@@ -112,4 +112,38 @@ export function entryById(deck: readonly DeckEntry[], entryId: string): DeckEntr
     throw new Error(`题单里没有 ${entryId}，现有：${deck.map((e) => e.entryId).join('、')}`)
   }
   return hit
+}
+
+/**
+ * 📎 **1.19 CR 新增**：取一份 state 上「此刻挂着的那道题」，相位不对就抛。
+ *
+ * ── 为什么需要它 ───────────────────────────────────────────────────────────
+ * `State['phase']` 是六变体联合，只有 `awaiting-answer` 与 `awaiting-build`
+ * 带 `question`。而 `Phase.awaiting-build` 自带题面这件事落地之后，
+ * 一批夹具要给「建造期」补一道**属于本题单**的题面 ——
+ * 最省事也最常错的写法是 `state.phase.question`，而 `state: State` 上
+ * `phase` 未收窄 ⇒ TS2339（另外四个变体没有该字段）。
+ *
+ * ⚠️ **不要用 `as` 或 `!` 消掉那个 TS2339**：那正是本仓库记过的
+ *   「判据被改宽」与「断言被改成恒真」的同型。收窄写在这里，
+ *   调用点读起来就是「取这道题」，而不是「按一下类型信我」。
+ *
+ * ⚠️ **接受两个相位而不是只接受 `awaiting-answer`**：有的夹具手上那一份 state
+ *   已经是 `awaiting-build` 了（比如「建好塔之后换相位」那类），
+ *   而它同样挂着题面。**只收一个相位会让这些夹具被迫先退回开局再走过来** ——
+ *   那是给测试加戏，不是加真实性。
+ *
+ * ⚠️ **相位不对时抛而不是返回 `undefined`**：夹具被改成别的相位时，
+ *   返回 `undefined` 会让下游造出一份「题面是 undefined」的非法 state，
+ *   而它在 `assertInvariants` 里报的是「题面不属于本题单」——
+ *   指向一个与夹具写错毫无关系的原因。
+ */
+export function questionOf(state: State): Question {
+  if (state.phase.kind === 'awaiting-answer' || state.phase.kind === 'awaiting-build') {
+    return state.phase.question
+  }
+  throw new Error(
+    `前置：这份 state 的相位是 ${state.phase.kind}，它不带题面 —— ` +
+      '只有 awaiting-answer 与 awaiting-build 挂着题。',
+  )
 }

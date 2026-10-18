@@ -639,7 +639,15 @@ describe('G28 —— 词图加载失败降级', () => {
     //   `imageFailed` 与「当前该答哪道题」无关，报上去只会被门面的相位检查丢掉。
     const question = firstQuestionOfKind('word')
     const wrapper = mountCard(question)
-    state.value = { ...state.value, phase: { kind: 'awaiting-build', unlocked: [], sun: 0 } } as never
+    // 📎 **1.19 CR：补题面。** `awaiting-build` 自 `Phase` 起就挂着 `question`
+    //   （`src/core/types.ts` 的六变体联合），漏掉它 ⇒ `shown` 交出 `undefined`
+    //   ⇒ 卡面**根本不渲染** ⇒ 下面 `findAll` 越界，那是夹具坏了，
+    //   而红的原因（"相不上元素"）与被测行为（"该不该上报"）毫无关系。
+    //   `question` 逐字取自 `stateWith(question)` 用的那份 `entriesOf(1)` 题单。
+    state.value = {
+      ...state.value,
+      phase: { kind: 'awaiting-build', question, unlocked: [], sun: 0 },
+    }
     await wrapper.vm.$nextTick()
     reportImageFailureMock.mockClear()
 
@@ -1026,7 +1034,7 @@ describe('G30 —— 题面文字在真浏览器里看得见（jsdom 看不见�
 // AC-C5 —— lastQuestion / pickedOptionId
 // ══════════════════════════════════════════════════════════════════════════════
 
-describe('AC-C5 —— 组件本地 lastQuestion', () => {
+describe('AC-C5 —— 卡面在哪些相位上出现', () => {
   it('🚨 首次挂载就是一道待答题 —— 卡面必须立刻渲染（immediate 的缺失会让整个 story 的交付物是空的）', () => {
     state.value = stateWith(firstQuestionOfKind('word'))
     const wrapper = mount(QuestionCard)
@@ -1036,15 +1044,30 @@ describe('AC-C5 —— 组件本地 lastQuestion', () => {
     expect(wrapper.findAll('.option-card')).toHaveLength(4)
   })
 
-  it('lastQuestion === null 时卡面区不渲染任何东西（不是白框、不是空 div）', () => {
-    state.value = {
-      ...createInitialState({ unitNumber: 1, deck: entriesOf(1) }),
-      phase: { kind: 'awaiting-build', unlocked: [], sun: 0 },
+  // 📎 **1.19 CR：这一条整条改判**（R-57 留痕）。
+  //
+  // 原用例逐字是「`lastQuestion === null` 时卡面区不渲染任何东西」，夹具是
+  // **一个没有题面的 `awaiting-build`** —— 它锁的正是 1.19 要治的那个形态：
+  // 存档恢复到建造期时组件本地那份 `lastQuestion` 恒为 `null` ⇒ 卡面消失。
+  // ⇒ 保留它就是**把 bug 钉成守卫**，而它一直绿着（本文件自己也记着
+  //   「1.15 存档恢复到 awaiting-build 时反馈条会消失 —— 这是正确的」）。
+  //
+  // ⚠️ **改判后的判据仍然是同一句话**（AC-C5 ②：没有题就没有东西可显示），
+  //   只是「没有题」的**例子**换成了真正没有题面的相位 ——
+  //   `round-over` / `resolving` / 两个终态这四个（1.16 裁决 7 逐字圈定的范围）。
+  //   ⚠️ 判据用 `round-over` 而不是再拿 `awaiting-build` 做例子：
+  //   后者现在**自带题面**，拿它当「没有题」的例子会让判据与实现直接矛盾。
+  it('📎 改判（1.19 CR）：没有题面的相位上，卡面区一个节点都不渲染（不是白框、不是空 div）', () => {
+    const base = createInitialState({ unitNumber: 1, deck: entriesOf(1) })
+    // ⚠️ 逐个相位都判一遍，而不是只判 `round-over` 一个 ——
+    //   「哪些相位不给题面」正是 1.16 裁决 7 的内容，少判一个就等于把那个相位放开了。
+    for (const kind of ['resolving', 'round-over', 'level-complete', 'level-failed'] as const) {
+      state.value = { ...base, phase: { kind } }
+      const wrapper = mount(QuestionCard)
+      expect(wrapper.find('.question-card').exists(), `${kind} 上不得渲染卡面`).toBe(false)
+      expect(wrapper.find('.answer-feedback').exists(), `${kind} 上不得渲染反馈条`).toBe(false)
+      wrapper.unmount()
     }
-    const wrapper = mount(QuestionCard)
-
-    expect(wrapper.find('.question-card').exists()).toBe(false)
-    expect(wrapper.find('.answer-feedback').exists()).toBe(false)
   })
 
   it('🚨 每次回到 awaiting-answer 都清 pickedOptionId，不管 entryId 变没变', async () => {
@@ -1074,7 +1097,11 @@ describe('AC-C5 —— 组件本地 lastQuestion', () => {
     expect(wrapper.findAll('.option-card')[wrongIndex].classes()).not.toContain('is-picked')
   })
 
-  it('awaiting-build 期间卡面仍在（lastQuestion 继续供它渲染），但重听不提供', async () => {
+  // 📎 **1.19 CR：题面改由 `State` 携带，本用例的夹具随之改写。**
+  //   原注释逐字是「切到 awaiting-build（state 里此时**没有 question**）」——
+  //   那正是断点续学时卡面消失的成因。现在 `Phase.awaiting-build` 自带题面，
+  //   组件与存档恢复走**同一个数据源**，因此这条断言一字不改就仍然成立。
+  it('awaiting-build 期间卡面仍在（题面由 phase.question 提供），但重听不提供', async () => {
     const question = firstQuestionOfKind('word')
     const wrapper = mountCard(question)
     const wrongIndex = question.card.options.findIndex((o) => !o.correct)
@@ -1082,8 +1109,12 @@ describe('AC-C5 —— 组件本地 lastQuestion', () => {
     applyActionMock.mockReset()
     speakMock.mockClear()
 
-    // 切到 awaiting-build（state 里此时**没有 question**）
-    state.value = { ...state.value, phase: { kind: 'awaiting-build', unlocked: [], sun: 100 } }
+    state.value = {
+      ...state.value,
+      // ⚠️ `state.value.phase` 在这条用例推进之前恒为 `awaiting-answer`（`mountCard`
+      //   装的就是那道题），所以这里的题面逐字就是 `question`。
+      phase: { kind: 'awaiting-build', question, unlocked: [], sun: 100 },
+    }
     await wrapper.vm.$nextTick()
 
     expect(wrapper.findAll('.option-card')).toHaveLength(4)
@@ -1103,7 +1134,7 @@ describe('AC-C5 —— 组件本地 lastQuestion', () => {
   //   try/catch 与 console spy 都抓不到（实测两者都漏）——
   //   而「这个 action 根本不该被派发」既是契约，也稳定可断言。
   //   守卫 G27 已是同型判据（连点重听后 applyAction 零调用）。
-  it('awaiting-build 期点选项卡：不派发 ANSWER，也不点亮反馈（守门在写 pickedOptionId 之前）', async () => {
+  it('awaiting-build 期点选项卡：不派发 ANSWER，也**不产生任何新的反馈**（守门在写 pickedOptionId 之前）', async () => {
     const question = firstQuestionOfKind('word')
     const wrapper = mountCard(question)
     // 先真的答一道 ⇒ reducer 把 phase 推到 awaiting-build（比手工塞 phase 更真）
@@ -1119,12 +1150,27 @@ describe('AC-C5 —— 组件本地 lastQuestion', () => {
     // 那样守门自然成立，会变成一条永远不会失败的断言。
     expect(wrapper.findAll('.option-card')).toHaveLength(4)
 
+    // 📎 **[R-57] 1.19 `[CR]` 判据改写**：原来逐字断言
+    //   「点完 `.answer-feedback` **不存在**」。
+    //   **那正是本轮被推翻的行为** —— 建造期的反馈条现在**常驻**
+    //   （`v-if="pickedOptionId !== null || locked"`），
+    //   否则从存档恢复到建造期时它恒为 `null` ⇒ 孩子看到的是一道**还没答的题**。
+    // ⇒ 换成**更强**的那个判据：**点它不产生任何变化**。
+    //   「之前有、之后一样」严格蕴含「之前没有、之后没有」，反向不成立；
+    //   而「守门被挪到写 `pickedOptionId` 之后」这个坏法，
+    //   旧判据抓得住，新判据**同样**抓得住（内容会从「答对了」翻成别的）。
+    const feedbackBefore = wrapper.find('.answer-feedback').text()
+    expect(feedbackBefore, '前置：建造期必须有反馈条 —— 它是「这题已经答完了」的唯一可见说明').not.toBe('')
+    const classesBefore = wrapper.findAll('.option-card').map((el) => el.classes().join('.'))
+
     await wrapper.findAll('.option-card')[1].trigger('click')
 
     expect(applyActionMock).toHaveBeenCalledTimes(0)
-    // 🚨 守门若被挪到 `pickedOptionId.value = optionId` **之后**，
-    //   上面那条仍然绿（applyAction 依然没被调用），而孩子会看到一个假反馈。
-    expect(wrapper.find('.answer-feedback').exists()).toBe(false)
+    expect(
+      wrapper.find('.answer-feedback').text(),
+      '点了不可点的选项却产生了新的反馈 —— 那是一个**假的**「你答了」',
+    ).toBe(feedbackBefore)
+    expect(wrapper.findAll('.option-card').map((el) => el.classes().join('.'))).toEqual(classesBefore)
     expect(wrapper.findAll('.option-card').some((el) => el.classes().includes('is-picked'))).toBe(false)
   })
 
@@ -1341,43 +1387,93 @@ function shownBody(): string {
 }
 
 /**
- * G94 的判据：**每一次把 `lastQuestion` 交出去，都必须发生在
- * 「已经判过 `phase.kind === 'awaiting-build'`」之后。**
+ * G94 的判据：**题面只在这两个相位上被交出去，且必须当场从 `phase` 上读。**
  *
- * ⚠️ 为什么不写成「源码里出现 `awaiting-build` 字样」：那样 M106
- *   （把兜底改回覆盖全部无 `question` 的相位）**不会红** —— 注释里那个词还在，
- *   而 stripComments 之后…… 更糟的是实现里也可能留下一个**没用上**的
- *   `awaiting-build` 判断 ⇒ 恒绿（R-51）。
- *   ⇒ 判据钉的是**位置关系**：`lastQuestion.value` 前面必须紧跟着
- *     那次 `awaiting-build` 判断。
+ * 📎 **[R-57] 判据改写（2026-10-18，Story 1.19 CR 的 B 方案）**
+ *
+ * 原判据钉的是「`lastQuestion.value` 的位置必须晚于 `awaiting-build` 判断」。
+ * B 方案把题面搬进 `Phase.awaiting-build`、删掉了 `lastQuestion` 这个
+ * **组件本地** ref，于是原判据的自检行
+ * `if (handOff < 0) return '判据自检失败：兜底体里找不到 lastQuestion.value'`
+ * 恒成立 —— 判据在**自己失效时**报的是「找不到」，红的原因与被守的行为无关
+ * （这正是本仓库记过的「反向自检没调用判据本体」那一类）。⇒ 判据**重写**，
+ * 不是放宽。新判据由四条组成，逐条对应一条真实违规：
+ *
+ * | # | 违规形态 | 判据 |
+ * |---|---|---|
+ * | 1 | 答题相位不交题面（卡面永远不出现） | 必须出现 `phase.kind === 'awaiting-answer'` |
+ * | 2 | 收窄掉 AC-C5 的反馈载体（1.16 裁决 7 的另一半） | 必须出现 `phase.kind === 'awaiting-build'` |
+ * | 3 | 宽兜底（M106 的同款改法）：无判定的 `return phase.question` | 每一处读题面必须与一次相位判定同处一条语句 |
+ * | 4 | 退回组件本地 ref 兜底（**1.19 这个 bug 的根因本身**） | `shown` 里除 `state.value.phase` 外不许再读任何 `.value` |
+ *
+ * ⚠️ 第 4 条为什么必须盯 `.value` 而不是盯**某个名字**：早期版本盯的是
+ *   `lastQuestion`。换个名字（`prevQuestion` / `lastShown`）守卫就绿了，
+ *   而 bug 一模一样。盯**语法**（不许读 ref）才没有这个洞。
+ *
+ * ⚠️ 为什么不写成「源码里出现 `awaiting-build` 字样」：stripComments 之后
+ *   也可能留下一个**没用上**的 `awaiting-build` 判断 ⇒ 恒绿（R-51）。
+ *   ⇒ 第 3 条要求那个判定与题面**同处一个 `return` 段**。
  */
 function g94Violation(code: string): string | null {
-  const guard = code.indexOf('phase.kind === \'awaiting-build\'')
-  if (guard < 0) return '兜底没有判 `awaiting-build` —— 裁决 7 要求它只兜这一个相位'
-  const handOff = code.indexOf('lastQuestion.value')
-  if (handOff < 0) return '判据自检失败：兜底体里找不到 `lastQuestion.value`'
-  if (handOff < guard) return '`lastQuestion` 在 `awaiting-build` 判断**之前**就被交出去了'
+  // 第 1 / 2 条：两个相位判定必须在场（判「字样在不在」，靠第 3 条排除「没用上」）。
+  if (!/phase\.kind\s*===\s*['"]awaiting-answer['"]/.test(code)) {
+    return '`shown` 没有判 `awaiting-answer` —— 答题相位必须交出题面'
+  }
+  if (!/phase\.kind\s*===\s*['"]awaiting-build['"]/.test(code)) {
+    return '兜底没有判 `awaiting-build` —— 裁决 7 要求它兜住这一个相位'
+  }
+
+  // 第 3 条：每一次读 `.question` 都必须落在**一次相位判定之内**。
+  //   ⚠️ 语句边界取 `;` 与 `{`，**不是** `return`：判定的写法是
+  //   `if (判定) return 题面`，判定落在 `return` **之前**，
+  //   按 `return` 切段会把两者切到不同段里，于是正确实现也判红（假红），
+  //   而按 `;`/`{` 切才与「一条语句」的边界一致。
+  for (const statement of code.split(/[;{]/)) {
+    if (!/\.question\b/.test(statement)) continue
+    if (!/phase\.kind\s*===\s*['"](?:awaiting-answer|awaiting-build)['"]/.test(statement)) {
+      return '有一处读题面却不与任何相位判定同处一条语句 —— 那是覆盖全部相位的宽兜底'
+    }
+  }
+
+  // 第 4 条：除 `state.value.phase` 外不许再读 `.value`（组件本地 ref 活不过刷新）。
+  const rest = code.replace(/state\.value\.phase\b/, '')
+  if (/\.value\b/.test(rest)) {
+    return (
+      '`shown` 读了 `state.value.phase` 之外的某个 `.value` —— ' +
+      '那多半是组件本地的 ref，而它活不过一次刷新（1.19 试玩 bug 的根因）'
+    )
+  }
   return null
 }
 
 describe('G94 —— `shown` 的兜底只兜 awaiting-build（Story 1.16 / 裁决 7）', () => {
-  it('源码判据：`lastQuestion` 只在 `awaiting-build` 那一支被交出去', () => {
+  it('源码判据：题面只在 awaiting-answer / awaiting-build 两支交出，且当场从 phase 读', () => {
     expect(g94Violation(shownBody())).toBeNull()
   })
 
   it('反向自检：把兜底改回宽口径（M106 的同款改法）⇒ 判据变红', () => {
     // ⚠️ **这条不许省**（R-51）。写的是 M106 落地时**真会写出来的那一段**：
     //   删掉 `awaiting-build` 判断、兜底回到「任何非 awaiting-answer 都用上一道题」。
-    const widened = `{ const phase = state.value.phase; if (phase.kind === 'awaiting-answer') return phase.question; return lastQuestion.value }`
-    expect(g94Violation(widened), '判据自检：宽兜底必须被判中').toBe(
-      '兜底没有判 `awaiting-build` —— 裁决 7 要求它只兜这一个相位',
-    )
+    //   这一版两条判据都要抓住它：缺 `awaiting-build` 判定（第 2 条），
+    //   末段 `return phase.question` 与判定不同段（第 3 条）。
+    const widened = `{ const phase = state.value.phase; if (phase.kind === 'awaiting-answer') return phase.question; return phase.question }`
+    expect(g94Violation(widened), '判据自检：宽兜底必须被判中').not.toBeNull()
   })
 
-  it('反向自检：`lastQuestion` 排在判断之前 ⇒ 判据变红', () => {
-    // 第二种违规：判断写了，但取值写在它前面（顺序反了，一样是宽兜底）。
-    const reordered = `{ const q = lastQuestion.value; return phase.kind === 'awaiting-build' ? q : null }`
+  it('反向自检：判定写在，题面却从 `return` 之外流出来 ⇒ 判据变红', () => {
+    // 第二种违规：先取值、后判定（顺序反了，一样是宽兜底）——
+    //   `return` 段里只剩 `: null`，题面在段外就被交出去了。
+    const reordered = `{ const phase = state.value.phase; const q = phase.question; if (phase.kind === 'awaiting-answer') return q; return phase.kind === 'awaiting-build' ? q : null }`
     expect(g94Violation(reordered), '判据自检：顺序反了必须被判中').not.toBeNull()
+  })
+
+  it('反向自检：退回组件本地 ref 兜底 ⇒ 判据变红（🔴 这正是 1.19 的根因）', () => {
+    // ⚠️ 这一条与上面两条**不是同一个洞**。上面守的是「兜底范围」，
+    //   这一条守的是「兜底的**载体**」——#2 改成 `lastQuestion.value` 时
+    //   第 3 条照样绿（`return` 段里有 `awaiting-build` 判定），
+    //   而新挂载时那份 ref 恒为 `null` ⇒ 卡面不渲染，正是这次试玩报的现象。
+    const localRef = `{ const phase = state.value.phase; if (phase.kind === 'awaiting-answer') { lastQuestion.value = phase.question; return phase.question } return phase.kind === 'awaiting-build' ? lastQuestion.value : null }`
+    expect(g94Violation(localRef), '判据自检：本地 ref 兜底必须被判中').not.toBeNull()
   })
 
   // ── 行为侧：四个「兜底范围外」的相位，卡面必须一个节点都不渲染 ────────────
@@ -1404,10 +1500,13 @@ describe('G94 —— `shown` 的兜底只兜 awaiting-build（Story 1.16 / 裁�
     //   一条把兜底**整个删掉**的实现（于是 `awaiting-build` 也不渲染了）照样绿。
     const question = firstQuestionOfKind('word')
     const wrapper = mountCard(question)
+    // 📎 **1.19 CR：补题面。** 自 `Phase` 起 `awaiting-build` 就自带 `question`
+    //   —— AC-C5 的反馈载体现在**由 State 携带**，而不是组件本地 ref
+    //   ⇒ 漏掉它，这条用例量的就不是「载体有没有被收窄」，而是「夹具写没写全」。
     state.value = {
       ...state.value,
-      phase: { kind: 'awaiting-build', unlocked: [], sun: 100 },
-    } as never
+      phase: { kind: 'awaiting-build', question, unlocked: [], sun: 100 },
+    }
     await wrapper.vm.$nextTick()
 
     expect(
@@ -1452,13 +1551,119 @@ describe('G94 —— `shown` 的兜底只兜 awaiting-build（Story 1.16 / 裁�
     // **第 1 回合的建造期里 `turn` 就是 1**（`turn` 在 `nextQuestion` 才 +1）
     // —— 若复位判据写成「`turn === 1` 就清」，反馈载体会在这里被当场清掉，
     //   AC-C5 的 ≤100ms 反馈在第 1 回合失效。
-    // ⇒ 这里断言：只换相位、`turn` 数值不变 ⇒ `lastQuestion` 仍在。
-    state.value = { ...state.value, phase: { kind: 'awaiting-build', unlocked: [], sun: 100 } } as never
+    // ⇒ 这里断言：只换相位、`turn` 数值不变 ⇒ 卡面仍在。
+    // 📎 **1.19 CR：补题面。** 载体从「组件本地的 `lastQuestion`」换成了
+    //   `Phase` 自带的 `question` ⇒ 这条用例量的仍是「只换相位时载体不被清掉」，
+    //   换了载体之后它照样成立（题面由 phase 提供，`turn` watch 清不掉它）。
+    state.value = {
+      ...state.value,
+      phase: { kind: 'awaiting-build', question, unlocked: [], sun: 100 },
+    }
     await nextTick()
 
     expect(
       wrapper.findAll('.option-card'),
       '第 1 回合的建造期里 `turn` 仍是 1，但这**不是**新的一局 —— 卡面不许消失',
     ).toHaveLength(4)
+  })
+})
+
+// ══════════════════════════════════════════════════════════════════════════════
+// 🔥📎 G172 —— 建造期的卡面**不许假装可点**（Story 1.19 `[CR]`，真机试玩撞出来的）
+// ══════════════════════════════════════════════════════════════════════════════
+//
+// ⚠️ **1.19 CR 第一轮（把题面落进 `State`）只修了一半。** 真机复验：
+//   恢复落在建造期 ⇒ 卡面出来了，但**四个选项点不动**。
+//
+//   成因不是「点不动」，是**看起来能点却点不动**：
+//   · `QuestionCard.onPick` 的守门 `if (!answering.value) return` 静默丢弃点击；
+//   · 而 `OptionCard` 的 `:disabled` 原先**只跟着 `failed`（破图）走**；
+//   ⇒ 白卡 + 灰边框 + `cursor: pointer` + 未 disabled，摆在 4–8 岁孩子面前。
+//     这正是 AC-D5 逐字说的「假可点」。
+//
+// ⚠️ **为什么正常游玩时没有人发现**：反馈窗口只有 ≤100ms（AC-C5），
+//   孩子来不及点。**从存档恢复时它是永久状态。**
+//
+// ⚠️ **1.16 裁决 7 / 守卫 G94 为什么不覆盖它**：G94 钉的是
+//   「兜底范围外的四个相位**不渲染卡面**」——
+//   **从没有验过「渲染卡面的那个相位里，选项到底能不能点」**。
+//   ⇒ 本组补的正是那个缺口。
+//
+// ── 变异验证（M188 / M189 / M190，均为 2026-10-18 实测）────────────────────
+//   · **M188**：`OptionCard.vue` 的 `:disabled` 去掉 `|| locked`
+//     ⇒ **1 红**（本组第一条）。同时 `tests/app/resume-actionable.test.ts` 的
+//     「可行动层（第二轮）」也红 —— 两处独立，不是同一条断言的两次计数。
+//   · **M189**：`AnswerFeedback` 的 `v-if` 去掉 `|| locked`
+//     ⇒ **3 红**（本组第 3、4 条 + 上面那条被 R-57 改写过的
+//     「awaiting-build 期点选项卡」—— 它逐字断言「点完反馈内容不变」，
+//     反馈条整个消失时那条 `toBe(feedbackBefore)` 也红）。
+//   · **M190**：删掉 `.question-card__tappable` 上的 `:class="{ 'is-locked': locked }"`
+//     ⇒ **1 红**（本组第 2 条）。
+//   ⚠️ **本组没有被「一次改坏全红」的假象**：三次变异各自只动一行，
+//     各自红不同的条数。**全绿只发生在代码是本提交的样子时。**
+
+/** 造一份「从存档恢复到建造期」的样子：`pickedOptionId` 恒为 `null`（组件本地态随页面没了）。 */
+function mountRestoredBuildPhase(question: Question) {
+  const wrapper = mountCard(question)
+  state.value = {
+    ...state.value,
+    phase: { kind: 'awaiting-build', question, unlocked: [question.entryId], sun: 50 },
+  }
+  return wrapper
+}
+
+describe('G172 —— 建造期的卡面只读：选项必须真的点不动、且「已答完」必须看得见', () => {
+  it('四个选项全部 `disabled` 且挂 `is-locked`（不再假装可点）', async () => {
+    const question = firstQuestionOfKind('word')
+    const wrapper = mountRestoredBuildPhase(question)
+    await wrapper.vm.$nextTick()
+
+    const cards = wrapper.findAll('.option-card')
+    expect(cards, '前置：卡面必须真的在 —— 下面的判据才有对象').toHaveLength(4)
+    for (const card of cards) {
+      expect(
+        card.attributes('disabled'),
+        '🚨 选项卡没被 disabled，孩子会以为点得动 —— 点了却什么都不会发生（AC-D5「假可点」）',
+      ).toBeDefined()
+      expect(card.classes(), '置灰的视觉线索：没有它，disabled 在白卡上几乎看不出来').toContain('is-locked')
+    }
+  })
+
+  it('重听入口也不许是 `cursor: pointer`（同一类缺陷，`onReplay` 守门在下游）', async () => {
+    const question = firstQuestionOfKind('word')
+    const wrapper = mountRestoredBuildPhase(question)
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.find('.question-card__tappable').classes()).toContain('is-locked')
+  })
+
+  it('反馈条在场，且读的是 `masteredEntryIds` 而不是组件本地的 `pickedOptionId`', async () => {
+    const question = firstQuestionOfKind('word')
+    // 模拟「这道题刚才答**错**了」：`masteredEntryIds` 里没有它。
+    // ⚠️ `applyAnswer` 让**答错也进建造期**（AC-4：答错的孩子仍有事可做），
+    //   所以「建造期」**不蕴含**「答对了」—— 判据必须两头都验，否则它只在
+    //   「刚答对就退出」那一种存档上成立。
+    const wrong = question.card.options.find((o) => !o.correct)
+    if (wrong === undefined) throw new Error('单元 1 的卡没有错误选项')
+    const wrapper = mountRestoredBuildPhase(question)
+    state.value = { ...state.value, masteredEntryIds: [], unlocked: [question.entryId] }
+    await wrapper.vm.$nextTick()
+
+    expect(
+      wrapper.find('.answer-feedback').text(),
+      '答错后停在建造期，反馈条必须说「再想想」—— ' +
+        '说「答对了」是**假陈述**（这个项目最贵的一类 bug）',
+    ).toBe('再想想')
+    expect(wrong, '前置：这道题确实有错误选项').toBeDefined()
+  })
+
+  it('答对后停在建造期 ⇒ 反馈条说「答对了」，且跨「刷新」仍然成立', async () => {
+    const question = firstQuestionOfKind('word')
+    const wrapper = mountRestoredBuildPhase(question)
+    // 关键性质：`pickedOptionId` 是组件本地 ref，**模拟刷新就是什么都不设**。
+    state.value = { ...state.value, masteredEntryIds: [question.entryId] }
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.find('.answer-feedback').text()).toBe('答对了')
   })
 })

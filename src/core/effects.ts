@@ -203,45 +203,60 @@ export function runEffects(action: Action, prev: State, next: State): readonly E
   //   `CONTINUE` 会把 `round-over` 推成 `awaiting-answer`（或 `level-complete`），
   //   按 `action.type === 'RESOLVE_ROUND'` 判会漏掉「推进到下一题」那一步的落盘。
   //
-  // ⚠️ **写盘点的 5 行表（1.15 裁决 6 / AC-C2）逐字如下，不要自己再推一遍**：
-  //   `awaiting-answer` ❌ —— 刚 CONTINUE 出来，与上一份 round-over 存档内容相同；
+  // ⚠️ **写盘点表（1.15 裁决 6 / AC-C2；1.19 CR 改判，R-57 留痕）逐字如下**：
+  //   `awaiting-answer` ✅ —— 📎 **2026-10-18 试玩实测由 ❌ 改为 ✅**，理由见下面；
   //   `awaiting-build`   ✅ —— AC 逐字要求「包括当前处于 awaiting-build 的局面」，
   //                         只守 round-over 会让那句 AC 构造上不可达（AC-B6 同型假绿）；
   //   `resolving`        ❌ —— 真实一帧，用户看不到也退不出；
   //   `round-over`       ✅ —— 「每个回合结束」的主路径；
   //   `level-failed`     ✅ —— 同样是结算出口，不写的话失败后退出重进会退回上一回合；
   //   `level-complete`   ✅ —— 存 `null`（局末清空战场）。
+  //
+  // 🔥📎 **`awaiting-answer` 那一格为什么从 ❌ 翻成 ✅（试玩实测的硬锁）**：
+  //   原判 ❌ 的理由逐字是「**刚 CONTINUE 出来，与上一份 round-over 存档内容相同**」。
+  //   ⚠️⚠️ **该理由为假**：`applyContinue`（`reducer.ts:501-508`）会 `turn + 1`、
+  //     换掉整个 `phase`、并给 `zombies` 多 append 一只 —— 两份状态**实质不同**。
+  //   而「两份不同」这件事本身不是 bug，**bug 是这格判 ❌ 带来的后果**：
+  //     · `Phase` 只有 `awaiting-answer` 变体带 `question`，而 `QuestionCard` 的
+  //       渲染源正是 `phase.question`；
+  //     · `awaiting-build` 靠**组件本地**的 `lastQuestion` ref 兜底（页面重载后恒 `null`），
+  //       `round-over` 按 1.16 裁决 7 直接返回 `null`；
+  //     · `HandDeck` 又只在 `awaiting-build` 渲染。
+  //   ⇒ 盘上**从不出现 `awaiting-answer`**，而盘上的每个相位都落在
+  //     「卡面拿不到题」或「连按钮都没有」的一侧。
+  //   ⇒ 实测症状（P0）：**读题时离开（每题 20-30 秒，停留最久的相位）必然复现**
+  //     —— 重进后只剩 45 格空战场，卡面 / 手牌 / 「⚔ 开战」按钮**三样全无**，
+  //     孩子无从下手。守卫见 `tests/app/resume-actionable.test.ts`。
+  //
+  // ⚠️ **加了这一格之后 `round-over` 构造上不再是可落盘点**：它总被紧随其后的
+  //   `CONTINUE`（`awaiting-answer`）覆盖。**不要**因此把 `round-over` 那格删掉 ——
+  //   删掉的话「结算完但还没推进」那一瞬间离开，重进会退到上一个回合的题。
   if (next.phase.kind === 'level-complete') {
     // ⚠️ **存 `null` 而不是那个已被清空的 state**：重进要回到该单元起点，
     //   而不是 1.16 还没做的「通关画面」终态。
     effects.push(save(null))
-  } else if (next.phase.kind === 'level-failed' || next.phase.kind === 'round-over' || next.phase.kind === 'awaiting-build') {
+  } else if (
+    next.phase.kind === 'level-failed' ||
+    next.phase.kind === 'round-over' ||
+    next.phase.kind === 'awaiting-build' ||
+    // 📎 2026-10-18 新增这一格的理由逐字写在上面那张表的注释里。
+    //   它同时**吸收了原先下面那条 `RESTART_LEVEL` 专用写盘点** ——
+    //   `restart()`（`reducer.ts:535`）返回 `createInitialState(...)`，
+    //   而后者的 phase 恒为 `awaiting-answer` ⇒ 那一行已完全被本表覆盖，
+    //   留着只会让一次重打产出**两条** SAVE。
+    next.phase.kind === 'awaiting-answer'
+  ) {
     effects.push(save(next))
   }
 
-  // 🚨 **1.16 追加 —— 上表第 6 行，是这张表的「例外行」，不是它的反例。**
-  //
-  //   判据按 **`action.type`** 而不是相位：`RESTART_LEVEL` 之后 `next.phase.kind`
-  //   是 `awaiting-answer`，而上面那张表对 `awaiting-answer` 逐字判 ❌。
-  //
-  //   ⚠️⚠️ **为什么那一行的理由在这里不成立**（这是本行存在的全部理由）：
-  //     `awaiting-answer` 被判 ❌ 的理由逐字是「**刚 CONTINUE 出来**，
-  //     与上一份 round-over 存档内容相同」。
-  //     **重打不是 CONTINUE** —— 盘上那一刻存着的是刚 `level-failed` 的那份 state
-  //     （含 hearts = 0 与那份战场），而 `RESTART_LEVEL` 之后 `next` 是一局全新的
-  //     （心数满、`turn` 回到 1、`masteredEntryIds` 清空）。
-  //     ⇒ 两份内容**完全不同**，不写盘等于让**失败态的战场跨局活到下一局**，
-  //       FR51「战场状态在局末清空，不跨局保留」当场被破。
-  //
-  // ⚠️ **别把这行「统一」进相位表、也别把它删掉**：两种改法都会让重打重新静默失效，
-  //   而症状是「孩子重打后关页面，重进又回到失败画面」—— 界面上没有任何东西指向原因。
-  //   守卫 **G89** 专测这一行（走真的 `applyAction` 链路，不是纯函数返回值）。
-  //
-  // ⚠️ **它排在 `SAVE` 判据之后**：与上面的胜负音效一样是「先判局面、再落盘」。
-  //   注意它让 SAVE 仍然**恒排在该数组的末尾**（1.15 偏离 1 记着这件事）。
-  if (action.type === 'RESTART_LEVEL') {
-    effects.push(save(next))
-  }
+  // 📎 **2026-10-18：`RESTART_LEVEL` 的专用写盘点已删除**（1.19 CR，按上一格改动顺带）。
+  //   它当初存在的**全部**理由逐字是「上面那张表对 `awaiting-answer` 判 ❌」——
+  //   那张表现在判 ✅，`restart()` 的产物又恒是 `awaiting-answer`
+  //   ⇒ 这一行是**严格冗余**，留着只会多写一次盘。
+  //   ⚠️ **它当初防的那个 bug 仍然防得住**：重打的结果照样落盘，
+  //   只不过现在由相位表落。守卫 **G89**（`tests/app/level-flow.test.ts`）
+  //   逐字钉的是**行为**（「重打之后盘上是一局新的」）而不是这一行的存在，
+  //   它照旧守着，别因为删了一行就把 G89 一起删了。
 
   return effects
 }

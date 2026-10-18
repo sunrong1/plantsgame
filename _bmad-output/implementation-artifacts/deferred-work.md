@@ -1937,3 +1937,37 @@ M101–M110 共 25 红无 0 红），**无一条守卫假绿**。以下 8 条真
 - **恢复条件** 本 story 的 patch 项落地时补齐（本条与 patch 组第 5 条是同一处，一起改）。
 
 - — `_bmad-output/implementation-artifacts/1-19-单元-1-首次试玩验证-epic-1-的生死线.md`
+
+## Deferred from: code review of 1-19-单元-1-首次试玩验证-epic-1-的生死线 `[CR]` 第二轮 — 专项「植物不重复出现」（2026-10-18）
+
+> 📌 本节三条**全部来自 `[CR]` 第二轮的专项三层对抗评审**（Blind Hunter / Edge Case Hunter /
+> Acceptance Auditor），与上面第 1 节的 12 条**不重叠** —— 那一节评的是 1.19 实现的代码部分，
+> 本节评的是一条**不在 1.19 任何 AC 中**的独立机制。
+> ⚠️ **本轮 0 条 patch**：这条机制不是实现缺陷，是**规格空白 + 决策缺口**，
+> 4 条 `decision_needed` 已写进 story 文档的 Review Findings，待用户裁决。
+
+### 13. `unlocked` 没有唯一性不变量，而 `deck` 有
+
+- `src/core/reducer.ts` 的 `assertDeckRelations` 显式断言题单唯一（逐字「题单有 N 条但只有 M 个不同 entryId」）并交叉校验 `unlocked ⊆ mastered`，但**没有**检查 `unlocked` 内部重复。
+- 而它自己的注释逐字「刻意**保留**已解锁塔卡（FR33：同一张卡可反复建多株）⇒ unlocked 是数组不是集合」—— 这句注释解释了**为什么是数组**，但没解释**为什么不查重复**，两件事不是同一件。
+- `src/services/save.ts` 对 `currentGame` 只判 `isPlainObject`、**无深层校验**；而 `restoreFromSave` 会对这份不可信数据跑 `assertInvariants` ⇒ 一份手改 / 损坏的存档 `unlocked: ["u1-cat","u1-cat"]` 满足**全部**现有断言。
+- 后果：`handCards` 会渲染出**两张同图同造价**的手牌（`cost` 由 `costOf(entry.towerType, …)` 给出，重复卡共享塔型 ⇒ 造价也相同）。
+- ✅ **正常游玩与 dev 的 `jumpToTurn` 都不可达**（实测证伪）：`applyAnswer` 把 `masteredEntryIds` 与 `unlocked` 同步追加，`nextQuestion` 跳过已掌握项 ⇒ 同一条不可能被画第二次；`jumpToTurn` 走 `applyAction` → `reduce` → `assertInvariants` 同一路径。
+- **恢复条件** 存档深层校验加固时（1.17 的降级面板已登记资产 / 存档降级项，那是同一处的自然落点）。
+
+### 14. `masteredWordIds`（名）与 `entry.entryId`（实）是两个 ID 命名空间，类型都是 `string`
+
+- `src/core/deck-slice.ts` 的参数名叫 `masteredWordIds`、类型 `readonly string[]`，而成员测试写的是 `mastered.has(entry.entryId)`；`DeckEntry` 同时带 `entryId` 与 `wordId` 两个 `string` 字段。
+- ✅ **今天没有功能 bug**：唯一调用点 `buildStateFor` 传的就是 entryId 级的 `progress.masteredWordIds`。**这是命名债，不是缺陷。**
+- 风险：若将来任何调用点按**参数名的暗示**传 word id，过滤会静默变成 no-op —— `sliceDeckForLevel` 永远返回同样前 10 条，`advanceUnit` 那套判据一路绿灯，而症状是「玩第 2 局又是同一批词」。**没有任何东西会指向原因**（R-06 说的那类静默错）。
+- **恢复条件** 若将来给切片加第二个调用点，或 `Progress` 的字段名与实际语义分家时。
+
+### 15. 全仓唯一的塔型构成守卫只看整单元，粒度粗于「一局内」
+
+- `tests/content/unit-01.test.ts` 逐字断言「单元 1 的 deck 全部是合法塔型（三塔型都出现，建造分支不会只走一半）」，判据是 `expect([...towerTypes].sort()).toEqual(['aoe', 'direct', 'slow'])`。
+- 它守的是「整单元三型都出现过」，**不是「一局内怎么分布」** —— 实测某局 10 条全是 `direct` 时它照样绿。
+- 且它是**内容层**守卫，本就不该承担切片编排的判据（`deck-slice.ts` 的头注释逐字「本模块是切片判据的唯一定义处」）。
+- ⚠️ **本条是否值得修，取决于同一份 Review Findings 里 4 条 `decision_needed` 的裁决结果**：当前设计下 `docs/art-direction.md` §4.6 与 FR70 都允许「一局全是 direct」，所以在没有产品裁决之前加守卫 = 把一条尚未确立的规则钉死。
+- **恢复条件** 用户对「植物不重复出现」这条需求给出裁决之后。
+
+- — `_bmad-output/implementation-artifacts/1-19-单元-1-首次试玩验证-epic-1-的生死线.md`

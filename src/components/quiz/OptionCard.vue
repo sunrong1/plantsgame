@@ -38,6 +38,24 @@ const props = defineProps<{
   readonly picked: boolean
   readonly right: boolean
   readonly wrong: boolean
+  /**
+   * 📎 **Story 1.19 `[CR]`（2026-10-18）：卡面只读 —— 这张卡此刻点不动。**
+   *
+   * ⚠️ **为什么需要它**：`:disabled` 原先只跟着 `failed`（破图降级）走，
+   *   而**建造期**里这张卡既没破、也不 disabled，却点下去毫无反应 ——
+   *   上层 `onPick` 的守门（`QuestionCard.vue` 的 `if (!answering.value) return`）
+   *   把点击静默丢弃了。
+   *   ⇒ 白卡 + 灰边框 + `cursor: pointer` 摆在孩子面前，**点下去什么都没有**，
+   *     这正是 AC-D5 逐字说的「假可点」。1.16 裁决 7 / 守卫 G94 只保证
+   *     「兜底范围外的四个相位不渲染卡面」，**从没有验过「渲染卡面的那个相位里
+   *     选项到底能不能点」** —— 真机试玩立刻补上了这个洞。
+   *   触发条件：正常游玩时它只在 ≤100ms 的反馈窗口里成立，没人来得及点；
+   *   **从存档恢复到建造期时它是永久状态**，于是变成硬锁。
+   *
+   * ⚠️ **不叫 `disabled`**：那个名字归 `failed`（图破了、这张卡被降级），
+   *   两者成因完全不同 —— 一个是「这张图坏了」，一个是「这道题已经答完了」。
+   */
+  readonly locked: boolean
 }>()
 
 /**
@@ -136,9 +154,10 @@ function onPick(): void {
       'is-right': right,
       'is-wrong': wrong,
       'is-degraded': failed,
+      'is-locked': locked,
     }"
     :data-option="option.id"
-    :disabled="failed"
+    :disabled="failed || locked"
     @click.stop="onPick"
   >
     <!--
@@ -200,6 +219,25 @@ function onPick(): void {
 }
 
 .option-card:disabled {
+  cursor: default;
+}
+
+/*
+ * 📎 **Story 1.19 `[CR]`：`.is-locked`（建造期只读）。**
+ *
+ * ⚠️ **写在 `.is-degraded` 之后、`.is-picked` 之前** —— 三个状态类的特异度
+ *   完全相同（同为 `.option-card` + 一个类 = `(0,2,0)`），胜负只由源码顺序决定：
+ *   · 排在 `.is-picked` **之前** ⇒ 孩子刚答完那 ≤100ms 里，`is-right` / `is-wrong`
+ *     的绿底/红底说了算，置灰不会把 AC-D2 的主反馈载体洗掉
+ *     （这与 `.is-degraded:not(.is-picked)` 是同一条纪律的同一个理由）。
+ *   · 排在 `.is-degraded` **之后** ⇒ 两者同时成立时（建造期 + 图破了）以置灰为准。
+ *
+ * ⚠️ **刻意不加 `opacity`** —— 与降级态相反：那张词图正是孩子刚答完的那道题，
+ *   它必须**看得清**，置灰靠背景与边框表达，不用透明度把它洗掉。
+ */
+.option-card.is-locked {
+  background: #eceff1;
+  border-color: var(--color-overlay-blocked);
   cursor: default;
 }
 

@@ -16,22 +16,22 @@
  *   这里自己播一遍就是重复播放，且守卫 **G60** 会判红。
  * · **不写死卡面区高度** —— 1.12 的手牌区与 1.13 的 HUD 都要位置（Dev Notes §10）。
  *
- * ── 🚨 关于 `lastQuestion`（裁决 4 / AC-C5）─────────────────────────────
+ * ── 🚨 关于「建造期那道题从哪来」（裁决 4 / AC-C5；1.19 CR 已改）──────────
  *   `applyAnswer`（`reducer.ts:195`）答完**立刻**切到 `awaiting-build`，
- *   而 `Phase.awaiting-build`（`types.ts:309`）只有 `{kind, unlocked, sun}` ——
- *   **没有 `question`**。卡面若在 `awaiting-answer` 一结束就卸载，
- *   孩子点下去后屏幕上什么都没发生：反馈不是「慢了 100ms」，是**根本没有**
- *   （`epics.md:1064` 的 ≤100ms 反馈需要一个可见的载体）。
- *   ⇒ 用组件本地的 `lastQuestion` 在 `awaiting-build` 期间继续渲染。
+ *   而卡面必须继续显示「刚刚答完的那道题」——
+ *   反馈不是「慢了 100ms」，是**根本没有**（`epics.md:1064` 的 ≤100ms 反馈
+ *   需要一个可见的载体）。
  *
- *   **代价如实登记**（Completion Notes 的「裁决的偏离」第 2 条）：
- *   1.15 存档恢复到 `awaiting-build` 时反馈条会消失 —— 组件是空的。
- *   **这是正确的**：重启本来就不该停在「刚刚答完」的反馈上。
- *   `lastQuestion` **不进 `State`、不存档、不参与 `reduce`**；
- *   FR51 要求的「战场每局清空」由 1.16 的 `RESTART_LEVEL` 加上裁决 7 的收窄共同保证 ——
- *   重打必定落在 `awaiting-answer`，那一帧 `lastQuestion` 被**当前题**覆盖；
- *   裁决 7 之后它**只在 `awaiting-build` 兜底**，而失败/通关两帧都不渲染卡面，
- *   所以「上一局的题还留在屏幕上」这件事已经不存在了。
+ *   ⚠️ **1.19 CR 之前这道题住在组件本地的 `lastQuestion` ref 里**，
+ *   而存档恢复时组件是**全新挂载**的 ⇒ 那份 ref 恒为 `null`
+ *   ⇒ **孩子从存档回到建造期时卡面整个消失**。
+ *   1.15 当年把这件事判成「这是正确的：重启本来就不该停在『刚刚答完』的反馈上」，
+ *   **实测证明那个判定漏了「存档恢复」这一种形态** —— 而它才是孩子真会遇到的。
+ *   ⇒ 现在 `Phase.awaiting-build` 自带 `question`（`core/types.ts`），
+ *     `shown` 在两个相位上**读的是同一个数据源**，`lastQuestion` 已删除。
+ *
+ *   ⇒ FR51 要求的「战场每局清空」不受影响：题面是**题单条目**（`Question = DeckEntry`），
+ *     它不随局清空——清空的是 `towers` / `grid` / `zombies`（FR51 逐字指的就是这三样）。
  */
 
 import { computed, ref, watch } from 'vue'
@@ -43,35 +43,40 @@ import { applyAction, reportImageFailure, speakQuestion, state } from '../../app
 import AnswerFeedback from './AnswerFeedback.vue'
 import OptionCard from './OptionCard.vue'
 
-/** 上一道题（`awaiting-build` 期间继续用它渲染）。只读数据，不参与 `reduce`。 */
-const lastQuestion = ref<Question | null>(null)
+/**
+ * 🔥📎 **1.19 CR（2026-10-18）：上一道题由 `State` 携带，组件本地那份已删除。**
+ *
+ * ⚠️ **删除的理由不是「简化」，是断点续学**：存档恢复时组件是**全新挂载**的，
+ *   组件本地 ref 恒为 `null` ⇒ 孩子回到建造期时卡面整个消失，
+ *   而界面上没有任何东西指向原因（那正是 1.15 当年判成「这是正确的」的那个形态）。
+ *   `Phase.awaiting-build` 现在带 `question`（见 `core/types.ts`），
+ *   `shown` 两个相位都直接读 `phase.question` —— **同一份数据、同一个读法**。
+ *
+ * ⚠️ **不再有「兜底」这个词**：旧实现是「`awaiting-answer` 用 phase 上的，
+ *   `awaiting-build` 用本地那份兜底」，两个数据源 ⇒ 两个事实来源。
+ *   现在只有一个来源，所以下面的判据也从「兜底窄不窄」变成了「非答题相位一律 null」。
+ */
 /** 孩子点了哪个（瞬时 UI 态）。**每次回到 `awaiting-answer` 都清**。 */
 const pickedOptionId = ref<OptionId | null>(null)
 /** 已经自动朗读过的 `entryId` —— 触发源是「换了一道题」这一可数事件。 */
 const spokenEntryId = ref<string | null>(null)
 
 /**
- * 渲染源：**当前 phase 有 question 就用它，否则用上一次的**（AC-C5 ① 选项 A）。
+ * 渲染源：**只有「正在等孩子答题」与「刚答完、等建塔」这两个相位交出题面**。
  *
- * ⚠️ **为什么用 computed 兜底而不是只靠 watch**：Vue 的 `watch` **默认不在 setup
+ * ⚠️ **为什么直接读 `phase` 而不是 watch 兜底**：Vue 的 `watch` **默认不在 setup
  *   时触发**，而 `createInitialState`（`reducer.ts:69`）把初始 phase 设成
  *   `awaiting-answer` ⇒ **首次挂载就是一道待答题**。
- *   只写 `watch(() => phase, …)` 的话首次渲染 `lastQuestion.value === null`，
- *   结果是**整个 story 的交付物在浏览器里是空的**，而且 FR1 的自动朗读也永不触发
- *   —— 症状是 G24 / G26 / G28 全红，红得像是「分派写错了」。
  *   `shown` 走 phase 本身 ⇒ 首次挂载必然有题。
  *
- * 🔥 **📎 Story 1.16 裁决 7 把兜底范围收窄到 `awaiting-build`**（守卫 **G94**）。
+ * 🔥 **📎 Story 1.16 裁决 7 把范围收窄到 `awaiting-build`**（守卫 **G94**）。
  *   改之前是「**任何**非 `awaiting-answer` 的相位都用上一道题」，
  *   而 `Phase` 有**六个**变体 ⇒ `resolving` / `round-over` /
  *   **`level-complete` / `level-failed`** 四种也都在兜底范围里。
  *   ⇒ 失败之后卡面、四个选项、反馈条**全都还留在屏幕上**，
  *     而此时点它们没有任何事发生 —— 这正是 AC-D5 说的「假可点」。
- *   ⇒ 现在只兜 `awaiting-build`：`lastQuestion` 的存在理由逐字是
- *     「答完 → 建造期」这一段（≤100ms 反馈需要一个可见的载体），
- *     它从未覆盖过终态。
  *
- * ⚠️ **为什么 `resolving` / `round-over` 也不兜**：它们是 `END_BUILD` 之后的
+ * ⚠️ **为什么 `resolving` / `round-over` 也不给**：它们是 `END_BUILD` 之后的
  *   真实一帧，卡面在那两帧里消失是可接受的 —— 那正是「点开战之后画面变干净」
  *   的预期反馈。而**终态**不容许，因为终态上盖着浮层（AC-D2），
  *   卡面在浮层底下若仍可点，孩子会以为「我点的没反应」。
@@ -79,11 +84,32 @@ const spokenEntryId = ref<string | null>(null)
 const shown = computed<Question | null>(() => {
   const phase = state.value.phase
   if (phase.kind === 'awaiting-answer') return phase.question
-  return phase.kind === 'awaiting-build' ? lastQuestion.value : null
+  return phase.kind === 'awaiting-build' ? phase.question : null
 })
 
 /** 当前是否在等孩子答题 —— 决定重听与自动朗读是否可用。 */
 const answering = computed(() => state.value.phase.kind === 'awaiting-answer')
+
+/**
+ * 📎 **Story 1.19 `[CR]`（2026-10-18）：卡面此刻「只读」—— 那道题已经答完了。**
+ *
+ * 🔥 **为什么这是本轮真机试玩撞出来的第二个洞**：
+ *   `onPick` 的守门 `if (!answering.value) return` 会把建造期的点击**静默丢弃**，
+ *   而 `OptionCard` 的 `:disabled` 原先只跟着 `failed`（破图）走
+ *   ⇒ 建造期里那四张卡是**白卡 + 灰边框 + `cursor: pointer`、没被 disabled**，
+ *     点下去**什么都没有** —— AC-D5 逐字说的「假可点」。
+ *   ⇒ 1.16 裁决 7 / 守卫 G94 只保证「兜底范围外的四个相位**不渲染卡面**」，
+ *     **从没有验过「渲染卡面的这个相位里，选项到底能不能点」**。
+ *
+ * ⚠️ **为什么正常游玩时没人发现**：反馈窗口只有 ≤100ms（AC-C5），
+ *   孩子来不及点。**从存档恢复到建造期时它是永久状态** —— 1.19 CR 把题面
+ *   落进 `Phase` 之后，「恢复落在建造期」与「卡面显示」才第一次同时成立。
+ *
+ * ⚠️ **只在这一个相位上为真**：`shown` 为 `null` 的另外四个相位整个卡面都不渲染
+ *   （守卫 G94 钉着），所以「卡面在」严格蕴含「相位是 awaiting-answer 或
+ *   awaiting-build」⇒ `locked` 在渲染出来的卡面上恒等于「现在是建造期」。
+ */
+const locked = computed(() => !answering.value)
 
 /**
  * 🚨 「答对没答对」的唯一读法：**`masteredEntryIds` 里有没有 `question.entryId`**。
@@ -119,14 +145,16 @@ const pickedRight = computed(() => {
  * ⇒ 自动朗读的守卫 `phase.question.entryId === spokenEntryId` 命中
  * ⇒ **新一局的第一道题永远不朗读**（FR1 逐字：每道新词都要念一遍）。
  *
- * ⚠️⚠️ **为什么只清这一个，而另外两个不是「忘了清」**（这条是实测结论，不是推断）：
- *   `lastQuestion` / `pickedOptionId` 由下面那个 phase 的 watch 兜住了 ——
+ * ⚠️⚠️ **为什么只清这一个，而 `pickedOptionId` 不是「忘了清」**（这条是实测结论，不是推断）：
+ *   `pickedOptionId` 由下面那个 phase 的 watch 兜住了 ——
  *   `RESTART_LEVEL` **必定**落在 `awaiting-answer`（裁决 4），而那个 watch
- *   对 `awaiting-answer` 本来就写这两行。变异实测：把下面的复位体**整个删空**，
+ *   对 `awaiting-answer` 本来就清它。变异实测：把下面的复位体**整个删空**，
  *   `tests/components/quiz-card.test.ts` **只红 1 条**，就是这条朗读用例
  *   （`expected "vi.fn()" to be called 1 times, but got 0 times`），
- *   `lastQuestion` / `pickedOptionId` 相关的断言全绿。
+ *   `pickedOptionId` 相关的断言全绿。
  *   ⇒ 1.16 落地前那段注释把三项症状都写成真问题，那是**推断**；按实测改窄。
+ *   📎 **1.19 CR**：`lastQuestion` 已从这条注释里删掉 —— 它整个 ref 都没了，
+ *     不再是需要被「兜住」的第二数据源。
  *
  * 🚨🚨 **为什么 watch 的是 `turn` 这一个字段、而不是在 phase 的 watch 里判 `turn === 1`**：
  *   **`turn` 是在 `nextQuestion`（`CONTINUE`）里才 +1 的**，
@@ -153,19 +181,21 @@ watch(
 )
 
 /**
- * 记住当前题，并在**每次进入一道新题**时清 `pickedOptionId`。
+ * 每次**进入一道新题**时清 `pickedOptionId`。
  *
  * 🚨 **重置判据是「进入了一道新题」这个事件，不是「`entryId` 变了」**（AC-C5 ③）。
  *   答错 → `END_BUILD` → `resolving` → `round-over` → `CONTINUE` → `nextQuestion`
  *   （`reducer.ts:100`）**返回同一道题**（AC-4 重考）⇒ `entryId` 不变。
  *   只按 `entryId` 判断的话 watch 不触发，`pickedOptionId` 仍指着上一轮点过的选项，
  *   **孩子还没点，`is-picked` 就已经亮着**。
+ *
+ * 📎 **1.19 CR：本 watch 原来还顺手写 `lastQuestion`，那一行随它一起删了** ——
+ *   题面现在由 `State` 携带，没有第二个数据源要同步。剩下的职责只有「清选中态」。
  */
 watch(
   () => state.value.phase,
   (phase) => {
     if (phase.kind !== 'awaiting-answer') return
-    lastQuestion.value = phase.question
     pickedOptionId.value = null
   },
   { immediate: true },
@@ -280,6 +310,7 @@ function onReplay(): void {
     -->
     <div
       class="question-card__tappable"
+      :class="{ 'is-locked': locked }"
       @click="onReplay"
     >
       <p class="question-card__prompt">
@@ -315,13 +346,22 @@ function onReplay(): void {
           :picked="pickedOptionId === option.id"
           :right="pickedOptionId === option.id && pickedRight"
           :wrong="pickedOptionId === option.id && !pickedRight"
+          :locked="locked"
           @pick="onPick"
           @image-failed="onOptionImageFailed"
         />
       </div>
     </div>
+    <!--
+      📎 **1.19 `[CR]`：`|| locked` 是这一轮修的那个洞。**
+      恢复落在建造期时 `pickedOptionId` 恒为 `null`（它是组件本地的瞬时态，
+      随页面一起没了）⇒ 反馈条不渲染 ⇒ 孩子看到的是**一道还没答的题**，
+      点下去却被守门静默丢弃。⇒ 现在只要「已经不可再答」就显示它，
+      而 `pickedRight` 读的是 `masteredEntryIds` —— **跨刷新仍然成立**
+      （答对 ⇒ 该 entryId 在里面；答错 ⇒ 不在，`applyAnswer` 让答错也进建造期）。
+    -->
     <AnswerFeedback
-      v-if="pickedOptionId !== null"
+      v-if="pickedOptionId !== null || locked"
       :right="pickedRight"
     />
   </section>
@@ -362,6 +402,16 @@ function onReplay(): void {
   flex-direction: column;
   gap: 12px;
   cursor: pointer;
+}
+
+/*
+ * 📎 **1.19 `[CR]`：建造期不再假装可点。**
+ * `onReplay` 的守门 `if (!answering.value) return` 与 `onPick` 是同一条，
+ * 而 AC-D5 的「假可点」对**重听入口**同样成立 —— 指针光标 + 点了没反应。
+ * ⇒ 只改光标，不改 DOM 结构（`onReplay` 仍留在原处，`onReplay` 的守门不删）。
+ */
+.question-card__tappable.is-locked {
+  cursor: default;
 }
 
 .question-card__prompt {

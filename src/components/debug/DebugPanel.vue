@@ -69,6 +69,20 @@ const hearts = computed(() => heartSlots(state.value))
 /** 已掌握的词数 —— 面板只需要一个数，不需要比例。 */
 const masteredCount = computed(() => progress.value.masteredWordIds.length)
 
+/**
+ * 📎 当前相位 —— 2026-10-18 试玩排障加的一行读数。
+ *
+ * ⚠️ **它是为「断点续学恢复到哪个相位」这一个具体问题加的**：症状是
+ *   「重进没有卡面」，而它有两条完全不同的成因（恢复到了 `awaiting-build`
+ *   vs 恢复到了 `round-over`），**在平板上肉眼分不出来** ——
+ *   两者都不渲染卡面，但前者有手牌与「开战」按钮、后者一个按钮都没有。
+ *   没有这行就只能靠回忆「我当时是在读题还是在建塔」，那是猜。
+ *
+ * ⚠️ **不要给它加判据**（面板是给孩子家长看的事实面板，不是断言器）。
+ *   它的价值全在「排障时一眼看到」，写测试用的话该去 `tests/app/`。
+ */
+const phaseKind = computed(() => state.value.phase.kind)
+
 // ── 降级列表（AC-E4）────────────────────────────────────────────────────────
 
 /**
@@ -290,6 +304,8 @@ async function onExportSession(): Promise<void> {
     </h2>
 
     <dl class="debug-panel__readout">
+      <dt>相位</dt>
+      <dd>{{ phaseKind }}</dd>
       <dt>回合</dt>
       <dd>{{ state.turn }}</dd>
       <dt>阳光</dt>

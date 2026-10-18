@@ -72,7 +72,16 @@ function makeState(towers: readonly TowerSpec[]): State {
 
   return {
     unitNumber: 1,
-    phase: { kind: 'awaiting-build', unlocked, sun: 1000 } satisfies Phase,
+    // 📎 **1.19 CR：`awaiting-build` 现在自带题面。**取 `unlocked` 里第一条对应的
+    //   题单条目（它按构造必属本题单），而不是 `REAL_DECK[0]` ——
+    //   后者在「塔卡没解锁任何词」的夹具下会指向一道与本局面无关的题，
+    //   而那份 state 一旦过 `assertInvariants` 就会因「题面不属于题单」而红。
+    phase: {
+      kind: 'awaiting-build',
+      question: REAL_DECK.find((entry) => entry.entryId === unlocked[0]) ?? REAL_DECK[0],
+      unlocked,
+      sun: 1000,
+    } satisfies Phase,
     turn: 1,
     hearts: 3,
     sun: 1000,

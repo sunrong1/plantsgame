@@ -33,7 +33,7 @@ import {
   createZombie,
   isCorrect,
 } from './types.js'
-import type { Action, DeckEntry, SkipQuestionAction, State, Zombie } from './types.js'
+import type { Action, DeckEntry, Question, SkipQuestionAction, State, Zombie } from './types.js'
 
 /** `createInitialState()` 的入参。deck 是本局题单的全集（AC-5）。 */
 export interface CreateInitialStateInput {
@@ -547,8 +547,21 @@ function spawnZombie(turn: number): Zombie {
   return createZombie({ id: `z${turn}`, col: ZOMBIE_SPAWN_COL, hp: ZOMBIE_HP })
 }
 
-/** 切到 `awaiting-build`，并把 State 侧的新值同步进 Phase 镜像（自主设计 #2）。 */
+/**
+ * 切到 `awaiting-build`，并把 State 侧的新值同步进 Phase 镜像（自主设计 #2）。
+ *
+ * 🔥📎 **1.19 CR（2026-10-18）：现在还要把「刚刚答完的那道题」带进 Phase。**
+ *   两个调用点都拿得到它，来源不同：
+ *     · `applyAnswer` —— 入参还在 `awaiting-answer`，题面就在 `state.phase` 上；
+ *     · `applyBuild`  —— 入参已经是 `awaiting-build`，题面**已经在** `state.phase` 上，
+ *       建塔不改题（`PLACE_TOWER` 不推进任何题面），所以直接透传。
+ *   ⚠️ **因此这里不需要额外参数** —— 多给一个 `question` 实参反而制造
+ *   「调用点传的那份与 phase 上那份可以不一致」的缝，而那种缝测不出来
+ *   （两份都合法，`assertInvariants` 全绿，卡面显示的却是另一道题）。
+ *   唯一能读到的那一份就是 `state.phase` 上的那份。
+ */
 function withBuildPhase(state: State): State {
+  const question = currentQuestionOf(state.phase)
   // ⚠️ `unlocked` 必须**复制**而不是共用引用（`[CR]` 2026-10-14）。共用时
   //   `phase.unlocked === state.unlocked`，而 `assertPhaseMirror` 是逐元素比对 ——
   //   同一引用让任何就地修改（`.sort()` / `.splice()`）在结构上**不可能**被它发现，
@@ -556,7 +569,29 @@ function withBuildPhase(state: State): State {
   //   一次就地排序就能同时污染两者，而断言全绿。
   //   `createInitialState` 里的 `grid` / `towers` / `zombies` 都是新分配的，
   //   `unlocked` 是 `State` 里唯一共享的可变数组 —— 现在不再是了。
-  return { ...state, phase: { kind: 'awaiting-build', unlocked: [...state.unlocked], sun: state.sun } }
+  return {
+    ...state,
+    phase: { kind: 'awaiting-build', question, unlocked: [...state.unlocked], sun: state.sun },
+  }
+}
+
+/**
+ * 从一个相位上读出「此刻正在问的那道题」。
+ *
+ * ⚠️ **只对两个带题面的相位成立**：另外四个（`resolving` / `round-over` /
+ *   `level-complete` / `level-failed`）本来就没有题面，读到就是 bug
+ *   ⇒ 这里**抛**而不是返回 `undefined`（NFR12 第一层：逻辑层必须 `throw`）。
+ *   写成一个返回 `Question | undefined` 的函数会让下游每一次取 `entryId`
+ *   都变成「可能为 undefined」，而那种 `undefined` 在渲染期才炸。
+ */
+function currentQuestionOf(phase: State['phase']): Question {
+  if (phase.kind === 'awaiting-answer' || phase.kind === 'awaiting-build') {
+    return phase.question
+  }
+  throw new Error(
+    `内部错误：${phase.kind} 阶段没有题面，却被要求取「正在问的那道题」—— ` +
+      'withBuildPhase 的调用点被改到了别的相位上。',
+  )
 }
 
 /** 按 entryId 回查题单条目，查不到即抛错（存档 / 脏数据入口）。 */
@@ -709,18 +744,48 @@ function assertDeckRelations(state: State): void {
 
 /** `awaiting-build` 上的 unlocked / sun 是 State 的只读镜像，必须恒等（自主设计 #2）。 */
 function assertPhaseMirror(state: State): void {
-  if (state.phase.kind !== 'awaiting-build') {
+  // ⚠️📎 **1.19 CR：先取成局部 `const` 再收窄。**
+  //   判据体里有 `state.deck.some((entry) => … state.phase.question …)` ——
+  //   TypeScript 对**属性访问**的收窄在**回调体内作废**（它假定回调执行时
+  //   `state.phase` 可能已被换掉），于是 `state.phase.question` 会报
+  //   TS2339「question 不存在于 Phase」（联合里另外四个变体没有它）。
+  //   换成局部 `const` 之后收窄**跟着 const 进闭包**，回调里也能读。
+  //   ⚠️ 这不是「为了让类型过而加的一行」——它同时让断言体读起来是同一份 `phase`，
+  //   而不是三处各写一遍 `state.phase`（那三处本来就该是同一个事实）。
+  const phase = state.phase
+  if (phase.kind !== 'awaiting-build') {
     return
   }
-  if (state.phase.unlocked.length !== state.unlocked.length || state.phase.unlocked.some((id, i) => id !== state.unlocked[i])) {
+  // 🔥📎 **1.19 CR 新增：`question` 必须是本题单里的某一条。**
+  //   ⚠️ **它为什么进 `assertPhaseMirror` 而不是新开一个断言函数**：这一组断言的
+  //   职责就是「`awaiting-build` 上 Phase 携带的东西是不是真的」——
+  //   `unlocked` / `sun` 比的是「与 State 侧是否一致」，`question` 没有 State 侧
+  //   对应物可比，但同样是「Phase 上这份东西可不可信」。开第二个函数会让
+  //   「建造期相位带了三样东西，其中两样有人查」这种半吊子状态成立。
+  //
+  //   ⚠️ **不变量写的是「属于 deck」而不是「等于 deck[0]」**：建造期显示的那道题
+  //   是**孩子刚答的那一道**，AC-4 的重考机制下它完全可能是 deck 的任何一条。
+  //   写死 `deck[0]` 会让「连错 3 题」这种正常路径当场红，而红的原因与 bug 无关。
+  //
+  //   ⚠️ **它挡的是哪一种坏**：存档来自旧版本（`question` 字段压根不存在）
+  //   或内容回滚（题单里已经没有这道题）时，卡面会渲染一道
+  //   **「点哪里都不对」的题**——`pickedRight` 恒 false，而界面看不出任何异常。
+  if (!state.deck.some((entry) => entry.entryId === phase.question.entryId)) {
+    throw new Error(
+      `建造期携带的题面 ${phase.question.entryId} 不在本题单里 —— 题单只有 ` +
+        `${state.deck.length} 条。旧存档（尚无该字段）与内容回滚是仅有的两个来源；` +
+        '放过它的话卡面会渲染一道答不对的题，而界面上没有任何东西指向原因。',
+    )
+  }
+  if (phase.unlocked.length !== state.unlocked.length || phase.unlocked.some((id, i) => id !== state.unlocked[i])) {
     throw new Error(
       'Phase 上的 unlocked 与 State 不一致 —— 镜像过期会让组件读到上一次的值。' +
         '唯一可写事实源是 State；Phase 上的那份只为满足架构 `:846-847` 的字面形状。',
     )
   }
-  if (state.phase.sun !== state.sun) {
+  if (phase.sun !== state.sun) {
     throw new Error(
-      `Phase 上的 sun（${state.phase.sun}）与 State（${state.sun}）不一致 —— ` +
+      `Phase 上的 sun（${phase.sun}）与 State（${state.sun}）不一致 —— ` +
         '镜像过期会让建造界面显示答题前的余额，孩子会以为点不动是游戏坏了。',
     )
   }
