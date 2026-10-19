@@ -44,7 +44,19 @@
 #   epics.md 的销项说明处理。
 
 generated: 2026-10-12
-last_updated: 2026-10-19  # [CR] Story 1.20 —— 三层评审：原始 17 → 待裁决 1 / patch 9 / defer 2 / 驳回 1
+last_updated: 2026-10-20  # Story 1.20 —— ✅ **done**（归档进 `_bmad-output/archive/`）
+                        #   用户裁决「G175 撞号」落地：本 story 的穷举判据 G175 → **G179**，
+                        #     1.19 的 G175–G178 连续区段与其封存文档**一字未动**；
+                        #     代价如实记：1.20 区段变成 G173 / G174 / G179，不连续
+                        #   🔥 查重时打自己的脸：全仓库 `uniq -d` 实测 **10 个重号**，
+                        #     9 个是假警报，唯一真撞的 **G30 早于本 story**（1.11 vs 1.12，
+                        #     `hand-build.test.ts:513` 早有「与 1.11 的 G30 同一个洞」的旧账）
+                        #     ⇒ 登记 `deferred-work.md` 第 25 条（含根因：R-50..R-61 无起号纪律）
+                        #   ⚠️ 收尾时自己编了一处引用（「R-58 的编号纪律」）—— R-58 是 watch flush，已更正
+                        #   门槛：test 1969 全绿（66 文件）/ typecheck 零输出 / validate:content 通过
+                        #   生产代码零改动 —— 本轮只改测试编号 + 文档
+                        #
+                        # [CR] Story 1.20 —— 三层评审：原始 17 → 待裁决 1 / patch 9 / defer 2 / 驳回 1
                         #   🔥 「代码保证」没兑现：实现在**有解**的输入上 47.0% 放弃重排（A3 只给「全同型」开口）
                         #   🔥 零守卫覆盖：实测拆掉整个重排 ⇒ 只有 G173① 红，G174 三条全绿
                         #   另有 6 条量化/复制链错误（「约 3 次重复」应为 7、「34 条」应为 23、M194′「6 红」不可复现）
@@ -168,7 +180,7 @@ development_status:
   1-18-目标平板落地-竖屏布局-离线与部署: review
   1-19-单元-1-首次试玩验证-epic-1-的生死线: in-progress
   # 1-20 由 [CC] 2026-10-19 注入；理由与取证见 1-19 的 Change Log 与 planning-artifacts/sprint-change-proposal-2026-10-19.md
-  1-20-相邻不同型-把植物不重复从巧合变成代码保证: review
+  1-20-相邻不同型-把植物不重复从巧合变成代码保证: done
   1-retrospective: optional
   epic-2: backlog
   2-1-词图产能验证: backlog
