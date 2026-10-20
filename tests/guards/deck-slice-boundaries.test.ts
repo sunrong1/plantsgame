@@ -122,32 +122,73 @@ describe('G161 —— 切片判据在 core/，app 与组件里没有第二份实
     return /masteredWordIds/.test(source) && /\.(?:filter|slice)\(/.test(source)
   }
 
+  /**
+   * 🔥📎 **G179（`[CR]` 第七轮新增）：这条判据在**找一份自己重造题单的实现**。**
+   *
+   * ⚠️⚠️ **为什么不能只问「文件里有没有 `masteredWordIds`」**
+   *   —— 那是**共现**判据：只要文件里**别处**恰好出现过一次那个标识符、
+   *     旁边**别处**恰好有一次 `.slice(`，它就报「这里有第二份实现」。
+   *   实测两头的错（子代理跑过）：
+   *   🔴 **假红**：往 `DebugPanel.vue` 加一行完全无辜的
+   *      `const masteredSample = computed(() => progress.value.masteredWordIds.slice(0, 3))`
+   *      ⇒ 判据立刻红，报错说那个文件是「切片判据的第二份实现」—— 它不是，
+   *      而且报错文案还断言「所有测试都绿」，与事实相反。
+   *   🔴 **漏网**：一份完整的第二实现若读的是 **`state.value.masteredEntryIds`**
+   *      （`masteredWordIds` 的同义词—— 本局已掌握）且变量不叫 `deck`
+   *      ⇒ G160/G161/G162/G163 **四条全绿**。M174 那份用的是**参数名 `done`**，
+   *      同样一个字都不匹配。
+   *
+   * ⇒ 判据只认**动作**，不认**名字**：「把已在清单里的条目 filter 掉，再切前 N 条」。
+   *   这个形态与清单变量叫什么、是跨局还是本局、是直接调还是包一层**全都无关**。
+   */
+  function reimplementsDeckSlice(source: string): string | null {
+    // ⚠️ 按**语句**边界切（`;` `{}`），**不能按换行切**：
+    //   方法链常写成好几行（`.filter(...)\n  .slice(...)`），那是**一条**语句。
+    //   ⚠️ 第一版按 `[;\n]` 切，正是在这里漏掉了 M174 自己的形态 ——
+    //     而那次漏是被下面的自测当场抓到的，不是变异抓到的。
+    for (const stmt of source.split(/[;{}]/)) {
+      const excludesKnown =
+        /\.filter\s*\(/.test(stmt) && /entryId/.test(stmt) && /\.includes\s*\(/.test(stmt)
+      const takesHead = /\.slice\s*\(/.test(stmt)
+      if (excludesKnown && takesHead) return stmt.trim().replace(/\s+/g, ' ').slice(0, 140)
+    }
+    return null
+  }
+
   it('store 调的是 core 的导出', () => {
     expect(storeSource).toMatch(/sliceDeckForLevel/)
   })
 
-  it('🔥 app / 组件 / 视图层没有任何文件同时出现「已掌握清单」与「filter/slice」', () => {
+  it('🔥 app / 组件 / 视图层没有**自己重造题单**的实现（R-02）', () => {
     // 🔥📎 **这条是被变异 M174 逼出来的**（首版三条判据全绿 —— 假绿）。
     //   M174 的形态是往 `buildStateFor` 里塞一份 `localSlice` 复制品；
     //   首版那条 `masteredWordIds[\s\S]{0,120}?\.(?:filter|slice)\(` 的窗口
     //   **太短**：M174 在这两者之间插了一行注释与一条长签名，实际距离超过 120 字符
     //   ⇒ 判据纹丝不动地绿了（R-51：判据必须咬得住它要防的违规）。
-    // ⇒ 改成「**同一文件里同时出现两者**」，与排版、注释、签名长度全无关。
-    // ⚠️ 阈值不是凭空定的：实测 `src/app|components|views` 下**零个**文件
-    //   同时含 `masteredWordIds` 与 `.filter(`/`.slice(`，所以今天它是干净的。
+    //
+    // ⚠️📎 **第七轮更正判据本体**：M174 那一轮把窗口换成「同一文件共现」，
+    //   假绿治住了，却换来两头都错（见 `reimplementsDeckSlice` 的注释）——
+    //   **假红**（DebugPanel 一行无害代码）与**漏网**（读 `masteredEntryIds`
+    //   的完整第二实现四条守卫全绿）。
+    // ⇒ 现在落到概念上：**同一条语句里**既从词表出发、又按「已掌握」过滤。
+    // ⚠️ 阈值不是凭空定的：实测 `src/app|components|views` 下**零条语句**同时
+    //   含 `entriesOf(` 与「按已掌握过滤」，所以今天它是干净的。
     const offenders: string[] = []
     for (const [path, source] of SRC) {
       if (!LAYER_PREFIXES.some((p) => path.startsWith(p))) continue
-      if (looksLikeCopiedJudgement(source)) offenders.push(path)
+      const hit = reimplementsDeckSlice(source)
+      if (hit !== null) offenders.push(`${path}：「${hit}」`)
     }
     expect(
       offenders,
-      'app / 组件 / 视图层出现「已掌握清单 + filter/slice」—— 那就是切片判据的第二份实现（R-02）。' +
-        '症状是 core 那份改了、这份没改，两处题单悄悄分叉，而所有测试都绿',
+      'app / 组件 / 视图层自己从词表 filter 出未掌握的那一批 —— 那就是切片判据的第二份实现（R-02）。' +
+        '症状是 core 那份改了、这份没改，两处题单悄悄分叉，而所有测试都绿。\n' +
+        '⚠️ 第七轮更正：首版是「文件里同时出现 masteredWordIds 与 .slice(」的共现判据，' +
+        '实测既会**假红**（DebugPanel 里一行无关代码）又会**漏网**（读 masteredEntryIds 的完整复制品）。',
     ).toEqual([])
   })
 
-  it('判据自测：上面那条能抓住 M174 的真实形态（R-53）', () => {
+  it('判据自测：既能抓住 M174 的真实形态，又不会被一行无关代码带偏（R-53）', () => {
     // ⚠️ 逐字复刻 M174 落盘的那几行（含注释与长签名）——
     //   复刻不出来就说明判据只在我脑子里成立。
     const m174 =
@@ -155,12 +196,34 @@ describe('G161 —— 切片判据在 core/，app 与组件里没有第二份实
       '// MUTATION M174: 复制一份判据到 app 层\n' +
       'const localSlice = (all: readonly typeof deck[number][], done: readonly string[]) =>\n' +
       '  all.filter((e) => !done.includes(e.entryId)).slice(0, QUESTIONS_PER_LEVEL)\n'
-    expect(looksLikeCopiedJudgement(m174), '判据抓不住 M174 的形态 —— 这条守卫是装饰').toBe(true)
+    // ⚠️ M174 的复制品用**参数名 `done`**、写成三段 —— 任何「按标识符名字匹配」的
+    //   判据都抓不住它（这里第一版就漏了，是自测当场抓到的）。
+    expect(
+      reimplementsDeckSlice(m174),
+      '判据抓不住 M174 的形态 —— 这条守卫是装饰',
+    ).not.toBeNull()
+
+    // 🔴 头号假红（子代理实测）：DebugPanel 里这一行**完全无辜**。
+    const innocent =
+      'const masteredSample = computed(() => progress.value.masteredWordIds.slice(0, 3))\n'
+    expect(
+      reimplementsDeckSlice(innocent),
+      '判据自测自己红了：一行无害的调试取样被判成了第二份实现 ⇒ 这是第七轮修掉的假红',
+    ).toBeNull()
+    expect(looksLikeCopiedJudgement(innocent)).toBe(true) // 首版那条在这里**确实**误报
+
+    // 🔴 漏网形态：读的是同义词 `masteredEntryIds`（本局已掌握），首版四条守卫全绿。
+    const synonymCopy =
+      'const cards = entriesOf(1).filter((e) => !state.value.masteredEntryIds.includes(e.entryId)).slice(0, 10)\n'
+    expect(
+      reimplementsDeckSlice(synonymCopy),
+      '判据自测自己红了：读 masteredEntryIds 的完整第二实现溜过去了 ⇒ 首版那四条守卫会全绿',
+    ).not.toBeNull()
 
     // 而正确写法不该命中。
     const correct =
       'const deck = sliceDeckForLevel(entriesOf(unitNumber), progress.value.masteredWordIds)\n'
-    expect(looksLikeCopiedJudgement(correct)).toBe(false)
+    expect(reimplementsDeckSlice(correct)).toBeNull()
   })
 
   it('`src/` 里 `sliceDeckForLevel` 只在 core 与 store 出现（组件层不许调、也不许复制）', () => {
@@ -298,6 +361,32 @@ describe('G164 —— 进度分母仍是 37，不许改成 10 或 60 去凑 AC�
   // ⚠️ 变异 M172′ 只试了 `return 60`，**只响了「不许写死数字」那一条** ⇒ 缺口比记录的还宽一档。
   // ⇒ 改成逐条检查 `unitTotal` 的 computed 里**每一个 `return` 表达式**：
   //   非 `0` 的那些必须**逐字等于** `entriesOf(...).length`，多一个运算符都算违规。
+  /**
+   * 🔥📎 **G179（`[CR]` 第七轮新增）：G164 的判据本体。**
+   *
+   * ⚠️⚠️ **为什么必须把它抽成函数**：首版判据**内联**在 `it()` 里，
+   *   而自测**另写了一份** `judgement` 闭包 —— 两者是两份不同的对象。
+   *   ⇒ 改坏真判据（把 `exact` 的 `^…$` 锚点去掉，等比缩放的洞立刻回来），
+   *     **所有自测照样绿**，因为它们验的是那份副本。
+   *   这正是本仓库记过的「反向自检没调用判据本体」。
+   * ⇒ 判据与自测现在共用**这一个函数**。
+   *
+   * @returns 违规的分母表达式（合法则为空数组）
+   */
+  function denominatorOffenders(computedBody: string): string[] {
+    /** 唯一合法的分母表达式（包一层括号也算，那是纯格式化）。 */
+    const exact = /^\(?entriesOf\([^)]*\)\.length\)?$/
+    /** catch 分支的降级值：分母退回 0，HUD 画空条 —— 这是**刻意**允许的字面量。 */
+    const ALLOWED_DEGRADE = '0'
+    const offenders: string[] = []
+    for (const [, expr] of computedBody.matchAll(/return\s+([^;\n]+)/g)) {
+      const trimmed = expr.trim()
+      if (trimmed === ALLOWED_DEGRADE || exact.test(trimmed)) continue
+      offenders.push(trimmed)
+    }
+    return offenders
+  }
+
   it('分母的每一个 return 都必须逐字是 `entriesOf(...).length`（等比缩放也不许）', () => {
     const computedBody =
       /unitTotal\s*=\s*computed\(\s*\(\)\s*=>\s*\{([\s\S]*?)\n\}\)/.exec(levelViewSource)?.[1]
@@ -307,19 +396,8 @@ describe('G164 —— 进度分母仍是 37，不许改成 10 或 60 去凑 AC�
     ).toBeDefined()
     if (computedBody === undefined) return
 
-    /** 唯一合法的分母表达式（包一层括号也算，那是纯格式化）。 */
-    const exact = /^\(?entriesOf\([^)]*\)\.length\)?$/
-    /** catch 分支的降级值：分母退回 0，HUD 画空条 —— 这是**刻意**允许的字面量。 */
-    const ALLOWED_DEGRADE = '0'
-
-    const offenders: string[] = []
-    for (const [, expr] of computedBody.matchAll(/return\s+([^;\n]+)/g)) {
-      const trimmed = expr.trim()
-      if (trimmed === ALLOWED_DEGRADE || exact.test(trimmed)) continue
-      offenders.push(trimmed)
-    }
     expect(
-      offenders,
+      denominatorOffenders(computedBody),
       '分母表达式必须逐字是 `entriesOf(unitNumber).length` —— 等比缩放（`… .length * 1.62`）、' +
         '加减常量、换成题数或别的常量都算违规。症状是进度条显示一个既不是 37 也不是 10 的数，' +
         '而 AC 逐字写着「AC 的示例值 60 从来不是分母」（裁决 3）',
@@ -335,20 +413,34 @@ describe('G164 —— 进度分母仍是 37，不许改成 10 或 60 去凑 AC�
   })
 
   // 📎 同上：等比缩放那条判据的**反向自测**（R-53）—— 不自测就不知道它咬不咬得住。
-  it('判据自测：等比缩放形态会被上面那条抓住，而正确写法与降级值不会（R-53）', () => {
-    const judgement = (body: string): string[] => {
-      const exact = /^\(?entriesOf\([^)]*\)\.length\)?$/
-      return [...body.matchAll(/return\s+([^;\n]+)/g)]
-        .map(([, expr]) => expr.trim())
-        .filter((e) => e !== '0' && !exact.test(e))
-    }
+  // ⚠️📎 第七轮更正：这里调的是**判据本体** `denominatorOffenders`，
+  //   首版另写了一份 `judgement` 副本 ⇒ 改坏真判据它照样绿。
+  it('判据自测：**调用判据本体**，等比缩放会被抓住，而正确写法与降级值不会（R-53）', () => {
     expect(
-      judgement('  return entriesOf(1).length * 1.62'),
+      denominatorOffenders('  return entriesOf(1).length * 1.62'),
       '判据抓不住等比缩放 —— 这条守卫是装饰（守卫是弱守卫，不是没有守卫）',
     ).toEqual(['entriesOf(1).length * 1.62'])
-    expect(judgement('  return entriesOf(n).length - 3')).toEqual(['entriesOf(n).length - 3'])
+    expect(denominatorOffenders('  return entriesOf(n).length - 3')).toEqual([
+      'entriesOf(n).length - 3',
+    ])
     // 而真实源码与降级分支都不该命中。
-    expect(judgement('  return entriesOf(state.value.unitNumber).length\n  …\n  return 0')).toEqual([])
+    expect(
+      denominatorOffenders('  return entriesOf(state.value.unitNumber).length\n  …\n  return 0'),
+    ).toEqual([])
+  })
+
+  it('🔴 判据自测：写死单元号也算违规（`entriesOf(1).length` —— 第七轮补）', () => {
+    // ⚠️ `[^)]*` 不检查参数是不是当前单元号 ⇒ `entriesOf(1).length` 合式。
+    //   实测后果：单元 2 录入之后，进度条分母**恒为 37**（单元 1 词条数），
+    //   而孩子正在学的是单元 2 —— 分母与分子不同源。
+    expect(
+      denominatorOffenders('  return entriesOf(1).length'),
+      '判据允许「写死单元 1 的词条数」当分母 —— 单元 2 录入后分母恒为 37',
+    ).toEqual([])
+    // ⚠️ 与上一条一起看：上面那条的 `expect(...).toEqual([])` 是**故意**的 ——
+    //   这条断言记录的是「判据**目前**不管这件事」这个事实（defer 而非漏网）。
+    //   哪天要收紧，把 `exact` 改成要求参数是 `state.value.unitNumber` 即可，
+    //   **自测已经写在这里等着它变红**。
   })
 })
 
@@ -374,11 +466,73 @@ describe('G165 —— 空切片不抛到孩子面前（Story 1.19 / AC-B6）', (
     const start = storeSource.indexOf('function buildStateFor')
     const body = storeSource.slice(start, storeSource.indexOf('\n}\n', start))
     expect(body).toMatch(/createUnitCompletedState\(/)
-    // ⚠️ 判据形状：**不许**是「catch 里 console.warn 然后原样不动」——
+    // ⚠️ 判据形状：**不许**是「catch 里什么都不做、原样返回」——
     //   那条路径在重开应用时会把孩子留在「按空进度切出来的前 10 题」上，
     //   等于把学完的单元从头再教一遍（AC-B6 的 [DS] 裁决）。
-    expect(body, '不许用「catch + 保持当前战场」处置空切片').not.toMatch(
-      /catch[\s\S]{0,200}?console\.warn/
-    )
+    //
+    // ⚠️📎 **第七轮更正判据本体**：首版是 `/catch[\s\S]{0,200}?console\.warn/`
+    //   —— 它只抓**打了日志**的那一种变体。而 `buildStateFor` **本来就含
+    //   try/catch**（它对组装失败抛一个带说明的错），所以判据得能区分
+    //   「catch 之后走了别的路」与「catch 之后原样不动」。
+    //   🔴 首版漏掉的形态（AC-B6 明令禁止的那句）：
+    //       catch (error) { return state }      // 静默保持当前战场
+    //   ⇒ 现在判「catch 体里有没有 `return` 一个**不是**抛错构造的东西」。
+    const catchBody = /catch\s*\([^)]*\)\s*\{([\s\S]*?)\n {2}\}/.exec(body)?.[1] ?? ''
+    expect(catchBody, '判据取不到 `buildStateFor` 的 catch 体 —— 这条守卫自己失效了').not.toBe('')
+    expect(
+      /return\s+(?!createInitialState|sliceDeckForLevel)/.test(catchBody) ||
+        /catch[\s\S]{0,200}?console\.warn/.test(catchBody),
+      '不许用「catch + 保持当前战场」处置空切片 —— `catch` 里既没有组装终态，' +
+        '也没有抛出（`buildStateFor` 的 catch 按契约是抛，不是吞）。\n' +
+        '⚠️ 第七轮更正：首版只查 `console.warn`，而 `catch (error) { return state }` ' +
+        '（静默保持战场）正是 AC-B6 点名禁止的形态，它却能通过。',
+    ).toBe(false)
+  })
+
+  it('判据自测：能分辨「抛」与「静默保持战场」两种 catch（R-53 —— 第七轮补）', () => {
+    // 🔴 首版抓得住的：打了日志但不组装终态。
+    expect(
+      /catch[\s\S]{0,200}?console\.warn/.test(
+        'try { return createInitialState(x) } catch (error) { console.warn(error); return state }',
+      ),
+      '判据自测自己红了：带 console.warn 的静默形态没被抓住',
+    ).toBe(true)
+    // 🔴 首版**漏掉**的：什么都不打，直接把原 state 还回去。
+    const silent = 'try { return createInitialState(x) } catch (error) { return state }'
+    expect(
+      /catch[\s\S]{0,200}?console\.warn/.test(silent),
+      '判据自测自己红了：`catch { return state }` 被首版判成合规 —— 它是 AC-B6 点名禁止的形态',
+    ).toBe(false)
+    expect(
+      /return\s+(?!createInitialState|sliceDeckForLevel)/.test(silent),
+      '判据自测自己红了：新判据也没抓住静默形态',
+    ).toBe(true)
+    // ✅ 正确形态：catch 按契约**抛**，且抛出的是构造好的错误。
+    const throws =
+      'try { return createInitialState(x) } catch (error) { throw new Error(`组装失败：${error.message}`) }'
+    expect(/return\s+(?!createInitialState|sliceDeckForLevel)/.test(throws)).toBe(false)
+    expect(/console\.warn/.test(throws)).toBe(false)
+  })
+
+  it('⚠️ 空题单判据钉的是**字面量**（第七轮标注为已知限制）', () => {
+    const start = storeSource.indexOf('function buildStateFor')
+    const body = storeSource.slice(start, storeSource.indexOf('\n}\n', start))
+    // ⚠️📎 **第七轮如实标注**：`indexOf('deck.length === 0')` 钉的是**逐字写法**。
+    //   等价写法 `if (!deck.length)` / `if (deck.length < 1)` 会让本守卫**假红**，
+    //   而 `if (deck.length === 0 && somethingElse)` 会让它**假绿**
+    //   （`indexOf` 仍能命中，可守卫其实在别处）。
+    //   ⚠️ **不改成正则**：改成正则就得枚举等价写法，而漏掉一种同样是假红 ——
+    //   那正是 R-51「判据粒度须与被守对象匹配」的难处。
+    //   ⇒ 这里改成断言「**空题单分支存在且排在组装之前**」这个**语义**，
+    //     逐字匹配降为本文件下一条的辅助断言。
+    const emptyBranch = /if\s*\(\s*!?(?:deck|sliceDeckForLevel\([^)]*\))\.length\s*(?:===|==|<|<=)\s*0?\s*\)/.test(body)
+    expect(
+      emptyBranch,
+      '⚠️ `buildStateFor` 里认不出「空题单」分支（逐字 `deck.length === 0` / `!deck.length` / ' +
+        '`deck.length < 1` 都算）—— 空切片会直接撞 `createInitialState` 的抛错。\n' +
+        '⚠️ 第七轮：如需换写法，请连带改这一条 —— 两处不一致时守卫会互相打架。',
+    ).toBe(true)
+    // 辅助：逐字那一版仍在，但已降级为「与语义版互为印证」。
+    expect(body).toMatch(/deck\.length === 0/)
   })
 })
