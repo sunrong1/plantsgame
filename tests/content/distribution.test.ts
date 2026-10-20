@@ -60,7 +60,16 @@
  * · **M226**（[CR] 新增）让 `response` 插值终点反向 → 4 红。
  *   补的是 M218–M224 的**空白**：M220 只反转了 `word`，G188 的
  *   「句/对话层逐单元不减」那条断言在原 7 条变异里**从未被触发过**。
- *   原样例会补上，但编号随文档重排，以 story 文档的变异表为事实源（R-32）。
+ *
+ * ── [CR] 新增守卫 G191 – G194 的变异（先有变异、再有断言，顺序不反） ────────
+ * · **M227 → G192** `interpolate` 的 t 换成 smoothstep `t0²(3−2t0)`：
+ *   端点/单调/每步 ≤ 0.03 全部照旧满足，**新增 G192 前全绿**，现 1 红。
+ * · **M228 → G191** 只删掉返回对象那一处 `Object.freeze`（最小变异）：1 红。
+ * · **M229 → G194** 末锚点守恒改成 0.30/0.30/0.40：1 红。
+ * · **M230 → G194** `LAST_UNIT` 20 → 12 **加**末锚点协调改 0.50/0.15/0.35：1 红。
+ * · **M231 → G193** keyword 自第 10 单元起 +0.05、response −0.05（聚合轴不动）：2 红。
+ *
+ * ⚠️ 编号随文档重排，以 story 文档的变异表为事实源（R-32）。
  */
 
 import { describe, expect, it } from 'vitest'
@@ -71,6 +80,7 @@ import {
   LAST_UNIT,
   sentenceLayerShare,
   targetCardDistribution,
+  type CardDistribution,
 } from '../../src/content/distribution'
 import { CardKindSchema } from '../../src/content/schema'
 
@@ -90,6 +100,34 @@ const SUM_TOLERANCE = 1e-12
  * 留出的余量给未来把两锚点换成三锚点曲线时**仍然守住「无断崖」**。
  */
 const MAX_STEP = 0.03
+
+/**
+ * 步长**恒定性**的相对离散度上限（G192 用）。
+ *
+ * 19 个步长在浮点下并不逐字全等（实测 min 0.018990042674253083 /
+ * max 0.018990042674253305，差 2.2e-16，相对离散度约 1.2e-14），
+ * 所以给到 1e-9 —— 比真实浮点噪声大 5 个数量级，比 smoothstep 那种曲线的
+ * 0.898 小 9 个数量级，两头都不贴边。
+ */
+const STEP_UNIFORMITY_TOLERANCE = 1e-9
+
+/** 三个卡型（G191–G194 的逐族断言用）。取自 schema 枚举，不另写一份字面量。 */
+const CARD_KINDS = Object.keys(
+  (CardKindSchema.def as { entries?: Record<string, string> }).entries ?? {},
+) as (keyof CardDistribution)[]
+
+/**
+ * 末锚点三族的**产品**数字（G194 钉住的对象）。
+ *
+ * ⚠️ 刻意写死，且这不违反 R-56 —— R-56 禁的是把规则的**计算结果**抄成期望表，
+ * 这里钉的是规则的**输入**：`docs/card-distribution.md` §1.1 明写这是
+ * 「本规则唯一一处没有试玩数据背书的数字」。
+ */
+const LAST_ANCHOR_EXPECTED: Readonly<Record<keyof CardDistribution, number>> = Object.freeze({
+  word: 0.45,
+  keyword: 0.2,
+  response: 0.35,
+})
 
 describe('G187 —— 可计算 + 覆盖 1..20（AC-A2）', () => {
   it('每个单元产出三个份额：各自 ∈ [0,1]，且三者之和 = 1', () => {
@@ -243,3 +281,147 @@ describe('G189 —— 过渡平滑、无断崖（AC-B2）', () => {
     ).toBeGreaterThan(0)
   })
 })
+
+// ── [CR] 2026-10-20 新增的 G191 – G194 ───────────────────────────────────────
+//
+// 这四条不是原 story 计划的，是 `[CR]` 实测出「四条声称在守的性质，零守卫」之后补的。
+// 每一条都先有**变异坐实它此前会全绿**，再有断言（顺序不能反，否则又是一次「刚写的
+// patch 零守卫」）：
+
+describe('G191 —— 逐层 Object.freeze 是唯一的运行期防线，它本身也得有人守', () => {
+  it('锚点、锚点容器、单元号区间、以及函数返回的每个分布都不可写', () => {
+    // ⚠️ 为什么这条非有不可（实测）：把 `src/content/distribution.ts` 里**全部**
+    //   `Object.freeze` 删掉，G187–G190 **全部照绿** —— 零反应。
+    //   而 freeze 一旦没了，运行期这么改是**无声**的：
+    //     `CARD_DISTRIBUTION_ANCHORS.last.word += 0.05; …response -= 0.05`
+    //   （守恒和的改法 ⇒ G187 的「和 = 1」照样满足；G188 的「总位移」是拿实现跟
+    //   **同一批已被改掉的锚点**比 ⇒ 照样满足）整个难度曲线在无人处变形，
+    //   没有一条守卫会红。
+    //   `src/core/balance.test.ts` 对 `BALANCE_TIERS` 早就有同款断言，
+    //   本文件此前只是没跟上 —— 这条就是照那个写法补的。
+    expect(
+      Object.isFrozen(CARD_DISTRIBUTION_ANCHORS),
+      'CARD_DISTRIBUTION_ANCHORS 容器必须冻结：它的 first/last 被改写时曲线会静默变形',
+    ).toBe(true)
+    expect(
+      Object.isFrozen(CARD_DISTRIBUTION_ANCHORS.first),
+      '首锚点对象必须冻结',
+    ).toBe(true)
+    expect(
+      Object.isFrozen(CARD_DISTRIBUTION_ANCHORS.last),
+      '末锚点对象必须冻结',
+    ).toBe(true)
+    expect(
+      Object.isFrozen(CARD_DISTRIBUTION_ANCHORS.unitRange),
+      'unitRange 数组必须冻结',
+    ).toBe(true)
+    for (const unit of ALL_UNITS) {
+      expect(
+        Object.isFrozen(targetCardDistribution(unit)),
+        `单元 ${unit} 返回的分布必须冻结 —— 调用方拿到就能就地改写，后面所有单元的计算都跟着偏`,
+      ).toBe(true)
+    }
+  })
+})
+
+describe('G192 —— 步长恒定（「线性」这条性质此前零守卫）', () => {
+  it('相邻步长之间几乎全等（不是「平滑」，是「恒定」）', () => {
+    // ⚠️ 为什么这条非有不可（实测）：把 `interpolate` 的 t 换成 smoothstep
+    //   `t = t0²(3 − 2t0)` —— 端点不变、单调不变、每步都 ≤ 0.03 ——
+    //   **G187 – G190 全绿**。但步长从恒定 0.019 变成 min 0.0029 / max 0.0285（10 倍差），
+    //   难度爬升被压到前段极缓、后段极陡，而 `docs/card-distribution.md` §3 那张
+    //   20 行实算表**每一行都变成错的**，§4 的词图总数也跟着错。
+    //   而没有任何测试读那份文档 ⇒ 那张表唯一的防线就是「插值确实是线性的」。
+    //
+    //   判据用相对离散度而不是绝对容差：19 个步长在浮点下并不逐字全等
+    //   （实测 min 0.018990042674253083 / max 0.018990042674253305，差 2.2e-16），
+    //   所以给到 1e-9 的相对余量；smoothstep 的离散度是 0.898，离这条差 9 个数量级。
+    const steps = ALL_UNITS.slice(1).map((unit) => sentenceLayerShare(unit) - sentenceLayerShare(unit - 1))
+    expect(steps.length, '步长数组为空，无法判断恒定性').toBeGreaterThan(0)
+    const max = Math.max(...steps)
+    const min = Math.min(...steps)
+    const spread = (max - min) / max
+    expect(
+      spread,
+      `相邻步长不恒定：最小 ${min}、最大 ${max}，相对离散度 ${spread} —— ` +
+        `AC 裁决 1 声称「线性插值让逐单元差值恒定」，smoothstep 之类曲线端点/单调/步长上限` +
+        '全部照旧满足却会让 docs §3 的逐单元实算表整表失效。这条守的正是「恒定」两个字。',
+    ).toBeLessThan(STEP_UNIFORMITY_TOLERANCE)
+  })
+})
+
+describe('G193 —— 每一族卡各自有轴（此前只守聚合轴）', () => {
+  it('keyword / response 各自逐单元不减，word 逐单元不增', () => {
+    // ⚠️ 为什么这条非有不可（实测）：keyword 自第 10 单元起 +0.05、response −0.05
+    //   （word 不动）⇒ 聚合轴 keyword+response = 1 − word 毫无变化 ⇒
+    //   **G187 – G190 全绿**。但 `response` 的曲线在那条突变里是**倒退**的，
+    //   与 `docs/card-distribution.md` §1「关键词卡与回应卡……逐层加厚」逐字冲突。
+    for (const kind of ['keyword', 'response'] as const) {
+      for (const unit of ALL_UNITS.slice(1)) {
+        const prev = targetCardDistribution(unit - 1)[kind]
+        const cur = targetCardDistribution(unit)[kind]
+        expect(
+          cur,
+          `${kind} 在单元 ${unit - 1} → ${unit} 倒退：${prev} → ${cur} —— ` +
+            '聚合轴（keyword + response）只看不出这一族卡在退让，' +
+            '而 docs §1 承诺的是两族卡**各自**逐层加厚',
+        ).toBeGreaterThanOrEqual(prev)
+      }
+    }
+  })
+
+  it('单族卡的相邻步长也 ≤ 0.03（单族卡自己的断崖，聚合轴同样看不见）', () => {
+    for (const kind of ['word', 'keyword', 'response'] as const) {
+      for (const unit of ALL_UNITS.slice(1)) {
+        const delta = Math.abs(
+          targetCardDistribution(unit)[kind] - targetCardDistribution(unit - 1)[kind],
+        )
+        expect(
+          delta,
+          `${kind} 在单元 ${unit - 1} → ${unit} 跳了 ${delta}（上限 ${MAX_STEP}）—— ` +
+            '两族卡此消彼长时聚合轴可以毫无变化，单族卡自己的断崖必须单独量',
+        ).toBeLessThanOrEqual(MAX_STEP)
+      }
+    }
+  })
+})
+
+describe('G194 —— 末锚点与覆盖范围是**产品数字**，改了必须是三处一起改的有意行为', () => {
+  // ⚠️ 这条**故意写死数字**，与 R-56（「用实算，不用硬编码的期望表」）不冲突：
+  //   R-56 禁的是把**规则的计算结果**抄成期望表。这里钉的是规则的**输入** ——
+  //   末锚点 45/20/35 与「覆盖 1..20」是 `docs/card-distribution.md` §1.1 明写的
+  //   「产品裁决」和「本 story 唯一一处编出来的数字」。
+  //
+  // ⚠️ 为什么这条非有不可（实测两条，都曾全绿）：
+  //   · 末锚点守恒改成 0.30 / 0.30 / 0.40（和仍为 1）→ **G187 – G190 全绿**。
+  //     难度终点整个被换掉，G190 只锚单元 1、G187 只管和、G188 的位移是自指的。
+  //   · `LAST_UNIT` 20 → 12 **加上**末锚点协调改成 0.50 / 0.15 / 0.35（步长 0.0283，
+  //     仍 ≤ 0.03）→ **G187 – G190 全绿**。规则只覆盖半本书、终点也换了，
+  //     docs §3 / §4 整份失效。
+  it('覆盖范围仍是单元 1..20，末锚点仍是 45% / 20% / 35%', () => {
+    expect(
+      FIRST_UNIT,
+      '分布规则覆盖的首单元号变了 —— 「覆盖 1..20」是 docs §1 与本 story AC 的前提',
+    ).toBe(1)
+    expect(
+      LAST_UNIT,
+      `分布规则的末单元号变成了 ${LAST_UNIT}（实测：改成 12 并同步调整末锚点后 ` +
+        'G187–G190 全绿）—— 覆盖范围是产品决定，不是实现细节',
+    ).toBe(20)
+    expect([...CARD_DISTRIBUTION_ANCHORS.unitRange], 'unitRange 与 FIRST_UNIT/LAST_UNIT 不一致').toEqual([
+      FIRST_UNIT,
+      LAST_UNIT,
+    ])
+    for (const kind of CARD_KINDS) {
+      expect(
+        CARD_DISTRIBUTION_ANCHORS.last[kind],
+        `末锚点的 ${kind} 变成了 ${CARD_DISTRIBUTION_ANCHORS.last[kind]}` +
+          `（原 ${LAST_ANCHOR_EXPECTED[kind]}）—— ` +
+          '它是「本 story 唯一一处没有试玩背书的数字」，改它是产品裁决：' +
+          '必须同时改 `src/content/distribution.ts`、`docs/card-distribution.md` §1.1/§3/§4，' +
+          '并让 Story 2.9 试玩重新背书。守恒改法（和仍为 1）此前对全部守卫零反应。',
+      ).toBe(LAST_ANCHOR_EXPECTED[kind])
+    }
+  })
+})
+
