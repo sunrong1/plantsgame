@@ -31,6 +31,7 @@ import { describe, expect, it } from 'vitest'
 import { createInitialState } from '../../src/core/reducer'
 import * as contentModule from '../../src/content'
 import { getUnit, parseUnit, UNITS } from '../../src/content'
+import { targetCardDistribution } from '../../src/content/distribution'
 import { UnitSchema } from '../../src/content/schema'
 
 const root = fileURLToPath(new URL('../../', import.meta.url))
@@ -172,6 +173,36 @@ describe('AC-17 —— 三种卡型成规模存在（FR19）', () => {
         `${entry.entryId} 的卡型 ${entry.card.kind} 与选项形态 ${[...shapes].join('/')} 不符`,
       ).toBe(true)
     }
+  })
+
+  // ── G190（Story 2.2 / AC-B3）：规则(单元 1) 与真实内容一致 ──────────────
+  //
+  // ⚠️ 与上方 AC-17 的两条**不重叠**：那两条守「三型都 ≥ 1 / 选项形态相符」，
+  //    本条守「分布规则算出来的首锚点 === 这份真实内容的实测配比」。
+  //    前者内容改了会红，后者**两边**任何一边单独改了都会红 ——
+  //    规则改了不碰内容，或内容改了不碰规则，都是「难度阶梯落空了」。
+  //    所以它住在这里（内容侧），而规则自身的性质由 tests/content/distribution.test.ts 守。
+  it('G190：targetCardDistribution(1) 与本单元真实配比零容差一致', () => {
+    const total = entries.length
+    const dist = targetCardDistribution(1)
+    // 期望值从**真实内容**现算，不写死 30/1/6 —— 内容改了而规则没改时红的是这一条，
+    // 且报错信息里带着新配比，不需要人去 diff 才能看出「该重裁锚点还是该重录内容」。
+    expect(
+      dist.word,
+      `规则说单元 1 的单词份额是 ${dist.word}，而真实内容是 ${kindCounts['word']}/${total} —— ` +
+        '首锚点不再等于真实配比，难度阶梯就从单元 1 起落空了。' +
+        '请确认是重裁 src/content/distribution.ts 的 FIRST_ANCHOR，还是这份内容该改',
+    ).toBe(kindCounts['word'] / total)
+    expect(
+      dist.keyword,
+      `规则说单元 1 的关键词份额是 ${dist.keyword}，而真实内容是 ${kindCounts['keyword']}/${total} —— ` +
+        '理由同上一条',
+    ).toBe(kindCounts['keyword'] / total)
+    expect(
+      dist.response,
+      `规则说单元 1 的回应份额是 ${dist.response}，而真实内容是 ${kindCounts['response']}/${total} —— ` +
+        '理由同上一条',
+    ).toBe(kindCounts['response'] / total)
   })
 
   it('每张卡恰有一个正确项（FR16 在真实数据上的复验）', () => {
