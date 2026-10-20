@@ -387,6 +387,54 @@ describe('G182 —— 覆盖面：log 覆盖实验目录内的全部 SVG', () =>
       rmSync(dir, { recursive: true, force: true })
     }
   })
+
+  // ⚠️ 上面的用例只对着 `mkdtempSync` 的合成夹具跑。本 story 的实验目录
+  //   `docs/word-image-lab/` 里躺着 4 张**真画出来的**图 —— 它们才是这条守卫要守的对象。
+  //   合成夹具里全是 `compliantSvg()` 生成的规整文件，而真实图有三个夹具造不出来的情况：
+  //   重复的 entryId（一个图有多条记录）、文件名排序差异，
+  //   以及**末版记录可能与磁盘现内容对不上**（改了图忘了再 snapshot）。
+  it('真实的实验目录里每张图都已入册，且末版记录的哈希 = 磁盘现内容', () => {
+    const dir = join(root, 'docs/word-image-lab')
+
+    // 先证这条用例非空转：真实目录必须存在且确有图。
+    // 少了这一句，哪天 `docs/word-image-lab/` 被清空，本用例会静悄悄全绿。
+    const onDisk = readdirSync(dir)
+      .filter((name) => name.endsWith('.svg'))
+      .map((name) => name.replace(/\.svg$/, ''))
+      .sort()
+    expect(
+      onDisk.length,
+      'docs/word-image-lab/ 里没有 SVG —— 本 story 的实画样本没了，这条守卫会空转',
+    ).toBeGreaterThanOrEqual(3)
+
+    // ⚠️ **只读，不追加**：这里不调 `appendSnapshot()`。
+    //   守卫不该有副作用 —— 它一旦往仓库里写 log，跑一次测试就多一个版本，
+    //   逐张耗时会被守卫自己污染。
+    const logged = throughput.readLog(join(dir, 'versions.jsonl'))
+    const lastById = new Map<string, ThroughputRecord>()
+    for (const record of logged) lastById.set(record.entryId, record)
+
+    const missing = onDisk.filter((id) => !lastById.has(id))
+    expect(
+      missing,
+      `实验目录里这些图没有入册：${missing.join('、')} —— 没入册的图在产能模型里等于不存在`,
+    ).toEqual([])
+
+    // R-59：验哈希，不是验存在。「文件在」不等于「文件对」——
+    // 0 字节的图、改了图忘了再 snapshot，都在这里被抓出来。
+    const stale = onDisk.filter((id) => {
+      const record = lastById.get(id)
+      if (record === undefined) return true
+      const actual = createHash('sha256')
+        .update(readFileSync(join(dir, `${id}.svg`), 'utf8'), 'utf8')
+        .digest('hex')
+      return record.sha256 !== actual
+    })
+    expect(
+      stale,
+      `这些图的末版记录与磁盘现内容对不上（改了图没重新 snapshot）：${stale.join('、')}`,
+    ).toEqual([])
+  })
 })
 
 // ── G183 ─────────────────────────────────────────────────────────────────────
