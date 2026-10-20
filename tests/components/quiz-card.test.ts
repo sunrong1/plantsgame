@@ -1989,6 +1989,25 @@ describe('G172 —— 建造期的卡面只读：选项必须真的点不动、�
     await wrapper.vm.$nextTick()
 
     expect(wrapper.find('.question-card__tappable').classes()).toContain('is-locked')
+
+    // ⚠️📎 **`[CR]` 第七轮修：首版只断言了「class 在」，而这条用例的标题逐字
+    //   说的是「**不许是 `cursor: pointer`**」—— 判据与标题说的**不是同一件事**：
+    //   class 在，只说明模板挂了 `:class`，**那条 CSS 规则里写的是什么，没人验**。
+    //   ⚠️ 而且第六轮已经实测过：**只改光标在触摸设备上是无效的**
+    //     （平板上 `cursor` 根本不可见），真正管用的是 `pointer-events: none`
+    //     （从命中测试里摘掉）⇒ 只查 `cursor` 也不够。
+    //   ⇒ 现在直接从组件的 CSS 源码里取那条规则，**两条声明都验**。
+    const lockedRule = cssDecl(questionCardSource, '.question-card__tappable.is-locked {')
+    expect(
+      lockedRule,
+      '建造期的重听容器必须 `pointer-events: none` —— 平板上 `cursor` 不可见，' +
+        '只换光标的话孩子点题面区仍然是「点了没反应」（AC-D5 的「假可点」）',
+    ).toMatch(/pointer-events:\s*none/)
+    expect(
+      lockedRule,
+      '建造期的重听容器不许还是 `cursor: pointer` —— 白卡 + 指针光标摆在孩子面前',
+    ).not.toMatch(/cursor:\s*pointer/)
+    expect(lockedRule, '光标要么不写，要么写成非 pointer 的值').toMatch(/cursor:\s*default/)
   })
 
   it('反馈条在场，且读的是 `masteredEntryIds` 而不是组件本地的 `pickedOptionId`', async () => {

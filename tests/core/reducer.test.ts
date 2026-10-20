@@ -755,14 +755,30 @@ describe('AC-13 —— 不变量断言', () => {
   it('G171：题面不在题单里时必须抛（内容回滚 / 旧存档的形态）', () => {
     const base = atPhase('awaiting-build')
     const phase = buildPhaseOf(base)
-    // ⚠️ **刻意用一道题单里没有的题**（把 `wordId` 改掉而 `entryId` 不动 ——
-    //   那样断言仍会挂，因为判据逐字是「`entryId` 在不在 `deck` 里」）。
+    // ⚠️📎 **`[CR]` 第七轮更正注释与代码相矛盾的那一处**：
+    //   首版注释逐字写着「把 **`wordId`** 改掉而 `entryId` 不动」，
+    //   而代码改的恰恰是 **`entryId`**（`foreign` 那行）。
+    //   ⚠️ 注释与代码相反 = 下一个人会照着注释去改 `wordId`，
+    //     然后发现断言不红 —— 判据在**注释说的那个形态**上本来就绿。
+    //   ⇒ 注释改成与代码一致：改的**就是** `entryId`，
+    //     因为判据逐字是「`entryId` 在不在 `deck` 里」。
     const foreign: DeckEntry = { ...phase.question, entryId: 'u1-not-in-deck' }
+    expect(
+      foreign.entryId,
+      '夹具前提：这道题必须**不在**题单里（改的正是 entryId）',
+    ).not.toBe(phase.question.entryId)
 
     expect(
       () => assertInvariants({ ...base, phase: { ...phase, question: foreign } }),
       '题面不属于本题单 ⇒ 必须抛。放过它的话卡面会渲染一道答不对的题，而界面上看不出任何异常',
-    ).toThrow()
+    ).toThrow(/不在本题单里/)
+    // ⚠️📎 **`[CR]` 第七轮补消息判据**：首版是裸 `.toThrow()` ——
+    //   它只说「抛了」，**不挑原因** ⇒ 任何别的错（镜像不一致、格子归属…）
+    //   都满足它，而这条用例声称在守的是「题面 ∈ 题单」这一条。
+    expect(
+      () => assertInvariants({ ...base, phase: { ...phase, question: foreign } }),
+      '抛的必须是「题面不在题单里」这一条 —— 抛别的错说明这条守卫在守别的东西',
+    ).not.toThrow(/镜像|grid|格子/)
   })
 
   it('reduce 之后的不变量自动成立（断言挂在 reduce 出口）', () => {

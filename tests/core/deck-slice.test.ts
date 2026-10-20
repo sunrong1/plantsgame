@@ -270,7 +270,13 @@ describe('createUnitCompletedState —— 切片为空时的「已学完」形�
   })
 
   it('单元号未填档位时抛错（与 createInitialState 同款，不静默回退）', () => {
-    expect(() => createUnitCompletedState(999)).toThrow()
+    // ⚠️📎 **`[CR]` 第七轮补消息判据**：首版是裸 `.toThrow()` ——
+    //   它只说「抛了」，**不挑原因** ⇒ 任何别的错（题单为空、断言失败、
+    //   甚至 `undefined` 上取属性）都满足它。
+    //   ⇒ 消息判据钉住「抛的是**未填档位**这一条」（AC-3 的口径）。
+    expect(() => createUnitCompletedState(999)).toThrow(/未填档位/)
+    // ⚠️ 反向：不是「未填档位」的错，不许被这条判据放过。
+    expect(() => createUnitCompletedState(999)).not.toThrow(/题单不能为空/)
   })
 })
 

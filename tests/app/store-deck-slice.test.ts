@@ -53,6 +53,51 @@ function playOneRoundWith(mastered: readonly string[]): string[] {
   return store.state.value.deck.map((e) => e.entryId)
 }
 
+/**
+ * 真打一局到通关，返回 `CONTINUE` 造出的终态。
+ *
+ * ⚠️ 题单只给 **1 条**：判据要的是**终态的形状**，不必在夹具里建塔
+ *   （建了就得顺带断言塔位合法性，那是 1.12 的判据）。
+ * ⚠️ 走**真实 reducer**（答题 → 建造 → 结算 → 继续），不是手拼 state ——
+ *   手拼出来的那份与 `createUnitCompletedState` 是同一个函数的产物，
+ *   拿它比「同形」是**自己和自己比**。
+ */
+function playToComplete(unitNumber: number): ReturnType<typeof core.createInitialState> {
+  const deck = content.entriesOf(1).slice(0, 1)
+  let s = core.createInitialState({ unitNumber, deck })
+  for (let i = 0; i < deck.length; i += 1) {
+    const phase = s.phase
+    if (phase.kind !== 'awaiting-answer') throw new Error('夹具坏了：不在答题相位')
+    const correct = phase.question.card.options.find((o) => core.isCorrect(phase.question.card, o.id))
+    if (correct === undefined) throw new Error('夹具坏了：正确项缺失')
+    s = core.reduce(s, core.answer(correct.id))
+    s = core.reduce(s, core.endBuild())
+    s = core.reduce(s, core.resolveRound())
+    s = core.reduce(s, core.continueRound())
+  }
+  return s
+}
+
+/**
+ * 判据本体：把 `n` 局题单**两两**比一遍，返回**有交集的每一对**。
+ *
+ * ⚠️📎 **`[CR]` 第七轮补**：首版只比了三个**相邻**对，而用例标题逐字写着
+ *   「四局**两两**都成立」⇒ 判据粒度**粗于它声称要守的东西**（R-51 第四种形态）。
+ *   ⇒ 现在比**全部 C(n,2) 对**。
+ */
+function pairwiseOverlaps(rounds: readonly (readonly string[])[]): { label: string; intersection: string[] }[] {
+  const hits: { label: string; intersection: string[] }[] = []
+  for (let i = 0; i < rounds.length; i += 1) {
+    for (let j = i + 1; j < rounds.length; j += 1) {
+      const intersection = rounds[i].filter((id) => rounds[j].includes(id))
+      if (intersection.length > 0) {
+        hits.push({ label: `第 ${i + 1} 局 vs 第 ${j + 1} 局`, intersection })
+      }
+    }
+  }
+  return hits
+}
+
 beforeEach(() => {
   storage = installFakeStorage()
   warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
@@ -106,13 +151,39 @@ describe('AC-B8 —— 跨局零交集（🔥 切片读的是跨局进度，不�
     const g2 = playOneRoundWith(g1)
     const g3 = playOneRoundWith([...g1, ...g2])
     const g4 = playOneRoundWith([...g1, ...g2, ...g3])
-    for (const [a, b] of [
-      [g1, g2],
-      [g2, g3],
-      [g3, g4],
-    ] as const) {
-      expect(a.filter((id) => b.includes(id))).toEqual([])
-    }
+    const rounds = [g1, g2, g3, g4] as const
+    // ⚠️ 判据比的是**全部 6 对**（C(4,2)），不是三个相邻对 —— 见 `pairwiseOverlaps`。
+    expect(
+      pairwiseOverlaps(rounds),
+      '四局两两都有交集 —— 同一个词被考了两次',
+    ).toEqual([])
+  })
+
+  it('判据自测：**非相邻**的一对撞上时，判据必须看得见（R-53）', () => {
+    // ⚠️ 没有这一条，上面那条在「只漏非相邻对」的缺陷下照样绿 ——
+    //   而那正是首版漏检的形态。
+    // ⚠️ 造的是「g1 与 g4 撞了同一条，而三个**相邻**对都干净」：
+    //   首版判据（只比相邻三对）在这里**全绿**。
+    const rounds = [
+      ['a', 'b', 'c'],
+      ['d', 'e', 'f'],
+      ['g', 'h', 'i'],
+      ['a', 'j', 'k'],
+    ]
+    const hits = pairwiseOverlaps(rounds)
+    expect(hits, 'g1 与 g4 撞了「a」，判据必须报出来').toHaveLength(1)
+    expect(hits[0]?.label).toBe('第 1 局 vs 第 4 局')
+    expect(hits[0]?.intersection).toEqual(['a'])
+    // 反向：四局互不相交时，判据不许报任何东西（否则这条判据恒红）。
+    expect(
+      pairwiseOverlaps([
+        ['a'],
+        ['b'],
+        ['c'],
+        ['d'],
+      ]),
+      '判据把干净的输入也报成了有交集 ⇒ 这条判据恒红',
+    ).toEqual([])
   })
 
   it('🔥 切片读的是 `progress` 而不是 `state` —— 本局 mastered 已清零也照样前进', () => {
@@ -153,16 +224,31 @@ describe('AC-B6 —— 全部掌握时不崩、不给孩子看技术错误', () 
     store.enterLevel()
     const done = store.state.value
 
-    const played = core.createInitialState({ unitNumber: 1, deck: content.entriesOf(1).slice(0, 1) })
-    expect(played.phase.kind).toBe('awaiting-answer')
+    // ⚠️📎 **`[CR]` 第七轮修：首版造了一个 `played` 却**从不拿它做比较**。**
+    //   首版造的是 `createInitialState({ deck: 1 条 })` —— 那是**开局态**
+    //   （`phase.kind === 'awaiting-answer'`），而后面四条断言比的是
+    //   `done` 与**字面量** `[]` / `{}` ⇒ `played` 是个摆设，
+    //   「与真打通关那份同形」这件事**根本没被比较过**。
+    //
+    //   ⇒ 现在造一份**真打通关**的终态（走 reducer：答题 → 建造 → 结算 → 继续），
+    //     再与 `done` 逐字段比。
+    const played = playToComplete(1)
+    expect(played.phase.kind, '前置：这份必须真的是「打完了」的终态').toBe('level-complete')
 
-    // 逐字段比对「空切片造的那份」与「真打通关那份」的可见差异：
-    // ⚠️ `deck` 必须都是空 —— 这正是判据点（若空切片那份留了词表，
-    //   孩子的进度条会显示「0/10」而横跨两套东西）。
-    expect(done.deck).toEqual([])
-    expect(done.grid).toEqual({})
-    expect(done.towers).toEqual([])
-    expect(done.zombies).toEqual([])
+    // 逐字段比对「空切片造的那份」与「真打通关那份」的**可见**差异：
+    // ⚠️ 只比这四项（与 `tests/core/deck-slice.test.ts` 的同款判据逐字一致）——
+    //   `hearts` / `sun` / `turn` 是**打了一局之后的残留值**，
+    //   「已学完」那份没有对应的局可打，比它们会把判据钉到无意义的约束上。
+    expect(done.phase, '🔴 两份终态的相位必须一致 —— 孩子看到的是同一张通关卡').toEqual(
+      played.phase,
+    )
+    expect(done.grid).toEqual(played.grid)
+    expect(done.towers).toEqual(played.towers)
+    expect(done.zombies).toEqual(played.zombies)
+    // ⚠️ `deck` **不参与**上面的比较：真打通关那份还留着它打过的那几条
+    //   （打一局 = 10 题，题单不会自己清空），而「已学完」那份是空题单。
+    //   ⇒ 空题单是**这一份自己的**判据，单独断言（进度条不许显示「0/10」）。
+    expect(done.deck, '🔴 空切片造的那份留了词表 —— 孩子的进度条会显示「0/10」').toEqual([])
   })
 
   it('终态不再接受任何 action（`reduce` 照抛 ⇒ 孩子改不了局面）', () => {
