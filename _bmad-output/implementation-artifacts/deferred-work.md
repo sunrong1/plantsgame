@@ -1689,7 +1689,7 @@ M101–M110 共 25 红无 0 红），**无一条守卫假绿**。以下 8 条真
 | # | 条目 | 本 story 的处置 | 守卫 / 落点 |
 |---|---|---|---|
 | ① | CSS 断点 | **定案**：`src/styles/responsive.css`，全文件**只有一条**媒体查询 `@media (max-height: 900px)`。⚠️ 它是**高度**断点、不是宽度断点 —— 本 story 的形态问题是「竖屏 800×1280 下 HUD 把战场顶出视口」，可用的量是**高度**，不是宽度。⚠️ **宽度断点刻意为零**（本 story 之前全仓 `@media` 数量为 0，实测）：竖屏平板的宽度区间恰好由 `min-width: 0` + 列轨布局自然适配，硬加 `min-width` 断点只会带来第二套要重测的排版。**不写进 `tokens.css`**（R-12：已定稿 token 的值一个都不许改） | `portrait-layout.test.ts`（源码级） |
-| ② | viewport meta 取值 | **定案**，架构文档无原文但仓库 `index.html` 一直有：实测 `width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover`。`maximum-scale=1` 有实测依据（Android 双击缩放的 300ms 延迟会击穿 FR78 的 ≤100ms 预算），`viewport-fit=cover` 让 `env(safe-area-inset-*)` 生效。⚠️ **不许动** | `portrait-layout.test.ts`（源码级断言，非 PWA 组） |
+| ② | viewport meta 取值 | **定案**，架构文档无原文但仓库 `index.html` 一直有：实测 `width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover`。`maximum-scale=1` 有实测依据（Android 双击缩放的 300ms 延迟会击穿 FR78 的 ≤100ms 预算），`viewport-fit=cover` 让 `env(safe-area-inset-*)` 生效。⚠️ **不许动** | `portrait-layout.test.ts` **G204**（源码级断言，非 PWA 组）—— ⚠️📎 `[CR]` 2026-10-20 更正：本条原先只写「portrait-layout.test.ts（源码级断言）」而**没有守卫编号**，实测那条断言**当时压根不存在**（零条）⇒ 裁决 10 逐字「这两项都不许在 1.18 里被『顺手整理』掉」的两个取值**实际无人守**。现已补 **G204**（逐条断言 `maximum-scale=1` 与 `viewport-fit=cover` 都在 `index.html` 里，外加一条反向自测证明拿掉任一项会红） |
 | ③ | 像素密度 / DPR | **显式不做** —— 战场格子靠 `aspect-ratio` 与列轨布局，图标是 SVG（矢量），PNG 只用于 PWA 主屏图标（由浏览器自己缩放）。⇒ 无需在架构文档登记 DPR 策略 | —— |
 | ④ | manifest 字段清单 | **定案**（架构无原文）：8 个必填文本字段 + `icons`；`start_url`/`scope`/`id` 三者一律 `/plantsgame/`（换域名时 `id` 不失效）。⚠️ `id` **故意不是** `https://…` 形式 | `verify-deploy.ts` ② 组 12 项 + `pwa-manifest.test.ts` |
 | ⑤ | precache 与 runtime cache 的分层比例 | **定案**：应用外壳（html/js/css）precache；`.mp3`/`.svg` 走 runtime `CacheFirst`。⚠️ **不是全量 precache** —— 架构决策 6 逐字「全量预载 400 张必超冷启动 3s」；本 story 只 precache 外壳，图片是进入单元后异步预取（AC-E2） | `sw/sw-rules.ts` + `pwa-sw-guard.test.ts` |
@@ -2337,5 +2337,105 @@ M101–M110 共 25 红无 0 红），**无一条守卫假绿**。以下 8 条真
   `targetCardDistribution` 的实算值比对（漂了就红）。注意别把这变成 R-56 说的
   「硬编码期望表」—— 期望值要从**真实实现**现算，文档只是被核对的那一方。
   顺带把 §4 的三个 Σ 与 §4.1 的四个批次数一并核。
+
+
+## Deferred from: code review of story-1-18-目标平板落地-竖屏布局-离线与部署 `[CR]` (2026-10-20)
+
+> 本节三条是 **Story 1.18 `[CR]` 三层对抗评审**里判为 `defer` 的发现。
+> 三条都**不是 1.18 引入的**（分别是 1.16 / 1.16 / 1.2 引入），
+> 1.18 只是**第一次让它们进入评审视野**。详见 1.18 story 文档的 `### Review Findings` 段。
+
+### W6. `LevelOutcome` 模态只把焦点移进浮层，没有把 Tab 键锁在浮层内（1.16 引入）
+
+- **实测**：模态浮层打开后，焦点被移进浮层（`LevelOutcome.vue` 的 `onMounted` 里有
+  一次 `focus()`），但**没有 focus trap** —— 连按 Tab 仍能把焦点移到浮层**背后**的
+  `.battle-grid` 格子（那些格子是可聚焦的 `<button>`）。
+  ⇒ 键盘用户（以及读屏用户）会把焦点框落到**看不见的地方**。
+- **为什么不在 1.18 补**：1.18 的改动面是布局 / 离线 / 部署，
+  `LevelOutcome` 的模态语义是 **1.16「关卡流程-通关-失败与推进」**引入的，
+  补 focus trap 要改 `LevelOutcome.vue` 的模板与焦点管理，超出 1.18 的范围。
+- **恢复条件**：在 `LevelOutcome.vue` 里加一层 focus trap
+  （捕获 Tab / Shift+Tab 在浮层内循环，Esc 关闭），
+  并加一条守卫断言「浮层打开后连按 N 次 Tab，焦点仍在浮层内的可聚焦元素上」。
+  ⚠️ 这条**必须用真实 DOM 事件**测，jsdom 的 `.focus()` 不产生 Tab 默认行为 ——
+  按 R-56，别用 jsdom 假绿。
+
+### W7. `LevelOutcome` 浮层的左右安全区（1.16 引入；`[CR]` 2026-10-20 **更正过原因**）
+
+- **⚠️📎 `[CR]` 2026-10-20 更正本条原先写的「原因」—— 它是错的，但风险是真的。**
+  原先逐字写：「`.level-view` 的 `padding` 只在**上下**加了安全区，
+  **左右两侧没有加** `env(safe-area-inset-left/right)`」
+  ⇒ **与源码不符**：`src/views/LevelView.vue` 逐字是
+  ```css
+  padding: calc(var(--space-panel-pad) + env(safe-area-inset-top))
+    calc(var(--space-panel-pad) + env(safe-area-inset-right))
+    0
+    calc(var(--space-panel-pad) + env(safe-area-inset-left));
+  ```
+  ⇒ **左右两侧加了的**。
+- **真正的机制（实测，2026-10-20，真实 chromium）**：
+  浮层是 `position: absolute; inset: 0`，它的包含块是 `.level-view`（`position: relative`）的
+  **padding box** —— 而**padding box 含 padding 区**，所以 `.level-view` 那份
+  `env(safe-area-inset-left/right)` **不会**把浮层往里推。
+  ⇒ **实测**：往 `.level-view` 里塞一个 `position:absolute; inset:0` 的探针元素，
+  它的 `left` = **0**，而 `.level-view` 的 `padding-left` = **16px**
+  ⇒ 探针落在 **padding box** 上（`on_padding_box: true`），不是 content box。
+  ⇒ 而 `LevelOutcome.vue` 自己的 `padding-left/right` 只给了 `var(--space-panel-pad)`（16px），
+  **没有** `env(safe-area-inset-left/right)`。
+  ⇒ **结论不变**：横屏 + 刘海 / 圆角设备上，浮层靠边的文字仍可能被系统手势区或圆角裁掉。
+- **为什么不在 1.18 补**：改 `.level-view` 的 padding 口径会**连带改战场与 HUD 的可用宽度**
+  （布局口径变更，超出 1.18 范围）；改 `LevelOutcome` 自己的 padding 属 1.16 的组件。
+- **恢复条件**：给 `LevelOutcome` 浮层自己的 `padding-left/right` 补上
+  `env(safe-area-inset-left/right)`，并加一条守卫断言
+  「浮层的左右 padding 覆盖 `env(safe-area-inset-left/right)`」。
+  ⚠️ 与 1.19 的横屏分栏**一起做**更省事 —— 1.19 已经在动 `.level-view` 的横屏布局。
+  ⚠️ **注意**：补在**浮层自己**的 padding 上，而不是 `.level-view` 上 ——
+  后者会改变战场与 HUD 的可用宽度（而前面已实测：那份 padding **不会**自动保护浮层）。
+
+### W8. `pronunciation.ts` 的 `playing` 收敛点只有五处，发声路径提前 `return` 时没有统一兜底（1.2 引入）
+
+- **实测**：`src/services/pronunciation.ts` 把「正在读…」这个状态收敛在**五处**
+  显式 `playing = false`；但**发声路径上存在提前 `return` 的分支**
+  （例如某些词缺失录音时直接返回、或中途被新的播放请求打断）。
+  ⇒ 那些分支**没有**统一把 `playing` 收回去
+  ⇒ 极端情况下朗读浮层会**永远停在「正在读…」**。
+- **为什么不在 1.18 补**：`pronunciation.ts` 是 **1.2「音频解锁与 TTS 朗读」**的实现，
+  1.18 只在 `LevelOutcome` / 答题链路上消费它的状态，不改它的实现。
+  ⚠️ 另注：**1.2 至今仍留 `review`**（`sprint-status.yaml` 里那条 `review` 是有意留的，
+  理由见 1.2 自己的 story 文档）⇒ 这条更适合在 **1.2 的收尾**里处理，而不是 1.18。
+- **恢复条件**：把「结束朗读」收敛成**单一出口**（`try/finally` 或一个
+  `finishPronunciation()`），所有提前 `return` 路径都走它；
+  并加一条守卫断言「任何一次朗读请求结束后 `playing` 必为 false」
+  （含提前 `return` 的分支）。
+
+### W9. R-42 守卫的射程只到 `development_status:`，而复盘真正回流在 `last_updated:` 块（1.13 起累积）
+
+- **实测（2026-10-20，Story 1.18 `[CR]`）**：
+  `sprint-status.yaml` 的 `last_updated:` 续行块是**第 52–162 行，共 110 行注释**
+  （下一条非注释非空行是第 163 行 `project: plants-game`）。
+  而 `tests/scaffold/docs-rules.test.ts` 的 R-42 守卫逐字只量
+  「`development_status:` 块**及其之后**的注释行」，上限 **4** ⇒ **`last_updated:` 块不在其射程**。
+- **这 110 行是谁的**：**不是 1.18 写的** —— 是 Story **1.19 / 1.20 / 2.1 / 2.2** 累积的运行记录。
+  ⚠️ 抽查三条**只存在于账本、在各自 story 文档里搜不到**：
+  - 「N2 盲审报 PLAUSIBLE」
+  - 「查重时打自己的脸：全仓库 `uniq -d` 实测 **10 个重号**」
+  - 「🔥 全仓库 `uniq -d` 实测 **10 个重号**，9 个是假警报，唯一真撞的 **G30 早于本 story**（1.11 vs 1.12…）」
+  ⇒ 它们**不是重复，是尚未归档的证据**；按 R-42 逐字「运行复盘……**一律写进该 story 文档**」，
+  搬进那四份文档需要逐条核对，**不能凭某一个 story 的记忆改写**。
+- **为什么不在 1.18 补**：1.18 的 `[CR]` 动它等于**替另外四个 story 搬运并改写它们的证据**，
+  超出本 story 范围；且按 **R-57 不许为了变绿而松阈值** ——
+  把上限从 4 调到 110 正是典型的「为了让守卫变绿而松」，**比不做更坏**（它会让守卫永久失去牙齿）。
+- **恢复条件**（**顺序不能反**）：
+  ① 先把 110 行按 story 归位 —— 各自搬进对应的 story 文档（1.20 / 2.2 已按 R-40 归档，
+     搬进 `_bmad-output/archive/`），账本里只留**一行指针**；
+  ② **归位完成后再**把 R-42 守卫的射程扩到 `last_updated:` 块，
+     上限沿用 `SPRINT_STATUS_MAX_COMMENT_LINES`（**不新设一个更大的数**）；
+  ③ 扩射程那一步要配一条**反向自测**（在 `last_updated:` 块里塞 N+1 行复盘 ⇒ 必须红），
+     否则又是一条恒绿守卫（R-50 第 ② 步 / R-51）。
+- ⚠️ **顺带记一条已发生的**：Story 1.18 的 `[DS]` 曾在同一块里加过两行运行记录注释
+  （`# 1-18 [DS] 开工 —— 13 条裁决…` / `# 1-18 [CS] 完成 …`），
+  **后来 1.20 / 2.1 / 2.2 的 `[CR]` 已把 1.18 那一段清掉**（文件头逐字「`[CR]` 已按 R-42 收敛成指针」）
+  ⇒ **1.18 自己的残留已归零**，恢复时**不必**再搬 1.18 的行，只需搬那四份的。
+
 
 

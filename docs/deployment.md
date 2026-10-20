@@ -31,7 +31,7 @@ npm run build
 
 1. `prebuild` → `validate:content`：内容层校验（JSON schema、词图双向存在性等）。
 2. `build` → `vue-tsc -b --force && vite build`：类型检查 + 打包。
-3. `postbuild` → `verify:deploy`：产物自检 41 项。
+3. `postbuild` → `verify:deploy`：产物自检 **62 项**。
 
 ### 实测产物形态（2026-10-17，Story 1.18 收尾时构建）
 
@@ -301,7 +301,11 @@ location /plantsgame/ {
 | `sw/sw-rules.ts` | 纯规则：缓存名、旧缓存识别、媒体判定 |
 | `src/services/sw-registration.ts` | 注册 SW、检查安全上下文、`prompt` 语义 |
 | `src/services/asset-prefetch.ts` | 进关时预热本单元图片 |
-| `scripts/verify-deploy.ts` | 上线前产物自检（41 项），`postbuild` 自动跑 |
-| `tests/scaffold/pwa-manifest.test.ts` | G121/G122：manifest 与 token 同源 |
-| `tests/scaffold/pwa-sw-guard.test.ts` | G125/G126：SW 源码级边界 |
+| `scripts/verify-deploy.ts` | 上线前产物自检（**62 项**），`postbuild` 自动跑 |
+| `scripts/verify-portrait-layout.ts` | 竖屏布局的**真浏览器**量测（`npm run verify:portrait`，**不**在 `test` / `postbuild` 里） |
+| `tests/scaffold/pwa-manifest.test.ts` | G120/G121/G122：manifest 与 token 同源 |
+| `tests/scaffold/pwa-sw-guard.test.ts` | G123（零强制刷新）、G124、G125/G126（SW 源码级边界）、**G127（注册调用点）**、G128/G129、**G159（`activate` 真的调 `staleCacheNames`）** |
+| `tests/scaffold/pwa-offline-shell.test.ts` | G195/G196/G197：app shell 真的进了 precache |
+| `tests/scaffold/verify-deploy.test.ts` | G155/G156/G157、**G199**：产物级判据的变异夹具与反向自测 |
+| `tests/services/sw-registration.test.ts` | G130/G131、**G202**：`preparing` 状态机的三条退路 |
 | `tests/scaffold/deployment-base.test.ts` | `base` 与 `vitest.config.ts` 一致 |
