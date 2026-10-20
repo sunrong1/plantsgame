@@ -853,11 +853,24 @@ describe('G166 —— 宽屏分栏块存在且是左右两栏（Story 1.19 / AC-
       quizRow,
       '`grid-template-areas` 里没有名为 `quiz` 的格子 —— 题面没被排版，孩子在横屏下看不见它',
     ).toBeDefined()
+    // ⚠️📎 **`[CR]` 第七轮按 R-57 把这条从「不等式」升级为「顺序」**：
+    //   原判据只有 `.not.toBe(...)`，而它上面那句消息逐字要求的是
+    //   「战场必须在**左**栏、题面在**右**栏」—— 消息要的是顺序，判据只查不等。
+    //   ⇒ `field` 在第 1 列、`quiz` 在第 0 列（两栏对调）同样绿，
+    //     而那恰恰是消息明令禁止的形态。
+    //   ⇒ 断言本身**不是**推翻，而是**补齐消息已声明的那一半**；
+    //     原不等式保留为前置（同一列仍然更严重，且报错更直观）。
     expect(
       fieldRow?.indexOf('field'),
       '战场（field）与题面（quiz）落在了同一列 —— 那样它们仍会上下堆叠，' +
         '横屏下一个字都没多出来。战场必须在左栏、题面在右栏',
     ).not.toBe(quizRow?.indexOf('quiz'))
+    expect(
+      (fieldRow?.indexOf('field') ?? -1) < (quizRow?.indexOf('quiz') ?? -1),
+      '🔴 战场与题面**两栏对调了** —— 战场落在右栏、题面落在左栏。' +
+        '上面那条只判「不同列」，两栏对调它照样绿；' +
+        '但 AC-H1 逐字要的是「战场在左、题面在右」（战场宽、题面窄，各按各的栏宽布局）。',
+    ).toBe(true)
   })
 })
 
@@ -882,12 +895,61 @@ describe('G167 —— 宽屏下战场那格的两个必需声明（Story 1.19 / 
     ).toMatch(/align-self:\s*start/)
   })
 
+  /**
+   * 🔥📎 **G179（`[CR]` 第七轮新增）：规则体里某个属性的「**生效值**」。**
+   *
+   * ⚠️ **为什么不能只问「这行字在不在」**：CSS 里**同一条规则内后面的声明赢**。
+   *   所以在 `height: auto;` 后面再补一条 `height: calc(100% - 48px)`，
+   *   `/height:\s*auto/` 照样匹配，而**生效值是后者** —— 2026-10-17 那个 P0
+   *   （题卡被推出折叠线）原样复活，G167 全绿。
+   *
+   * @param body 规则体（`{ … }` 内部或不含花括号的声明串）
+   * @param prop 属性名（不带冒号）
+   * @returns 最后一条该属性的声明值；一条都没有则返回 `null`
+   */
+  it('🔴 战场那格的**生效**高度是 `auto`（不是「块里写着 auto 就算数」）', () => {
+    const battleRule = ruleBodyFor(block, '.level-view .battle-grid')
+    expect(battleRule, '判据范围消失：宽屏块里找不到 `.level-view .battle-grid` 的规则').not.toBe('')
+    // ⚠️ 这条是 G167 原判据（`toMatch(/height:\s*auto/)`）的**加固版**。
+    //   原判据只问「这行字在不在」⇒ 后面再补一条 `height:` 就把它盖掉而全绿。
+    expect(
+      effectiveDecl(battleRule, 'height'),
+      '🔴 战场那一格的**生效** height 不是 `auto` —— ' +
+        '同规则内后面的 `height` 声明会赢它，战场重新吃满视口高度，' +
+        '题卡被推出折叠线（2026-10-17 实测故障的根因）。\n' +
+        '⚠️ 只写 `height: auto` 不够：还要保证它是**最后一条** height 声明。',
+    ).toBe('auto')
+  })
+
+  it('判据自测：`effectiveDecl` 取的是**最后**一条，不是第一条（R-53）', () => {
+    // 🔴 形态一：G167 首版能分辨的那种 —— 只有一条。
+    expect(effectiveDecl('height: auto;', 'height')).toBe('auto')
+    // 🔴 形态二：**后写覆盖** —— 首版判据在这里是绿的，生效值却不是 auto。
+    expect(
+      effectiveDecl('height: auto;\nheight: calc(100% - 48px);', 'height'),
+      '判据自测自己红了：后写覆盖的形态没被取到最后一条',
+    ).toBe('calc(100% - 48px)')
+    // 🔴 形态三：前置一条不相关的属性，不能把边界算错。
+    expect(effectiveDecl('grid-area: field;\nheight: auto;', 'height')).toBe('auto')
+    // 反向：没有该属性时返回 null（不是空串）—— 「没声明」与「声明了空值」是两件事。
+    expect(effectiveDecl('align-self: start;', 'height')).toBeNull()
+    // ⚠️ 属性名要做转义边界：`--touch-min` 这种带连字符的名字不该被
+    //   `touch-min` 的查询误命中（`--touch-min` 里也含 `touch-min`）。
+    expect(effectiveDecl('--touch-min: 48px;', 'touch-min')).toBeNull()
+  })
+
   it('战场那一格的高度归零 —— 缺它就被上一条媒体查询的高度预算压住', () => {
     // ⚠️ 同文件里还有 `@media (max-height: 900px)` 的
     //   `.level-view .battle-grid { height: calc(100% - var(--touch-min) - …) }`。
     //   宽屏（1280×800）**同时命中两条**，两条特异度相同、靠后者胜出。
     //   ⇒ 宽屏块必须显式把 `height` 归零，否则战场会被那条「把整个视口都算给它」
     //   的规则重新撑大——**也就是今天这个 bug 原样复活**。
+    //
+    // ⚠️📎 **`[CR]` 第七轮按 R-57 加固**：这条问的是「块里**写着** `height: auto`」，
+    //   而 CSS 里同规则内**后面的声明赢** ⇒ 在它后面补一条 `height:` 就能盖掉它，
+    //   而本条照样绿（子代理实测 51/51 全绿）。**断言本身一个字没动**，
+    //   加固由上面那条「生效高度」判据承担 —— 本条降为**可读性断言**，
+    //   真正的把关在那条。
     expect(
       rule,
       '宽屏块里 `.battle-grid` 没有 `height: auto` —— 它会被 @media (max-height: 900px) ' +
@@ -1111,13 +1173,73 @@ describe('G169 —— 竖屏基准没有被宽屏改动污染（Story 1.19 / AC-
     ).toMatch(/min-height:\s*100dvh/)
   })
 
-  it('宽屏块自身不引入 `orientation` 媒体查询（裁决 13 / G134 的延伸）', () => {
-    const block = landscapeBlock(responsive)
+  it('🔴 横屏下选项必须是 **2×2**（AC-H3 —— 第七轮补，此前零守卫）', () => {
+    const wideBlock = landscapeBlock(sourceOf('src/styles/responsive.css'))
+    const rule = ruleBodyFor(wideBlock, '.level-view .question-card .question-card__options')
     expect(
-      block,
-      '宽屏块里出现了 `orientation` —— 布局不许依赖「我知道现在是横屏」这个' +
-        '在部分 WebView 上读不到的信号（裁决 13）',
+      rule,
+      '判据范围消失：宽屏块里找不到那条三段后代选择器的规则 —— ' +
+        '⚠️ 它必须写 `.level-view .question-card .question-card__options`（0,3,0），' +
+        '直接写 `.question-card__options`（0,1,0）压不过 QuestionCard 自己的 scoped (0,2,0)。',
+    ).not.toBe('')
+    // ⚠️🔥 **`[CR]` 第七轮补的洞**：G166–G168 全部**没有**碰过这条。
+    //   实测变异（子代理跑过）：删掉整条规则 ⇒ 选项退回竖屏的 `repeat(4, 1fr)`，
+    //   在 400px 的右栏里每张只剩 ~88px —— 而 `.option-card__image` 是
+    //   `aspect-ratio: 1/1` 的词图，**88px 的图对 4–8 岁孩子认不出词**。
+    //   M176–M181 六条变异没有一条打在这儿 ⇒ AC-H3 在守卫上是**空的**。
+    expect(
+      effectiveDecl(rule, 'grid-template-columns'),
+      '🔴 横屏下选项不是 2×2 —— 四张并排挤在 400px 的右栏里，每张只剩 ~88px，' +
+        '而词图是 1:1 的，88px 对 4–8 岁孩子认不出词（AC-H3 / 该规则自己的注释逐字这么写）。',
+    ).toBe('repeat(2, minmax(0, 1fr))')
+  })
+
+  it('⚠️ 宽屏块自身不引入 `orientation` 媒体查询（裁决 13 / G134 的延伸）', () => {
+    // 🔥📎 **`[CR]` 第七轮按 R-57 更正这条判据的**对象**，并标注它原本恒真。**
+    //
+    //   原判据拿 `landscapeBlock(responsive)` 去 `not.toMatch(/orientation\s*:/)`。
+    //   而 `landscapeBlock` 返回的是 `slice(open + 1, i)` —— **只有花括号之间的块体**，
+    //   `@media (min-aspect-ratio: 1/1)` 那段**前导语根本不在里面**。
+    //   ⇒ 它只能匹配到 CSS **属性**位置的 `orientation:`，
+    //     **永远匹配不到媒体查询前导语里的 `orientation:`** ⇒ 这条恒真。
+    //
+    //   ⚠️ 覆盖它的是 G134（`:168`）—— 那条在**全文件**层面禁 `orientation:`，
+    //     所以**没有净漏洞**。但本条自称「宽屏块的延伸」而实际什么都没守，
+    //     属于「恒真守卫守着恒真的规则」（本仓库反复记过的那一种）。
+    //
+    //   ⇒ 现在把对象改成**前导语**，并配一条自测证明它真能咬住。
+    const prelude = landscapeMediaPrelude(responsive)
+    expect(
+      prelude,
+      '判据范围消失：抽不出 `min-aspect-ratio` 那条媒体查询的前导语',
+    ).not.toBe('')
+    expect(
+      prelude,
+      '⚠️ 宽屏块的前导语里出现了 `orientation` —— 布局不许依赖「我知道现在是横屏」' +
+        '这个在部分 WebView 上读不到的信号（裁决 13）。' +
+        '⚠️ 这条在第七轮之前拿的是**块体**（不含前导语）⇒ 恒真；' +
+        '真正的全局禁令在 G134。',
     ).not.toMatch(/orientation\s*:/)
+  })
+
+  it('判据自测：前导语判据分得清「带 orientation」与「不带」（R-53 —— 原判据恒真）', () => {
+    // 🔥 原判据（拿块体去匹配）在下面两种输入上**都是绿的** ——
+    //   这就是「恒绿」的字面意思，必须把它钉在夹具上。
+    const good = '@media (min-aspect-ratio: 1/1) and (max-width: 1024px) {\n  .a { color: red; }\n}'
+    const bad = '@media (orientation: landscape) and (min-aspect-ratio: 1/1) {\n  .a { color: red; }\n}'
+    expect(landscapeMediaPrelude(good), '夹具自检').toBe(
+      '@media (min-aspect-ratio: 1/1) and (max-width: 1024px)',
+    )
+    expect(landscapeMediaPrelude(bad), '夹具自检').toBe(
+      '@media (orientation: landscape) and (min-aspect-ratio: 1/1)',
+    )
+    // 新判据：能分辨。
+    expect(good).not.toMatch(/orientation\s*:/)
+    expect(bad).toMatch(/orientation\s*:/)
+    // 🔥 而旧判据拿到的是**块体** —— 两种输入下块体里都没有 `orientation:`，
+    //   所以旧判据恒绿。这里如实复现那个恒真，不掩饰。
+    expect('{ .level-view { display: grid; } }').not.toMatch(/orientation\s*:/)
+    expect('{ .level-view { orientation: 1; } }').toMatch(/orientation\s*:/)
   })
 })
 
@@ -1135,6 +1257,48 @@ const LANDSCAPE_TWO_COLUMNS = /grid-template-columns:[^;]*minmax\(0,\s*1fr\)[^;]
  * ⚠️ 为什么要自己配平花括号而不是用正则 `[\s\S]*?\}`：后者会在块体里的
  *   第一条嵌套规则处就截断，而本块体里恰恰每条规则都有自己的花括号。
  */
+/**
+ * 🔥📎 **G179（`[CR]` 第七轮新增）：规则体里某个属性的「**生效值**」。**
+ *
+ * ⚠️ **为什么不能只问「这行字在不在」**：CSS 里**同一条规则内后面的声明赢**。
+ *   在 `height: auto;` 后面再补一条 `height: calc(100% - 48px)`，
+ *   `/height:\s*auto/` 照样匹配，而**生效值是后者** —— 2026-10-17 那个 P0
+ *   （题卡被推出折叠线）原样复活，而 G167 原判据全绿。
+ *
+ * @param body 规则体（`{ … }` 内部或不含花括号的声明串）
+ * @param prop 属性名（不带冒号）
+ * @returns 最后一条该属性的声明值；一条都没有则返回 `null`
+ */
+function effectiveDecl(body: string, prop: string): string | null {
+  const pattern = new RegExp(`(?:^|;)\\s*${prop}\\s*:\\s*([^;]+)`, 'g')
+  let last: string | null = null
+  let m: RegExpExecArray | null
+  while ((m = pattern.exec(body)) !== null) last = m[1].trim()
+  return last
+}
+
+/**
+ * 🔥📎 **G179（`[CR]` 第七轮新增）：`min-aspect-ratio` 那条媒体查询的**前导语**。**
+ *
+ * ⚠️ **与 {@link landscapeBlock} 的区别就是第七轮那条恒真判据的病根**：
+ *   `landscapeBlock` 返回 `slice(open + 1, i)` —— **只有花括号之间的块体**，
+ *   `@media (…)` 那段前导语不在其中 ⇒ 拿它去判「有没有用 `orientation` 媒体查询」
+ *   **永远判不出来**（媒体查询的 `orientation:` 写在花括号**之前**）。
+ *   ⇒ 这里返回 `@media` 到 `{` 之间的那一段。
+ */
+function landscapeMediaPrelude(responsive: string): string {
+  const hit = /min-aspect-ratio/.exec(responsive)
+  if (hit === null) return ''
+  // ⚠️ 不能用 `/@media[^{]*min-aspect-ratio/` 的**匹配串**当前导语 ——
+  //   那个正则恰好停在 `min-aspect-ratio` 四个字上，`(orientation: landscape) and (`
+  //   这些**在它前面**的内容会被整段丢掉。⇒ 从 `@media` 起扫到 `{`。
+  const start = responsive.lastIndexOf('@media', hit.index)
+  if (start === -1) return ''
+  const end = responsive.indexOf('{', hit.index)
+  if (end === -1) return ''
+  return responsive.slice(start, end).trim()
+}
+
 function landscapeBlock(responsive: string): string {
   const at = /@media[^{]*min-aspect-ratio/.exec(responsive)
   if (at === null) return ''
