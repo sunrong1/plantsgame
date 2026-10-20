@@ -2162,3 +2162,46 @@ M101–M110 共 25 红无 0 红），**无一条守卫假绿**。以下 8 条真
 - **恢复条件**：一旦作出收窄决定，走 `[CC]` 改 `epics.md` 的编号与档位表。
 
 - — `_bmad-output/implementation-artifacts/2-1-词图产能验证.md`
+
+## Deferred from: code review of story-2-1-词图产能验证 `[CR]` (2026-10-20)
+
+> 三层评审的去重后产物里 5 条 `[Review][Defer]`（W1–W5），本 `[CR]` 当场不改，
+> 逐条给出恢复条件。与 `[DS]` 的 26–34 条（源文档更正）不同，这 5 条全是**工具/测试自身的已知边界**。
+
+### W1. `buildRecord` 的 read-stat 竞态（旧内容 + 新 mtime）
+
+- **实测发现**：`scripts/word-image-throughput.ts` 的 `buildRecord` 先 `readFileSync` 读内容、
+  再 `statSync` 取 mtime，两次系统调用之间若文件被改，会拼出「旧内容 + 新 mtime」。
+- **性质**：单写者纪律下是**理论风险**（画图是单 session 串行操作，没有并发写）。
+- **恢复条件**：若工具将来被多写者/CI 并发使用，改为「先 stat 再 read，或 read 后复 stat 校验 mtime 未变」。
+
+### W2. 去重键 `entryId` 跨目录撞名
+
+- **实测发现**：`scripts/word-image-throughput.ts` 的去重键是 `entryId`，
+  若将来 `docs/word-image-lab/` 之外出现另一个目录也放同名 `entryId` 的词图，会被静默合并。
+- **性质**：当前只有单目录（`docs/word-image-lab/`），不构成现实风险。
+- **恢复条件**：一旦支持多目录，去重键需改成「目录 + entryId」复合键。
+
+### W3. 测试里的 `as typeof import(...)` 禁用副本类型检查
+
+- **实测发现**：`tests/scripts/word-image-throughput.test.ts` 用 `as typeof import(...)`
+  拿真实模块类型做夹具，好处是签名漂移会红；代价是这份「副本」**不再独立**，
+  若实现类型本身写错而测试又复制了同一错类型，类型层不再兜底。
+- **性质**：B3 附带的次要观察，非本 story 守卫的职责。
+- **恢复条件**：若该测试未来变成「实现契约的独立见证」，改手写 interface 而非 `typeof import`。
+
+### W4. `countElements` 对「无根 SVG」报 0，与「合法空图」不可分
+
+- **实测发现**：`scripts/word-image-throughput.ts` 的 `countElements` 遇到没有 `<svg>` 根
+  （或根元素缺失）的文件会返回 0，与一张**合法但确实空**的图返回的 0 无法区分。
+- **性质**：低危 —— 空图与坏文件对本 story 的产能统计影响都归零，方向一致。
+- **恢复条件**：若工具要区分「坏文件」与「空图」，改返回「元素数 + 是否有根」的元组或带哨兵值。
+
+### W5. 48px 判读结论没有机器可读载体；6 个中间版内容永久不可复核
+
+- **实测发现**：`docs/word-image-lab/versions.jsonl` 只记录「哪一版过了 48px」的**结论**，
+  不记录判读过程的载体；`egg`/`playground` 等词的**中间版 SVG 内容**（非末版）未落盘，
+  将来无法复核「当初为什么判它没过」。
+- **性质**：与 deferred #30 同源 —— 都要改工具契约（多落一份中间产物 + 判读快照）。
+- **恢复条件**：若「画得像不像」的判读要变成可审计记录，需在工具里加中间版归档与判读快照。
+
