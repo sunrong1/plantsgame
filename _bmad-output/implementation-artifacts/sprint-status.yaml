@@ -162,6 +162,7 @@ development_status:
   1-1-工程脚手架与启动界面: done
   # ⚠️ 1.2 与 1.10 的 `review` 是**有意留的**，不是漏转 —— 理由见各自 story 文档。
   #    按 R-42，运行复盘一律不写进本文件，只留状态与指针。
+  # 2-1 走 [DS]（无人值守）—— 复盘与实测值全在它自己的 story 文档里。
   1-2-音频解锁与-tts-朗读: review
   1-3-朗读录音批量生成: done
   1-4-战斗内核与-5-条数值断言: done
@@ -184,7 +185,7 @@ development_status:
   1-20-相邻不同型-把植物不重复从巧合变成代码保证: done
   1-retrospective: optional
   epic-2: in-progress
-  2-1-词图产能验证: ready-for-dev
+  2-1-词图产能验证: in-progress
   2-2-难度阶梯规则落地: backlog
   2-3-阳光经济档位扩展: backlog
   2-4-选项数量递进规则: backlog

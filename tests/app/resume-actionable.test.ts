@@ -154,6 +154,48 @@ function readGameOnDisk(): State {
 }
 
 /**
+ * 🔥📎 **判据本体（G175 用）：取 `store.ts` 里指定函数**自己那个** catch 的声明体。**
+ *
+ * ⚠️⚠️ **`[CR]` 第七轮修的就是它原先没做锚定这件事。**
+ *   原判据：`/\} catch \(err\) \{([\s\S]*?)\n {2}\}/.exec(src)` ——
+ *   无锚点、`.exec` 取**全文件第一个**匹配。而 `src/app/store.ts` 里 catch 的
+ *   形参拼写并不统一：`buildStateFor` 用 `catch (error)`，
+ *   `restoreFromSave` / `restoreNextUnit` 用 `catch (err)`。
+ *   ⇒ 今天命中 `restoreFromSave` **纯属侥幸** —— 一次**纯改名**
+ *     （`buildStateFor` 的 `error` → `err`，零行为变化）就会让判据改抓别人的
+ *     catch；而把 `progress.value = …` 加回 AC-D4 那个 catch
+ *     （**正是 N1 变异本体、这条守卫存在的理由**）时，它**全绿**。
+ *
+ *   ⇒ 现在：**先按函数名定位函数体（花括号配平）→ 再只在它的体内找 catch。**
+ *     形参叫什么不再重要（两种拼法都收），别的函数的 catch 也碰不到。
+ *
+ * @returns 声明体原文；定位不到时返回 `''`（由调用方断言它非空）
+ */
+function catchBodyOf(fnName: string, source: string): string {
+  const fnAt = source.indexOf(`function ${fnName}(`)
+  if (fnAt === -1) return ''
+  const open = source.indexOf('{', fnAt)
+  if (open === -1) return ''
+  let depth = 0
+  let body = ''
+  for (let i = open; i < source.length; i += 1) {
+    const ch = source[i]
+    if (ch === '{') depth += 1
+    else if (ch === '}') {
+      depth -= 1
+      if (depth === 0) {
+        body = source.slice(open, i)
+        break
+      }
+    }
+  }
+  if (body === '') return ''
+  // 两种形参拼法都收（`err` / `error` / `e`）—— 关键是**只在 body 里找**。
+  const m = /\}\s*catch\s*\([\w$]+\)\s*\{([\s\S]*)\}\s*$/.exec(body)
+  return m?.[1] ?? ''
+}
+
+/**
  * 模拟「关掉页面再打开」：内存换成**盘上那份**（即 `enterLevel()` 的
  * `restoreFromSave()` 之后的状态），组件全新挂载。
  *
@@ -394,7 +436,7 @@ describe('G175 —— 存档对局不合法时**只丢这一局，不丢跨局�
    * ⇒ 这里用「建造期携带的题面不在题单里」：那份 `deck` 只有第一条，
    *   而 `question` 指向一条不在其中的 entryId ⇒ `assertPhaseMirror` 抛。
    */
-  function seedDirtyGameWithProgress(mastered: readonly string[]): void {
+  function seedDirtyGameWithProgress(mastered: readonly string[], currentUnitIndex = 2): void {
     const first = entriesOf(1)[0]
     const dirtyGame = {
       unitNumber: 1,
@@ -421,24 +463,29 @@ describe('G175 —— 存档对局不合法时**只丢这一局，不丢跨局�
       JSON.stringify({
         schemaVersion: saveApi.SAVE_SCHEMA_VERSION,
         savedAt: 1_700_000_000_000,
-        progress: { currentUnitIndex: 0, masteredWordIds: mastered },
+        progress: { currentUnitIndex, masteredWordIds: mastered },
         currentGame: dirtyGame,
       }),
     )
   }
 
-  it('脏对局 ⇒ 那一局退回开局，但 `progress.masteredWordIds` **逐条不变**', () => {
+  it('脏对局 ⇒ 那一局退回开局，但 **`progress` 整个对象逐字不变**', () => {
     const learned = entriesOf(1).slice(0, 21).map((e) => e.entryId)
-    seedDirtyGameWithProgress(learned)
+    // ⚠️ `currentUnitIndex` 取 **2** 而不是 0 —— `[CR]` 第七轮：首版把它钉成 0，
+    //   于是「catch 里把 `progress.value.currentUnitIndex = 0` 加回去」这条变异
+    //   改成的值**恰好等于夹具值** ⇒ 断言分辨不出来。
+    //   而它恰恰是决定孩子**重进哪个单元**的字段（`restoreNextUnit` 读 `+1`）。
+    seedDirtyGameWithProgress(learned, 2)
 
     expect(() => store.enterLevel(), 'AC-D4：孩子点「开始游戏」不许炸（NFR13）').not.toThrow()
 
     expect(
-      store.progress.value.masteredWordIds,
-      '🔴 跨局已学被一并清空了 —— FR58 逐字「累计所得只增不减」，' +
+      store.progress.value,
+      '🔴 跨局进度被一并改了 —— FR58 逐字「累计所得只增不减」，' +
         '而一个孩子因为内容改了一版就赔上全部学习成果，是本作最不可接受的失败形态。' +
-        '（判据：`restoreFromSave` 的 catch 只丢**对局**，不动 `progress`）',
-    ).toEqual(learned)
+        '（判据：`restoreFromSave` 的 catch 只丢**对局**，不动 `progress` 的**任何**字段 —— ' +
+        '⚠️ 第七轮修正：首版只读 `masteredWordIds`，`currentUnitIndex` 落在判据外面。）',
+    ).toEqual({ currentUnitIndex: 2, masteredWordIds: learned })
   })
 
   it('同一次降级之后，界面是一个**能接着玩**的状态，不是技术错误', () => {
@@ -466,20 +513,92 @@ describe('G175 —— 存档对局不合法时**只丢这一局，不丢跨局�
       'utf8',
     )
     // 判据本体：AC-D4 的 catch 里**不许**出现对 `progress.value` 的赋值。
-    const catchBody = /\} catch \(err\) \{([\s\S]*?)\n {2}\}/.exec(stripComments(source))?.[1] ?? ''
+    // 🔥 第七轮：`catchBodyOf` 按**函数名**锚定到 `restoreFromSave`，
+    //   不再靠「全文件第一个 `catch (err)`」这种会随一次改名漂掉的巧合。
+    const catchBody = catchBodyOf('restoreFromSave', stripComments(source))
     expect(
       catchBody,
-      '判据取不到 AC-D4 的 catch 体 —— 这条守卫自己失效了（R-53：判据要先在真实文本上自测）',
+      '判据取不到 `restoreFromSave` 里 AC-D4 的 catch 体 —— 这条守卫自己失效了' +
+        '（R-53：判据要先在真实文本上自测）',
     ).not.toBe('')
     expect(
-      /progress\.value\s*=/.test(catchBody),
-      'AC-D4 的降级里不许写 `progress.value = …` —— 它只丢**对局**（裁决 1 / FR58）',
+      /progress\.value\s*[.=[]/.test(catchBody),
+      'AC-D4 的降级里不许写 `progress.value = …` / `progress.value.xxx = …` / ' +
+        '`progress.value.xxx.length = 0` —— 它只丢**对局**（裁决 1 / FR58）。' +
+        '⚠️ 第七轮修正：首版只匹配 `progress.value =`，于是**成员写入**' +
+        '（`progress.value.currentUnitIndex = 0`、`progress.value.masteredWordIds = []`）' +
+        '整类都从判据缝里溜过去 —— 而上面那条行为断言当时也恰好盖不住 `currentUnitIndex`。',
     ).toBe(false)
 
     // 而正确形态下，上面那条判据必须是绿的（否则它恒红，是装饰）。
     seedDirtyGameWithProgress(learned)
     store.enterLevel()
     expect(store.progress.value.masteredWordIds).toEqual(learned)
+  })
+
+  it('判据自测：锚在函数上 ⇒ 别的函数的 catch 碰不到它（R-53，且是第七轮才补上的）', () => {
+    // 🔥 这条自测就是**第七轮那个洞的形状**：两个 catch，形参都叫 `err`，
+    //   谁在前谁就会被旧判据抓到。
+    const decoy = [
+      'function buildStateFor(unitNumber) {',
+      '  try {',
+      '    return assemble(unitNumber)',
+      '  } catch (err) {',
+      '    console.warn(err)',
+      '  }',
+      '}',
+      'function restoreFromSave() {',
+      '  try {',
+      '    state.value = normalised',
+      '  } catch (err) {',
+      '    console.warn(describeRestore(err))',
+      '  }',
+      '}',
+    ].join('\n')
+    const body = catchBodyOf('restoreFromSave', decoy)
+    expect(body, '锚定后连一个字符都取不到').not.toBe('')
+    // 取到的必须是**后一个**（restoreFromSave 的）catch 体。
+    expect(body).toContain('describeRestore')
+    expect(body).not.toContain('assemble')
+
+    // 🔴 反向：把 AC-D4 的清空加回去，判据必须看得见 —— 而**不是**靠前一个 catch。
+    const withRegression = decoy.replace(
+      'console.warn(describeRestore(err))',
+      'console.warn(describeRestore(err))\n    progress.value = { currentUnitIndex: 0, masteredWordIds: [] }',
+    )
+    expect(
+      /progress\.value\s*=/.test(catchBodyOf('restoreFromSave', withRegression)),
+      '判据看不见 AC-D4 的清空被加回来 ⇒ 这条守卫是装饰',
+    ).toBe(true)
+
+    // 🔥 而**第三种**漂移也要挡得住：形参改名（`err` → `error`）。
+    const renamed = decoy.replace('catch (err) {', 'catch (error) {')
+    expect(
+      catchBodyOf('restoreFromSave', renamed),
+      '形参从 `err` 改成 `error` 就取不到了 ⇒ 判据仍然依赖拼写',
+    ).not.toBe('')
+  })
+
+  it('判据自测：成员写入 / 间接清空不许从判据缝里溜过去（R-53，第七轮补）', () => {
+    // ⚠️ 首版的 `/progress\.value\s*=/` 对下面四种**全部漏判**。
+    //   `progress.value` 后面跟的是 `.` 时，`\s*=` 要求紧邻等号 ⇒ 不匹配。
+    const PROGRESS_WRITE = /progress\.value\s*[.=[]/
+    for (const escapee of [
+      'progress.value = { currentUnitIndex: 0, masteredWordIds: [] }',
+      'progress.value.currentUnitIndex = 0',
+      'progress.value.masteredWordIds = []',
+      'progress.value.masteredWordIds.length = 0',
+    ]) {
+      expect(
+        PROGRESS_WRITE.test(escapee),
+        `判据漏判了「${escapee}」—— 成员写入是这一整类，不是单条`,
+      ).toBe(true)
+    }
+    // 反向：正确形态（只 warn）必须不匹配，否则这条判据是恒红的装饰。
+    expect(
+      PROGRESS_WRITE.test('console.warn(`[save] 存档里的对局不合法，已退回从头开始：${describeRestore(err)}`)'),
+      '判据把「只 warn」判成了写 progress ⇒ 这条判据恒红',
+    ).toBe(false)
   })
 })
 

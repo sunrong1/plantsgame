@@ -90,6 +90,10 @@ import answerFeedbackSource from '../../src/components/quiz/AnswerFeedback.vue?r
 // LevelView、token 值在 tokens.css。少任何一个都算不出「实际落在什么底上」。
 import levelViewSource from '../../src/views/LevelView.vue?raw'
 import { contrastRatio, cssDecl, resolveColor, stripComments as sharedStripComments } from '../helpers/contrast'
+// 🔥📎 G177 用的是**稳健版**剥注释（`fixtures/` 那份，块注释也剥、且**保持字符位置**），
+//   不是上面那份三处 replace 的朴素版 —— 后者的 docblock 自己记着
+//   「把 ① 和 ② 之间的真代码整段删掉」，曾让 G105/G106 双双假红（R-37：单一出处）。
+import { stripComments as stripCommentsForG177 } from '../fixtures/strip-comments'
 
 /**
  * 剥掉块注释、行注释与 HTML 注释，只留代码。
@@ -1668,75 +1672,209 @@ describe('G172 —— 建造期的卡面只读：选项必须真的点不动、�
   })
 })
 
-// 🔥📎 G177 —— 建造期锁定的**视觉与命中**两半都封死（Story 1.19 `[CR]` 第六轮）
+// 🔥📎 G177 —— 建造期锁定的**视觉与命中**两半都封死（Story 1.19 `[CR]` 第六轮，
+//   `[CR]` 第七轮**推翻了第六轮的判据本体**）
 //
-// ⚠️ **判据形态的诚实声明**：本组是**源码文本判据**，不是层叠实测。
-//   本仓库逐字记着「jsdom 不做布局，`getBoundingClientRect` 是假绿」（R-01），
-//   而这两条要守的恰恰是**层叠与命中测试** —— 那只有真浏览器能判。
-//   ⇒ 这里能证明的是「**判据所依赖的那个源码前提**没有被人悄悄改掉」，
-//     不能证明真机上像素正确。平板复验仍是 AC-D5 的责任，本组不替代它。
+// 🔥🔥 **为什么判据必须从「源码顺序」换成「层叠结果」**
+//
+//   第六轮的判据是「`.is-locked` 排在 `.is-degraded:not(.is-picked)` **之后**」，
+//   失败消息逐字宣称「两者特异度同为 (0,2,0)，后写的赢」。
+//   ⇒ **那句话是错的**：`:not(.is-picked)` 按其参数计权 ⇒ 那条是 `(0,3,0)`，
+//     `.is-locked` 是 `(0,2,0)`。加上 scoped 属性后是 (0,4,0) 对 (0,3,0) ——
+//     **特异度不等，源码顺序根本不参与裁决。**
+//   ⇒ 于是第六轮那个「挪到后面 + 补 `opacity: 1`」的修复**从未生效**，
+//     而 G177 因为两条判据都满足而**全程绿灯**，给一个假修复签了合格证。
+//
+//   ⚠️ **本组仍然不是真浏览器实测**（R-01：jsdom 不做布局）。
+//     但它比「判顺序」强一个量级：它真的解一遍层叠 ——
+//     匹配 → 比特异度 → 特异度相等才看源码顺序 → 取胜者的声明值。
+//     剩下不覆盖的是像素与布局；平板复验仍是 AC-D5 的责任。
 describe('G177 —— 建造期锁定：词图不被透明度洗掉 + 触摸设备上不再假可点', () => {
-  // ⚠️ 用文件顶部已 import 的 `?raw` 源码 + `sharedStripComments`（R-52）：
-  //   注释里全是逐字引用，不剥会误判。
-  const optionCard = sharedStripComments(optionCardSource)
-  const questionCard = sharedStripComments(questionCardSource)
+  // ⚠️ 用文件顶部已 import 的 `?raw` 源码 + **稳健版** stripComments（R-52）：
+  //   注释里全是逐字引用，不剥会误判；且下面的规则解析器要求块注释已被剥干净
+  //   （`tests/helpers/contrast` 那份是三处 replace 的朴素版，剥不干净块注释 ——
+  //   它的 docblock 自己记着曾因此让 G105/G106 双双假红）。
+  const optionCard = stripCommentsForG177(optionCardSource)
+  const questionCard = stripCommentsForG177(questionCardSource)
 
-  /** 判据本体：`.is-locked` 是否排在 `.is-degraded:not(.is-picked)` **之后**。 */
-  function lockedAfterDegraded(src: string): boolean {
-    const lockedAt = src.indexOf('.option-card.is-locked')
-    const degradedAt = src.indexOf('.option-card.is-degraded:not(.is-picked)')
-    return lockedAt > -1 && degradedAt > -1 && lockedAt > degradedAt
+  /** 一条候选规则：选择器 + 声明体 + 在源码里的序号（用来决同特异度的胜负）。 */
+  interface CssRule {
+    selector: string
+    decls: Map<string, string>
+    order: number
   }
 
-  it('`.is-locked` 必须排在 `.is-degraded:not(.is-picked)` **之后**（同特异度靠源码顺序决胜）', () => {
+  /**
+   * 算一条**简单复合选择器**的特异度 `[a, b, c]`。
+   *
+   * ⚠️ 只处理本文件真正用到的东西：类型选择器 / `.class` / `#id` /
+   *   `:not(<复合选择器>)`。遇到后代选择器（空格）或逗号会**如实抛错**而不是
+   *   悄悄返回错值 —— 判据算错却绿比判据直接崩掉危险得多（R-51）。
+   */
+  function specificity(selector: string): [number, number, number] {
+    const sel = selector.trim()
+    if (sel.includes(',')) {
+      throw new Error(`判据不会算逗号选择器组：${selector}`)
+    }
+    if (/\s/.test(sel.replace(/:not\([^)]*\)/g, ''))) {
+      throw new Error(`判据不会算带后代组合符的选择器：${selector}`)
+    }
+    const withoutNot = sel.replace(/:not\([^)]*\)/g, '')
+    // `:not(...)` 按**其参数**计权（Selectors L3/L4）⇒ 参数与自身等价。
+    const notArgs = [...sel.matchAll(/:not\(([^)]*)\)/g)].map((m) => m[1])
+    const ids = (withoutNot.match(/#[\w-]+/g) ?? []).length
+    const classes =
+      (withoutNot.match(/\.[\w-]+/g) ?? []).length +
+      (withoutNot.match(/\[[^\]]+\]/g) ?? []).length +
+      notArgs.filter((a) => a.trim().startsWith('.') || a.trim().startsWith('#')).length
+    const types = (withoutNot.match(/(^|[\s>+~])[a-z][\w-]*/gi) ?? []).length
+    return [ids, classes, types]
+  }
+
+  /** 特异度字典序比较：a 先比，再 b，再 c。 */
+  function cmpSpecificity(
+    x: [number, number, number],
+    y: [number, number, number],
+  ): number {
+    for (let i = 0; i < 3; i += 1) {
+      if (x[i] !== y[i]) return x[i] - y[i]
+    }
+    return 0
+  }
+
+  /**
+   * 判据本体：**对一个挂着 `option-card is-degraded is-locked`（且**没有** `is-picked`）
+   * 的元素解一遍层叠，返回胜者给的 `opacity`。**
+   *
+   * @param elementClasses 元素身上真实有的类
+   * @returns 胜者的 `opacity` 声明值；一条都没匹配上则返回 `null`
+   */
+  function winningOpacity(src: string, elementClasses: string[]): string | null {
+    const has = (cls: string): boolean => elementClasses.includes(cls)
+    // ⚠️ 匹配器只认**纯类选择器**（本文件的状态类全是这一种）。
+    //   含后代/标签/伪类的选择器一律跳过而不是误判 —— 判据覆盖不到的地方
+    //   如实留白，比给一个假的「没匹配上」要好。
+    const rules: CssRule[] = []
+    let order = 0
+    for (const m of src.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+      const selector = m[1].trim()
+      // 只认「若干个 `.class` 与 `:not(.class)` 任意次序」的纯类选择器。
+      if (!/^(?:\.[\w-]+|:not\(\.[\w-]+\))+$/.test(selector)) continue
+      // 🔥 `:not(.x)` 是**否定**要求：元素**没有** `.x` 时才算满足。
+      //   ⚠️ 首版把它当成普通要求 ⇒ 测试元素（没有 `is-picked`）会把整条
+      //   `.is-degraded:not(.is-picked)` 规则跳过 ⇒ **假形态被判成合规**。
+      //   这个洞方向最恶劣，被下面那条自测当场抓住。
+      const negated = [...selector.matchAll(/:not\(\.([\w-]+)\)/g)].map((c) => c[1])
+      // 正类必须从**剥掉 `:not(...)` 之后**的剩余部分取，否则 `is-picked`
+      // 会被当成必需项（`:not(` 后面那个点，lookbehind 也拦不住）。
+      const positive = [
+        ...selector.replace(/:not\(\.[\w-]+\)/g, '').matchAll(/\.([\w-]+)/g),
+      ].map((c) => c[1])
+      if (!positive.every(has)) continue
+      if (negated.some((c) => has(c))) continue
+      const decls = new Map<string, string>()
+      for (const d of m[2].split(';')) {
+        const idx = d.indexOf(':')
+        if (idx === -1) continue
+        decls.set(d.slice(0, idx).trim(), d.slice(idx + 1).trim())
+      }
+      rules.push({ selector, decls, order: order++ })
+    }
+    if (rules.length === 0) return null
+    // 特异度高者胜；**相等才看源码顺序**（后写的赢）—— 这正是第六轮搞错的地方。
+    rules.sort((a, b) => {
+      const s = cmpSpecificity(specificity(a.selector), specificity(b.selector))
+      return s !== 0 ? s : a.order - b.order
+    })
+    const winner = rules[rules.length - 1]
+    return winner.decls.get('opacity') ?? null
+  }
+
+  it('🔴 `locked + degraded + 未点` 时，生效的 opacity 必须是 1（**解层叠**，不判源码顺序）', () => {
+    const effective = winningOpacity(optionCard, ['option-card', 'is-degraded', 'is-locked'])
     expect(
-      lockedAfterDegraded(optionCard),
-      '`.is-locked` 排在 `.is-degraded:not(.is-picked)` **之前** —— 两者特异度同为 (0,2,0)，' +
-        '后写的赢，而只有后者设 `opacity: 0.55` ⇒ 建造期 + 破图时那张词图被压到 55%，' +
-        '正是这条规则自己的注释声明要避免的那件事',
-    ).toBe(true)
+      effective,
+      '判据范围消失：`.option-card` 上没有任何规则匹配「option-card + is-degraded + is-locked」这个类组合',
+    ).not.toBeNull()
+    expect(
+      effective,
+      '🔴 建造期 + 词图破损时，**真正生效**的 opacity 不是 1 —— ' +
+        '那张词图仍被压到 55%，正是这条规则自己的注释声明要避免的那件事。\n' +
+        '⚠️ 第六轮栽在这里：它判的是「`.is-locked` 排在后面」+「块里有 `opacity: 1` 字样」，' +
+        '而 `.is-degraded:not(.is-picked)` 是 (0,3,0)、`.is-locked` 是 (0,2,0) —— ' +
+        '**特异度不等，源码顺序不参与裁决**，那个修复从未生效。\n' +
+        '✅ 修法：给 `.is-degraded` 加 `:not(.is-locked)`（让它在 locked 时根本不参与竞争），' +
+        '而不是去抬 `.is-locked`（抬到打平仍然要靠顺序）。',
+    ).toBe('1')
   })
 
-  it('判据自测：两种顺序被判据区分开（R-53 —— 不自测就不知道它咬不咬得住）', () => {
-    // ⚠️ 首版的自测夹具是**错的**：用 `slice` 拼一个「顺序反过来」的字符串，
-    //   拼出来的东西根本没有反转顺序，于是自测自己红了。
-    //   ⇒ 改成两份**完整的最小 CSS**，顺序是唯一变量。
-    const degraded = '.option-card.is-degraded:not(.is-picked) {\n  opacity: 0.55;\n}\n'
-    const locked = '.option-card.is-locked {\n  opacity: 1;\n}\n'
-    // ⚠️ 正确的顺序是「degraded 在前、locked 在后」（后写的赢）。
-    //   ⚠️⚠️ **首版把这两行写反了**（拿 `locked + degraded` 当正确形态），
-    //     于是自测自己红了 —— 好在这正是自测存在的意义：它抓的是**判据自己写反**，
-    //     而如果不自测，判据反了也没人知道（R-53）。
+  it('判据自测：这把尺子真的能分辨「0.55 赢」与「1 赢」（R-53 —— 不自测就不知道它咬不咬得住）', () => {
+    // ⚠️ 夹具必须复现**特异度不等**这个真正的原因。
+    //   只把两条规则换个顺序的版本**分辨不出来** —— 那正是第六轮判据失灵的根因。
+    const degradedOnly = '.option-card.is-degraded:not(.is-picked) {\n  opacity: 0.55;\n}\n'
+    const lockedOnly = '.option-card.is-locked {\n  opacity: 1;\n}\n'
+
+    // 🔴 形态一：**第六轮的坏形态** —— 顺序对（locked 在后），特异度不等 ⇒ 0.55 赢。
     expect(
-      lockedAfterDegraded(degraded + locked),
-      '判据把「正确的顺序」判成了违规 —— 判据反了',
-    ).toBe(true)
+      winningOpacity(degradedOnly + lockedOnly, ['option-card', 'is-degraded', 'is-locked']),
+      '判据自测自己红了：第六轮那个坏形态（locked 排在后面）竟被判成合规 ⇒ 这把尺子分辨不出特异度',
+    ).toBe('0.55')
+
+    // ✅ 形态二：**修好后** —— degraded 让开 locked ⇒ 1 赢。
+    const degradedExcludingLocked =
+      '.option-card.is-degraded:not(.is-picked):not(.is-locked) {\n  opacity: 0.55;\n}\n'
     expect(
-      lockedAfterDegraded(locked + degraded),
-      '判据抓不住「顺序写反」—— 这条守卫是装饰',
-    ).toBe(false)
+      winningOpacity(degradedExcludingLocked + lockedOnly, ['option-card', 'is-degraded', 'is-locked']),
+      '判据自测自己红了：加 `:not(.is-locked)` 的好形态竟被判成违规',
+    ).toBe('1')
+
+    // ✅ 形态三：**抬特异度**也是合法修法之一 —— locked 特异度严格更高时 1 赢。
+    const lockedHigher = '.option-card.is-locked.option-card {\n  opacity: 1;\n}\n'
+    expect(
+      winningOpacity(degradedOnly + lockedHigher, ['option-card', 'is-degraded', 'is-locked']),
+      '判据自测自己红了：locked 特异度严格更高的形态竟被判成违规 ⇒ 判据把修法写死成一种了',
+    ).toBe('1')
   })
 
-  it('`.is-locked` 必须显式写 `opacity: 1`（不靠源码顺序赢）', () => {
+  it('判据自测：`specificity()` 算得对，且遇到算不了的选择器**抛错而不是给错值**（R-51）', () => {
+    expect(specificity('.option-card.is-locked')).toEqual([0, 2, 0])
+    // `:not(.is-picked)` 按其参数计权 ⇒ 三个类。
+    expect(specificity('.option-card.is-degraded:not(.is-picked)')).toEqual([0, 3, 0])
+    // 修复后的形态。
+    expect(specificity('.option-card.is-degraded:not(.is-picked):not(.is-locked)')).toEqual([0, 4, 0])
+    // scoped 会给每条规则统一加一个属性选择器 ⇒ 对**比较**是常数偏移，可以约掉；
+    //   这里如实算出来，免得有人以为本判据忽略了它。
+    expect(specificity('.option-card.is-locked[data-v-x]')).toEqual([0, 3, 0])
+    // 算不了的必须抛错：静默给错值 = 判据错着还绿。
+    expect(() => specificity('.battle-grid .tower')).toThrow(/后代组合符/)
+    expect(() => specificity('.a, .b')).toThrow(/逗号选择器组/)
+  })
+
+  it('`.is-locked` 必须显式写 `opacity: 1`（判据读得懂意图，也是上一条的兜底）', () => {
     const at = optionCard.indexOf('.option-card.is-locked')
     expect(at, '判据范围消失').toBeGreaterThan(-1)
-    const body = optionCard.slice(at, optionCard.indexOf('}', at))
+    const close = optionCard.indexOf('}', at)
+    expect(close, '`.is-locked` 的规则块没有闭合的 `}` —— 判据切不出声明体').toBeGreaterThan(at)
+    const body = optionCard.slice(at, close)
     expect(
       body,
-      '`.is-locked` 没有显式 `opacity: 1` —— 只靠源码顺序压过 `.is-degraded`，' +
-        '任何人往两者之间插一条规则就会静默退回 0.55',
-    ).toMatch(/opacity:\s*1\b/)
+      '`.is-locked` 没有显式 `opacity: 1` —— 只靠「`is-degraded` 让开」这条隐式约定，' +
+        '任何人删掉那个 `:not(.is-locked)` 就会静默退回 0.55',
+    ).toMatch(/opacity:\s*1\s*[;}]/)
   })
 
   it('`.question-card__tappable.is-locked` 必须有 `pointer-events: none`（平板上 `cursor` 不可见）', () => {
     const at = questionCard.indexOf('.question-card__tappable.is-locked')
     expect(at, '判据范围消失：锁定的可点容器规则找不到了').toBeGreaterThan(-1)
-    const body = questionCard.slice(at, questionCard.indexOf('}', at))
+    const close = questionCard.indexOf('}', at)
+    expect(close, '锁定的可点容器规则没有闭合的 `}` —— 判据切不出声明体').toBeGreaterThan(at)
+    const body = questionCard.slice(at, close)
     expect(
       body,
       '🔴 建造期锁着时，题面区在**触摸设备**上仍是假可点：`cursor: default` 在平板上根本不可见，' +
         '而容器仍挂着 `@click="onReplay"`，守门静默丢弃 ⇒ 孩子点下去什么都没有。' +
         'AC-D5 逐字说的正是这个（CR 第四轮修的是选项那半，重听入口这半没修完）',
-    ).toMatch(/pointer-events:\s*none/)
+    ).toMatch(/pointer-events:\s*none\s*[;}]/)
   })
 })
+

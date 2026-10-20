@@ -266,8 +266,19 @@ function onPick(): void {
  *
  *   ⇒ 降级置灰只在**尚未判定对错**时生效：一旦点了（`is-picked`），
  *   让 `is-right` / `is-wrong` 的颜色说了算。
+ *
+ * 🚨📎 **`[CR]` 第七轮更正特异度：下面那条 `:not()` 让本规则是 `(0,3,0)`，
+ *   加 scoped 属性后是 `(0,4,0)` —— 比同文件 `.option-card.is-locked`
+ *   （`(0,2,0)` → scoped `(0,3,0)`）**高一级**。**
+ *   ⇒ 上一段「三条状态类特异度完全相同、胜负只由源码顺序决定」**对 `.is-locked`
+ *     不成立**：特异度不等时源码顺序根本不参与裁决。
+ *   ⇒ `locked + failed + !picked` 时赢的一直是本规则的 `opacity: 0.55`，
+ *     **与两条规则的先后无关** —— 第六轮「把 `.is-locked` 挪到后面就修好了」是假修复。
+ *   ⇒ 修法不是抬 `.is-locked`（抬到打平仍要靠顺序），而是**让本规则在 locked 时不参与
+ *     竞争**：加 `:not(.is-locked)`。这样 locked 的 `opacity: 1` 无条件生效，
+ *     且 `.is-locked` 自身的声明永远不会被 `:not(.is-picked)` 之类的条件剥掉。
  */
-.option-card.is-degraded:not(.is-picked) {
+.option-card.is-degraded:not(.is-picked):not(.is-locked) {
   /* 置灰：与真图「一眼可分」。禁用态额外压一层不可建的同族罩（中性 alpha，不带色相）。 */
   background: #eceff1;
   border-color: var(--color-overlay-blocked);
@@ -280,19 +291,24 @@ function onPick(): void {
  * ⚠️🔥 **`[CR]` 第六轮更正位置：这条规则原本写在 `.is-picked` 之前、
  *   也就是 `.is-degraded:not(.is-picked)` 的上面** —— 而它自己的注释逐字写着
  *   「排在 `.is-degraded` **之后** ⇒ 两者同时成立时（建造期 + 图破了）以置灰为准」。
- *   ⇒ **注释与源码顺序相反**，而且后果是真的：三个选择器特异度同为 `(0,2,0)`，
- *   后写的 `.is-degraded` 赢，而**只有它设 `opacity: 0.55`**
- *   ⇒ `locked + failed + !picked` 时那张词图被压到 55% ——
- *   **恰好是下一段注释声明要避免的那件事发生了。**
- *   ⇒ 现在它排在 `.is-degraded:not(.is-picked)` **之后**，并显式补 `opacity: 1`，
- *     让「看得清」不再依赖源码顺序。
+ *   ⇒ **注释与源码顺序相反**。后果是真的：`locked + failed + !picked` 时那张词图
+ *   被压到 55% —— **恰好是下一段注释声明要避免的那件事发生了。**
+ *
+ * ⚠️🚨 **`[CR]` 第七轮推翻第六轮的修法：把本规则挪到后面 + 补 `opacity: 1`
+ *   并没有修好那个 bug。** 本规则是 `(0,2,0)`、`.is-degraded:not(.is-picked)`
+ *   是 `(0,3,0)`（`:not()` 按其参数计权）⇒ 加上 scoped 属性后是 `(0,3,0)` 对
+ *   `(0,4,0)`。**特异度不等，源码顺序不参与裁决** ⇒ 第六轮把本规则移到后面之后，
+ *   `opacity: 0.55` 照样赢。真正的修法在 `.is-degraded` 那一侧：给它加
+ *   `:not(.is-locked)`，让降级态在建造期根本不参与竞争。
+ *   ⇒ 因此下面这个 `opacity: 1` **不是**「靠顺序赢回来的」，而是**让判据读得懂意图**
+ *     的显式声明 —— 它在修复后确实生效，但生效的原因是 `.is-degraded` 让开了。
  *
  * ⚠️ **仍排在 `.is-picked` 之后**：孩子刚答完那 ≤100ms 里，`is-right` / `is-wrong`
  *   的绿底/红底才是 AC-D2 的主反馈载体，置灰不该把它洗掉
  *   （这与 `.is-degraded:not(.is-picked)` 用 `:not(.is-picked)` 是同一个理由）。
  *
- * ⚠️ **`opacity: 1` 是必需的，不是冗余**：只靠位置赢，`locked + failed` 时
- *   仍是 `.is-degraded` 的 0.55 在生效 —— 显式写出来才让判据读得懂意图。
+ * ⚠️ **`opacity: 1` 现在是无条件生效的**：`.is-degraded` 带了 `:not(.is-locked)`
+ *   ⇒ `locked` 时它根本不匹配 ⇒ 这里没有任何竞争者。
  */
 .option-card.is-locked {
   background: #eceff1;
