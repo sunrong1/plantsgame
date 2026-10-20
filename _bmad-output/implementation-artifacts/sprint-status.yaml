@@ -3,6 +3,11 @@
 # project_key: NOKEY
 # tracking_system: file-system
 # story_location: _bmad-output/implementation-artifacts
+#
+# ⚠️ R-42：本文件是**状态账本**，运行复盘（实测值 / 裁决理由 / 假绿复盘 /
+#    工具纪律痕迹）一律写进对应 story 文档的 Completion Notes / Debug Log，
+#    这里**最多留一行指针**。下面 `last_updated` 各行的实测值是 `[DS]` 写进去的，
+#    [CR] 已按 R-42 收敛成指针（见 Story 2.2 那行与 2-2 story 文档）。
 
 # STATUS DEFINITIONS:
 # ==================
@@ -44,8 +49,8 @@
 #   epics.md 的销项说明处理。
 
 generated: 2026-10-12
-last_updated: 2026-10-20  # [DS] Story 2.2 完成 → review（测试 2004 → 2013，六项门槛全绿，deferred 5 条）；运行记录见其 story 文档
-                        # [CS] Story 2.2「难度阶梯规则落地」上下文已生成 → ready-for-dev（6 条无人值守裁决与全部证据见其 story 文档）
+last_updated: 2026-10-20  # Story 2.2 在 review（[CR] 处理中）；运行记录见其 story 文档
+                        # Story 2.2「难度阶梯规则落地」上下文已生成 → ready-for-dev（裁决与证据见其 story 文档）
                         # Story 2.1 —— ✅ **done**（`[CR]` 三层评审 + 16 变异红数 + D1-D4/P1-P27 全落地，见其 story 文档）
                         # Story 1.20 —— ✅ **done**（归档进 `_bmad-output/archive/`）
                         # [CS] Story 2.1「词图产能验证」上下文已生成 → ready-for-dev（7 条无人值守裁决与全部证据见其 story 文档）
