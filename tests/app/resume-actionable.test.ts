@@ -345,6 +345,18 @@ describe('🔥 G170 —— 断点续学的落点：读题时离开，重进必�
 describe('G170-b —— 建造期恢复也要有卡面（裁决 B：题面落进 State）', () => {
   it('根因层：建造期落盘时，题面必须**跟着 phase 一起写下去**', () => {
     startFreshGame()
+    // ⚠️📎 **`[CR]` 第七轮修：首版只判「题面在不在题单里」—— 那近乎恒真。**
+    //   判据逐字是 `restored.deck.some((e) => e.entryId === phase.question.entryId)`：
+    //   而题面**本来就是从题单里选出来的** ⇒ 这条判据只能抓住
+    //   「题面字段整个丢了」（那时 `phase.question` 是 undefined，读取即抛），
+    //   **抓不住「题面被换成了题单里的另一道」** ——
+    //   换掉的那道**也在题单里** ⇒ `some(...)` 照样 true。
+    //   ⇒ 事实来源必须独立于恢复链路：**孩子刚才答过的那道题**。
+    const answeredEntryId = (() => {
+      const phase = store.state.value.phase
+      if (phase.kind !== 'awaiting-answer') throw new Error(`前置：相位是 ${phase.kind}`)
+      return phase.question.entryId
+    })()
     answerCorrectly()
 
     const restored = readGameOnDisk()
@@ -358,6 +370,13 @@ describe('G170-b —— 建造期恢复也要有卡面（裁决 B：题面落进
       restored.deck.some((entry) => entry.entryId === phase.question.entryId),
       '盘上建造期携带的题面不在本题单里 —— 序列化时丢了字段，或题面本身来路不对',
     ).toBe(true)
+    // 🔥 判据本体：**盘上那道题必须就是孩子刚答过的那道**。
+    expect(
+      phase.question.entryId,
+      '🔴 盘上建造期携带的**不是**孩子刚答过的那道题 —— ' +
+        '若它是题单里的另一道，上面那条「在题单里」照样绿，' +
+        '而孩子回来看到的是一道他没答过的题。',
+    ).toBe(answeredEntryId)
   })
 
   it('渲染层：建造期落盘 → 重挂组件 → 卡面与四个选项都在（🔥 就是复现「点开始后无卡面」那一步）', () => {
@@ -476,6 +495,29 @@ describe('G170-b —— 建造期恢复也要有卡面（裁决 B：题面落进
       store.state.value.deck.some((entry) => entry.entryId === phase.question.entryId),
       '归一化出来的题必须属于本题单（它由 `nextQuestion(deck, …)` 选出）',
     ).toBe(true)
+
+    // ⚠️📎 **`[CR]` 第七轮补：上面两条**分辨不出「恢复了存档」与「开了新局」**。
+    //   `phase.kind === 'awaiting-answer'` 与「题面在题单里」**新局也满足**
+    //   （新局就是 awaiting-answer + 题面取自题单第一条）⇒
+    //   若 `restoreFromSave` 整段作废、直接开一局新的，上面两条**照样全绿**。
+    //   ⇒ 补一条**只有恢复成功才成立**的断言：
+    //     存档里那道**已经答对**的题，必须还在 `masteredEntryIds` 里，
+    //     而归一化出来的**下一道题必须跳过它**（`nextQuestion` 逐字如此）。
+    const answeredId = onDisk.masteredEntryIds[0]
+    expect(
+      answeredId,
+      '夹具前提：存档里应当有一道已经答对的题（否则下面两条判据无从分辨）',
+    ).toBeDefined()
+    expect(
+      store.state.value.masteredEntryIds,
+      '🔴 恢复出来的对局把「已经答对的那道」弄丢了 —— ' +
+        '这说明读档根本没读那份存档（退化成开了新局），而新局也会满足上面两条断言。',
+    ).toContain(answeredId)
+    expect(
+      phase.question.entryId,
+      '🔴 归一化出来的题必须**跳过已经答对的那道**（`nextQuestion` 逐字如此）—— ' +
+        '它要是又出了那道已掌握的题，孩子刚答对就要再答一遍。',
+    ).not.toBe(answeredId)
   })
 })
 
@@ -725,5 +767,58 @@ describe('G176 —— 读档**不抛穿**：存档里的单元号未填档位时
       store.progress.value.masteredWordIds,
       '同一份存档下跨局进度也不许丢 —— 降级只丢**对局**（裁决 1）',
     ).toEqual(learned)
+  })
+
+  // 🔥📎 **`[CR]` 第七轮补：`backfillLegacyBuildPhase` 的 **try 成功支**零覆盖。**
+  //
+  // ⚠️ 上面那条 G176 造的是 `unitNumber: 999` ⇒ `createUnitCompletedState(999)`
+  //   **抛错** ⇒ 走的是 **catch 支**（退到单元 1 的终态）。
+  //   ⇒ **try 成功支**（单元号合法 + 题单已答尽 ⇒ `createUnitCompletedState(unitNumber)`）
+  //     **一条用例都没有**。
+  //   ⇒ 变异实测：把 `return createUnitCompletedState(state.unitNumber)` 改成
+  //     `return state` ⇒ **全仓 1969 条测试全绿**（那个分支根本没人走）。
+  it('🔴 旧存档的建造期题单已答尽 ⇒ 落点必须是「本单元已学完」终态（try 成功支）', () => {
+    // 夹具：单元号**合法**（1，在 `BALANCE_TIERS` 覆盖范围内），
+    // 题单**为空** ⇒ `nextQuestion` 返回 null ⇒ 走 `next === null` 那一支的 try。
+    storage.data.set(
+      saveApi.SAVE_KEY,
+      JSON.stringify({
+        schemaVersion: saveApi.SAVE_SCHEMA_VERSION,
+        savedAt: 1_700_000_000_000,
+        progress: { currentUnitIndex: 0, masteredWordIds: [] },
+        currentGame: {
+          unitNumber: 1, // ⚠️ 合法档位 ⇒ 这次**不抛** ⇒ 走 try 成功支
+          phase: { kind: 'awaiting-build', unlocked: [], sun: 50 }, // ⚠️ 旧存档：没有 question 字段
+          turn: 2,
+          hearts: 3,
+          sun: 50,
+          grid: {},
+          towers: [],
+          zombies: [],
+          deck: [], // ⚠️ 空题单 ⇒ `nextQuestion()` 返回 null
+          masteredEntryIds: [],
+          skippedEntryIds: [],
+          unlocked: [],
+        },
+      }),
+    )
+
+    expect(
+      () => store.enterLevel(),
+      '🔴 读档把异常抛给了孩子 —— AC-D4 / NFR13 逐字：孩子面前永不出现技术错误',
+    ).not.toThrow()
+
+    // ⚠️ 判据是**落点**，不是「没抛」：这一支的语义是「本单元已学完」。
+    //   若实现退化成 `return state`（把那份 awaiting-build 原样放出去），
+    //   孩子会看到一张**没有题面**的卡 —— 而 `not.toThrow()` 照样绿。
+    expect(
+      store.state.value.phase.kind,
+      '🔴 旧存档的建造期题单已答尽 ⇒ 落点必须是「本单元已学完」终态（level-complete）。' +
+        '原样放行那份 awaiting-build 的话，孩子面前是一张 question=undefined 的空卡。',
+    ).toBe('level-complete')
+    expect(
+      store.state.value.deck,
+      '「已学完」终态的题单必须为空 —— 孩子的进度条不许显示「0/10」而横跨两套东西',
+    ).toEqual([])
   })
 })

@@ -331,6 +331,24 @@ function mountCard(question: Question) {
   return wrapper
 }
 
+/**
+ * 🔥📎 **`[CR]` 第七轮新增：读组件**自己的**渲染决定。**
+ *
+ * ⚠️⚠️ **为什么需要它**：「一个选项都不渲染」这条断言有**三种**同样成立的原因：
+ *   ① 组件**决定**不渲染（`shown === null`）；
+ *   ② `shown` 成了 **`undefined`**（相位压根没带题面 —— 旧存档的形态）；
+ *   ③ 组件渲染时崩了（DOM 空 ⇒ 选项自然 0 个）。
+ *   ⚠️ ① 与 ③ 在 **DOM 上长得一模一样**（都是空的）⇒ 那条断言在 ③ 上是**假绿**。
+ *   ⚠️ 而 ② 与 ① 在 DOM 上也**分不开**（`v-if` 对 `undefined` 与 `null` 一视同仁）。
+ *   ⇒ 唯一能把它们分开的，是组件**自己那个决定**：`shown` 必须是**恰好** `null`。
+ *
+ * ⚠️ `wrapper.vm.shown` 在 `<script setup>` 下**可读**（实测：dev 模式下
+ *   setup 绑定会暴露到 `wrapper.vm`）—— 这条判据靠的是它，不是 DOM。
+ */
+function shownOf(wrapper: { vm: unknown }): unknown {
+  return (wrapper.vm as { shown?: unknown }).shown
+}
+
 beforeEach(() => {
   applyActionMock.mockClear()
   speakMock.mockClear()
@@ -1216,6 +1234,15 @@ describe('AC-C5 —— 卡面在哪些相位上出现', () => {
         wrapper.findAll('.option-card'),
         `${kind} 下卡面必须是空的 —— 留着四个选项就是 AC-D5 说的「假可点」`,
       ).toHaveLength(0)
+      // ⚠️📎 第七轮补：DOM 空**不等于**「组件决定不渲染」——
+      //   `shown` 成了 `undefined`（相位没带题面）或组件崩了，DOM 同样是空的。
+      //   ⇒ 断言组件**自己的**决定必须是 `null`。
+      expect(
+        shownOf(wrapper),
+        `${kind} 下组件必须**决定**不渲染（shown === null）。` +
+          '若它是 undefined，说明相位压根没带题面 —— 孩子在屏幕上看到的是空白，' +
+          '而「选项 0 个」这条断言照样绿。',
+      ).toBeNull()
       expect(wrapper.find('.question-card__tappable').exists(), `${kind} 下连重听入口也不该在`).toBe(false)
       expect(wrapper.find('.answer-feedback').exists(), `${kind} 下不该有反馈条`).toBe(false)
 
@@ -1846,6 +1873,17 @@ describe('G94 —— `shown` 的兜底只兜 awaiting-build（Story 1.16 / 裁�
       await wrapper.vm.$nextTick()
 
       expect(wrapper.findAll('.option-card'), `${kind} 下留着选项 = AC-D5 的「假可点」`).toHaveLength(0)
+      // ⚠️📎 **`[CR]` 第七轮补：DOM 空 ≠「组件决定不渲染」。**
+      //   「一个选项都不渲染」有三种同样成立的原因：① `shown === null`（正确）
+      //   ② `shown === undefined`（相位没带题面 ⇒ 孩子看到的是空白）
+      //   ③ 组件渲染崩了（DOM 空 ⇒ 选项自然 0 个）。
+      //   ① 与 ③ 在 DOM 上**一模一样** ⇒ 上面那条断言在 ③ 上是**假绿**。
+      //   ⇒ 断言组件**自己那个决定**必须是 `null`。
+      expect(
+        shownOf(wrapper),
+        `${kind} 下组件必须**决定**不渲染（shown === null）—— ` +
+          '若是 undefined，说明相位没带题面；若是崩了，DOM 同样是空的。',
+      ).toBeNull()
     },
   )
 
