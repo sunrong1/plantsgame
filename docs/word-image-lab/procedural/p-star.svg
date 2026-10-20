@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  词图：star —— **程序化生成**样本，Story 2.1 杠杆 2 的最小证据。
+
+  这张图不是手画的：它由一条固定规则生成，同一类词套同一组参数，
+  没有任何逐图手调。这正是「程序化」与「画图」的分界线。
+
+  不进内容管线，也不进产能统计：产能统计只数 docs/word-image-lab/ 的顶层 SVG
+  （两个工具都不递归），本目录天然被排除。
+
+  规格（docs/art-direction.md §1）：SVG / viewBox 0 0 512 512 / 512×512 / 透明底
+  构图档位：abstract
+
+  生成规则：公认符号 => 标准五角星，外径 178、内径 73（0.41 倍）。
+
+  G10：不得含 text / image / foreignObject。
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512"
+     role="img" aria-label="五角星">
+  <g fill="#fdd835" stroke="#f9a825" stroke-width="14" stroke-linejoin="round">
+  <path d="M 256.0 78.0 L 298.9 196.9 L 425.3 201.0 L 325.4 278.6 L 360.6 400.0 L 256.0 329.0 L 151.4 400.0 L 186.6 278.6 L 86.7 201.0 L 213.1 196.9 Z" />
+  </g>
+</svg>

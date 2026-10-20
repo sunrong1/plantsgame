@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  词图：blue —— **程序化生成**样本，Story 2.1 杠杆 2 的最小证据。
+
+  这张图不是手画的：它由一条固定规则生成，同一类词套同一组参数，
+  没有任何逐图手调。这正是「程序化」与「画图」的分界线。
+
+  不进内容管线，也不进产能统计：产能统计只数 docs/word-image-lab/ 的顶层 SVG
+  （两个工具都不递归），本目录天然被排除。
+
+  规格（docs/art-direction.md §1）：SVG / viewBox 0 0 512 512 / 512×512 / 透明底
+  构图档位：abstract
+
+  生成规则：颜色词 => 一块该颜色的色卡，居中正方形，边长 330。
+
+  G10：不得含 text / image / foreignObject。
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512"
+     role="img" aria-label="蓝色">
+  <g fill="#1e88e5" stroke="#0d47a1" stroke-width="14" stroke-linejoin="round">
+  <path d="M 91 91 L 421 91 L 421 421 L 91 421 Z" />
+  </g>
+</svg>
