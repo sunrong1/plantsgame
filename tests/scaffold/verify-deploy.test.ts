@@ -44,17 +44,31 @@ const scriptSource = sourceOf('scripts/verify-deploy.ts')
 /**
  * 「好产物」形态的 `sw.js` —— 所有夹具**共用这一份**，探针只在它**后面追加**违规片段。
  *
- * ⚠️ 这段照着**真实产物** `dist/sw.js` 的形态写：`__WB_MANIFEST` 是 workbox-build
- *   做文本替换时认的那串字面量，`caches.delete` 是 activate 里的旧缓存清理。
- *   初版夹具写的是 `precacheAndRoute([])` —— 判据的正则 `\bprecache\b|\.precacheAndRoute`
- *   两条**都不认**它（`\b` 在 `precacheAnd` 的 `A` 处不成立，而前导的 `\.` 要求前面有点），
- *   于是好产物被判红、探针也建在错的基础上。
+ * ⚠️📎 **`[CR]` 2026-10-20 按真实产物重写**：workbox-build 做文本替换时
+ *   把 `self.__WB_MANIFEST` **换成了字面量数组** ——
+ *   实测真实产物 `dist/sw.js` 里 `__WB_MANIFEST` 出现 **0 次**，
+ *   清单长这样：
+ *   `[{"revision":"fe46491d…","url":"index.html"},{"revision":null,"url":"assets/index-xxx.js"},…]`
+ *   ⇒ 原夹具（写的是 `self.__WB_MANIFEST`）**与真实产物不是同一种形态**，
+ *   而原判据 `/\bprecache\b|\.precacheAndRoute|__WB_MANIFEST/` 在真实产物上
+ *   **只靠 `\bprecache\b` 匹配缓存名的模板字符串**才绿 ⇒ **恒绿**。
+ *   ⇒ 夹具现在照着**真实产物的注入形态**写，判据也改成**解析注入的清单**。
  *   ⇒ **夹具必须由判据的真实形态反推，而不是凭印象写一份像 SW 的字符串。**
  */
 const SW_GOOD =
   'const t=__PWA_ASSET_TOKEN__;self.addEventListener("activate",()=>{' +
   'caches.keys().then(k=>Promise.all(k.filter(n=>n.startsWith("plantsgame-")).map(n=>caches.delete(n))))});' +
-  'self.addEventListener("install",()=>{const m=self.__WB_MANIFEST;});' +
+  // ⚠️📎 `[CR]` 2026-10-20：**照抄真实产物里那行缓存名模板**（实测 `dist/sw.js` 逐字：
+  //   ``function t(t){return`${e}precache-${t}`}``）——
+  //   它是旧判据 `/\bprecache\b/` 之所以**恒绿**的唯一原因：
+  //   那个 `precache` 是**缓存名**，不是 precache **清单**。
+  //   ⇒ 少了它，「旧判据会绿」这句话就无从证明，G199 第一条会空跑。
+  'function c(t){return`plantsgame-precache-${t}`}' +
+  'self.addEventListener("install",()=>{const m=[' +
+  '{"revision":"fe46491d9ddb11cd22c1404ceabea996","url":"index.html"},' +
+  '{"revision":null,"url":"assets/index-CCa7u-h3.js"},' +
+  '{"revision":null,"url":"assets/index-BkSWzeM0.css"}' +
+  '];});' +
   'self.addEventListener("fetch",()=>{});'
 
 /**
@@ -72,17 +86,22 @@ const BASE_FILES: Record<string, string> = {
   'manifest.webmanifest': JSON.stringify({
     name: 'PVZ Pixel 单词塔防',
     short_name: 'PVZ Pixel',
+    // ⚠️📎 `[CR]` 2026-10-20：AC-B1 逐字列的字段集**一个都不能少** ——
+    //   `description` / `orientation` 原来不在夹具里（因为判据也不查它们）。
+    description: '用英语单词挡住僵尸的回合制塔防',
+    lang: 'zh-CN',
     start_url: '/plantsgame/',
     scope: '/plantsgame/',
     id: '/plantsgame/',
     display: 'standalone',
+    orientation: 'portrait',
     theme_color: '#1f2d11',
     background_color: '#7cb342',
     icons: [
-      { src: '/plantsgame/icons/icon-192.png' },
-      { src: '/plantsgame/icons/icon-512.png' },
-      { src: '/plantsgame/icons/maskable-192.png' },
-      { src: '/plantsgame/icons/maskable-512.png' },
+      { src: '/plantsgame/icons/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+      { src: '/plantsgame/icons/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+      { src: '/plantsgame/icons/maskable-192.png', sizes: '192x192', type: 'image/png', purpose: 'maskable' },
+      { src: '/plantsgame/icons/maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
     ],
   }),
   'sw.js': SW_GOOD,
@@ -236,7 +255,7 @@ describe('G156 —— 产物级 SW 判据抓得住强制刷新（Story 1.18 / AC
       //   整段重写会让「红」来自别的原因，而 M146 的变异只改**判据盯的那一处**
       //   （1.17 的教训：「变异把 API 面改坏 ⇒ 全红不等于判据命中」）。
       files['sw.js'] = SW_GOOD.replace(/caches\.delete\(n\)/, 'void 0')
-      expect(files['sw.js'], '变异把 precache 那半也删掉了 ⇒ 红的不是判据命中').toContain('__WB_MANIFEST')
+      expect(files['sw.js'], '变异把 precache 那半也删掉了 ⇒ 红的不是判据命中').toContain('"revision"')
       expect(files['sw.js'], '变异把枚举也删掉了 ⇒ 红的是两条，变异不干净').toContain('keys()')
       expect(files['sw.js'], '变异把 fetch 处理器也删掉了 ⇒ 红的不是判据命中').toContain('"fetch"')
     }))
@@ -392,5 +411,172 @@ describe('G157 —— 产物级前缀判据覆盖 manifest 三字段（Story 1.1
       'DEPLOY_BASE 不是 `/plantsgame/` 开头 —— 若这是有意的部署路径变更，' +
         'scripts/verify-deploy.ts 与 docs/deployment.md 的前缀必须同步改',
     ).toBe('/plantsgame/')
+  })
+})
+
+// ── G199 —— `[CR]` 2026-10-20 新增/修正的产物判据真能抓到违规 ──────────────
+
+describe('G199 —— 产物自检的新判据真能抓到违规（Story 1.18 `[CR]` 2026-10-20）', () => {
+  it('⚠️ 把 precache 清单从产物 SW 里删掉 ⇒ 红（旧判据**放过**了这一条）', () => {
+    // 🔥 **这一条是本轮最值钱的产出**：原判据是
+    //   `/\bprecache\b|\.precacheAndRoute|__WB_MANIFEST/`。
+    //   ⚠️ 它在真实产物上是**恒绿**的：`__WB_MANIFEST` 出现 0 次（workbox 把它
+    //   换成了字面量数组），而 `\bprecache\b` 匹配到的是**缓存名的模板字符串**
+    //   （`` `${e}precache-${t}` ``）—— 那不是清单。
+    //   ⇒ workbox 一天不注入清单，这条照样绿。
+    const report = verifyDeploy(brokenFs((files) => {
+      files['sw.js'] = SW_GOOD.replace(
+        /\[\{"revision":"fe46491d9ddb11cd22c1404ceabea996","url":"index.html"\},{"revision":null,"url":"assets\/index-CCa7u-h3\.js"\},\{"revision":null,"url":"assets\/index-BkSWzeM0\.css"\}\]/,
+        '[]',
+      )
+      expect(files['sw.js'], '变异没把清单删掉 ⇒ 红的不是判据命中').not.toContain('"revision"')
+      // ⚠️ **缓存名的模板仍在** —— 那正是旧判据会绿的原因，逐字钉住。
+      expect(files['sw.js'], '变异把缓存名模板也删了 ⇒ 旧判据不会绿，这条测不出东西').toContain('precache')
+      // ⚠️📎 **R-53 反向自测**：把**旧判据的正则**原样抄过来，它在这份
+      //   「清单已被删掉」的坏产物上**照样匹配** ⇒ 旧判据恒绿这件事被**当场证明**，
+      //   而不是一个只写在注释里的断言。
+      expect(
+        files['sw.js'],
+        '旧判据 `\\bprecache\\b|\\.precacheAndRoute|__WB_MANIFEST` 在这份没有清单的坏产物上' +
+          '竟然匹配不上 —— 那说明旧判据其实不是恒绿的问题，请把本注释与结论一并更正',
+      ).toMatch(/\bprecache\b|\.precacheAndRoute|__WB_MANIFEST/)
+    }))
+    expect(
+      checkOf(report, 'sw-has-precache-manifest').ok,
+      '产物 SW 里没有 precache 清单而判据没红 —— 飞行模式下打开是一张白纸（AC-B8 逐字）',
+    ).toBe(false)
+  })
+
+  it('precache 清单里没有 `index.html` ⇒ 红（离线打开是空页面）', () => {
+    const report = verifyDeploy(brokenFs((files) => {
+      files['sw.js'] = SW_GOOD.replace(
+        '{"revision":"fe46491d9ddb11cd22c1404ceabea996","url":"index.html"},',
+        '',
+      )
+    }))
+    expect(checkOf(report, 'sw-precaches-app-shell').ok, '外壳不在 precache 里而判据没红').toBe(false)
+  })
+
+  it('precache 清单里没有 JS / CSS ⇒ 红（外壳缓存了但它的脚本没缓存）', () => {
+    const report = verifyDeploy(brokenFs((files) => {
+      files['sw.js'] = SW_GOOD.replace(
+        '{"revision":null,"url":"assets/index-CCa7u-h3.js"},{"revision":null,"url":"assets/index-BkSWzeM0.css"}',
+        '',
+      )
+    }))
+    expect(checkOf(report, 'sw-precaches-built-assets').ok, 'JS / CSS 不在 precache 里而判据没红').toBe(false)
+  })
+
+  it('manifest 删掉 `description` / `orientation` ⇒ 红（AC-B1 明列的字段）', () => {
+    for (const field of ['description', 'orientation']) {
+      const report = verifyDeploy(brokenFs((files) => {
+        const manifest = JSON.parse(files['manifest.webmanifest']!) as Record<string, unknown>
+        delete manifest[field]
+        files['manifest.webmanifest'] = JSON.stringify(manifest)
+      }))
+      expect(
+        checkOf(report, `manifest-field-${field}`).ok,
+        `manifest 缺 \`${field}\` 而判据没红 —— AC-B1 逐字列了它，删掉构建照样全绿`,
+      ).toBe(false)
+    }
+  })
+
+  it('图标的 `purpose` 被改成 `any` ⇒ 红（`any` 与 `maskable` 是两张不同的图）', () => {
+    const report = verifyDeploy(brokenFs((files) => {
+      const manifest = JSON.parse(files['manifest.webmanifest']!) as {
+        icons: Array<Record<string, unknown>>
+      }
+      for (const icon of manifest.icons) icon['purpose'] = 'any'
+      files['manifest.webmanifest'] = JSON.stringify(manifest)
+    }))
+    expect(
+      checkOf(report, 'manifest-icon-purpose-maskable-192.png').ok,
+      'maskable 图标被当成普通图标而判据没红 —— Android 会把普通图标裁成自适应图标',
+    ).toBe(false)
+  })
+
+  it('图标的 `sizes` 被删掉 ⇒ 红（Chrome 按 sizes 挑候选图标）', () => {
+    const report = verifyDeploy(brokenFs((files) => {
+      const manifest = JSON.parse(files['manifest.webmanifest']!) as {
+        icons: Array<Record<string, unknown>>
+      }
+      for (const icon of manifest.icons) delete icon['sizes']
+      files['manifest.webmanifest'] = JSON.stringify(manifest)
+    }))
+    expect(checkOf(report, 'manifest-icon-sizes-icon-192.png').ok, 'sizes 被删了而判据没红').toBe(false)
+  })
+
+  it('多一条 `rel="manifest"` 的 link ⇒ 红（AC-B3 逐字「恰好一条」）', () => {
+    const report = verifyDeploy(brokenFs((files) => {
+      files['index.html'] =
+        files['index.html']!.replace(
+          '</head>',
+          '<link rel="manifest" href="/plantsgame/manifest.webmanifest"></head>',
+        )
+    }))
+    expect(
+      checkOf(report, 'manifest-link-exactly-one').ok,
+      '产物里有两条 manifest link 而判据没红 —— 浏览器取哪一条不确定',
+    ).toBe(false)
+  })
+
+  it('manifest 那条 link 丢了 base 前缀 ⇒ 红', () => {
+    const report = verifyDeploy(brokenFs((files) => {
+      files['index.html'] = files['index.html']!.replace(
+        '/plantsgame/manifest.webmanifest',
+        '/manifest.webmanifest',
+      )
+    }))
+    expect(
+      checkOf(report, 'manifest-link-carries-base').ok,
+      'manifest link 丢了前缀而判据没红 —— 部署在子路径下 404 ⇒ manifest 整个失效',
+    ).toBe(false)
+  })
+
+  it('⚠️ 部署前缀**只有一个来源**（脚本 import `vite.config.ts`，不手抄）', () => {
+    // 🔥 `[CR]` 2026-10-20 抓到的复制链：脚本里原本另有一份
+    //   `const DEPLOY_BASE = '/plantsgame/'`，而守卫 G157 只 grep `vite.config.ts` 那份
+    //   ⇒ 改脚本这份**无人报警**；
+    //   而脚本里「所有根相对引用都带前缀」那条判据逐字是
+    //   `refs.filter(ref => !ref.startsWith(DEPLOY_BASE))` ——
+    //   一旦这份副本被改成 `'/'`，**所有引用都「带前缀」** ⇒ 判据静默放行
+    //   ⇒ **恰好放过了它要防的那个事故**。
+    expect(
+      scriptSource,
+      'scripts/verify-deploy.ts 没有从 vite.config.ts import DEPLOY_BASE —— ' +
+        '部署前缀又变成了两份手抄的副本，改一处不会报红',
+    ).toMatch(/import\s*\{\s*DEPLOY_BASE\s*\}\s*from\s*['"][^'"]*vite\.config['"]/)
+    expect(
+      scriptSource,
+      'scripts/verify-deploy.ts 里还有 `const DEPLOY_BASE = …` —— 那是手抄的副本，' +
+        '与 vite.config.ts 那份各改各的',
+    ).not.toMatch(/const\s+DEPLOY_BASE\s*=/)
+  })
+
+  it('⚠️ HTML **注释**里提到 `<link rel="manifest">` ⇒ 不算一条（真产物就长这样）', () => {
+    // 🔥📎 `[CR]` 2026-10-20 **实测抓到的假红**：
+    //   本仓库的 `index.html` 注释里逐字写着
+    //   「📎 PWA manifest 的 `<link rel="manifest">` 刻意不在本文件里写」，
+    //   而朴素的 `<link[^>]*rel=["']manifest["'][^>]*>` 正则会把**注释里的那串文字**
+    //   数成一条真的 link ⇒ 「产物里恰好一条 manifest link」这条判据
+    //   在**真实产物上恒红**（实测报「有 2 条」，其中一条是注释）。
+    //   ⇒ 判据必须**先剥 HTML 注释再扫**（与 R-52 同型，只是对象从 JS 注释换成 HTML 注释）。
+    //   ⚠️ 这条守卫守的是**判据自己的红**（R-50 的第一步：先排除判据造成的红）。
+    const report = verifyDeploy(
+      brokenFs((files) => {
+        files['index.html'] =
+          '<!-- 📎 PWA manifest 的 `<link rel="manifest">` 刻意不在本文件里写。 -->\n' +
+          files['index.html']!
+      }),
+    )
+    expect(
+      checkOf(report, 'manifest-link-exactly-one').ok,
+      'HTML 注释里提到 `<link rel="manifest">` 就被数成一条 —— ' +
+        '本仓库的 index.html 注释里逐字写着这句，真产物上这条判据恒红',
+    ).toBe(true)
+    expect(
+      checkOf(report, 'manifest-link-carries-base').ok,
+      '剥注释之后那条真的 manifest link 反而找不到了',
+    ).toBe(true)
   })
 })

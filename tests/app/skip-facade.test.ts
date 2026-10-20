@@ -25,14 +25,18 @@
  *    那时到达的上报与「当前该答哪道题」无关。
  */
 
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+
 import { beforeEach, describe, expect, it } from 'vitest'
 
 import { applyAction, reportImageFailure, state } from '../../src/app/store'
-import { createInitialState } from '../../src/core'
+import { createInitialState, skipQuestion } from '../../src/core'
 import type { State } from '../../src/core'
 import { entriesOf } from '../../src/content'
 
 import { makeSyntheticDeck } from '../fixtures/synthetic-deck'
+import { stripComments } from '../fixtures/strip-comments'
 
 const DECK = makeSyntheticDeck(6, 1)
 
@@ -171,5 +175,115 @@ describe('G154 —— 门面在**真实内容**上确实接得上（Story 1.18 /
     expect(state.value.skippedEntryIds).toContain(question.entryId)
     expect(state.value.hearts).toBe(before.hearts)
     expect(state.value.masteredEntryIds).toEqual(before.masteredEntryIds)
+  })
+})
+
+// ── G200 —— 门面的第 ④ 道守卫：题单被抽空时**不跳、不抛**（`[CR]` 2026-10-20）─
+
+describe('G200 —— 题单被抽空时门面不派发（Story 1.18 `[CR]` 2026-10-20）', () => {
+  it('🔴 单题题单：正确项破图 ⇒ **不抛、不跳**（一个词都没答的孩子不该看到「读完啦！」）', () => {
+    // 🔥 **本 story 最贵的一个洞**（`[CR]` 2026-10-20 实测抓到）：
+    //   `reducer.applySkip` 在 `nextQuestion(...)` 返回 `null`（题单被抽空）时
+    //   会 `rejectAction`（**抛错**），理由逐字是
+    //   「一个词都没答的孩子会看到『读完啦！』—— 本项目能造出的最糟的假陈述」。
+    //   ⚠️ 而 `reducer.applySkip` 的注释逐字写着
+    //     「`app/store.ts` 的门面在 dispatch 前先问一遍，所以正常路径不会有异常冒到界面上」
+    //     —— **那句话是假的**：门面原来只有三道守卫，**没有问**。
+    //   ⇒ 抛错**直接冒到 `@error` 事件回调里**（DOM 事件回调抛出的异常无人接）
+    //     ⇒ 一次图片 404 就崩掉整局。
+    state.value = createInitialState({ unitNumber: 1, deck: makeSyntheticDeck(1, 1) })
+    const before = state.value
+    const question = currentQuestion(before)
+    const correct = question.card.options.find((option) => option.correct === true)!
+    const snapshot = JSON.stringify(before)
+
+    expect(
+      () => reportImageFailure(correct.id),
+      '题单被抽空时门面把异常抛了出来 —— 那会冒到 `@error` 事件回调里、无人接，' +
+        '一次图片 404 就崩掉整局（`reducer.applySkip` 的 `rejectAction` 就是这么抛的）',
+    ).not.toThrow()
+
+    expect(
+      JSON.stringify(state.value),
+      '题单被抽空时局面被改了 —— 那道题仍然挂在屏幕上（它的正确项图是破的），' +
+        '没有任何东西能推进它，局面也不该变',
+    ).toBe(snapshot)
+    expect(state.value.skippedEntryIds, '题单被抽空时仍然记了跳过 —— 跳过清单里多了一条从未被抽走的题').toEqual([])
+  })
+
+  it('🔴 连着两道题的图都破 ⇒ 第二道不抛（`skippedEntryIds` 参与判断）', () => {
+    // ⚠️ 这条比上一条更接近真实事故：不是「只有一道题」，
+    //   而是「正确项的图**成批**加载失败」（部署漏了 `public/assets/words/`）。
+    //   ⇒ 第一道跳掉之后，题单里只剩一道；那道再破 ⇒ 抽空。
+    state.value = createInitialState({ unitNumber: 1, deck: makeSyntheticDeck(2, 1) })
+    const first = currentQuestion(state.value)
+    const firstCorrect = first.card.options.find((option) => option.correct === true)!
+    reportImageFailure(firstCorrect.id)
+    expect(currentQuestion(state.value).entryId, '第一道没跳掉 ⇒ 后面这条测不到东西').not.toBe(first.entryId)
+    expect(state.value.skippedEntryIds).toEqual([first.entryId])
+
+    const second = currentQuestion(state.value)
+    const secondCorrect = second.card.options.find((option) => option.correct === true)!
+    const snapshot = JSON.stringify(state.value)
+
+    expect(
+      () => reportImageFailure(secondCorrect.id),
+      '第二道破图时抛了 —— 题单在那一刻被抽空了，门面必须先问一遍',
+    ).not.toThrow()
+    expect(JSON.stringify(state.value), '第二道还是被跳掉了 —— 局面推进到了一个不存在的下一题').toBe(snapshot)
+  })
+
+  it('⚠️ 反向自测：**绕过门面**直接 dispatch ⇒ 真的会抛（所以那道守卫是必要的）', () => {
+    // R-51：守卫必须是「会红」的，否则它就是一句注释。
+    //   这里做的是**行为级**反向自测：绕开门面、直接 dispatch 那个 skip action，
+    //   题单被抽空时 `reducer.applySkip` **确实抛错** ——
+    //   ⇒ 证明「抛错路径真实存在」，从而证明门面那道守卫不是多余的装饰。
+    //   ⚠️ 如果哪天 reducer 改成「抽空时优雅降级」，这条会红 ——
+    //   那时门面那道守卫仍可保留（它挡的是另一件事：不要让局面推进到空题单），
+    //   但这条反向自测的**理由**要改写，不是删掉。
+    state.value = createInitialState({ unitNumber: 1, deck: makeSyntheticDeck(1, 1) })
+    const question = currentQuestion(state.value)
+    const correct = question.card.options.find((option) => option.correct === true)!
+
+    expect(
+      () => applyAction(skipQuestion(question.entryId, correct.id)),
+      '绕开门面直接 dispatch 竟然没抛 —— 那说明 `applySkip` 不再对「题单被抽空」抛错了，' +
+        '请把本用例的理由改成「已优雅降级」而不是删掉它',
+    ).toThrow()
+  })
+
+  it('⚠️ 门面确实在 dispatch **之前**问了「跳完还有没有题」', () => {
+    // 这条把上一条从「字符串对照」升级为「源码级」——
+    //   源码级的那条守的是**形状**（有没有调 `nextQuestion`），
+    //   而行为级的两条守的是**结果**（不抛 / 不跳）。
+    //   ⚠️ 两者都要有：只有源码级 ⇒ 守卫挪个位置就放行；
+    //   只有行为级 ⇒ 一次改坏就红，但不知道「为什么这条会红」。
+    const source = stripComments(readFileSync(join(process.cwd(), 'src/app/store.ts'), 'utf8'))
+    const body = /export function reportImageFailure\([^)]*\)[^{]*\{([\s\S]*?)\n\}/.exec(source)?.[1] ?? ''
+    expect(body, '门面里找不到 `reportImageFailure` 的函数体').not.toBe('')
+    expect(
+      body,
+      '门面在 dispatch 之前没有问 `nextQuestion` —— 题单被抽空时 `applySkip` 会抛错，' +
+        '而那会冒到 `@error` 事件回调里、无人接',
+    ).toMatch(/nextQuestion\(/)
+    const guardAt = body.indexOf('nextQuestion(')
+    const dispatchAt = body.indexOf('applyAction(')
+    expect(dispatchAt, '门面里找不到 dispatch').toBeGreaterThan(-1)
+    expect(
+      guardAt,
+      '「问还有没有题」必须**排在 dispatch 之前** —— 反过来就是先跳后问，' +
+        '而 `applySkip` 抛出来时已经晚了',
+    ).toBeLessThan(dispatchAt)
+    // ⚠️📎 **不许用 `false &&` / `if (false)` 那种写法把守卫变成死代码** ——
+    //   「源码里有 `nextQuestion(`」只证明**出现过**，不证明**它在跑**。
+    //   （R-51 第 1 类失效的同型：判据在源码里，但被短路了。）
+    //   ⇒ 这里逐字断言门面里**不出现** `false` 这个字面量 ——
+    //     门面本来就该由 `phase.kind` / `.some()` / `isCorrect()` / `=== null`
+    //     四个真实判据组成，一个 `false` 都不该有。
+    expect(
+      body,
+      '门面里出现了 `false` 字面量 —— 那多半是把守卫短路成了死代码（`false && …`），' +
+        '「源码里有 nextQuestion」只证明出现过，不证明它在跑',
+    ).not.toMatch(/\bfalse\b/)
   })
 })

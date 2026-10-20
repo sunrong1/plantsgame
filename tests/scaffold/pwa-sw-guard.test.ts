@@ -464,16 +464,56 @@ describe('G128 —— build token 随媒体内容变化（Story 1.18 / AC-C5）'
     ).toBe(false)
   })
 
-  it('导出值就是 public/assets 的真实 token（形状与来源都对得上）', () => {
+  it('导出值就是 public/ 的真实 token（形状与来源都对得上）', () => {
     expect(
       assetTokenValue,
-      '导出的 build token 不是 12 位十六进制 —— 它由 public/assets/** 的内容哈希截断而来',
+      '导出的 build token 不是 12 位十六进制 —— 它由 public/** 的内容哈希截断而来',
     ).toMatch(/^[0-9a-f]{12}$/)
+    // ⚠️📎 **`[CR]` 2026-10-20 按 R-57 换范围**（**判据的意图一个字没变**）：
+    //   原判据比的是 `assetToken('public/assets')`，前提是「运行时缓存里只有
+    //   `public/assets` 下的媒体」。
+    //   ⚠️ **那个前提不成立**：`sw/sw-rules.ts` 的 `isMediaPathname` 逐字把
+    //   `.png` 与 `.svg` 都算作媒体 ⇒ `public/icons/*.png` 与 `public/favicon.svg`
+    //   **也在运行时缓存里** ⇒ 换一批图标时 token 必须跟着变，
+    //   否则旧图标长期驻留、主屏图标永远是旧的。
+    //   ⇒ 范围扩到 `public/` 全量，判据跟着改成比同一个范围。
+    //   ⚠️ **「导出值 == 按同一范围现算的值」这条要求本身没动** ——
+    //   它防的是「SW 拿到的 token 与构建时算的不是同一个」，
+    //   那会让它一激活就把「自己的」缓存当陈旧删掉（AC-C5 反过来变成事故）。
     expect(
-      assetTokenValue === assetToken('public/assets'),
-      '导出的 token 与按 public/assets 现算的不一致 —— SW 拿到的会是另一代缓存名，' +
+      assetTokenValue === assetToken('public'),
+      '导出的 token 与按 public 现算的不一致 —— SW 拿到的会是另一代缓存名，' +
         '于是它一激活就把「自己的」缓存当陈旧删掉（AC-C5 反过来变成事故）',
     ).toBe(true)
+  })
+
+  it('⚠️ 哈希范围覆盖了图标（否则换图标时 token 不变 ⇒ 旧图标长期驻留）', () => {
+    // ⚠️ **行为判据**（不是源码扫描）：造两棵只差一个图标的树，
+    //   token 必须不同 —— 这正是「图标换了要换代」这件事本身。
+    const d1 = mkdtempSync(join(tmpdir(), 'pwa-token-icons-a-'))
+    writeFileSync(join(d1, 'word.svg'), '<svg>词</svg>')
+    writeFileSync(join(d1, 'icon.png'), 'old-icon')
+    const before = assetToken(d1)
+    writeFileSync(join(d1, 'icon.png'), 'new-icon')
+    const after = assetToken(d1)
+    expect(
+      before === after,
+      '只换图标时 token 不变 —— 图标是媒体（`isMediaPathname` 收 `.png`）、' +
+        '进运行时缓存且 URL 不带哈希 ⇒ 旧图标会长期驻留，主屏图标永远是旧的（AC-C5）',
+    ).toBe(false)
+  })
+
+  it('⚠️ 目录不存在时不抛（否则新克隆 / CI 里 `vite.config.ts` 在模块加载期就崩）', () => {
+    // ⚠️ `[CR]` 2026-10-20 抓到的那条：原实现直接 `readdirSync(dir)`，
+    //   而 `assetTokenValue` 是**模块顶层求值** ⇒ 目录不存在时
+    //   **dev server 与 vitest 都起不来**，报错还指向 `readdirSync`（离源头很远）。
+    const missing = join(tmpdir(), `pwa-token-missing-${process.pid}-${Date.now()}`)
+    expect(() => assetToken(missing), '目录不存在时 assetToken 抛了 —— 新克隆 / 资产后生成的环境里构建直接起不来').not.toThrow()
+    expect(
+      assetToken(missing),
+      '目录不存在时返回的不是 12 位十六进制 —— SW 拿到的缓存名形状变了，' +
+        '而 `sw.ts` 的 `BUILD_TOKEN` 回落是字面量 `dev`（两者不是同一套口径）',
+    ).toMatch(/^[0-9a-f]{12}$/)
   })
 })
 

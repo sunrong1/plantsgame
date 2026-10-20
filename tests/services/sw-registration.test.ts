@@ -37,12 +37,21 @@ interface FakeRegistration {
 interface FakeContainer {
   controller: null | object
   register: ReturnType<typeof vi.fn>
+  /** 📎 `[CR]` 2026-10-20：容器也要能派发 `controllerchange`（本页被 SW 接管）。 */
+  addEventListener: (type: string, fn: () => void) => void
 }
 
 let container: FakeContainer
 let registration: FakeRegistration
 /** `statechange` 监听器池 —— 由 `startInstalling()` 填，由 `finishInstall()` 触发。 */
 let stateListeners: Array<() => void>
+/** `controllerchange` 监听器池 —— 由 `fireControllerChange()` 触发。 */
+let controllerListeners: Array<() => void>
+
+/** 派发 `controllerchange`（本页的控制权换给了 Service Worker）。 */
+function fireControllerChange(): void {
+  for (const fn of controllerListeners) fn()
+}
 
 /** 把 `navigator.serviceWorker` 装上一个可控的假实现。 */
 function installFakeContainer(): void {
@@ -99,9 +108,13 @@ async function freshModule(): Promise<typeof import('../../src/services/sw-regis
 
 beforeEach(() => {
   registration = makeRegistration()
+  controllerListeners = []
   container = {
     controller: null,
     register: vi.fn().mockResolvedValue(registration),
+    addEventListener: (type, fn) => {
+      if (type === 'controllerchange') controllerListeners.push(fn)
+    },
   }
   // ⚠️ **默认按安全上下文摆布**，需要不安全的那几条用例自己改。
   //   jsdom 的 `isSecureContext` 在 http 下是 false（实测），而 `localhost`
@@ -296,5 +309,136 @@ describe('G131 —— 「下次启动生效」的状态机（Story 1.18 / AC-C1�
 
     expect(calls, '退订之后还收到了广播 —— 模块级的监听器集合留了闭包，' +
       '每次挂载多留一份（Story 1.13 起的内存泄漏防线）').toBe(1)
+  })
+})
+
+// ── G202 —— `preparing` 不会永远挂着（`[CR]` 2026-10-20）─────────────────
+
+describe('G202 —— 「正在准备离线」不会永远挂着（Story 1.18 `[CR]` 2026-10-20）', () => {
+  // 🔥 **实测的缺陷**：首次安装后**当前页面不会被接管**（刻意不调 `clients.claim()`，
+  //   AC-C2）⇒ `navigator.serviceWorker.controller` 恒为 `null` ⇒
+  //   逐字 `publish(container.controller ? idle : preparing)` 每次都落在 `preparing`
+  //   ⇒ 孩子第一次打开游戏就**永久**顶着「正在准备离线，下次启动生效」那条条
+  //   （实测它压住 HUD 顶部 16px —— 阳光数字、进度标签、心形都被削掉一截）。
+  // ⇒ 现在有三条出路：装完（`activated`）、被接管（`controllerchange`）、装失败（`redundant`）。
+
+  it('装完（`activated`）⇒ 从 preparing 转 idle', async () => {
+    installFakeContainer()
+    container.controller = null
+    const mod = await freshModule()
+    const kinds: string[] = []
+    mod.subscribeServiceWorkerState((s) => kinds.push(s.kind))
+
+    mod.registerServiceWorker()
+    await Promise.resolve()
+    expect(kinds, '首次安装没有进 preparing —— 这条判据的前置不成立').toContain('preparing')
+
+    startInstalling()
+    registration.fireUpdateFound()
+    registration.installing!.state = 'activated'
+    for (const fn of stateListeners) fn()
+
+    expect(
+      kinds,
+      'SW 装完（activated）之后状态没有离开 preparing —— ' +
+        '「正在准备离线，下次启动生效」那条条会**永久**压在 HUD 上',
+    ).toContain('idle')
+    expect(
+      kinds.lastIndexOf('idle'),
+      '最后一个 idle 出现在 preparing 之前 —— 顺序反了说明状态机被改坏了',
+    ).toBeGreaterThan(kinds.indexOf('preparing'))
+    // ⚠️ **为什么比的是 `lastIndexOf` 而不是 `indexOf`**：
+    //   `subscribeServiceWorkerState` 订阅**即刻**收到当前值，而模块的初始
+    //   `current` 是 `{ kind: 'idle' }` ⇒ `kinds` 的**第一项**必然是 `idle`。
+    //   ⇒ 用 `indexOf('idle')` 会永远拿到 0，判据恒假。
+  })
+
+  it('被接管（`controllerchange`）⇒ 从 preparing 转 idle', async () => {
+    installFakeContainer()
+    container.controller = null
+    const mod = await freshModule()
+    const kinds: string[] = []
+    mod.subscribeServiceWorkerState((s) => kinds.push(s.kind))
+
+    mod.registerServiceWorker()
+    await Promise.resolve()
+    expect(kinds, '首次安装没有进 preparing —— 这条判据的前置不成立').toContain('preparing')
+
+    fireControllerChange()
+
+    // ⚠️📎 **这里必须比「最后一个 idle 在 preparing 之后」**，不能只写 `toContain('idle')` ——
+    //   `subscribeServiceWorkerState` 订阅即刻收到当前值，而模块的初始 `current`
+    //   就是 `{ kind: 'idle' }` ⇒ `kinds` 的第一项**必然**是 `idle`。
+    //   ⇒ 只写 `toContain('idle')` 的话，**把整个 controllerchange 监听删掉也照样绿**
+    //   （变异 K 实测：删掉之后这条判据仍然通过）。
+    expect(
+      kinds.lastIndexOf('idle'),
+      '本页被 SW 接管之后状态仍停在 preparing —— ' +
+        '「正在准备离线」那条条会跟着这页一直挂着',
+    ).toBeGreaterThan(kinds.indexOf('preparing'))
+  })
+
+  it('装失败（`redundant`）⇒ 转 unsupported（离线确实不可用）', async () => {
+    installFakeContainer()
+    container.controller = null
+    const mod = await freshModule()
+    const kinds: string[] = []
+    mod.subscribeServiceWorkerState((s) => kinds.push(s.kind))
+
+    mod.registerServiceWorker()
+    await Promise.resolve()
+
+    startInstalling()
+    registration.fireUpdateFound()
+    registration.installing!.state = 'redundant'
+    for (const fn of stateListeners) fn()
+
+    expect(
+      kinds.lastIndexOf('unsupported'),
+      'SW 安装被放弃（redundant）之后状态仍停在 preparing —— ' +
+        '那条条会一直说「正在准备离线」，而离线能力永远不会有',
+    ).toBeGreaterThan(kinds.indexOf('preparing'))
+  })
+
+  it('⚠️ `update-ready` 不被这三条出路抹掉（家长必须看到「有新版本」）', async () => {
+    // ⚠️ 若「装完即完成」无条件广播 `idle`，就会把刚报出来的 `update-ready` 抹掉 ——
+    //   症状是「提示闪一下就没了，家长以为没更新」。
+    container.controller = { id: 'old' }
+    registration.waiting = { id: 'waiting' }
+    installFakeContainer()
+    const mod = await freshModule()
+    const kinds: string[] = []
+    mod.subscribeServiceWorkerState((s) => kinds.push(s.kind))
+
+    mod.registerServiceWorker()
+    await Promise.resolve()
+    expect(kinds, '有 waiting 时没有报 update-ready —— 这条判据的前置不成立').toContain('update-ready')
+
+    // 触发「装完」与「被接管」两条出路。
+    startInstalling()
+    registration.fireUpdateFound()
+    registration.installing!.state = 'activated'
+    for (const fn of stateListeners) fn()
+    fireControllerChange()
+
+    expect(
+      kinds[kinds.length - 1],
+      '「有新版本」的状态被「装完 / 被接管」抹掉了 —— ' +
+        '家长看不到提示就不会去重启，新版本永远不生效',
+    ).toBe('update-ready')
+  })
+
+  it('反向自测：把三条出路去掉 ⇒ 上面三条会红', () => {
+    // R-51：守卫必须真的在看**行为**，不是「源码里有个 activated 字样」。
+    const withoutOutlets = `
+      function watchRegistration(registration) {
+        publish(navigator.serviceWorker.controller ? { kind: 'idle' } : { kind: 'preparing' })
+        if (registration.waiting) publish({ kind: 'update-ready' })
+      }`
+    expect(withoutOutlets, '这个实现没有「装完」这条出路 ⇒ 上面第一条会红').not.toMatch(/activated/)
+    expect(withoutOutlets, '这个实现没有「被接管」这条出路 ⇒ 上面第二条会红').not.toMatch(
+      /controllerchange/,
+    )
+    expect(withoutOutlets, '这个实现没有「装失败」这条出路 ⇒ 上面第三条会红').not.toMatch(/redundant/)
   })
 })

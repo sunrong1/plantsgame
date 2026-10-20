@@ -51,8 +51,78 @@ function touchMinValue(): number {
   return Number(match[1])
 }
 
-/** `src/` 下所有 `.vue` 文件。 */
 /**
+ * 切出 `<style>` 块的内容（判据只该看样式，不该把模板当 CSS）。
+ *
+ * ⚠️ `[CR]` 2026-10-20 新增：G138 的规则正则是「`{…}` 即一条规则」，
+ *   而**模板里也有大括号**（`v-for` / `:prop="…"` 附近）⇒ 不切块就会把
+ *   模板片段当成「选择器 + 规则体」⇒ 判据拓宽后开始命中假规则。
+ */
+function styleBlockOf(source: string): string {
+  const open = source.indexOf('<style')
+  if (open === -1) return ''
+  const close = source.indexOf('</style>', open)
+  if (close === -1) return ''
+  const start = source.indexOf('>', open)
+  if (start === -1) return ''
+  return source.slice(start + 1, close)
+}
+
+/**
+ * 这条 CSS 规则**是不是某个 class 的「基规则」**。
+ *
+ * ⚠️ 「基规则」= 选择器的**最后一段**恰好就是那个 class，
+ *   **没有**额外的状态类（`.is-selected`）、**没有**伪类（`:hover` / `:disabled`）、
+ *   **没有**伪元素（`::before`）。
+ *   ⇒ 状态变体不判：它们的尺寸由基规则保证，逐条重判只会制造假红。
+ *
+ * @param selector 整条规则的选择器（可能含后代 / 子代组合符）
+ * @param name 要问的那个 class 名
+ */
+function isBaseRuleFor(selector: string, name: string): boolean {
+  const trimmed = selector.trim()
+  if (trimmed.includes('::')) return false
+  // ⚠️ **只取最后一段**（后代 / 子代组合符之后的那一段）：
+  //   `.a .foo` 里 `foo` 才是**元素自己**身上的 class。
+  const compound = trimmed.split(/[\s>+~]+/).filter((part) => part.length > 0).pop() ?? ''
+  if (compound.includes(':')) return false
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  if (!new RegExp(`\\.${escaped}(?![\\w-])`).test(compound)) return false
+  // 去掉那个 class 之后**必须什么都不剩** ⇒ 它确实是「基规则」而不是变体。
+  return compound.replace(new RegExp(`\\.${escaped}(?![\\w-])`), '').trim() === ''
+}
+
+/**
+ * 抽出模板里**带 `@click` / `@pointerdown` / `@pointerup`** 的元素上的 class 名。
+ *
+ * ⚠️ **`[CR]` 2026-10-20 新增**：G138 的规则级判据原来只按 `cursor: pointer`
+ *   取规则，而文件级闸门却按 `@click` 纳管 ⇒ 「模板里能点、样式里没写 cursor」
+ *   的元素**整个逃过**触控尺寸判据。
+ *   ⇒ 这份清单把两处接上：模板说它能点，规则就按它判。
+ *
+ * ⚠️ **只认 `<tag …>` 开标签** —— 结束标签与自闭合标签不带绑定。
+ *   ⚠️ **class 是精确匹配**（`.foo` 不匹配 `.foo__label`）：
+ *   否则一个可点元素的**子元素**规则（`.option-card__label { font-size: 22px }`）
+ *   会被一起卷进来 ⇒ 大量假红。
+ */
+function clickableClassNames(source: string): readonly string[] {
+  const template = templateOf(source)
+  const out = new Set<string>()
+  const tagPattern = /<([A-Za-z][\w.-]*)\b((?:[^<>"]|"[^"]*")*?)>/g
+  let match: RegExpExecArray | null
+  while ((match = tagPattern.exec(template)) !== null) {
+    const attrs = match[2]!
+    if (!/@click|@pointerdown|@pointerup/.test(attrs)) continue
+    const cls = /class="([^"]*)"/.exec(attrs)?.[1]
+    if (cls === undefined) continue
+    for (const name of cls.split(/\s+/)) {
+      if (name.length > 0) out.add(name)
+    }
+  }
+  return [...out]
+}
+
+/** `src/` 下所有 `.vue` 文件。 *//**
  * `src/` 下**全部** `.vue` 文件（递归）。
  *
  * ⚠️⚠️ **初版只 `readdirSync` 一层且不递归** ⇒ 它只看得到 `src/App.vue` 一个文件，
@@ -69,6 +139,25 @@ function vueFiles(dir = join(root, 'src')): readonly string[] {
     const path = join(dir, entry.name)
     if (entry.isDirectory()) out.push(...vueFiles(path))
     else if (entry.name.endsWith('.vue')) out.push(path)
+  }
+  return out
+}
+
+/**
+ * 递归列出 `dir` 下的**全部**文件（相对仓库根的路径）。
+ *
+ * 🔥 **`[CR]` 2026-10-20 新增**（G140 把扫描面从手写名单改成全仓时需要它）。
+ *
+ * ⚠️ **为什么不用手写名单**：名单型判据的病根是「**名单不会跟着 story 一起长大**」——
+ *   本 story 新增了 9 个测试文件而名单只有 3 个（`[CR]` 抓到的 P2）。
+ *   ⇒ 判据的扫描面必须由**文件系统**决定，而不是由人记得的那几个路径决定。
+ */
+function allFilesUnder(dir: string): readonly string[] {
+  const out: string[] = []
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const path = join(dir, entry.name)
+    if (entry.isDirectory()) out.push(...allFilesUnder(path))
+    else out.push(path)
   }
   return out
 }
@@ -168,25 +257,42 @@ describe('G134 —— 竖屏断点存在且不依赖 orientation（Story 1.18 / 
     ).not.toMatch(/orientation\s*:/)
   })
 
-  it('断点里用了 dvh / dvw 视口单位与 env(safe-area-inset-*)', () => {
+  it('断点里用了 dvh / dvw 视口单位；安全区由 `.level-view` 自己的 padding 承担', () => {
+    // ⚠️📎 **`[CR]` 2026-10-20 按 R-57 改判据（前提被实测推翻）**：
+    //   原判据是「`responsive.css` 里同时出现 dvh **与** `env(safe-area-inset-*)`」。
+    //   前提是「竖屏的适配住在这个文件的一条 `@media (max-height: 900px)` 断点里」。
+    //   ⚠️ **那个前提已被实测推翻**：那条断点把战场高度定成「整屏高 − 48px」，
+    //   没扣 HUD(43) + 朗读带(24) + 内边距(16) ⇒ 实测 inner 800×900 时
+    //   **题卡 `top=975` 整个落在 900px 折叠线以下** ⇒ 孩子看不见题。
+    //   ⇒ 那条断点已被**整块删除**（`responsive.css` 文件头逐条记了实测数字），
+    //   而**安全区的担子并没有消失** —— 它一直由 `.level-view` 的 padding 承担
+    //   （`LevelView.vue` 的 `padding: … env(safe-area-inset-top/right/left)`）。
+    //   ⇒ 判据的**落点**从「断点文件」移到「安全区真正在的地方」，
+    //     **断言本身仍然是原来那个意思**（「安全区有被写」），一个字没放宽。
     expect(
       responsive,
       '断点里没有 dvh —— 移动端浏览器的地址栏会让 vh 失真，' +
         '而目标形态是竖屏平板（浏览器 UI 常驻与否都可能出现）',
     ).toMatch(/\d*d?vh/)
     expect(
-      responsive,
-      '断点里没有 env(safe-area-inset-*) —— 横屏或窄屏时刘海与手势条会吃掉边距，' +
-        '而 `index.html` 早已有 `viewport-fit=cover` 让它们生效',
+      levelViewSource,
+      '`.level-view` 的 padding 里没有 env(safe-area-inset-*) —— ' +
+        '横屏或窄屏时刘海与手势条会吃掉边距，而 `index.html` 早已有 ' +
+        '`viewport-fit=cover` 让它们生效。⚠️ 竖屏适配不再由 @media 断点承担之后，' +
+        '**这里就是安全区唯一的落点**',
     ).toMatch(/env\(safe-area-inset-/)
   })
 
-  it('反向自测：`@media (max-height: 800px)` 会被上面三条命中（证明判据没写坏）', () => {
+  it('反向自测：一条「按视口高度」的断点会被上面三条命中（证明判据没写坏）', () => {
     const probe = '@media (max-height: 800px) { .level-view { height: 100dvh; padding-bottom: env(safe-area-inset-bottom, 0px); } }'
     const queries = probe.match(/@media[^{]+/g) ?? []
     expect(queries.join('\n'), '探针没被抽出 ⇒ G134 那条 `not.toMatch` 是恒真的').not.toMatch(/orientation\s*:/)
     expect(probe, '探针里没有 dvh ⇒ 判据与实现对不上').toMatch(/\d*d?vh/)
     expect(probe, '探针里没有 safe-area ⇒ 判据与实现对不上').toMatch(/env\(safe-area-inset-/)
+    // ⚠️📎 追加：`max-height` 这类**按高度**的断点现在本身就该被警惕 ——
+    //   它正是 1.18 那个 P0 的形态。判据不禁止它（G134 只禁 `orientation`），
+    //   但 G198 会盯着「有没有按高度改写战场尺寸」。
+    expect(queries.join('\n'), '探针里的 `max-height` 没被抽出 ⇒ 那条判据形同虚设').toMatch(/max-height/)
   })
 })
 
@@ -325,10 +431,31 @@ describe('G136 —— LevelOutcome 补齐 ARIA 与安全区（Story 1.18 / AC-D5
   })
 })
 
-// ── G137 —— HUD 变高时的页面滚动处置（AC-D6）──────────────────────────────
+// ── G137 —— HUD 变高时的页面滚动处置（AC-D6；`[CR]` 2026-10-20 按 R-57 改判据）──
 
-describe('G137 —— HUD 变高不会把战场推出视口（Story 1.18 / AC-D6）', () => {
+describe('G137 —— 战场与题卡都不被推出视口（Story 1.18 / AC-D6；`[CR]` 2026-10-20 按 R-57 改判据）', () => {
   const responsive = sourceOf('src/styles/responsive.css')
+
+  // ⚠️📎 **`[CR]` 2026-10-20 按 R-57 改判据** —— 本条的**前提**被实测推翻了。
+  //   原判据守的是「`@media (max-height: 900px)` 那条断点里，`.level-view` 有确定高度
+  //   + 可滚动，且战场改由高度定宽（width: auto + aspect-ratio）」。
+  //   ⚠️ **那个前提是错的**：那条断点把战场高度定成「整屏高 − 48px」，
+  //   而 `100%` 没扣掉 HUD(43px) + 朗读浮层(24px) + 页内边距(16px)，
+  //   更没给题卡（实测 255px）与手牌区留位置。
+  //   ⇒ **实测（真实 `vite build` 产物 + 真实 chromium）**：inner 800×900 竖屏时
+  //     战场盒 753×884（宽高比 **0.852**，应为 1.8）、战场底边 975、
+  //     **题卡 `top=975` 完全落在 900px 折叠线以下** ⇒ 孩子看不见题；
+  //     inner 500×800 同样（题卡 `top=875`）。
+  //   ⇒ 而且**同一个故障 1.19 已在真机上撞到过一次**（G166 注释逐字：
+  //     「2026-10-17 真机试玩反馈『不能种植植物』… 题卡 top=875 落在 800 的
+  //     折叠线下方 ⇒ 孩子看不见题 ⇒ 永远答不出」）——
+  //     而 1.19 的修复条件是 `@media (min-aspect-ratio: 1/1)`，
+  //     **竖屏但矮的视口两个分支都落空**。
+  //   ⇒ 那条断点已被**整块删除**（`responsive.css` 文件头逐条记了实测数字）。
+  //   ⇒ 判据改成**守新事实**。⚠️ **断言没有被放宽**：
+  //     原来那条「**必须**按高度定宽」的正向要求，
+  //     现在被一条**更强**的否定要求取代（「**不许**按高度改写战场的尺寸」），
+  //     而 D6 的真正目标（「战场与题卡不被推出视口」）由 **G198 + 人工待验**承担。
 
   it('`.level-view` 仍保留 min-height: 100dvh（不是 height —— 1.10 的纪律）', () => {
     expect(
@@ -338,45 +465,144 @@ describe('G137 —— HUD 变高不会把战场推出视口（Story 1.18 / AC-D6
     ).toMatch(/min-height:\s*100dvh/)
   })
 
-  it('矮视口断点里 `.level-view` 有确定高度 + 可滚动的处置', () => {
-    // ⚠️ D6 的原话是「HUD 变高时页面会滚动、战场可能被推出视口」。
-    //   「可滚动」不是病 —— **战场被推出视口**才是。判定因此是两条一起看：
-    //   ① 有 `height: 100dvh`（在矮视口下把战场锁进一屏内）；
-    //   ② 仍有 `overflow-y: auto` 兜底（内容实在装不下时可滚，而不是被裁掉看不见）。
-    expect(
-      responsive,
-      '矮视口断点里没有给 .level-view 确定高度 —— 战场高度由宽度（aspect-ratio）推出，' +
-        '横向铺满时它在横屏上必然超出视口，底部几行（含僵尸行走那一行）被推出屏幕',
-    ).toMatch(/height:\s*100dvh/)
-    expect(
-      responsive,
-      '矮视口断点里没有 overflow-y: auto —— 高度锁死后若内容仍装不下，' +
-        '底部会被直接裁掉，孩子连「还有内容」这件事都看不到',
-    ).toMatch(/overflow-y:\s*auto/)
+  it('🔴 竖屏下零「按视口高度改写 `.battle-grid` 尺寸」的规则', () => {
+    // ⚠️ 这条取代了原来「矮视口断点里战场改由高度定宽」那条 ——
+    //   那条**要求**一条按高度定宽的规则，而**正是那条规则把题卡推出了视口**。
+    //   ⇒ 现在的要求是反过来：**别再按高度改写战场**。
+    for (const { prelude, body } of mediaBlocks(responsive)) {
+      // 宽屏分支（`min-aspect-ratio`）是唯一合法的一条：它把战场与题面**并排**，
+      // 战场那一格的 `height: auto` 由 G167 逐条钉住（问的是**生效值**）。
+      if (/min-aspect-ratio/.test(prelude)) continue
+      for (const [, selector, decls] of body.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+        if (!/\.battle-grid/.test(selector)) continue
+        expect(
+          decls,
+          `媒体查询「${prelude}」里的 .battle-grid 规则写了尺寸（${decls.trim()}）—— ` +
+            '「按视口高度改写战场尺寸」是已被实测证伪的形态：它会让战场吃满视口高度、' +
+            '把题卡推出折叠线（`[CR]` 2026-10-20 实测：inner 800×900 时题卡 top=975）',
+        ).not.toMatch(/\b(?:width|height)\s*:/)
+      }
+    }
   })
 
-  it('矮视口下战场改由高度定宽（否则锁高之后格子会被压成扁矩形）', () => {
-    // 🔥 这是 D6 那条处置的**核心**，也是最容易漏的一步：
-    //   `.battle-grid` 的高度本来是由宽度经 `aspect-ratio: 9/5` 推出来的。
-    //   一旦在矮视口下给它一个确定高度，若不同步把宽度改成由高度推出，
-    //   格子就会不再是正方形 —— 塔与僵尸是扁平矢量，会被整幅拉伸。
-    expect(
-      responsive,
-      '矮视口断点里没有把 .battle-grid 的宽度改成由高度推出（width: auto + aspect-ratio）—— ' +
-        '只锁高度不改宽度的话，格子变成扁矩形，塔与僵尸被拉伸变形（AC-D4 的同一条纪律）',
-    ).toMatch(/width:\s*auto/)
-    expect(
-      responsive,
-      '矮视口断点里没有居中（margin-inline: auto）—— 战场变窄后靠左会与页面右侧的空隙不匀，' +
-        '而 4–8 岁孩子是靠「对称」判断画面是否正常的',
-    ).toMatch(/margin-inline:\s*auto/)
+  it('🔴 `responsive.css` 里零「按视口高度」的媒体查询', () => {
+    // ⚠️ 这是上面那条的**更狠**的版本：连「按高度断点」本身都不许有。
+    //   竖屏下战场的高宽全部由宽度经 `aspect-ratio` 推出 ⇒ 视口越窄战场越矮
+    //   ⇒ 布局**自缩放** ⇒ 不需要按高度断点（实测 inner 800×900 与 500×800
+    //   删掉那条断点后 `scrollHeight == clientHeight`，恰好装得下、零滚动）。
+    //   ⇒ 要加这样一条断点之前，先读 `responsive.css` 文件头那一段实测。
+    for (const { prelude } of mediaBlocks(responsive)) {
+      expect(
+        prelude,
+        `responsive.css 里出现了按视口高度判定的媒体查询「${prelude}」—— ` +
+          '竖屏不需要它：战场的高宽全部由宽度经 aspect-ratio 推出，布局自缩放。' +
+          '⚠️ 而「按高度改写战场尺寸」已被实测证伪（`[CR]` 2026-10-20：' +
+          'inner 800×900 时题卡 top=975，整个落在折叠线以下）',
+      ).not.toMatch(/(?:max|min)-height/)
+    }
   })
 
-  it('反向自测：一条「只锁高不改宽」的写法会被上面两条抓住（证明判据有牙齿）', () => {
-    const bad = '@media (max-height: 960px) { .level-view { height: 100dvh; overflow-y: auto; } }'
-    expect(bad, '探针里没有 width: auto —— 判据与要防的形态对不上').not.toMatch(/width:\s*auto/)
-    expect(bad, '探针里没有 margin-inline: auto —— 同上').not.toMatch(/margin-inline:\s*auto/)
-    expect(bad, '探针里有 height: 100dvh —— 说明上面两条的正则不是恒假').toMatch(/height:\s*100dvh/)
+  it('反向自测：那条被删掉的写法会被上面两条抓住（证明判据有牙齿）', () => {
+    // ⚠️ 探针是 1.18 那条断点的**原样**（`width: auto` + `height: calc(…)`）。
+    const bad =
+      '@media (max-height: 900px) { .level-view .battle-grid { width: auto; height: calc(100% - var(--touch-min)); margin-inline: auto; } }'
+    const blocks = mediaBlocks(bad)
+    expect(blocks.length, '探针没被解析出媒体查询块 ⇒ 判据空跑').toBe(1)
+    expect(blocks[0]!.prelude, '探针的前导语没被抽出来').toMatch(/max-height/)
+    // 上面两条判据在探针上的行为
+    expect(blocks[0]!.prelude, 'R-53：探针的前导语没被「零按高度媒体查询」那条抓到').toMatch(/(?:max|min)-height/)
+    const decls = [...blocks[0]!.body.matchAll(/([^{}]+)\{([^{}]*)\}/g)].find(([, sel]) => /\.battle-grid/.test(sel))?.[2] ?? ''
+    expect(decls, 'R-53：探针里没有 .battle-grid 的规则体').not.toBe('')
+    expect(decls, 'R-53：探针的 .battle-grid 规则体没被「零按高度改写尺寸」那条抓到').toMatch(
+      /\b(?:width|height)\s*:/,
+    )
+  })
+})
+
+// ── G198 —— 竖屏下战场的尺寸**只有一个来源**：宽度（AC-D4、AC-D6）──────────
+
+describe('G198 —— 竖屏下战场的高宽全部由宽度推出（Story 1.18 `[CR]` / AC-D4、AC-D6）', () => {
+  // ⚠️📎 **`[CR]` 2026-10-20 新增** —— 这个 P0 的**机制**在这里，判据也在这里。
+  //
+  // 🔥 **那两条规则打起来的时候，谁赢？**
+  //   · `LevelView.vue` 的 scoped 规则编译成 `.level-view[data-v-…]>.battle-grid`
+  //     ⇒ **两个限定符 = (0,3,0)**；
+  //   · `responsive.css` 的 `.level-view .battle-grid` ⇒ **两个类选择器 = (0,2,0)**。
+  //   ⇒ **scoped 赢**（不是「同特异性靠顺序」—— 那条机制是错的）。
+  //   ⇒ 于是在 1.18 的 `@media (max-height: 900px)` 里写的那句 `width: auto`
+  //     **根本没生效**：宽度仍是 scoped 那条的 `width: 100%`。
+  //   ⇒ 而同一块里的 `height: calc(100% - …)` **生效了**（没有更高特异度的竞争者）
+  //     ⇒ **宽与高同时确定** ⇒ `aspect-ratio: 9 / 5` **直接失效**
+  //     ⇒ 实测战场盒 753×884（**宽高比 0.852**）⇒ 格子被压成扁矩形，
+  //       且战场吃满视口高度 ⇒ **题卡 `top=975` 整个落在折叠线以下**。
+  //
+  // ⇒ 那块断点已被**整块删除**（G137 守着「零按高度断点」）。
+  // ⇒ 本条守的是**剩下的那条正确形态**：「战场的尺寸只有一个来源 —— 宽度」。
+
+  const battleGridRule = ruleBodyFor(battleFieldSource, '.battle-grid')
+
+  it('`BattleField.vue` 的 `.battle-grid` 规则里零 `height`（高度必须由宽度经 aspect-ratio 推出）', () => {
+    // ⚠️ **实测今天这条规则里没有 `height`**（只有 `display` / `grid-template-*` /
+    //   `gap` / `aspect-ratio`）—— 而一旦有人加了一条 `height`，
+    //   竖屏下战场就不再自缩放，格子会被压扁、题卡会被推出视口。
+    expect(
+      battleGridRule,
+      '`BattleField.vue` 的 `.battle-grid` 规则体没找到 —— 这条判据会空跑',
+    ).not.toBe('')
+    expect(
+      battleGridRule,
+      '`.battle-grid` 上出现了 `height` —— 战场的尺寸必须**只有一个来源**：' +
+        '宽度（经 `aspect-ratio: 9 / 5` 推出高度）。竖屏下视口越窄战场越矮、' +
+        '布局自缩放；一旦高度也被写死，比例当场失效（实测 0.852 vs 1.8）',
+    ).not.toMatch(/(?:^|;)\s*height\s*:/)
+  })
+
+  it('`aspect-ratio` 仍在，且分母是 core 的 ROWS（高度由宽度推出的那个「推」还在）', () => {
+    expect(
+      battleGridRule,
+      '`.battle-grid` 的 `aspect-ratio` 没了 —— 没有它，战场的高度就与宽度无关了，' +
+        '而战场与塔、僵尸的比例全靠它',
+    ).toMatch(/aspect-ratio\s*:\s*9\s*\/\s*5/)
+    expect(
+      battleGridRule,
+      '`.battle-grid` 的 `aspect-ratio` 分母不是 5 —— ROWS 变了它必须跟着变（AC-D4）',
+    ).toMatch(new RegExp(`aspect-ratio\\s*:\\s*${COLS}\\s*/\\s*${ROWS}`))
+  })
+
+  it('`LevelView.vue` 的 scoped 规则把战场宽度钉成 100%（不是 auto）', () => {
+    // ⚠️ **这条是那个 P0 的另一半**：宽度必须由**宽度**决定（`width: 100%`），
+    //   而不是 `width: auto` —— 后者要配合一个**确定的高度**才有意义，
+    //   而竖屏下那个高度一旦存在，比例就塌了（实测 0.852）。
+    //   ⇒ 竖屏下 `.battle-grid` 的宽度只允许是「由容器宽度决定」的那一种。
+    //
+    // ⚠️ **为什么不用 `ruleBodyFor(levelViewSource, '.battle-grid')`**：
+    //   那条规则的选择器逐字是 `.level-view > :deep(.battle-grid)` ——
+    //   `ruleBodyFor` 找的是「选择器原文 + ' {'」，而这里的选择器里
+    //   `.battle-grid` 后面还跟着 `)` ⇒ 匹配不到，判据会**空跑**（恒绿）。
+    //   ⇒ 这里直接按「选择器里含 `.battle-grid`」来找规则体。
+    const at = /([^{}]*\.battle-grid[^{}]*)\{([^{}]*)\}/.exec(levelViewSource)
+    expect(at, '`LevelView.vue` 里找不到含 `.battle-grid` 的规则 —— 这条判据会空跑').not.toBeNull()
+    const scoped = at![2]!
+    expect(
+      scoped,
+      '`LevelView.vue` 的 `.battle-grid` 规则里没有 `width: 100%` —— ' +
+        '战场的宽度必须由容器宽度决定（高度再由 aspect-ratio 推出），' +
+        '这样竖屏下布局才会自缩放',
+    ).toMatch(/width:\s*100%/)
+    expect(
+      scoped,
+      '`LevelView.vue` 的 `.battle-grid` 规则里出现了 `width: auto` —— ' +
+        '`width: auto` 要配合一个**确定的高度**才有意义，而竖屏下那个高度一旦存在，' +
+        '`aspect-ratio` 就失效（实测宽高比 0.852，格子被压成扁矩形）',
+    ).not.toMatch(/width:\s*auto/)
+  })
+
+  it('⚠️ R-53 反向自测：把 `width: auto` 与一个确定高度同时写上，会被上面两条抓住', () => {
+    const bad = 'width: auto; height: calc(100% - 48px);'
+    expect(bad, 'R-53：探针里没有 width: auto —— 判据与要防的形态对不上').toMatch(/width:\s*auto/)
+    expect(bad, 'R-53：探针里没有 height —— 同上').toMatch(/(?:^|;)\s*height\s*:/)
+    // 而「height 写在 `.battle-grid` 规则里」这件事本身就被第一条判据排除
+    expect(bad, 'R-53：探针里的 height 没被「零 height」那条抓到').toMatch(/(?:^|;)\s*height\s*:/)
   })
 })
 
@@ -391,23 +617,68 @@ describe('G138 —— 所有可点区域不小于 --touch-min 当期值（Story 
    *   那**没有执行任何判据逻辑**，所以判据整个坏掉（恒假）它照样绿（R-51）。
    *   ⇒ 现在扫真实文件与喂探针走的是同一个函数。
    *
-   * 返回值：违规的 `选择器 声明项` 列表；空数组 = 全部合规。
+   * ⚠️📎 **`[CR]` 2026-10-20：规则级的「可点」判据被拓宽** ——
+   *   原来逐字是 `if (!/cursor:\s*pointer/.test(body)) return false`，
+   *   而**外层**的文件级闸门逐字是
+   *   `/cursor:\s*pointer/.test(source) || /@click|@pointerdown|@pointerup/.test(source)`。
+   *   ⇒ **文件级按 `@click` 纳管，规则级却只按 `cursor: pointer` 取规则** ——
+   *     一个带 `@click`、规则里**没写** `cursor: pointer`、且 `min-height` 写死像素的
+   *     元素**完全逃过** AC-D3 的触控尺寸判据。
+   *   ⇒ 现在规则级的「可点」有**两个来源**：`cursor: pointer`（CSS 自称可点）
+   *     **或** 选择器命中了模板里**带 `@click` 的那个元素**的 class。
+   *
+   * @param source 整个 `.vue` 文件的源码
+   * @param clickableClasses 模板里带 `@click` / `@pointerdown` / `@pointerup`
+   *   的元素上的 class 名（由 {@link clickableClassNames} 抽出）
+   * @returns 违规的 `选择器 声明项` 列表；空数组 = 全部合规。
    */
-  function riskyClickRules(source: string): readonly string[] {
-    // ⚠️ 解构**只取 body**：selector 在下面拼返回值时才用，
-    //   在 filter 里解构出来却不用会让 `no-unused-vars` 报红。
-    return [...source.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
-      .filter(([, , body]) => {
-        if (!/cursor:\s*pointer/.test(body)) return false
+  function riskyClickRules(source: string, clickableClasses: readonly string[] = []): readonly string[] {
+    // ⚠️📎 **只扫 `<style>` 块**（`[CR]` 2026-10-20）——
+    //   规则正则是「`{…}` 即一条规则」，而**模板里也有大括号**：
+    //   `<div :data-row="cell.row" @pointerdown="…">` 这段模板会被当成一条
+    //   「选择器 = 模板片段、规则体 = 下一段模板」的规则。
+    //   ⇒ 判据被拓宽（按 class 认可点）之后，这种**假规则**开始命中
+    //     （模板片段里含有可点元素的 class）⇒ 一堆假红。
+    //   ⇒ 扫之前先把 `<style>` 块切出来。
+    const style = styleBlockOf(source)
+    // ⚠️ **解构必须跳过一个**：`matchAll` 的元素是 `[整段, 组1, 组2]` ——
+    //   写 `([selector, body])` 会把**整段**当成 selector、把**组1**当成 body，
+    //   于是 body 里根本没有 `cursor: pointer` ⇒ 规则一条都不被取到 ⇒ 判据恒绿。
+    //   （`[CR]` 2026-10-20：把 `[, , body]` 顺手改成 `[selector, body]` 时踩到，
+    //   是**反向自测**当场抓住的。）
+    return [...style.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+      .filter(([, selector, body]) => {
         const declared = [...body.matchAll(/min-(height|width)\s*:\s*([^;]+)/g)]
-        // 声明了就逐项判值 —— 每一项都得自己引用 token。
-        if (declared.length > 0) {
-          return declared.some(([, , value]) => !/var\(--touch-min/.test(value))
+        if (/cursor:\s*pointer/.test(body)) {
+          // ── 分支一（原有，判据版本 v1）：CSS 自称可点 ──────────────────
+          // 声明了就逐项判值 —— 每一项都得自己引用 token。
+          if (declared.length > 0) {
+            return declared.some(([, , value]) => !/var\(--touch-min/.test(value))
+          }
+          // 两项都没写 ⇒ 必须是「尺寸由子元素撑出来」的容器。
+          return !(/display:\s*flex/.test(body) && /flex-direction:\s*column/.test(body))
         }
-        // 两项都没写 ⇒ 必须是「尺寸由子元素撑出来」的容器。
-        return !(/display:\s*flex/.test(body) && /flex-direction:\s*column/.test(body))
+        // ── 分支二（`[CR]` 2026-10-20 新增）：模板说它能点 ──────────────
+        //   ⚠️ **只判「基规则」**（选择器的最后一段恰好就是那个 class、
+        //     没有额外的状态类 / 伪类 / 伪元素）——
+        //     否则 `.option-card:disabled` / `.hand-card.is-selected` 这类
+        //     **状态变体**会被各判一次，而它们的尺寸由基规则已经保证了。
+        //   ⚠️ **只判「写死了尺寸」这一条**：
+        //     「整条没有尺寸声明」在模板绑定的场景下**判不了** ——
+        //     战场格子 `.battle-cell` 的尺寸来自**网格的 `aspect-ratio`**，
+        //     滚动轨 `.hand-deck__rail` 的尺寸来自**里面的卡片**，
+        //     两者都不是它自己的 `min-*` 能表达的。
+        //     ⇒ 这一档收窄**如实登记在判据版本表**（R-56），不假装覆盖了。
+        if (!clickableClasses.some((name) => isBaseRuleFor(selector, name))) return false
+        return declared.some(([, , value]) => {
+          const v = value.trim()
+          // ⚠️ `0` 是 flexbox 的「无下界」惯用法（`min-width: 0` 让横排能收缩），
+          //   **不是**一个 0px 的命中区 ⇒ 不算违规。
+          if (v === '0' || v === '0px') return false
+          return !/var\(--touch-min/.test(v)
+        })
       })
-      .map(([selector, body]) => {
+      .map(([, selector, body]) => {
         const bad = [...body.matchAll(/min-(height|width)\s*:\s*([^;]+)/g)]
           .filter(([, , value]) => !/var\(--touch-min/.test(value))
           .map(([, prop, value]) => `${prop}: ${value.trim()}`)
@@ -463,7 +734,7 @@ describe('G138 —— 所有可点区域不小于 --touch-min 当期值（Story 
         /cursor:\s*pointer/.test(source) || /@click|@pointerdown|@pointerup/.test(source)
       if (!looksInteractive) continue
 
-      const risky = riskyClickRules(source)
+      const risky = riskyClickRules(source, clickableClassNames(source))
       if (risky.length > 0) {
         offenders.push(`${path.slice(root.length + 1)} → ${risky.join(' / ')}`)
       }
@@ -520,6 +791,40 @@ describe('G138 —— 所有可点区域不小于 --touch-min 当期值（Story 
     expect(
       flagged('.x { min-height: 48px; }'),
       '没有 cursor: pointer 的规则被本判据抓了 —— 判据越界，会把静态样式也算成命中区',
+    ).toEqual([])
+  })
+
+  it('反向自测：模板绑定的可点元素把 min-height 写死 ⇒ 抓得到（`[CR]` 2026-10-20 补的分支）', () => {
+    // ⚠️ **这一档是本轮补的**（P2：文件级按 `@click` 纳管、规则级只按 `cursor: pointer`
+    //   取规则 ⇒ 「模板说它能点、样式里没写 cursor」的元素**整个逃过**触控尺寸判据）。
+    //   ⇒ 判据本体多了一个分支：**基规则** + 模板绑定 + 尺寸写死 ⇒ 违规。
+    const bound = (css: string, classes: readonly string[]): readonly string[] =>
+      riskyClickRules(`<style>${css}</style>`, classes)
+
+    expect(
+      bound('.hit { min-height: 48px; }', ['hit']),
+      '模板绑定的可点元素把 min-height 写死 48px 竟然没被认出来 —— ' +
+        '它没有 `cursor: pointer`，而文件级闸门是按 `@click` 纳管的 ⇒ ' +
+        '这一整类元素**整个逃过** AC-D3 的触控尺寸判据',
+    ).not.toEqual([])
+
+    // 状态变体不判：它的尺寸由基规则保证。
+    expect(
+      bound('.hit { min-height: var(--touch-min); } .hit:disabled { opacity: 0.5; }', ['hit']),
+      '状态变体被单独判了 —— 它的尺寸由基规则保证，逐条重判只会制造假红',
+    ).toEqual([])
+
+    // `min-width: 0` 是 flexbox 的「无下界」惯用法，不是 0px 的命中区。
+    expect(
+      bound('.rail { min-width: 0; }', ['rail']),
+      '`min-width: 0` 被当成了违规 —— 那是 flexbox 的「无下界」惯用法',
+    ).toEqual([])
+
+    // 没写尺寸的**不判**（战场格子的尺寸来自网格的 aspect-ratio）。
+    expect(
+      bound('.cell { aspect-ratio: 1 / 1; }', ['cell']),
+      '没有尺寸声明的模板绑定元素被判了 —— 它的尺寸可能来自网格 / 父容器，' +
+        '这一档收窄已登记在判据版本表里（R-56）',
     ).toEqual([])
   })
 })
@@ -636,20 +941,163 @@ describe('G158 —— 更新提示是非阻塞的（Story 1.18 / AC-C3、变异 
   })
 })
 
+// ── G201 —— 提示条**结构上**压不住 HUD（`[CR]` 2026-10-20）────────────────
+
+describe('G201 —— 离线提示条压不住 HUD（Story 1.18 `[CR]` 2026-10-20）', () => {
+  // 🔥 **实测（真实构建产物 + 真实 chromium，inner 800×900 竖屏）**：
+  //   提示条 `top=0 bottom=32`，HUD `top=16 bottom=59` ⇒ **重叠 16px**；
+  //   被盖住的叶子节点：`sun-counter__value`（"0"）上 9px、
+  //   `progress-bar__label`（"第 1 单元 · 0/37"）上 10px、`heart-row__shape` ×3 各上 3px
+  //   ⇒ **阳光数字被削掉一截、进度标签被盖掉一半、三颗心的顶部被削掉**。
+  //
+  // ⚠️ **为什么判据是「源码级」而不是「量出来」**：AC-D7 逐字禁止用 headless
+  //   浏览器代替真机做布局断言（jsdom 更不行 —— 它返回 0）。
+  //   ⇒ 这里守的是**结构不变式**：提示条的高度与两个视图的顶部内边距
+  //   **用同一个 token** ⇒ 两者的差恒为 0 ⇒ **压不住**是构造出来的，不是量出来的。
+  const notice = sourceOf('src/components/hud/UpdateNotice.vue')
+  const noticeRule = ruleBodyFor(notice, '.update-notice')
+  const levelViewRule = ruleBodyFor(sourceOf('src/views/LevelView.vue'), '.level-view')
+  const startViewRule = ruleBodyFor(sourceOf('src/views/StartView.vue'), '.start-view')
+
+  it('⚠️ R-53：三个规则体都找得到（找不到就是空跑）', () => {
+    expect(noticeRule, '`UpdateNotice.vue` 里找不到 `.update-notice` 规则体').not.toBe('')
+    expect(levelViewRule, '`LevelView.vue` 里找不到 `.level-view` 规则体').not.toBe('')
+    expect(startViewRule, '`StartView.vue` 里找不到 `.start-view` 规则体').not.toBe('')
+  })
+
+  it('提示条的高度 = `--space-panel-pad`（与视图顶部内边距同一个 token）', () => {
+    // ⚠️📎 **正则必须排除 `line-height`**：`/height:\s*var\(--space-panel-pad\)/`
+    //   也会匹配 `line-height: var(--space-panel-pad)`（"height:" 是 "line-height:"
+    //   的子串）⇒ 把 `height` 改成 `32px` 之后这条判据**照样绿**。
+    //   ⇒ 这是**变异验证逼出来的**（变异 I：`height: 32px` ⇒ 判据未红）。
+    //   ⇒ 现在用否定回顾断言 `height` 前面不是 `-`。
+    expect(
+      noticeRule,
+      '`.update-notice` 没有 `height: var(--space-panel-pad)` —— 它的实际高度（实测 32px）' +
+        '大于视图的顶部内边距（16px）⇒ 固定定位的浮层必然压住 HUD 的上沿',
+    ).toMatch(/(?<![\w-])height:\s*var\(--space-panel-pad\)/)
+  })
+
+  it('提示条的上下内边距是 0（`box-sizing: border-box` 下它会挤掉文字的行盒）', () => {
+    // ⚠️ `* { box-sizing: border-box }`（base.css 逐字）⇒ `height` 含内边距。
+    //   若上下内边距非零，16px 的行盒会被挤成 8px ⇒ 文字被裁。
+    const padding = /padding:\s*([^;]+);/.exec(noticeRule)?.[1] ?? ''
+    expect(padding, '`.update-notice` 里读不到 `padding` 声明 —— 这条判据会空跑').not.toBe('')
+    const parts = padding.trim().split(/\s+/)
+    const vertical =
+      parts.length === 1
+        ? parts[0]!
+        : parts.length === 2
+          ? parts[0]!
+          : parts.length === 3
+            ? `${parts[0]} ${parts[2]}`
+            : `${parts[0]} ${parts[2]}`
+    for (const piece of vertical.split(/\s+/)) {
+      expect(
+        piece,
+        `提示条的上下内边距不是 0（逐字 \`padding: ${padding}\`）—— ` +
+          '`box-sizing: border-box` 下它会把 16px 的行盒挤扁，文字被裁掉一半',
+      ).toMatch(/^0(px)?$/)
+    }
+  })
+
+  it('两个视图的顶部内边距 = `--space-panel-pad` + 安全区（提示条的高度来源）', () => {
+    for (const [label, rule] of [
+      ['.level-view', levelViewRule],
+      ['.start-view', startViewRule],
+    ] as const) {
+      expect(
+        rule,
+        `${label} 的规则体里读不到顶部内边距 —— 这条判据会空跑`,
+      ).toMatch(/padding:\s*calc\(var\(--space-panel-pad\)\s*\+\s*env\(safe-area-inset-top\)\)/)
+    }
+  })
+
+  it('反向自测：把提示条的高度改回 32px ⇒ 上面第一条会红', () => {
+    // R-51：判据必须真的在看**取值**，不是「样式块里有个 height」。
+    const probe = '.update-notice { height: 32px; }'
+    expect(probe, '探针应当被判据认出来').not.toMatch(/(?<![\w-])height:\s*var\(--space-panel-pad\)/)
+    // ⚠️📎 **第二个探针**（变异 I 逼出来的）：只有 `line-height` 时**必须**不匹配 ——
+    //   否则「把 height 改成 32px、只留 line-height」这个真实变异会**静默通过**。
+    const lineHeightOnly = '.update-notice { line-height: var(--space-panel-pad); }'
+    expect(
+      lineHeightOnly,
+      '只有 `line-height` 的规则竟然被判据认成「高度对了」—— `height:` 是 `line-height:` 的子串，' +
+        '这条判据必须在**否定回顾**上区分开',
+    ).not.toMatch(/(?<![\w-])height:\s*var\(--space-panel-pad\)/)
+  })
+})
+
+// ── G204 —— viewport 的两项「不许被顺手整理掉」（裁决 10）────────────────
+
+describe('G204 —— viewport meta 的两项不许被整理掉（Story 1.18 / 裁决 10）', () => {
+  // ⚠️📎 `[CR]` 2026-10-20 **补的守卫** ——
+  //   裁决 10 逐字：「`maximum-scale=1` 禁掉双击缩放：否则 Android 上双击有 300ms 延迟，
+  //   直接击穿 FR78 的『点击反馈 ≤100ms』预算。`viewport-fit=cover` 让 `env(safe-area-inset-*)`
+  //   生效」⇒「**这两项都不许在 1.18 里被『顺手整理』掉**」。
+  //   ⚠️ 而 `deferred-work.md` 逐字声称「`portrait-layout.test.ts`（源码级断言，非 PWA 组）」
+  //     守着这一条 —— **实测零条**：那个文件里没有任何 viewport 取值断言
+  //     （只命中一条错误提示文案里的字样）。
+  //   ⇒ 两条「不许动」的取值**实际无人守** ⇒ 现在补上。
+  const indexHtml = sourceOf('index.html')
+
+  it('viewport meta 存在且读得到内容', () => {
+    const meta = /<meta\s[^>]*name=["']viewport["'][^>]*>/i.exec(indexHtml)
+    expect(meta, 'index.html 里找不到 `name="viewport"` 的 meta —— 竖屏布局的整个前提没了').not.toBeNull()
+    expect(meta![0], 'viewport meta 是空的').toMatch(/content=["'][^"']+["']/)
+  })
+
+  it('`maximum-scale=1` 在（禁掉双击缩放，FR78 的 100ms 预算）', () => {
+    const meta = /<meta\s[^>]*name=["']viewport["'][^>]*>/i.exec(indexHtml)?.[0] ?? ''
+    expect(
+      meta,
+      'viewport meta 里没有 `maximum-scale=1` —— Android 上双击会有 300ms 延迟，' +
+        '直接击穿 FR78 的「点击反馈 ≤100ms」预算（裁决 10 逐字：这项不许被整理掉）',
+    ).toMatch(/maximum-scale\s*=\s*1\b/)
+  })
+
+  it('`viewport-fit=cover` 在（`env(safe-area-inset-*)` 的前提）', () => {
+    const meta = /<meta\s[^>]*name=["']viewport["'][^>]*>/i.exec(indexHtml)?.[0] ?? ''
+    expect(
+      meta,
+      'viewport meta 里没有 `viewport-fit=cover` —— `env(safe-area-inset-*)` 全部失效，' +
+        '刘海 / 挖孔屏上整页内容被系统状态栏盖住（裁决 10 逐字：这项不许被整理掉）',
+    ).toMatch(/viewport-fit\s*=\s*cover\b/)
+  })
+
+  it('反向自测：拿掉任一项 ⇒ 上面两条会红', () => {
+    const probe = '<meta name="viewport" content="width=device-width, initial-scale=1" />'
+    expect(probe, '探针里没有 maximum-scale —— 判据认不出要防的形态').not.toMatch(
+      /maximum-scale\s*=\s*1\b/,
+    )
+    expect(probe, '探针里没有 viewport-fit —— 判据认不出要防的形态').not.toMatch(
+      /viewport-fit\s*=\s*cover\b/,
+    )
+  })
+})
+
 // ── G140 —— 本 story 的布局判据不许用 jsdom 假绿（AC-D7）─────────────────
 
-describe('G140 —— 布局判据不读 jsdom 的假布局（Story 1.18 / AC-D7）', () => {
-  it('本文件与新增的样式守卫里零 getComputedStyle / offsetWidth / getBoundingClientRect', () => {
+describe('G140 —— 布局判据不读 jsdom 的假布局（Story 1.18 / AC-D7；`[CR]` 2026-10-20 扩大扫描面）', () => {
+  it('**全仓** `tests/` 下零 getComputedStyle / offsetWidth / getBoundingClientRect', () => {
     // 🔥 AC-D7 逐字：jsdom 不做布局，这三个 API 在 jsdom 里返回 0 或声明值，
     //   拿它们断言「间距达标」等于断言「0 ≥ 0」—— **恒绿，且看起来很严谨**。
     //   Story 1.17 已实测证明过这条路径。
+    //
+    // ⚠️📎 **`[CR]` 2026-10-20 把扫描面从「一份手写名单」改成「全仓 `tests/`」**：
+    //   原判据扫的是**三个文件**的手写名单（`portrait-layout` / `pwa-sw-guard` /
+    //   `sw-registration`），而本 story 实际**新增了 9 个测试文件**
+    //   ⇒ 另外 6 个文件里出现 jsdom 布局 API 时 G140 **不红**。
+    //   ⇒ 名单型判据的病根是「**名单不会跟着 story 一起长大**」——
+    //     改成递归扫全仓，这个失效形态**从此不存在**。
+    //   ⚠️ **这不是「更严的空话」**：实测全仓 `tests/` 下
+    //   `grep -rlE '\b(getComputedStyle|getBoundingClientRect|offsetWidth|offsetHeight|clientWidth)\s*\('`
+    //   **零输出** ⇒ 改成全扫不会误伤任何一个既有文件。
     const offenders: string[] = []
-    for (const file of [
-      'tests/components/portrait-layout.test.ts',
-      'tests/scaffold/pwa-sw-guard.test.ts',
-      'tests/services/sw-registration.test.ts',
-    ]) {
-      const source = sourceOf(file)
+    for (const file of allFilesUnder(join(root, 'tests'))) {
+      // ⚠️ 这里直接读绝对路径（`sourceOf` 会再拼一次仓库根）——
+      //   `allFilesUnder` 给的是绝对路径，交给 `sourceOf` 会拼成 `/root/repos/plants-game/root/…`。
+      const source = stripComments(readFileSync(file, 'utf8'))
       if (/\b(getComputedStyle|getBoundingClientRect|offsetWidth|offsetHeight|clientWidth)\s*\(/.test(source)) {
         offenders.push(file)
       }
@@ -659,6 +1107,17 @@ describe('G140 —— 布局判据不读 jsdom 的假布局（Story 1.18 / AC-D7
       `这些文件用了 jsdom 的布局 API：${offenders.join('、')} —— ` +
         'jsdom 不做布局，这些调用返回 0，断言必然恒绿。AC-D7 要求布局判据只能是源码级或真机级',
     ).toEqual([])
+  })
+
+  it('反向自测：扫描器真的能扫到 `tests/` 下的文件（不是「扫了个空集」）', () => {
+    // ⚠️ R-53：一条「扫全仓」的判据必须先证明它**真的扫到了东西** ——
+    //   否则「全仓零命中」与「扫了 0 个文件」长得一模一样。
+    const files = allFilesUnder(join(root, 'tests'))
+    expect(files.length, '扫描器在 `tests/` 下一个文件都没找到 —— 上面那条是恒真的').toBeGreaterThan(20)
+    expect(
+      files.some((file) => file.endsWith('portrait-layout.test.ts')),
+      '扫描器没认出本文件 —— 扫描面可能只认了某几个后缀',
+    ).toBe(true)
   })
 })
 
@@ -938,12 +1397,15 @@ describe('G167 —— 宽屏下战场那格的两个必需声明（Story 1.19 / 
     expect(effectiveDecl('--touch-min: 48px;', 'touch-min')).toBeNull()
   })
 
-  it('战场那一格的高度归零 —— 缺它就被上一条媒体查询的高度预算压住', () => {
-    // ⚠️ 同文件里还有 `@media (max-height: 900px)` 的
-    //   `.level-view .battle-grid { height: calc(100% - var(--touch-min) - …) }`。
-    //   宽屏（1280×800）**同时命中两条**，两条特异度相同、靠后者胜出。
-    //   ⇒ 宽屏块必须显式把 `height` 归零，否则战场会被那条「把整个视口都算给它」
-    //   的规则重新撑大——**也就是今天这个 bug 原样复活**。
+  it('战场那一格的高度归零 —— 缺它就被外来的高度预算压住', () => {
+    // ⚠️📎 **`[CR]` 2026-10-20 按 R-57 换理由**（**断言一个字没动**）：
+    //   原理由是「同文件里还有 `@media (max-height: 900px)` 那条
+    //   `height: calc(100% - …)`，宽屏同时命中两条、靠后者胜」。
+    //   ⚠️ **那条断点已被整块删除**（`[CR]` 实测：它在横屏是死代码、在竖屏是缺陷），
+    //   而「宽屏块必须显式把 `height` 归零」这条**要求本身没变** ——
+    //   它防的是**任何**外来的高度预算（包括将来某天 `BattleField.vue`
+    //   自己加一条 `height`）。
+    //   ⇒ **前提变了，结论没变** —— 这正是 R-57 说的「改判据时断言不动、改理由」。
     //
     // ⚠️📎 **`[CR]` 第七轮按 R-57 加固**：这条问的是「块里**写着** `height: auto`」，
     //   而 CSS 里同规则内**后面的声明赢** ⇒ 在它后面补一条 `height:` 就能盖掉它，
@@ -952,8 +1414,7 @@ describe('G167 —— 宽屏下战场那格的两个必需声明（Story 1.19 / 
     //   真正的把关在那条。
     expect(
       rule,
-      '宽屏块里 `.battle-grid` 没有 `height: auto` —— 它会被 @media (max-height: 900px) ' +
-        '那条 `height: calc(100% - …)` 接管（横屏同时命中两条，同特异度靠后者胜），' +
+      '宽屏块里 `.battle-grid` 没有 `height: auto` —— 它会被任何外来的高度预算接管，' +
         '战场重新吃满整个视口高度，题卡被推出折叠线（2026-10-17 实测故障的根因）',
     ).toMatch(/height:\s*auto/)
   })
@@ -1314,6 +1775,47 @@ function landscapeBlock(responsive: string): string {
     }
   }
   return ''
+}
+
+/**
+ * `responsive.css` 里**所有** `@media` 块 —— 前导语 + 块体。
+ *
+ * 🔥 **`[CR]` 2026-10-20 新增**（G137 / G198 用它）。
+ *
+ * ⚠️ **为什么要「所有」而不是只取某一条**：`landscapeBlock()` 只能拿到
+ *   `min-aspect-ratio` 那一条 ⇒ 而本轮要守的恰恰是「**别的**那条不许存在」。
+ *   ⇒ 必须能枚举全部媒体查询。
+ * ⚠️ **前导语与块体必须分开拿**：`@media (…)` 那段写在花括号**之前**，
+ *   只取块体的话「有没有按高度断点」永远判不出来（G185 踩过同一个坑）。
+ *
+ * @returns 每块的 `prelude`（`@media` 到 `{` 之间，含 `@media` 本身）与 `body`（花括号内部）
+ */
+function mediaBlocks(css: string): Array<{ prelude: string; body: string }> {
+  const out: Array<{ prelude: string; body: string }> = []
+  let i = 0
+  for (;;) {
+    const at = css.indexOf('@media', i)
+    if (at === -1) break
+    const open = css.indexOf('{', at)
+    if (open === -1) break
+    let depth = 0
+    let end = -1
+    for (let j = open; j < css.length; j += 1) {
+      const ch = css[j]
+      if (ch === '{') depth += 1
+      else if (ch === '}') {
+        depth -= 1
+        if (depth === 0) {
+          end = j
+          break
+        }
+      }
+    }
+    if (end === -1) break
+    out.push({ prelude: css.slice(at, open).trim(), body: css.slice(open + 1, end) })
+    i = end + 1
+  }
+  return out
 }
 
 /**
