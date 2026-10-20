@@ -19,12 +19,22 @@
  *   整数化（四舍五入 ±1 张）是内容批次（Story 2.5–2.8）的验收口径，不是本规则的口径
  *   （[CS] 裁决 5 的代价）。本文件**不**提供整数化函数 —— 加它就会有两个事实源。
  * · **落在 `src/content/`，不是 `src/core/`**：R-10 + 内容层的 `no-restricted-imports`
- *   使它结构上读不到 `ZOMBIE_HP` / `ZOMBIE_MOVE_PER_ROUND` / 网格行号，也读不到
+ *   拦住**静态**的 core 导入（实测报错，带不带 `.ts` 后缀都拦），
+ *   所以本文件读不到 `ZOMBIE_HP` / `ZOMBIE_MOVE_PER_ROUND` / 网格行号，也读不到
  *   `isCorrect`。难度递增由**卡型分布与词汇本身**承载，不由战斗数值与阳光承载
  *   （AC-C1 / AC-C2）。
+ *   ⚠️ `[CR]` 2026-10-20 更正：原文写的是「**结构上**读不到」。实测**不成立** ——
+ *   动态 `import()` 形态既不触发 ESLint（0 problems）、也不触发
+ *   `content-boundary.test.ts` 的源码兜底（那条只正则 `from '…'`）、typecheck 也过，
+ *   且**运行期真的把 `ZOMBIE_HP` 读了回来**。两条守卫都只认静态 import 形态。
+ *   已登记 `deferred-work.md`。本文件自身不越界，但别把这条边界当结构保证用。
  * · **复用 `CardKindSchema` 的取值而不是新造一份联合类型**：`CardDistribution` 的键
- *   直接是 `Record<CardKind, number>`，于是「三型齐全」由类型系统保证，且卡型字面量
- *   在本文件里**一个字都没重写**。
+ *   直接是 `Record<CardKind, number>`，于是「三型齐全」由类型系统保证 ——
+ *   schema 增删卡型时这条类型当场变红，而规则悄悄少算一族卡不会发生。
+ *   ⚠️ `[CR]` 2026-10-20 更正：原文接着写「卡型字面量在本文件里**一个字都没重写**」，
+ *   那是**假的** —— `word` / `keyword` / `response` 三个字面量在本文件里逐字写了 9 处
+ *   （两个锚点各 3 处 + 返回对象 3 处）。真的只是「没有**第三份联合类型声明**」。
+ *   G187 的运行期键集合判据正是为这份重复兜底。
  * · **逐层 `Object.freeze`**：与 `src/core/balance.ts` 的 `BALANCE_TIERS` 同款
  *   （`[CR]` P16 的教训）—— 类型层的 `readonly` 防不住运行期的 `as` 强转，
  *   而难度曲线被无痕改写时，全部守卫仍然绿。
@@ -106,7 +116,15 @@ export const CARD_DISTRIBUTION_ANCHORS = Object.freeze({
   last: LAST_ANCHOR,
 })
 
-/** 线性插值。单元 1 处 `t = 0`，逐字返回起点值（`from + (to - from) * 0 === from`，零浮点误差）。 */
+/**
+ * 线性插值。单元 1 处 `t = 0`，逐字返回起点值（`from + (to - from) * 0 === from`）。
+ *
+ * ⚠️ `[CR]` 2026-10-20 补注：G190 的「零容差」**依赖这一条算术恒等式**
+ * （`(负数) * 0 === -0` 且 `x + (-0) === x`），它是**当前写法**的性质，不是规则本身的性质。
+ * 若日后把插值改写成 `from * (1 - t) + to * t` 之类形态，单元 1 处会差 1 ulp，
+ * G190 会以「份额差 0.0000000000000002」这种没人看得懂的数字变红 —— 正是同一文件
+ * 在下面为了避开而特意选除法写法的那类数字。改插值形态时必须重跑 G190。
+ */
 function interpolate(from: number, to: number, unitNumber: number): number {
   const t = (unitNumber - FIRST_UNIT) / SPAN
   return from + (to - from) * t

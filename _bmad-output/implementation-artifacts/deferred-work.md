@@ -2270,4 +2270,28 @@ M101–M110 共 25 红无 0 红），**无一条守卫假绿**。以下 8 条真
   （实测该命令的最大值同样是 M203；但它会命中 `src/core/placeholder.ts:50` 的
   SVG path `d="M112 384 …"`，所以**只能用来查上界，不能用来判占用**）。
 
+### 40. 🔥 R-10 只拦得住**静态** import：动态 `import()` 两条守卫都放过（Story 2.2 `[CR]` 实测）
+
+- **实测**（Story 2.2 `[CR]`，往 `src/content/distribution.ts` 注入探针后逐项跑）：
+  | 写法 | ESLint | `content-boundary.test.ts` | typecheck | 运行期 |
+  |---|---|---|---|---|
+  | `import { ZOMBIE_HP } from '../core/balance'` | 🔴 拦 | — | — | — |
+  | `import { ZOMBIE_HP } from '../core/balance.ts'` | 🔴 拦 | — | — | — |
+  | `await import('../core/balance')` | 🟢 0 problems | 🟢 5/5 通过 | 🟢 无输出 | **真的返回 100** |
+- **根因**：`no-restricted-imports` 的 `paths`/`patterns` 由 ESLint 解析 **import 声明**得出，
+  动态 `import()` 不产生 ImportDeclaration ⇒ 规则看不见。
+  而 `content-boundary.test.ts` 那条源码兜底只正则 `/from\s+'([^']+)'/g` ——
+  **动态 import 没有 `from` 关键字** ⇒ 同样看不见。两道守卫都只认静态形态。
+- **为什么不在 Story 2.2 补**：Story 2.2 只落数据层规则，补它要动 `eslint.config.js`
+  与跨层守卫文件，且 R-10 是 Story 1.6 起的既有边界，不属本 story 的改动面。
+- **恢复条件**：给内容层加第三条形态守卫（可复用第 39 条「两条命令都跑」的思路 ——
+  在 `content-boundary.test.ts` 的源码扫描里把正则扩成同时吃
+  `from '…'` 与 `import('…')` 两种形态），或改用能覆盖动态 import 的 ESLint 规则。
+  ⚠️ 顺带：`src/content/distribution.ts` 的文件头原本宣称 R-10 使它「**结构上**读不到
+  `ZOMBIE_HP`」—— 该措辞已被 `[CR]` 当场更正为「拦住静态 import」，原文不得复活。
+  ⚠️ 另一条顺手撞出来的：**那条源码兜底分不清注释与代码**。本 story 在 `[CR]` 里第一版
+  注释写了静态导入的完整形态（含 `from` + 引号 + core 路径），`content-boundary.test.ts`
+  当场红（`distribution.ts → ../core/…`）—— 也就是说**在 `src/content/` 里连「写清楚这条
+  边界拦的是什么」都做不到**，除非把导入形态拆开写。补守卫时顺手把这条也处理掉。
+
 
