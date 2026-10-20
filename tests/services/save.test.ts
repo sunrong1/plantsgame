@@ -382,6 +382,42 @@ describe('AC-C2 / G79 —— 写盘点表逐行钉死，含一条负向', () => 
     })
   }
 
+  it('🔴 一次 `RESTART_LEVEL` 必须**恰好产出 1 条 SAVE**（G186 —— 第七轮补）', () => {
+    // 🔥📎 **`[CR]` 第七轮补的洞**：`[CR]` 第二轮删掉了 `RESTART_LEVEL` 专用写盘点，
+    //   理由是「`restart()` 的产物恒为 `awaiting-answer`，与那条写盘点逐字相同」。
+    //   ⚠️ **删掉的东西从此无人断言**：上面那张表六行**全部只跑 `CONTINUE`** ——
+    //     而 `effects.ts` 的注释逐字写着，那条专用写盘点留着会让
+    //     「一次重打产出**两条** SAVE」。
+    //   ⇒ 变异实测（子代理跑过）：把那条写盘点加回来 ⇒
+    //     **上面那张「逐行钉死」的表六行全绿**，全仓也没有任何一处断言重打时的条数。
+    //   ⇒ 这条断言补上那个空缺：**恰好 1 条**（不是 `<= 1`）。
+    const base = freshState()
+    const prev: State = { ...base, phase: { kind: 'awaiting-answer' } }
+    const built = stateWithTower()
+    const next: State = {
+      ...base,
+      ...built,
+      phase: { kind: 'awaiting-answer', question: base.deck[0] },
+    }
+    const saves = core
+      .runEffects({ type: 'RESTART_LEVEL' }, prev, next)
+      .filter((e) => e.kind === 'SAVE')
+
+    expect(
+      saves.length,
+      '🔴 一次重打产出了 ' + saves.length + ' 条 SAVE —— 期望恰好 1 条。\n' +
+        '⚠️ 第二轮删 `RESTART_LEVEL` 专用写盘点的理由是「`restart()` 的产物恒为 ' +
+        '`awaiting-answer`，与那条逐字相同」，但**删掉之后没有任何断言守着这个理由**：' +
+        '上面那张表六行全部只跑 `CONTINUE`。把那条写盘点加回来，这张表照样六行全绿。',
+    ).toBe(1)
+    // 顺带钉住「写的是重打后的那一局」—— 只数条数不够：
+    // 多一条少一条都可能是写错了对象。
+    expect(
+      saves[0]?.currentGame?.phase.kind,
+      '落盘的必须正是重打后那份 awaiting-answer 的局面',
+    ).toBe('awaiting-answer')
+  })
+
   it('G79：awaiting-build 那一行不是构造上不可达（反向：它必须真能产出 SAVE）', () => {
     // ⚠️ 上一条只钉了「会写」的行数；这里再钉「写的是**那个 awaiting-build 局面**」，
     //   否则「判定退化成无条件写盘」也能满足上面那张表。

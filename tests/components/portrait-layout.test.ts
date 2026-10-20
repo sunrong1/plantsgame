@@ -896,7 +896,7 @@ describe('G167 —— 宽屏下战场那格的两个必需声明（Story 1.19 / 
   })
 
   /**
-   * 🔥📎 **G179（`[CR]` 第七轮新增）：规则体里某个属性的「**生效值**」。**
+   * 🔥📎 **G185（`[CR]` 第七轮新增）：规则体里某个属性的「**生效值**」。**
    *
    * ⚠️ **为什么不能只问「这行字在不在」**：CSS 里**同一条规则内后面的声明赢**。
    *   所以在 `height: auto;` 后面再补一条 `height: calc(100% - 48px)`，
@@ -998,7 +998,7 @@ describe('G168 —— 宽屏下每个面板都被排了版（Story 1.19 / AC-H1�
     ).toEqual([])
   })
 
-  it('🔴 每个面板的 `grid-area` 必须**指向一个真实存在、且没人抢的格子**（G179 —— 第七轮补）', () => {
+  it('🔴 每个面板的 `grid-area` 必须**指向一个真实存在、且没人抢的格子**（G185 —— 第七轮补）', () => {
     const vueByName = new Map<string, string>()
     for (const file of vueFiles()) {
       vueByName.set(file.slice(file.lastIndexOf('/') + 1, -4), readFileSync(file, 'utf8'))
@@ -1258,7 +1258,7 @@ const LANDSCAPE_TWO_COLUMNS = /grid-template-columns:[^;]*minmax\(0,\s*1fr\)[^;]
  *   第一条嵌套规则处就截断，而本块体里恰恰每条规则都有自己的花括号。
  */
 /**
- * 🔥📎 **G179（`[CR]` 第七轮新增）：规则体里某个属性的「**生效值**」。**
+ * 🔥📎 **G185（`[CR]` 第七轮新增）：规则体里某个属性的「**生效值**」。**
  *
  * ⚠️ **为什么不能只问「这行字在不在」**：CSS 里**同一条规则内后面的声明赢**。
  *   在 `height: auto;` 后面再补一条 `height: calc(100% - 48px)`，
@@ -1278,7 +1278,7 @@ function effectiveDecl(body: string, prop: string): string | null {
 }
 
 /**
- * 🔥📎 **G179（`[CR]` 第七轮新增）：`min-aspect-ratio` 那条媒体查询的**前导语**。**
+ * 🔥📎 **G185（`[CR]` 第七轮新增）：`min-aspect-ratio` 那条媒体查询的**前导语**。**
  *
  * ⚠️ **与 {@link landscapeBlock} 的区别就是第七轮那条恒真判据的病根**：
  *   `landscapeBlock` 返回 `slice(open + 1, i)` —— **只有花括号之间的块体**，
@@ -1423,7 +1423,7 @@ function panelsWithGridArea(block: string): ReadonlySet<string> {
 }
 
 /**
- * 🔥📎 **G179（`[CR]` 第七轮新增）：`grid-template-areas` 里真实存在的格子名集合。**
+ * 🔥📎 **G185（`[CR]` 第七轮新增）：`grid-template-areas` 里真实存在的格子名集合。**
  *
  * ⚠️ 必须取**模板里的名字**，不是「源码里出现过的名字」—— 后者会把
  *   `grid-area: nonexistent` 这种**根本不存在**的格子也算进去，
@@ -1443,7 +1443,7 @@ function gridAreaNames(block: string): Set<string> {
 }
 
 /**
- * 🔥📎 **G179（`[CR]` 第七轮新增）：某个面板声明的 `grid-area` 到底是哪一格。**
+ * 🔥📎 **G185（`[CR]` 第七轮新增）：某个面板声明的 `grid-area` 到底是哪一格。**
  *
  * ⚠️ 与 {@link panelsWithGridArea} 的区别：那个返回「选择器里出现过的**全部**类名」
  *   （含祖先类名），这个只认**该面板自己的类名后面跟的那个格子名**。

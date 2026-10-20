@@ -1418,29 +1418,326 @@ function shownBody(): string {
  *   也可能留下一个**没用上**的 `awaiting-build` 判断 ⇒ 恒绿（R-51）。
  *   ⇒ 第 3 条要求那个判定与题面**同处一个 `return` 段**。
  */
+/**
+ * G94 第 3 条之二用的两个小工具。
+ *
+ * ⚠️📎 **为什么需要它们**（`[CR]` 第七轮）：判据若只搜 `.question` 字样，
+ *   把兜底包进 helper（`? fallbackQuestion() : null`）就**一个字都搜不到** ⇒ 假绿。
+ *   纯文本判据**原理上看不见 helper 内部** ⇒ 只能反过来把规则定强：
+ *   **凡是交出题面的位置，表达式必须就是 phase 的 question 本身。**
+ *
+ * ⚠️ 这**不是**「证明了 helper 干净」，而是「`shown` 里不许出现任何别的题面来源」——
+ *   比原来那条宽松判据**严格得多**（原来允许 `phase.question` 之外的任何表达式）。
+ */
+
+/** 允许的题面表达式：phase 上的 question 本身（可带 `state.value.` 前缀与可选链）。 */
+const ALLOWED_QUESTION_EXPR = /^(?:state\.value\.)?phase(?:\?\.)?\.question$/
+
+/**
+ * 把一个表达式切成三元的三支（`cond ? yes : no`）。
+ * 只认**顶层**的三元 —— 括号/数组/对象里的 `?` 与 `?.` 都不算。
+ * 不是三元时返回 `null`。
+ */
+function splitTernary(expr: string): [string, string, string] | null {
+  let depth = 0
+  for (let i = 0; i < expr.length; i += 1) {
+    const ch = expr[i]
+    if (ch === '(' || ch === '[' || ch === '{') {
+      depth += 1
+      continue
+    }
+    if (ch === ')' || ch === ']' || ch === '}') {
+      depth -= 1
+      continue
+    }
+    // `?.` 是可选链，不是三元。
+    if (ch !== '?' || depth !== 0 || expr[i + 1] === '.') continue
+    const rest = expr.slice(i + 1)
+    let d2 = 0
+    for (let j = 0; j < rest.length; j += 1) {
+      const c2 = rest[j]
+      if (c2 === '(' || c2 === '[' || c2 === '{') {
+        d2 += 1
+        continue
+      }
+      if (c2 === ')' || c2 === ']' || c2 === '}') {
+        d2 -= 1
+        continue
+      }
+      if (c2 === ':' && d2 === 0) {
+        return [expr.slice(0, i).trim(), rest.slice(0, j).trim(), rest.slice(j + 1).trim()]
+      }
+    }
+    return null
+  }
+  return null
+}
+
+/**
+ * 返回**第一个**「不是 phase 的 question 本身」的题面来源子表达式；
+ * 全部合规时返回 `null`。
+ *
+ * 合规的形状（白名单）：
+ * - `null`
+ * - `phase.question` / `state.value.phase.question` / `phase?.question`
+ * - 三元：两支**各自**合规（条件本身不参与题面来源的判断）
+ */
+function firstDisallowedQuestionSource(expr: string): string | null {
+  const e = expr.trim().replace(/[}\s]+$/, '').replace(/^\(+|\)+$/g, '').trim()
+  if (e === '') return null
+  if (e === 'null' || e === 'undefined') return null
+  if (ALLOWED_QUESTION_EXPR.test(e)) return null
+  const ternary = splitTernary(e)
+  if (ternary !== null) {
+    const [, yes, no] = ternary
+    return firstDisallowedQuestionSource(yes) ?? firstDisallowedQuestionSource(no)
+  }
+  return e
+}
+
+/**
+ * 抽出源码里所有 `return <表达式>` 的**表达式部分**与 **`return` 关键字的位置**。
+ *
+ * ⚠️📎 **为什么不能用 `code.split(/;/)` —— 这是第七轮实测出来的假绿**：
+ *   真实实现 `shown` 的函数体**一个分号都没有**（`state.value.phase` 后面那个
+ *   `;` 是有的，但整个 `shown` 体里 `return` 之间没有）⇒ 按 `;` 切会切出**一整块**，
+ *   于是「读题面的那条语句」永远是同一块，判据**根本不会触发**。
+ *   🔴 实测：把真实实现的 `===` 改成 `!==`，源码判据**照样绿**（26 个用例红了，
+ *      唯独判据自己没红）—— 那就是「判据在它要防的违规上失灵」。
+ * ⇒ 改成**从 `return` 关键字往后扫**，遇到顶层 `;`、顶层 `}` 或**下一个 `return`** 就停。
+ */
+function extractReturns(code: string): { expr: string; index: number }[] {
+  const out: { expr: string; index: number }[] = []
+  const re = /\breturn\b/g
+  let m: RegExpExecArray | null
+  while ((m = re.exec(code)) !== null) {
+    let depth = 0
+    let end = code.length
+    for (let i = m.index + m[0].length; i < code.length; i += 1) {
+      const ch = code[i]
+      if (ch === '(' || ch === '[' || ch === '{') {
+        depth += 1
+        continue
+      }
+      if (ch === ')' || ch === ']' || ch === '}') {
+        if (depth === 0) {
+          end = i
+          break
+        }
+        depth -= 1
+        continue
+      }
+      if (depth === 0 && ch === ';') {
+        end = i
+        break
+      }
+      // 下一条 `return` 也是边界 —— 否则上一条会把下一条一起吞进去。
+      if (depth === 0 && /\breturn\b/.test(code.slice(i, i + 6))) {
+        end = i
+        break
+      }
+    }
+    const expr = code.slice(m.index + m[0].length, end).trim()
+    if (expr !== '') out.push({ expr, index: m.index })
+    re.lastIndex = end
+  }
+  return out
+}
+
+/** `shown` 里允许交出题面的两个相位。 */
+const ALLOWED_PHASES = ['awaiting-answer', 'awaiting-build'] as const
+
+/**
+ * 从 `return` 关键字**紧挨着往前**看，找出「统管它的那个 `if` 守卫」。
+ *
+ * 三种结果：
+ * - `guarded`：`return` 前面（跳过空白与 `{`）是一个 `)`，它匹配的 `(` 之前是 `if`
+ *   ⇒ 守卫条件就是那对括号里的内容。
+ * - `bare`：`return` 前面是 `;` 或函数体开头 ⇒ 没有任何守卫，**整条语句裸奔**。
+ * - `blocked`：其它形态（函数调用实参里、对象字面量里……）⇒ 判据看不清 ⇒ 当违规处理。
+ */
+function immediateGuard(
+  code: string,
+  returnIndex: number,
+): { kind: 'guarded'; condition: string } | { kind: 'bare' } | { kind: 'blocked' } {
+  let i = returnIndex - 1
+  while (i >= 0) {
+    const ch = code[i]
+    if (ch === ' ' || ch === '\n' || ch === '\t' || ch === '\r' || ch === '{') {
+      i -= 1
+      continue
+    }
+    break
+  }
+  if (i < 0 || code[i] === ';') return { kind: 'bare' }
+  if (code[i] !== ')') return { kind: 'blocked' }
+  // 往前找匹配的 '('
+  let depth = 0
+  let open = -1
+  for (let j = i; j >= 0; j -= 1) {
+    if (code[j] === ')') depth += 1
+    else if (code[j] === '(') {
+      depth -= 1
+      if (depth === 0) {
+        open = j
+        break
+      }
+    }
+  }
+  if (open === -1) return { kind: 'blocked' }
+  const before = code.slice(Math.max(0, open - 8), open).trimEnd()
+  if (!/(^|[^\w$])if$/.test(before)) return { kind: 'blocked' }
+  return { kind: 'guarded', condition: code.slice(open + 1, i) }
+}
+
+/**
+ * 判断一段守卫条件是不是「对允许相位的**正向**判定」。
+ *
+ * 三条硬要求：
+ * 1. 条件里**看得见** `phase.kind` 与相位名的比较（否则判据根本没法判断）；
+ * 2. 所有**正向**（`===`）比较里提到的相位名都必须在白名单里
+ *    —— 判了 `resolving` 还交题面 ⇒ 违规；
+ * 3. 至少有一个**正向**比较命中白名单相位
+ *    —— `!== 'awaiting-answer'` 那种「把这个相位排除掉」的写法不算守卫。
+ */
+function checkPhaseCondition(condition: string): { ok: boolean; reason: string } {
+  const mentions = [...condition.matchAll(/phase\.kind\s*([!=]==?)\s*['"]([\w-]+)['"]/g)]
+  if (mentions.length === 0) {
+    return { ok: false, reason: '守卫里看不见 `phase.kind` 的相位判定 —— 判据无从判断它守的是哪个相位' }
+  }
+  for (const m of mentions) {
+    const op = m[1]
+    const name = m[2]
+    if (!op.startsWith('=')) continue // `!==` 是排除，不是「交出题面」的条件
+    if (!(ALLOWED_PHASES as readonly string[]).includes(name)) {
+      return { ok: false, reason: `守卫正向判了相位「${name}」—— 只有 awaiting-answer / awaiting-build 允许交出题面` }
+    }
+  }
+  const positive = mentions.some(
+    (m) => m[1].startsWith('=') && (ALLOWED_PHASES as readonly string[]).includes(m[2]),
+  )
+  if (!positive) {
+    return {
+      ok: false,
+      reason: '守卫不是对允许相位的**正向**判定（===）—— 用 !== 把该相位排除掉再交出题面，方向是反的',
+    }
+  }
+  return { ok: true, reason: '' }
+}
+
+/**
+ * 「收窄写法」的守卫：前面某条 `if (...)` **同时用 `!==` 排除两个允许相位**。
+ *
+ *   if (phase.kind !== 'awaiting-answer' && phase.kind !== 'awaiting-build') return null
+ *   return phase.question
+ *
+ * 这种写法的那个 `return` 本身是**裸奔**的，但语义上完全正确 ⇒ 判据要认它。
+ * ⚠️ 豁免的判据是「**两个**都排除」：只排除一个就交出题面仍然是违规。
+ */
+function hasNarrowingGuardBefore(code: string, returnIndex: number): boolean {
+  const prefix = code.slice(0, returnIndex)
+  for (const m of prefix.matchAll(/\bif\s*\(([^()]*)\)/g)) {
+    const condition = m[1]
+    const excludesBoth =
+      /phase\.kind\s*!==\s*['"]awaiting-answer['"]/.test(condition) &&
+      /phase\.kind\s*!==\s*['"]awaiting-build['"]/.test(condition)
+    if (excludesBoth) return true
+  }
+  return false
+}
+
 function g94Violation(code: string): string | null {
   // 第 1 / 2 条：两个相位判定必须在场（判「字样在不在」，靠第 3 条排除「没用上」）。
-  if (!/phase\.kind\s*===\s*['"]awaiting-answer['"]/.test(code)) {
+  //
+  // ⚠️📎 **第七轮放宽 `===` → `===` / `!==` 皆可**（R-57 留痕）：
+  //   首版只认 `phase.kind === 'awaiting-answer'`。而**收窄写法**
+  //       if (phase.kind !== 'awaiting-answer' && phase.kind !== 'awaiting-build') return null
+  //       return phase.question
+  //   是一份**完全正确**的等价实现，却因为写的是 `!==` 而被判红（假红）。
+  //   ⇒ 放宽成「`phase.kind` 与该相位名有过比较（`===` 或 `!==`）」。
+  //   ⚠️ **放宽不会开假绿**：`!==` 写法能交出题面的那个 `return` 是**裸 return**，
+  //     而第 3 条只对「**同时排除两个相位**」的收窄守卫放行（见下）⇒
+  //     `if (phase.kind !== 'awaiting-answer') return phase.question` 这种
+  //     **只排除一个相位就交题面**的写法仍被第 3 条抓住。
+  const phaseJudged = (name: string): boolean =>
+    new RegExp(`phase\\.kind\\s*[!=]==?\\s*['"]${name}['"]`).test(code)
+  if (!phaseJudged('awaiting-answer')) {
     return '`shown` 没有判 `awaiting-answer` —— 答题相位必须交出题面'
   }
-  if (!/phase\.kind\s*===\s*['"]awaiting-build['"]/.test(code)) {
+  if (!phaseJudged('awaiting-build')) {
     return '兜底没有判 `awaiting-build` —— 裁决 7 要求它兜住这一个相位'
   }
 
-  // 第 3 条：每一次读 `.question` 都必须落在**一次相位判定之内**。
-  //   ⚠️ 语句边界取 `;` 与 `{`，**不是** `return`：判定的写法是
-  //   `if (判定) return 题面`，判定落在 `return` **之前**，
-  //   按 `return` 切段会把两者切到不同段里，于是正确实现也判红（假红），
-  //   而按 `;`/`{` 切才与「一条语句」的边界一致。
-  for (const statement of code.split(/[;{]/)) {
-    if (!/\.question\b/.test(statement)) continue
-    if (!/phase\.kind\s*===\s*['"](?:awaiting-answer|awaiting-build)['"]/.test(statement)) {
-      return '有一处读题面却不与任何相位判定同处一条语句 —— 那是覆盖全部相位的宽兜底'
+  // 第 3 条：🔥📎 **每一次交出题面，都必须紧挨着一个「允许相位的正向判定」。**
+  //
+  // ⚠️⚠️⚠️ **这一条是第七轮重写的 —— 原版在真实实现上是假绿。**
+  //   原版按 `;` 把 `shown` 的函数体切成「语句」，再问「读 `.question` 的那条语句
+  //   里有没有相位判定」。而**真实实现里 `return` 之间一个分号都没有**：
+  //       {
+  //         const phase = state.value.phase
+  //         if (phase.kind === 'awaiting-answer') return phase.question
+  //         return phase.kind === 'awaiting-build' ? phase.question : null
+  //       }
+  //   ⇒ 切出来**只有一块** ⇒ 「那条语句里有 awaiting-build 判定」恒真
+  //   ⇒ 🔴 **实测：把 `===` 改成 `!==`，判据照样绿**（26 个行为用例红了，
+  //      唯独判据自己不红）—— 判据在它要防的违规上失灵。
+  //
+  // ⇒ 第七轮改成**逐个 `return` 判**：
+  //   1. 交出题面的表达式必须**就是** phase 的 question 本身（白名单，见
+  //      `firstDisallowedQuestionSource`）—— 抓「包进 helper」「换来源」；
+  //   2. 交出题面的那个 `return` 必须**紧挨着**一个 `if` 守卫，
+  //      且守卫是**对允许相位的正向判定**（`===`）—— 抓「把 `===` 写成 `!==`」
+  //      「判了别的相位」「根本没有守卫」；
+  //   3. 三元的**条件**同样要过第 2 条的检查 —— 抓「题面落在三元的另一支」。
+  //   4. **收窄写法**（前面用 `!==` 同时排除两个相位，后面裸 return）算合规。
+  for (const { expr, index } of extractReturns(code)) {
+    const bad = firstDisallowedQuestionSource(expr)
+    if (bad !== null) {
+      return (
+        `交出题面的表达式是「${bad}」而不是 phase 的 question 本身 —— ` +
+        '把它包进 helper、包进变量或换来源，判据就看不见它是从哪来的。' +
+        '（组件本地的 ref 活不过一次刷新，那正是 1.19 试玩 bug 的根因。）'
+      )
     }
+    const trimmed = expr.trim()
+    if (trimmed === 'null' || trimmed === 'undefined') continue
+
+    const ternary = splitTernary(trimmed)
+    if (ternary !== null) {
+      const [condition] = ternary
+      const verdict = checkPhaseCondition(condition)
+      if (!verdict.ok) {
+        return `三元的条件不合法：${verdict.reason}`
+      }
+      continue
+    }
+
+    const guard = immediateGuard(code, index)
+    if (guard.kind === 'guarded') {
+      const verdict = checkPhaseCondition(guard.condition)
+      if (!verdict.ok) {
+        return `守卫不合法：${verdict.reason}`
+      }
+      continue
+    }
+    if (guard.kind === 'bare' && hasNarrowingGuardBefore(code, index)) continue
+    if (guard.kind === 'bare') {
+      return (
+        '有一处交出题面却**没有任何相位守卫** —— 那是覆盖全部相位的宽兜底' +
+        '（要么直接判相位，要么用收窄写法先排除掉另外两个相位）'
+      )
+    }
+    return (
+      '有一处交出题面判据却**看不清它归哪个 `if` 管** —— ' +
+      '判据不能靠猜，只能靠「交出题面的那个 return 紧挨着一个 if 守卫」'
+    )
   }
 
   // 第 4 条：除 `state.value.phase` 外不许再读 `.value`（组件本地 ref 活不过刷新）。
-  const rest = code.replace(/state\.value\.phase\b/, '')
+  // ⚠️📎 第七轮更正：首版 `replace(/state\.value\.phase\b/, '')` 只替换**第一处** ——
+  //   `return state.value.phase.question`（读了两次 state.value.phase）会漏过。
+  //   ⇒ 改成**全局**替换（`g` 标志）。
+  const rest = code.replace(/state\.value\.phase\b/g, '')
   if (/\.value\b/.test(rest)) {
     return (
       '`shown` 读了 `state.value.phase` 之外的某个 `.value` —— ' +
@@ -1478,6 +1775,59 @@ describe('G94 —— `shown` 的兜底只兜 awaiting-build（Story 1.16 / 裁�
     //   而新挂载时那份 ref 恒为 `null` ⇒ 卡面不渲染，正是这次试玩报的现象。
     const localRef = `{ const phase = state.value.phase; if (phase.kind === 'awaiting-answer') { lastQuestion.value = phase.question; return phase.question } return phase.kind === 'awaiting-build' ? lastQuestion.value : null }`
     expect(g94Violation(localRef), '判据自检：本地 ref 兜底必须被判中').not.toBeNull()
+  })
+
+  it('反向自检：子代理实测的三条**绕行形态**与三条**假红形态**（R-53 —— 第七轮补）', () => {
+    // 🔥 这六种形态都是 `[CR]` 第七轮评审里**实测**判据分辨不出来的，
+    //   写在这里是为了「哪一天判据再退化一次，当场就被抓住」。
+
+    // ── 漏网三条 ────────────────────────────────────────────────────────
+    // 🔴 绕行 A：判定与题面同处一条语句，但**在三元的另一支**。
+    expect(
+      g94Violation(
+        '{ const phase = state.value.phase; if (phase.kind !== "awaiting-answer") return null; return phase.kind === "awaiting-build" ? phase.question : staleQuestion }',
+      ),
+      '绕行 A（题面落在三元假分支）被判成合规',
+    ).not.toBeNull()
+
+    // 🔴 绕行 B：本地 ref 的读取**不在 `shown` 里**（在 helper 里）。
+    //   首版第 4 条只扫 `shown` 的函数体 ⇒ helper 里的 `lastQuestion.value` 它看不见。
+    expect(
+      g94Violation(
+        '{ const phase = state.value.phase; if (phase.kind === "awaiting-answer") return phase.question; return phase.kind === "awaiting-build" ? fallbackQuestion() : null }',
+      ),
+      '绕行 B（helper 包装的本地 ref 兜底）被判成合规 —— 它与直接写 ref 是同一件事',
+    ).not.toBeNull()
+
+    // 🔴 绕行 C：解构把 `.value` 抹掉了 ⇒ 首版第 4 条（搜 `.value`）完全看不见。
+    expect(
+      g94Violation(
+        '{ const phase = state.value.phase; const { value: fb } = lastQuestion; if (phase.kind === "awaiting-answer") return phase.question; return phase.kind === "awaiting-build" ? fb : null }',
+      ),
+      '绕行 C（解构抹掉 `.value`）被判成合规',
+    ).not.toBeNull()
+
+    // ── 假红三条（都是**正确**写法，首版判红）────────────────────────────
+    const correctForms: readonly [string, string][] = [
+      [
+        '{ const phase = state.value.phase; if (phase.kind === "awaiting-answer") { return phase.question } return phase.kind === "awaiting-build" ? phase.question : null }',
+        '花括号体',
+      ],
+      [
+        '{ const phase = state.value.phase; if (phase.kind !== "awaiting-answer" && phase.kind !== "awaiting-build") return null; return phase.question }',
+        '提前 return 收窄',
+      ],
+      [
+        '{ if (state.value.phase.kind === "awaiting-answer") return state.value.phase.question; return state.value.phase.kind === "awaiting-build" ? state.value.phase.question : null }',
+        'state.value.phase 读了两次',
+      ],
+    ]
+    for (const [code, name] of correctForms) {
+      expect(
+        g94Violation(code),
+        `判据把**正确**写法「${name}」判成了违规 —— 这是假红，比假绿更难查`,
+      ).toBeNull()
+    }
   })
 
   // ── 行为侧：四个「兜底范围外」的相位，卡面必须一个节点都不渲染 ────────────
