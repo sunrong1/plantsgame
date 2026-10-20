@@ -4,7 +4,10 @@
  * ── 守什么 ────────────────────────────────────────────────────────────────
  * 1. `snapshot`：**每次落盘后立刻跑一次**，把该文件当时的 mtime / 字节数 / sha256 /
  *    构图档位 / §5.1 占比 / 图元数**追加**一条记录到 JSONL。
- *    第一次 snapshot 的时刻 = **首版时刻**；最后一次 = **末版时刻**。
+ *    ⚠️ 记录的是文件 **mtime（写盘时刻）**，不是跑 snapshot 的时刻（[CR] B2 更正）：
+ *    一张图 mtime 最小的记录 = **首版时刻**，最大的 = **末版时刻**。
+ *    「每写一版立刻 snapshot」是**使用纪律，不是机制保证** —— 文件若经
+ *    `git checkout` / `cp -r` / stash pop 产生，mtime = 复制时刻，产能数字随之失真且无警告。
  * 2. `report`：由 JSONL 算出逐张首版/末版时刻、每张耗时、档位 × 版本数分布、
  *    产能区间（中位数与分位数）。
  *
@@ -87,9 +90,12 @@ export interface ThroughputRecord {
 /** 逐张汇总。 */
 export interface EntrySummary {
   entryId: string
-  /** 首版时刻（该文件第一条记录的 mtime）。 */
+  /**
+   * 首版时刻（该文件 **mtime 最小**的记录的 timestamp）。
+   * [CR] E7 更正：不是「第一条记录」—— `buildReport` 按 mtime 重排，log 插入序不参与。
+   */
   firstTimestamp: string
-  /** 末版时刻（该文件最后一条记录的 mtime）。 */
+  /** 末版时刻（该文件 **mtime 最大**的记录的 timestamp）。 */
   lastTimestamp: string
   /** 末版 − 首版，秒。 */
   durationSeconds: number
@@ -158,7 +164,14 @@ export function countElements(source: string): number {
 
 // ── snapshot ────────────────────────────────────────────────────────────────
 
-/** 列出目录下的 `.svg` 文件名（排序，保证确定性）。 */
+/**
+ * 列出目录下的 `.svg` 文件名（排序，保证确定性）。**非递归** —— 子目录
+ * （如 `procedural/` 的程序化样本）不进产能统计，这是有意设计（口径一致）。
+ *
+ * ⚠️ [CR] E10c：日志文件**不得**以 `.svg` 结尾、也不得放进被扫目录 ——
+ * 否则第二次 snapshot 起工具会把日志当图解析并每次运行必崩。当前日志名
+ * `versions.jsonl` 不触发；本函数对这种误用**无防御**，靠命名纪律。
+ */
 export function listSvgFiles(dir: string): string[] {
   return readdirSync(dir)
     .filter((name) => name.endsWith('.svg'))
@@ -212,7 +225,10 @@ export function buildRecord(dir: string, fileName: string): ThroughputRecord {
   return {
     entryId,
     file: fileName,
-    timestamp: stat.mtime.toISOString(),
+    // [CR] P15（E14）：timestamp 统一由 mtimeMs 派生（四舍五入到整毫秒，与既有 10 条
+    // 记录的取整规则一致）。原写法 `stat.mtime.toISOString()` 与 `stat.mtimeMs` 是两套
+    // 取整，可互相矛盾 1ms —— 屏幕上的「首版时刻」与「耗时」来自两个不同的数。
+    timestamp: new Date(Math.round(stat.mtimeMs)).toISOString(),
     mtimeMs: stat.mtimeMs,
     bytes: stat.size,
     sha256: createHash('sha256').update(raw, 'utf8').digest('hex'),
@@ -225,17 +241,80 @@ export function buildRecord(dir: string, fileName: string): ThroughputRecord {
   }
 }
 
-/** 读一份 JSONL 日志。文件不存在时返回空数组。 */
+/**
+ * 读一份 JSONL 日志。文件不存在时返回空数组。
+ *
+ * ⚠️ [CR] P5（B12/E3/E13）：坏行必须报出**哪个文件第几行** —— 原实现裸 `JSON.parse`
+ * 只给无行号的 SyntaxError，且 `appendSnapshot` 也读这份日志 ⇒ 日志坏一处，
+ * 整个工具永久瘫痪（连「再 snapshot 修复」的自救路都堵死）。
+ * 每行还要过 schema 校验：缺 `entryId` 的记录此前会让 `formatReport` 炸成裸
+ * TypeError（`undefined.padEnd`），缺 `mtimeMs` 会让比较器 NaN、排序未定义、耗时全 NaN。
+ */
 export function readLog(logPath: string): ThroughputRecord[] {
   if (!existsSync(logPath)) return []
   const raw = readFileSync(logPath, 'utf8')
   const records: ThroughputRecord[] = []
-  for (const line of raw.split('\n')) {
+  const lines = raw.split('\n')
+  for (const [index, line] of lines.entries()) {
     const trimmed = line.trim()
     if (trimmed === '') continue
-    records.push(JSON.parse(trimmed) as ThroughputRecord)
+    const lineNo = index + 1
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(trimmed)
+    } catch (cause) {
+      throw new Error(
+        `word-image-throughput：日志 ${logPath} 第 ${lineNo} 行不是合法 JSON —— ` +
+          `先修好该行再跑 snapshot/report（内容前缀：${trimmed.slice(0, 60)}…）`,
+        { cause },
+      )
+    }
+    records.push(assertRecordShape(parsed, logPath, lineNo))
   }
   return records
+}
+
+const RECORD_STRING_FIELDS = ['entryId', 'file', 'timestamp', 'sha256'] as const
+const RECORD_NUMBER_FIELDS = [
+  'mtimeMs',
+  'bytes',
+  'edgePercent',
+  'paddingPx',
+  'centerOffsetPx',
+  'elementCount',
+] as const
+
+/** 逐条 schema 校验（[CR] P5/E13）。不合格的记录带着文件名与行号抛错，进不了 report。 */
+function assertRecordShape(value: unknown, logPath: string, lineNo: number): ThroughputRecord {
+  const where = `word-image-throughput：日志 ${logPath} 第 ${lineNo} 行的记录不合格`
+  if (typeof value !== 'object' || value === null) {
+    throw new Error(`${where} —— 不是 JSON 对象`)
+  }
+  const record = value as Record<string, unknown>
+  for (const field of RECORD_STRING_FIELDS) {
+    const fieldValue = record[field]
+    if (typeof fieldValue !== 'string' || fieldValue === '') {
+      throw new Error(`${where} —— 字段 ${field} 缺失或不是非空字符串`)
+    }
+  }
+  for (const field of RECORD_NUMBER_FIELDS) {
+    const fieldValue = record[field]
+    if (typeof fieldValue !== 'number' || !Number.isFinite(fieldValue)) {
+      throw new Error(
+        `${where} —— 字段 ${field} 缺失或不是有限数（NaN 会让所有耗时比较静默为 false）`,
+      )
+    }
+  }
+  if (record.tier !== null && typeof record.tier !== 'string') {
+    throw new Error(`${where} —— 字段 tier 既不是字符串也不是 null`)
+  }
+  if (
+    !Array.isArray(record.violations) ||
+    record.violations.some((violation: unknown) => typeof violation !== 'string')
+  ) {
+    throw new Error(`${where} —— 字段 violations 不是字符串数组`)
+  }
+  return value as ThroughputRecord
 }
 
 /**
@@ -243,8 +322,16 @@ export function readLog(logPath: string): ThroughputRecord[] {
  *
  * ⚠️ **内容哈希与上一条相同则不追加** —— 同一版内容被 snapshot 两次
  * （例如误跑了两次命令）不应当被算成两个版本。
+ *
+ * ⚠️ [CR] P5（B8/E10b）：一张坏 SVG（空文件 / 无根 `<svg>`，`measureWordImage` 抛错）
+ * **不得瘫痪整批** —— 原实现里其余好图的记录也全丢，且每次重跑都同样崩。
+ * 现在坏图跳过并登记进返回值的 `failed`，好图照常入册；CLI 逐条报出并以非零码退出
+ * （**不得静默丢实体** —— 跳过必须大声，不是默默少一条）。
  */
-export function appendSnapshot(dir: string, logPath: string): { appended: number; skipped: number } {
+export function appendSnapshot(
+  dir: string,
+  logPath: string,
+): { appended: number; skipped: number; failed: { file: string; message: string }[] } {
   const files = listSvgFiles(dir)
   if (files.length === 0) {
     throw new Error(`word-image-throughput：目录 ${dir} 下没有 .svg 文件`)
@@ -254,9 +341,16 @@ export function appendSnapshot(dir: string, logPath: string): { appended: number
   for (const record of existing) lastByEntry.set(record.entryId, record)
 
   const lines: string[] = []
+  const failed: { file: string; message: string }[] = []
   let skipped = 0
   for (const fileName of files) {
-    const record = buildRecord(dir, fileName)
+    let record: ThroughputRecord
+    try {
+      record = buildRecord(dir, fileName)
+    } catch (error) {
+      failed.push({ file: fileName, message: error instanceof Error ? error.message : String(error) })
+      continue
+    }
     const previous = lastByEntry.get(record.entryId)
     if (previous !== undefined && previous.sha256 === record.sha256) {
       skipped += 1
@@ -265,9 +359,17 @@ export function appendSnapshot(dir: string, logPath: string): { appended: number
     lines.push(JSON.stringify(record))
   }
   if (lines.length > 0) {
+    // [CR] P5（E3/M6）：既有日志末行缺换行符时，直接追加会拼出 `}{` 垃圾行 ——
+    // 一条坏行会让整份日志读不出来（readLog 现在会报行号，但好记录也跟着丢）。
+    if (existsSync(logPath)) {
+      const existingRaw = readFileSync(logPath, 'utf8')
+      if (existingRaw !== '' && !existingRaw.endsWith('\n')) {
+        appendFileSync(logPath, '\n', 'utf8')
+      }
+    }
     appendFileSync(logPath, `${lines.join('\n')}\n`, 'utf8')
   }
-  return { appended: lines.length, skipped }
+  return { appended: lines.length, skipped, failed }
 }
 
 // ── report ──────────────────────────────────────────────────────────────────
@@ -359,12 +461,17 @@ export function formatReport(report: ThroughputReport): string {
   lines.push('')
   lines.push('词条'.padEnd(18) + '首版时刻'.padEnd(26) + '末版时刻'.padEnd(26) + '耗时(s)'.padStart(9) + '版本'.padStart(6))
   for (const entry of report.entries) {
+    // [CR] P14（E8）：「0.0 秒 = 一遍过」是 overloaded 语义 —— 两版在同一毫秒写盘
+    // （mtime 精度 / `utimes` 钉过）也是 0.0 s 而版本数 > 1。这种组合显式标注，
+    // §8.2.4 的判读法则对它不适用。
+    const zeroButMultiVersion = entry.durationSeconds === 0 && entry.versionCount > 1
     lines.push(
       entry.entryId.padEnd(18) +
         entry.firstTimestamp.padEnd(26) +
         entry.lastTimestamp.padEnd(26) +
         entry.durationSeconds.toFixed(1).padStart(8) +
-        String(entry.versionCount).padStart(6),
+        String(entry.versionCount).padStart(6) +
+        (zeroButMultiVersion ? '  ⚠️ 0.0s 但多版：同毫秒写盘，「一遍过」判读不适用' : ''),
     )
   }
   lines.push('')
@@ -385,8 +492,8 @@ export function formatReport(report: ThroughputReport): string {
 
 // ── CLI ──────────────────────────────────────────────────────────────────────
 
-function main(): number {
-  const [command, ...args] = process.argv.slice(2)
+function run(argv: string[]): number {
+  const [command, ...args] = argv
 
   if (command === 'snapshot') {
     const [dir, logPath] = args
@@ -394,8 +501,18 @@ function main(): number {
       console.error('用法：word-image-throughput snapshot <dir> <logPath>')
       return 1
     }
-    const { appended, skipped } = appendSnapshot(path.resolve(dir), path.resolve(logPath))
+    const { appended, skipped, failed } = appendSnapshot(path.resolve(dir), path.resolve(logPath))
     console.log(`[word-image-throughput] snapshot ${dir} → 追加 ${appended} 条，跳过 ${skipped} 条（内容哈希未变）`)
+    if (failed.length > 0) {
+      // [CR] P5（B8）：坏图不得静默丢 —— 逐条报出，非零码退出（好图已照常入册）。
+      for (const failure of failed) {
+        console.error(`[word-image-throughput] ❌ ${failure.file} 记录失败：${failure.message}`)
+      }
+      console.error(
+        `[word-image-throughput] ${failed.length} 个文件没进日志（其余文件已照常入册）—— 修好上述文件后重跑 snapshot`,
+      )
+      return 1
+    }
     return 0
   }
 
@@ -416,6 +533,17 @@ function main(): number {
 
   console.error('用法：word-image-throughput <snapshot|report> …')
   return 1
+}
+
+function main(): number {
+  try {
+    return run(process.argv.slice(2))
+  } catch (error) {
+    // [CR] P5（B8）：CLI 不再甩裸 stack trace —— readLog/buildRecord 的错误自带
+    // 上下文（哪个文件、第几行、哪张图），一条消息足够定位。
+    console.error(`[word-image-throughput] ❌ ${error instanceof Error ? error.message : String(error)}`)
+    return 1
+  }
 }
 
 if (process.argv[1] !== undefined && pathToFileURL(process.argv[1]).href === import.meta.url) {
