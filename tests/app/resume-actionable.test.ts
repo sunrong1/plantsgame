@@ -217,6 +217,20 @@ function remountLevel() {
   return mount(QuestionCard)
 }
 
+/**
+ * 🔥📎 `[CR]` 第七轮新增：**真的走一遍 `enterLevel()` 的恢复链路**，然后重挂组件。
+ *
+ * ⚠️ 为什么不复用 `remountLevel()`：它是 `store.state.value = readGameOnDisk()` ——
+ *   **直接拿盘上的字节覆盖内存，整条 `restoreFromSave()` 被绕过去了**。
+ *   ⇒ 恢复链路里的任何变异（题面被换、状态被降级）在这条路径上**结构上不可观察**，
+ *   而「恢复时把题换成了另一道」恰恰是本组要守的那个失败形态。
+ *   ⇒ 所以这里必须是「先 `enterLevel()`（走真实恢复），再拿它产出的 state 重挂」。
+ */
+function remountAfterRealRestore() {
+  store.enterLevel()
+  return mount(QuestionCard)
+}
+
 describe('🔥 G170 —— 断点续学的落点：读题时离开，重进必须拿得到题面', () => {
   it('G170 根因层：停在 awaiting-answer（孩子正在读题）时，盘上那份也必须是 awaiting-answer', () => {
     startFreshGame()
@@ -340,9 +354,19 @@ describe('G170-b —— 建造期恢复也要有卡面（裁决 B：题面落进
 
   it('渲染层：建造期落盘 → 重挂组件 → 卡面与四个选项都在（🔥 就是复现「点开始后无卡面」那一步）', () => {
     startFreshGame()
+    // ⚠️ 必须在 `answerCorrectly()` **之前**取：它是独立于恢复链路的基准。
+    const answeredEntryId = store.state.value.phase.kind === 'awaiting-answer'
+      ? store.state.value.phase.question.entryId
+      : (() => { throw new Error('前置：起始相位不是 awaiting-answer') })()
+    const answeredPrompt = store.state.value.phase.kind === 'awaiting-answer'
+      ? store.state.value.phase.question.card.promptText
+      : (() => { throw new Error('前置：起始相位不是 awaiting-answer') })()
     answerCorrectly()
 
-    const wrapper = remountLevel()
+    // ⚠️ 走**真实入口**：变异落在 `restoreFromSave()` 里，而 `remountLevel()`
+    //   直接拿盘上字节覆盖内存、绕过了整条恢复链路 ⇒ 那种变异它结构上看不见。
+    const wrapper = remountAfterRealRestore()
+    const restoredPhase = store.state.value.phase
 
     expect(
       wrapper.find('.question-card').exists(),
@@ -599,6 +623,30 @@ describe('G175 —— 存档对局不合法时**只丢这一局，不丢跨局�
       catchBodyOf('restoreFromSave', renamed),
       '形参从 `err` 改成 `error` 就取不到了 ⇒ 判据仍然依赖拼写',
     ).not.toBe('')
+  })
+
+  it('🔴 降级后的题单必须与 `masteredWordIds` **零交集**（AC-B8 —— 第七轮补）', () => {
+    const learned = entriesOf(1).slice(0, 21).map((e) => e.entryId)
+    seedDirtyGameWithProgress(learned, 2)
+
+    store.enterLevel()
+
+    // ⚠️ 这条是 `[CR]` 第七轮挖出来的真洞：第六轮裁决 1 把 catch 里的
+    //   `progress` 清空删掉之后，catch **什么都不做** ⇒ `state.value` 保持
+    //   **模块求值期**那份切片 —— 那是在 `progress` 还是空的时候切的。
+    //   ⇒ 孩子被喂的是单元 1 的前 10 条，而那 10 条**全都在 `learned` 里**：
+    //     进度条写 21/37，重打这几道**答对了也不推进**（它们已被判为掌握）。
+    const deckIds = store.state.value.deck.map((e) => e.entryId)
+    expect(
+      deckIds.filter((id) => store.progress.value.masteredWordIds.includes(id)),
+      '🔴 降级后孩子面前这局全是**他已经掌握**的题 —— AC-B8 逐字要「第 2 局的题单与' +
+        '第 1 局零交集」，这条路径上它恒不成立；且这些题答对了也不会推进进度条。',
+    ).toEqual([])
+    expect(
+      deckIds.length,
+      '降级后题单不能是空的（空切片意味着「本单元已学完」终态）—— 那会让这道脏存档' +
+        '把孩子直接送到通关卡',
+    ).toBeGreaterThan(0)
   })
 
   it('判据自测：成员写入 / 间接清空不许从判据缝里溜过去（R-53，第七轮补）', () => {

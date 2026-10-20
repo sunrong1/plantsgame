@@ -396,6 +396,29 @@ function restoreFromSave(): void {
     //   里全是别的单元的词），孩子会看到「我学过的东西好像没学过」——
     //   那一档在 `sliceDeckForLevel` 那侧另有兜底（空切片 ⇒ 「已学完」终态），
     //   **而那一条只在整单元被认完时才会走到**，不是这里的责任。
+    //
+    // 🔥📎 **`[CR]` 第七轮补上「对局**重新按进度组装**」这一步。**
+    //   此前这里只 `console.warn`，`state.value` 保持**开机时**那份切片 ——
+    //   而那份切片是在 `progress` 还是空的时候切的（模块求值期，见 `buildStateFor`）。
+    //   ⇒ 降级落到孩子面前的是**单元 1 的前 10 条**，可 `progress` 里那 21 条
+    //     **原封不动地留在盘上** ⇒ **他被喂了 10 道自己已经掌握的题**：
+    //     进度条写着 21/37，而重打的那几道**答对了也不会推进进度**。
+    //     AC-B8 逐字要的是「第 2 局的题单与第 1 局**零交集**」——
+    //     在这条路径上它**恒不成立**。
+    //   ⇒ 现在按**当前 progress** 重新组装：`buildStateFor()` 本身就是从
+    //     `progress.value.masteredWordIds` 切的 ⇒ 题单与已学集合天然零交集。
+    //     而这也正是 AC-D4 要的「**一局新开局**」——旧那局非法，本来就该丢掉。
+    //   ⚠️ `buildStateFor` 自己会抛（内容数据坏了）——那时**不能**用一个技术错误
+    //   换另一个技术错误（NFR13）⇒ 保留降级前那份 state，并在日志里说清楚。
+    try {
+      state.value = buildStateFor(state.value.unitNumber)
+    } catch (rebuildError) {
+      const reason = rebuildError instanceof Error ? rebuildError.message : String(rebuildError)
+      console.warn(
+        `[save] 降级后按进度重组对局也失败了（${reason}）—— 保留降级前那份 state。` +
+          '这不是孩子能玩的状态，请跑 `npm run validate:content`。',
+      )
+    }
     console.warn(
       `[save] 存档里的对局不合法，已退回从头开始（**跨局进度保留**）：${describeRestore(err)}`,
     )
