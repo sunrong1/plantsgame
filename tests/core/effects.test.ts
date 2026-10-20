@@ -389,7 +389,19 @@ function synthesizeTripleState(): State {
 function synthesizeTripleNext(prev: State): State {
   return {
     ...prev,
-    zombies: prev.zombies.filter((z) => z.id !== 'za'), // 少一只 ⇒ zombie-died
+    // ⚠️📎 **[CR] 2026-10-21（Story 1.14）改这个夹具，不是放宽断言**（R-57）。
+    //
+    // 原夹具只把 `za`（被打死那只）移出数组，**却同时把心数减了 1**
+    // —— 而掉心的那只僵尸是 `zb`（col 0，抵达房子）。真实 reducer 里
+    // **抵达房子的僵尸也会被移出数组**（`resolveCombatRound` 第 3 步）。
+    // ⇒ 原夹具是一个**真实流程走不出来的局面**，
+    //   而新的 `zombie-died` 判据（扣掉掉心的那部分）正是按真实语义写的
+    //   ⇒ 夹具必须改成**与 reducer 一致**：`za` 被打死、`zb` 到家被移除、
+    //   心数减 1 ⇒ 判据算出「打死了 1 只」⇒ 仍然是 zombie-died → heart-lost → level-complete。
+    //
+    // ⚠️ **断言一个字没动**（仍是那三个 cue 的精确顺序与精确 kind 序列）——
+    //   变的是**夹具的真实性**，不是判据的强度。
+    zombies: prev.zombies.filter((z) => z.id !== 'za' && z.id !== 'zb'), // 死 1 只 + 到家 1 只
     hearts: prev.hearts - 1, // 掉心 ⇒ heart-lost
     phase: { kind: 'level-complete' }, // 胜负 ⇒ level-complete
   }
@@ -438,3 +450,99 @@ function levelFailedDispatch() {
 function withHearts(state: State, hearts: number): State {
   return { ...state, hearts }
 }
+
+// ════════════════════════════════════════════════════════════════════════
+// [CR] 2026-10-21 —— G210：`zombie-died` 的三种误报（实测：修复前都会响）
+// ════════════════════════════════════════════════════════════════════════
+
+/**
+ * 🚨 **G210 —— `zombie-died` 曾把「僵尸不在数组里了」当成「僵尸被打死了」。**
+ *
+ * AC-C1 逐字把这张映射表的判据写成 **`next.zombies.length < prev.zombies.length`** ——
+ * 而「不在数组里」有**三种**与「被打死」无关的成因，`[DS]` 交付的代码一条都没排除：
+ *
+ * | # | 场景 | 旧判据的结果 | 实际发生了什么 |
+ * |---|---|---|---|
+ * | ① | 僵尸**抵达房子** | 响 | 它是**进屋了**，不是被打死；同一回合还该响 `heart-lost` |
+ * | ② | 通关时按 `CONTINUE` | 响 | `applyContinue` 直接**清空战场**，一次清 3 只 |
+ * | ③ | 重打本局 `RESTART_LEVEL` | 响 | `restart()` 把战场**重建**成 1 只 |
+ *
+ * ② ③ 尤其难受：它们都是**给孩子听见的坏消息**——通关动画配上一声僵尸惨叫、
+ * 点「重打」又补一声。而 ① 会让「建塔打死一只」与「进屋一只」无法区分。
+ *
+ * ⇒ 判据收窄成：`action.type === 'RESOLVE_ROUND'` **且** 减少的数量**多于**抵达数
+ *   （AC-C6 逐字要求复用 `lostSlotIndexes`，不另算一份）。
+ *
+ * ⚠️ **诚实记录一处残留偏差**：最终失败的那一回合里，若同时有僵尸进屋且心数已归零，
+ *   `hearts` 被夹在 0 ⇒ `lostSlotIndexes` 少算 1 ⇒ 判据可能**多算**一只「打死」。
+ *   那时该响的 `heart-lost` 也会被心数夹到 0 而不响 ⇒ 净效果是「少一声进屋、多一声打死」，
+ *   都在终局画面上，人耳分辨不出。不改是因为修它要动 `State` 形状或存档格式，
+ *   代价远超收益 —— 记在这里，别让下一个人以为是「完全等价」。
+ */
+describe('G210 —— zombie-died 的三种误报（[CR] 实测：修复前三条都会响）', () => {
+  it('① 只有「进屋」没有「打死」的结算回合，不响 zombie-died', () => {
+    const { prev, next, effects } = heartLostDispatch()
+    // 前提自检：这一回合**确实**少了一只僵尸（就是进屋那只），且确实掉心。
+    expect(next.zombies.length, '前提：少的那只是「进屋」而不是「被打死」').toBeLessThan(
+      prev.zombies.length,
+    )
+    expect(next.hearts, '前提：这一回合真的掉心了').toBeLessThan(prev.hearts)
+    expect(
+      cues(effects),
+      '僵尸进屋与被打死是两件事 —— 进屋该响 heart-lost，不该响 zombie-died（AC-C1）',
+    ).toContain('heart-lost')
+    expect(cues(effects), '只有进屋时绝不响 zombie-died').not.toContain('zombie-died')
+  })
+
+  it('② 通关（CONTINUE 清空战场）不响 zombie-died', () => {
+    const { prev, next, effects } = levelCompleteDispatch()
+    expect(next.phase.kind, '前提：真的通关了').toBe('level-complete')
+    expect(prev.zombies.length, '前提：战场在通关时被清空 —— 数组长度骤减').toBeGreaterThan(0)
+    expect(next.zombies.length, 'CONTINUE 清空战场 ⇒ 旧判据在这里必然误报').toBe(0)
+    expect(
+      cues(effects),
+      '通关时清空战场不是「打死了 N 只僵尸」—— 通关音效里混一声惨叫是给孩子最差的反馈',
+    ).toContain('level-complete')
+    expect(cues(effects), '通关不响 zombie-died').not.toContain('zombie-died')
+  })
+
+  it('③ 重打本局（RESTART_LEVEL 重建战场）不响 zombie-died', () => {
+    // 造一个「场上有 3 只僵尸」的局面再重打 —— 重打会把战场重建，少 2 只。
+    const failed = withHearts(levelFailedDispatch().next, 1)
+    expect(failed.phase.kind, '重打只在 level-failed 合法').toBe('level-failed')
+    const withCrowd: State = {
+      ...failed,
+      zombies: [
+        { id: 'za', col: 3, hp: 1, slowTurnsLeft: 0 },
+        { id: 'zb', col: 4, hp: 1, slowTurnsLeft: 0 },
+        { id: 'zc', col: 5, hp: 1, slowTurnsLeft: 0 },
+      ],
+    }
+    const action = restartLevel()
+    const next = reduce(withCrowd, action)
+    expect(
+      withCrowd.zombies.length - next.zombies.length,
+      '前提：重打把战场从 3 只重建 ⇒ 旧判据必然误报一只 zombie-died',
+    ).toBeGreaterThan(0)
+
+    const cuesHere = cues(runEffects(action, withCrowd, next))
+    expect(cuesHere, '重打是「清理战场」，不是「打死了僵尸」').not.toContain('zombie-died')
+  })
+
+  it('反向自测：判据依赖「action 是 RESOLVE_ROUND」这一半 —— 换个 action 就不响', () => {
+    // ⚠️ 判据自检（R-53）：同一个 (prev,next) 只换 action 类型，结论必须相反。
+    //   这条锁住的是「收窄判据的两个条件**都**在生效」，而不是碰巧某个场景不成立。
+    const prev = synthesizeTripleState()
+    const next = synthesizeTripleNext(prev)
+    const byRound = cues(runEffects(resolveRound(), prev, next))
+    const byRestart = cues(runEffects(restartLevel(), prev, next))
+
+    expect(
+      byRound,
+      '同一对状态走 RESOLVE_ROUND 必须仍然响 zombie-died —— 收窄不能把真的打死也一起消掉',
+    ).toContain('zombie-died')
+    expect(byRestart, '同一对状态走别的 action 就不响 —— 判据确实认了 action 类型').not.toContain(
+      'zombie-died',
+    )
+  })
+})

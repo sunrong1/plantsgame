@@ -183,8 +183,36 @@ export function runEffects(action: Action, prev: State, next: State): readonly E
   }
 
   // ③ 三条与 action 无关的判据 —— 顺序由「因果」定，不是由 case 顺序定。
-  if (next.zombies.length < prev.zombies.length) {
-    effects.push(sfx('zombie-died'))
+  //
+  // ⚠️📎 **[CR] 2026-10-21：`zombie-died` 的判据收窄。**
+  //
+  // AC-C1 的映射表给这一行写的是**两列**：「触发 action = `RESOLVE_ROUND`」
+  // 与「判据 = `next.zombies.length < prev.zombies.length`」——
+  // 原实现**只实现了判据那一列，把触发 action 那一列丢了**，
+  // 而「僵尸数组变短」这件事在**三个**地方都会发生，且只有一处是「僵尸死了」：
+  //
+  // | 场景 | 数组变短的原因 | 原来会播什么 |
+  // |---|---|---|
+  // | `RESOLVE_ROUND` 里**打死了**僵尸 | 血量归零被剔除 | ✅ `zombie-died`（对） |
+  // | `RESOLVE_ROUND` 里**僵尸到了房子** | 抵达判定后被移除 | ❌ `zombie-died` + `heart-lost`（**僵尸没死**） |
+  // | `CONTINUE` 走到通关 | `applyContinue` 清空战场（`zombies: []`） | ❌ 通关瞬间先响「僵尸倒下」 |
+  // | `RESTART_LEVEL` 重打 | `createInitialState` 重建战场 | ❌ 点「重打本局」响「僵尸倒下」 |
+  //
+  // ⇒ 现在**两个条件都要**：触发 action 必须是 `RESOLVE_ROUND`，
+  //   且「少掉的数量」要**扣掉掉心的那部分** —— 到家的僵尸不是死的。
+  //
+  // ⚠️ **扣掉的部分复用 `lostSlotIndexes`（AC-C6）** —— 不另算一份掉心判据。
+  // ⚠️ **心数夹到 0 的那一种情况（掉的心多于剩余心）**：
+  //   `lostSlotIndexes` 给出的是「实际被扣掉的心数」（夹到 0），
+  //   而到家僵尸可能有 2 只 ⇒ 这一轮算出来的「打死的」会**多 1**。
+  //   那只可能发生在**失败的最后一轮**（心数归零 ⇒ 本局结束），
+  //   代价是那一轮可能多响一声 `zombie-died`。**如实记下，不假装没有。**
+  if (action.type === 'RESOLVE_ROUND') {
+    const removed = prev.zombies.length - next.zombies.length
+    const reachedHouse = lostSlotIndexes(prev, next).length
+    if (removed - reachedHouse > 0) {
+      effects.push(sfx('zombie-died'))
+    }
   }
   // ⚠️ 掉心判据**必须**调 `lostSlotIndexes`（AC-C6），不许另算
   //   （如 `prev.hearts - next.hearts > 0` 这类「看起来等价」的写法）。

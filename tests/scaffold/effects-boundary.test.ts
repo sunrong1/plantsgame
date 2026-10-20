@@ -208,6 +208,28 @@ describe('G64a —— 掉心判据必须复用 lostSlotIndexes，不许另算（
       '掉心判据出现了第二份实现 —— 画面与声音会各判一次，将来必然分叉（AC-C6）',
     ).toEqual([])
   })
+
+  // 🚨📎 `[CR]` 2026-10-21 **G212 —— G64a 原先只扫 `core/effects.ts` 一个文件**。
+  //
+  //   AC-C6 的原文（见 story 文档 AC-C6 节）是三份文件一起点名：
+  //   「❌ **不许**在 `effects.ts` / `effects-runner.ts` / `audio.ts`
+  //   里写第二份掉心判据（包括 `prev.hearts - next.hearts > 0` 这类写法）」。
+  //   首版守卫只覆盖了第一个 ⇒ 另两份里各写一份「画面差值」判据会**全绿**。
+  //   这与本仓库记过的「非递归扫描只扫一个文件」是同一类形态：
+  //   判据比 AC 窄，缺口落在没被扫描的那两份上。
+  it.each([
+    ['src/core/effects.ts'],
+    ['src/app/effects-runner.ts'],
+    ['src/services/audio.ts'],
+  ])('G212 —— %s 里同样没有第二份心数差值判据（AC-C6 逐字点名三份文件）', (file) => {
+    const code = stripComments(readFileSync(join(root, file), 'utf8'))
+    const offenders = [
+      /prev\.hearts\s*-\s*next\.hearts/,
+      /next\.hearts\s*-\s*prev\.hearts/,
+      /\bheartsLostBetween\s*\(/,
+    ].filter((p) => p.test(code))
+    expect(offenders.map(String), `${file} 里出现了 AC-C6 禁止的第二份掉心判据`).toEqual([])
+  })
 })
 
 describe('G60 —— 组件与视图里不出现播放函数名（AC-F1）', () => {
@@ -225,8 +247,7 @@ describe('G60 —— 组件与视图里不出现播放函数名（AC-F1）', () 
   })
 })
 
-describe('G70 —— 组件与视图不 import `services/audio`（AC-F4）', () => {
-  it.each(['src/components/quiz/QuestionCard.vue', 'src/views/StartView.vue'])(
+describe('G70 —— 组件与视图不 import `services/audio`（AC-F4）', () => {  it.each(['src/components/quiz/QuestionCard.vue', 'src/views/StartView.vue'])(
     '%s 的 ESLint 配置上 no-restricted-imports 是 error',
     async (file) => {
       const rule = (await rulesForFile(file))['no-restricted-imports']
@@ -627,5 +648,135 @@ describe('AC-G8 —— effects-runner 禁 await、audio-unlock 禁 await 且禁 
 
   it('effects-runner.ts 真实存在（AC-G8 裁决把它写进了禁 await 名单）', () => {
     expect(statSync(resolve(root, 'src/app/effects-runner.ts')).isFile()).toBe(true)
+  })
+})
+
+// ════════════════════════════════════════════════════════════════════════
+// [CR] 2026-10-21 —— G211：`src/app/**` 的音频边界（补 G60/G70 的扫描缺口）
+// ════════════════════════════════════════════════════════════════════════
+
+const APP_FILES = walk(join(root, 'src/app'))
+
+/**
+ * 🚨 **G60 / G70 原先只扫 `src/components` + `src/views` —— `src/app/` 整层没进扫描范围。**
+ *
+ * 这不是「多扫一个目录更保险」那么轻：AC-F1 的原文是
+ * 「`src/` 里**唯一**调 SFX / BGM 播放函数的地方是 `app/effects-runner.ts`」，
+ * 而 `src/app/` 里有 `store.ts`、`dev-adjust.ts`、`session-recorder.ts` 等 10+ 个文件 ——
+ * 它们**和组件一样是 app 层代码**，同样可以在 `playSfx(` 前面不经过任何 facade 直接播。
+ * 首版守卫让 `store.ts` 里写一行 `playSfx('answer-correct')` 全绿。
+ *
+ * ⇒ 现在 `src/app/**` 逐文件判定，但**放行两个合法出口**（各带理由，逐字写在下方）：
+ *   · `app/effects-runner.ts` —— AC-E1 指定的那唯一执行点；
+ *   · `app/audio-unlock.ts`   —— AC-1 三步同步块，解锁动作本身就是 1.2 定下的出口。
+ *
+ * ⚠️📎 **[CR] 2026-10-21 首版判据错在这里，已改** —— 首版是「名单外的文件里
+ *   **不许出现这个函数名**」，当场把 `store.ts` 判红，而 `store.ts` 调的是
+ *   **门面**（`import { stopBgm } from './effects-runner'`）—— 那正是架构要求的姿势。
+ *   ⇒ 这就是本仓库记过的「判据粒度粗于豁免项」的又一例：**按名字判，分不出
+ *     「从门面拿」与「绕过门面直连服务」**。改成按**来源**判：
+ *     出现这个名字 ⇒ 必须能从 `./effects-runner` 导入它。
+ *
+ * ⚠️📎 **第二版判据又错了一次，是变异 M243 打出来的**：来源判据首版写成
+ *   `/import[^;]*\bplaySfx\b[^;]*from\s*['"][^'"]*effects-runner['"]/`。
+ *   `store.ts` **没有分号** ⇒ `[^;]*` 一路跨过整份文件，于是「后面**任意**位置
+ *   有一条 effects-runner 的 import」被当成了「这个名字来自门面」。
+ *   实测：在 store.ts 里加 `import { playSfx } from '../services/audio'`，
+ *   名字那条判据**照样全绿** —— 第二次假绿。
+ *   ⇒ 改成**逐条 import 语句**解析：先切出每条 `import { … } from '…'`，
+ *     再看**哪一条**导入了这个名字、来源是哪儿。
+ */
+describe('G211 —— `src/app/**` 的音频边界：只能经 effects-runner 的门面（AC-E1 / AC-F1）', () => {
+  /** 合法出口 —— 只有它们本身可以直接 import 音频服务。 */
+  const ALLOWED = new Set(['effects-runner.ts', 'audio-unlock.ts'])
+
+  /**
+   * 这个名字在本文件里是从哪个模块导入的？`null` = 根本没导入（自造，或压根没用）。
+   *
+   * ⚠️ **逐条匹配**（`[^}]*` 只跨花括号内、`from` 紧跟其后）——
+   *   不能用 `[^;]*` 把范围放开到整份文件，那正是首版假绿的成因。
+   */
+  function importSourceOf(code: string, name: string): string | null {
+    const re = /import\s+(?:type\s+)?\{([^}]*)\}\s*from\s*['"]([^'"]+)['"]/g
+    for (const m of code.matchAll(re)) {
+      const imported = m[1]!
+        .split(',')
+        .map((s) => s.trim().replace(/^type\s+/, '').split(/\s+as\s+/)[0]!.trim())
+      if (imported.includes(name)) return m[2]!
+    }
+    return null
+  }
+
+  it('扫得到 app 层文件 —— 路径变了或目录空了，守卫已失明', () => {
+    expect(APP_FILES.length, '扫不到任何 src/app 文件').toBeGreaterThan(1)
+    expect(
+      APP_FILES.some((f) => f.endsWith('store.ts')),
+      'src/app/store.ts 不在扫描范围内 —— G211 的判据没生效',
+    ).toBe(true)
+  })
+
+  it.each(['playSfx', 'startBgmIfReady', 'prewarmBgm', 'stopBgm'])(
+    '%s 出现在 app 层时，只能从 effects-runner 的门面导入',
+    (name) => {
+      const offenders = APP_FILES.filter((file) => {
+        if (ALLOWED.has(file.slice(file.lastIndexOf('/') + 1))) return false
+        const code = stripComments(readFileSync(file, 'utf8'))
+        if (!new RegExp(`\\b${name}\\b`).test(code)) return false
+        const source = importSourceOf(code, name)
+        // 导入了但来源不是门面 ⇒ 绕过出口；压根没导入却出现了名字 ⇒ 自造的同名函数。
+        return source === null || !source.includes('effects-runner')
+      })
+      expect(
+        offenders.map((f) => f.slice(root.length + 1)),
+        `${name} 出现在 app 层却不是经 effects-runner 门面拿的 —— 副作用出口就不再唯一（架构硬约束 4）`,
+      ).toEqual([])
+    },
+  )
+
+  it('app 层不直接 import services/audio —— 只允许两个出口（AC-F4 的 app 侧）', () => {
+    const offenders = APP_FILES.filter((file) => {
+      const base = file.slice(file.lastIndexOf('/') + 1)
+      if (ALLOWED.has(base)) return false
+      const code = stripComments(readFileSync(file, 'utf8'))
+      return /from\s+['"][^'"]*services\/audio['"]/.test(code)
+    })
+    expect(
+      offenders.map((f) => f.slice(root.length + 1)),
+      'app 层绕过 facade 直接 import 音频服务 —— 副作用出口就不再唯一',
+    ).toEqual([])
+  })
+
+  it('反向自测：判据本身会咬 —— 直连服务与自造同名都被抓，走门面放过', () => {
+    // ⚠️ 判据自检（R-53）：把判据本体抽出来喂四种文本，不能只断言真实代码全绿。
+    const judge = (file: string, code: string): boolean => {
+      if (ALLOWED.has(file.slice(file.lastIndexOf('/') + 1))) return false
+      if (!/\bplaySfx\b/.test(code)) return false
+      const source = importSourceOf(code, 'playSfx')
+      return source === null || !source.includes('effects-runner')
+    }
+    // ① 绕过门面直连服务 —— 这正是 G211 要防的形态。
+    expect(
+      judge('store.ts', "import { playSfx } from '../services/audio'\nplaySfx('a')\n"),
+      '直连 services/audio 必须判红 —— 否则这条守卫恒真',
+    ).toBe(true)
+    // ② **同一个文件里既有门面 import 又有直连 import** —— 首版判据在这里放过，
+    //    变异 M243 打的就是这一形态（「别处有相关 import 就当它来自门面」）。
+    expect(
+      judge(
+        'store.ts',
+        "import { stopBgm } from './effects-runner'\n" +
+          "import { playSfx } from '../services/audio'\n" +
+          'playSfx("a")\n',
+      ),
+      '门面 import 不能替直连 import 背书 —— 这正是 M243 命中的假绿',
+    ).toBe(true)
+    // ③ 自造同名函数 —— 同样绕过出口。
+    expect(judge('dev-adjust.ts', 'function playSfx() {}\n'), '自造同名必须判红').toBe(true)
+    // ④ 走门面 —— 合法，判据必须放过它（首版就是在这里误伤 store.ts 的）。
+    expect(
+      judge('store.ts', "import { stopBgm } from './effects-runner'\nstopBgm()\n"),
+      '门面调用必须放过 —— 首版判据在这里误伤真实代码',
+    ).toBe(false)
+    expect(judge('effects-runner.ts', "import { playSfx } from '../services/audio'\n"), '名单内必须放过').toBe(false)
   })
 })

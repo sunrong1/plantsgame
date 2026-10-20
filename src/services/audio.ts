@@ -50,12 +50,42 @@ export const MUSIC_BASE_PATH = `${import.meta.env.BASE_URL}assets/audio/music/`
 /** cue → 已解码的 `AudioBuffer`。同一资源只 `fetch` + 解码**一次**（AC-D4）。 */
 const sfxBuffers = new Map<SfxCue, AudioBuffer>()
 
+/**
+ * cue → **正在进行的**加载（同一资源同一时刻只有一次 fetch）。
+ *
+ * ⚠️📎 **[CR] 2026-10-21 补**：原实现只有「已解码」缓存，解码窗口内的并发触发
+ *   会**再发一次 fetch** ⇒ 同一个 mp3 下载两遍、解码两遍、两份回调各起播一次
+ *   ⇒「建塔」音叠着响两次（AC-D4 的「不重新 fetch」在窗口内不成立）。
+ */
+const loadingSfx = new Map<SfxCue, Promise<void>>()
+
 /** 已确认失败（404 / 解码失败 / 非 2xx）的资源键。**失败即标记，不再重试**（AC-D5）。 */
 const failedSfx = new Set<SfxCue>()
 
 /** BGM 的已解码 buffer；BGM 已失败标记。 */
 let bgmBuffer: AudioBuffer | null = null
 let bgmFailed = false
+
+/**
+ * BGM **正在加载**（防止「反复点 5 次开始游戏」把同一个 39 秒 mp3 下载 5 遍）。
+ *
+ * ⚠️📎 **[CR] 2026-10-21 补**。
+ */
+let bgmLoading = false
+
+/**
+ * 「现在应该在播 BGM」这个**意图**的旗子。
+ *
+ * ⚠️📎 **[CR] 2026-10-21 补 —— 这一条是 BGM 曾经「永远不响」的全部原因**：
+ *   `prewarmBgm()` 的解码是**异步**的，而 `enterLevel()` 在**同一个同步块**里
+ *   就调了 `startBgmIfReady()` ⇒ 那一刻 `bgmBuffer` 还是 `null`，
+ *   `startBgmIfReady()` 直接 return ⇒ 「进关了」这个事实**再没人用第二次**，
+ *   而解码完成时又没有回调去起播 ⇒ **BGM 一次都没响过**，
+ *   且零日志、零降级项（连「坏了」都不是，就是「没接上」）。
+ *   ⇒ 现在「进关了」（`bgmRequested`）与「解码好了」（`prewarmBgm` 的回调）
+ *   两个事实**必须会合**，会合点就是 `prewarmBgm` 的成功回调。
+ */
+let bgmRequested = false
 
 /** 当前正在播的 BGM 源节点；重复调用 `startBgmIfReady` 时先停它（AC-D7）。 */
 let bgmSource: AudioBufferSourceNode | null = null
@@ -79,8 +109,26 @@ export interface AudioDegradation {
   readonly reason: string
 }
 
-/** `AudioContext` 是否**整个**不可用 —— 只表示 session 级降级，**不**含单个资源失败（AC-D8）。 */
+/**
+ * `AudioContext` **整个**不可用 —— **永久性**：浏览器没有它 / 构造抛错（AC-D8）。
+ *
+ * ⚠️ 只表示 session 级降级，**不**含单个资源失败（AC-D8）。
+ */
 let audioContextUnavailableReason: string | null = null
+
+/**
+ * 🔥 **暂时性**的会话不可用：`resume()` 被拒绝。
+ *
+ * ⚠️📎 **[CR] 2026-10-21 补：为什么必须与上面那条分开** ——
+ *   原实现把 `resume()` 拒绝也写进 `audioContextUnavailableReason`，
+ *   而那个标志**永不清除** ⇒ **一次偶发的 resume 拒绝就让整个会话永久静音**：
+ *   `getPlayableContext()` 从此返回 null ⇒ 之后所有音效与 BGM 都是哑的，
+ *   而 `isAudioSilent()` 永远是 true（1.17 的面板会显示「整台设备无音频」）。
+ *   可 `resume()` 失败**不等于 context 不可用** —— 一次拒绝的常见原因是
+ *   自动播放策略抖动或切后台，下一次手势里再 resume 一次通常就成功了。
+ *   ⇒ 拒绝只登记**可恢复**的这一条；**一次成功的 resume 把它清掉**。
+ */
+let audioSessionSuspendedReason: string | null = null
 
 /**
  * 降级状态的版本号 —— **只在降级标志变化时递增**（`[CR]` 2026-10-17 补）。
@@ -138,7 +186,7 @@ export function audioDegradationsVersion(): number {
  *   变异 **M123** 专打「把它写成后者」的写法）。
  */
 export function isAudioSilent(): boolean {
-  return audioContextUnavailableReason !== null
+  return audioContextUnavailableReason !== null || audioSessionSuspendedReason !== null
 }
 
 /** 全部正在生效的降级项及其原因 —— Story 1.17 调试面板的数据源（`epics.md:1361`）。 */
@@ -146,6 +194,12 @@ export function audioDegradations(): readonly AudioDegradation[] {
   const list: AudioDegradation[] = []
   if (audioContextUnavailableReason !== null) {
     list.push({ scope: 'session', key: 'audioContext', reason: audioContextUnavailableReason })
+  }
+  if (audioSessionSuspendedReason !== null) {
+    // ⚠️ 与永久那条**分开登记**：面板上要能看出「这一条会自己好」——
+    //   永久那条（没有 AudioContext / 构造抛错）不会自己恢复，
+    //   而 `resume()` 拒绝只要下一次手势 resume 成功就会消失。
+    list.push({ scope: 'session', key: 'audioSession', reason: audioSessionSuspendedReason })
   }
   for (const cue of failedSfx) {
     list.push({ scope: 'asset', key: `sfx:${cue}`, reason: '音效加载或解码失败，已标记不再重试' })
@@ -169,11 +223,35 @@ function markAssetFailed(reason: string): void {
   console.warn(`[audio] ${reason}`)
 }
 
-/** 记一条 session 级降级（AudioContext 整个不可用）。 */
+/** 记一条 session 级降级（AudioContext 整个不可用 —— **永久**）。 */
 function markSessionUnavailable(reason: string): void {
   audioContextUnavailableReason = reason
   noteDegradationsChanged()
   console.warn(`[audio] ${reason}`)
+}
+
+/**
+ * 记一条**可恢复**的 session 级降级（`resume()` 被拒绝）。
+ *
+ * ⚠️ 与 {@link markSessionUnavailable} 分开的原因见 `audioSessionSuspendedReason` 的注释：
+ *   拒绝**不等于** context 不可用，把它写进永久那条会让一次偶发拒绝静音整个会话。
+ */
+function markSessionSuspended(reason: string): void {
+  audioSessionSuspendedReason = reason
+  noteDegradationsChanged()
+  console.warn(`[audio] ${reason}`)
+}
+
+/**
+ * 清掉「可恢复」那条降级 —— **一次成功的 `resume()` 之后**调它。
+ *
+ * ⚠️ 只在它**确实被设过**时才动版本号：否则每次成功 resume 都会
+ *   惊动 1.17 的调试面板重算（面板的 `computed` 读版本号）。
+ */
+function clearSessionSuspended(): void {
+  if (audioSessionSuspendedReason === null) return
+  audioSessionSuspendedReason = null
+  noteDegradationsChanged()
 }
 
 // ── AudioContext 解锁（Story 1.2 / AC-1 第一步）──────────────────────────────
@@ -209,9 +287,18 @@ export function unlockAudioSession(): void {
     }
 
     // 同步发起，不 await。拒绝时（策略未放开等）只记日志。
-    void audioCtx.resume().catch((err: unknown) => {
-      markSessionUnavailable(`resume() 被拒绝，音频会话不可用：${describe(err)}`)
-    })
+    //
+    // ⚠️📎 **[CR] 2026-10-21**：拒绝**不**登记成永久 session 降级 ——
+    //   它只登记「可恢复」那一条，而**一次成功的 resume 会把它清掉**。
+    //   原实现把拒绝写进永久那条且永不清除 ⇒ 一次偶发拒绝静音整个会话。
+    void audioCtx.resume().then(
+      () => {
+        clearSessionSuspended()
+      },
+      (err: unknown) => {
+        markSessionSuspended(`resume() 被拒绝，音频会话暂不可用：${describe(err)}`)
+      },
+    )
   } catch (err) {
     // deferred ①：解锁链路任何意外都必须被 service 层兜住 ——
     // `audio-unlock.ts` 刻意**不**在同步块外层兜异常（理由是「不得在此吞异常」，
@@ -245,7 +332,12 @@ export function playSfx(cue: SfxCue): void {
   if (failedSfx.has(cue)) return
 
   const ctx = getPlayableContext()
-  if (ctx === null) return // session 不可用，已在解锁时记过降级
+  if (ctx === null) return // session 永久不可用，已在解锁时记过降级
+
+  // ⚠️📎 **[CR] 2026-10-21**：context 被挂起（切后台 / 自动播放策略）时**就地再 resume 一次** ——
+  //   `playSfx` 是从组件点击一路同步下来的（`applyAction` → effects-runner → 这里），
+  //   **手势上下文还在**，而挂起的 context 不 resume 就永远不出声。
+  ensureContextRunning(ctx)
 
   const cached = sfxBuffers.get(cue)
   if (cached !== undefined) {
@@ -253,16 +345,44 @@ export function playSfx(cue: SfxCue): void {
     return
   }
 
-  // 未缓存 ⇒ 同步发起 fetch + 解码，并挂 .then（**不得 await** —— 见文件头）。
-  const url = `${SFX_BASE_PATH}${cue}.mp3`
-  void fetchAudioBuffer(url, (buffer) => {
-    if (buffer === null) {
-      failedSfx.add(cue)
-      markAssetFailed(`音效 ${cue} 加载失败，已标记不再重试`)
-      return
-    }
-    sfxBuffers.set(cue, buffer)
-    startBuffer(ctx, buffer)
+  // 未缓存 ⇒ 发起加载。
+  //
+  // ⚠️📎 **[CR] 2026-10-21：同一 cue 的并发触发共用同一次 fetch**（in-flight 去重）。
+  //   原实现只查**已解码**的缓存，解码窗口内的第二次触发会**再发一次 fetch**
+  //   ⇒ 平板上连建两座塔就把同一个 mp3 下载两遍、解码两遍，
+  //   而两份解码回调**各自起播一次** ⇒ 「建塔」音在同一瞬间叠着响两次。
+  //   裁决 7 允许「不同事件的音效叠加」，**不包括**「同一个事件被自己放大」。
+  let loading = loadingSfx.get(cue)
+  if (loading === undefined) {
+    loading = loadSfx(cue)
+    loadingSfx.set(cue, loading)
+  }
+  // 加载完成后**各自**起播一次 —— 并发触发是「同一事件响多次」，不是「一次事件响一次」。
+  void loading.then(() => {
+    const buffer = sfxBuffers.get(cue)
+    if (buffer !== undefined) startBuffer(ctx, buffer)
+  })
+}
+
+/**
+ * 加载并解码一个 cue；resolve 时 buffer 已进 `sfxBuffers` 或已进 `failedSfx`。
+ *
+ * ⚠️ **只记一次失败**：失败原因由 `fetchAudioBuffer` 交回来，
+ *   在这里合成**一条** `[audio]` 日志 —— 原实现是「`fetchAudioBuffer` 记一条 +
+ *   调用方再记一条」，一次 404 产生两条 warn，还把降级版本号推高两次。
+ */
+function loadSfx(cue: SfxCue): Promise<void> {
+  return new Promise<void>((resolve) => {
+    const url = `${SFX_BASE_PATH}${cue}.mp3`
+    void fetchAudioBuffer(url, (buffer, reason) => {
+      if (buffer === null) {
+        failedSfx.add(cue)
+        markAssetFailed(`音效 ${cue} ${reason ?? '加载失败，已标记不再重试'}`)
+      } else {
+        sfxBuffers.set(cue, buffer)
+      }
+      resolve()
+    })
   })
 }
 
@@ -279,18 +399,29 @@ export function playSfx(cue: SfxCue): void {
 export function prewarmBgm(): void {
   // 已缓存或已失败 ⇒ 无事可做（AC-D5 失败即标记，AC-D4 解码一次）。
   if (bgmBuffer !== null || bgmFailed) return
+  // ⚠️📎 **[CR] 2026-10-21**：**正在加载**时也不重复发起 ——
+  //   「反复点 5 次开始游戏」（AC-8）会让同一个 39 秒的 mp3 被下载 5 遍。
+  if (bgmLoading) return
 
   const ctx = getAudioContext()
-  if (ctx === null) return // 未解锁 —— enterLevel() 会再试
+  if (ctx === null) return // 未解锁 —— ⚠️ 见下方「谁会再试」
 
   // ⚠️ 同步发起 fetch（不 await）。失败记 asset 降级，不阻断解锁链路。
-  void fetchAudioBuffer(`${MUSIC_BASE_PATH}battle-loop.mp3`, (buffer) => {
+  bgmLoading = true
+  void fetchAudioBuffer(`${MUSIC_BASE_PATH}battle-loop.mp3`, (buffer, reason) => {
+    bgmLoading = false
     if (buffer === null) {
       bgmFailed = true
-      markAssetFailed('BGM 加载失败，已标记不再重试')
+      markAssetFailed(`BGM ${reason ?? '加载失败，已标记不再重试'}`)
       return
     }
     bgmBuffer = buffer
+    // 🔥📎 **[CR] 2026-10-21 补：解码完成的那一刻把「该播了」这件事接上。**
+    //   原实现只在这里赋值 `bgmBuffer`，而 `startBgmIfReady()` 早在解码完成**之前**
+    //   就被 `enterLevel()` 调过一次（同一个同步块里）⇒ 它当时 `bgmBuffer === null`
+    //   直接返回 ⇒ **BGM 永远不播**，且没有任何日志、没有任何降级项。
+    //   ⇒ 现在「进关了」（`bgmRequested`）与「解码好了」两个事实**必须在这里会合**。
+    if (bgmRequested) startBgmIfReady()
   })
 }
 
@@ -304,21 +435,23 @@ export function prewarmBgm(): void {
  *
  * ⚠️ **单曲循环**：`source.loop = true`。⚠️ **重复调用不叠播**：先停已在播的 source。
  * ⚠️ **绝不向调用方抛**（AC-D9）。
+ *
+ * ⚠️📎 **[CR] 2026-10-21**：本函数**记下「进关了」这个意图**（`bgmRequested = true`），
+ *   即使此刻 buffer 还没解出来 —— 解码完成时 `prewarmBgm` 的回调会回来起播。
+ *   原来「未就绪就静默跳过」是**单向**的：跳过后再没人试 ⇒ BGM 永远不响。
  */
 export function startBgmIfReady(): void {
+  // 意图先记下来：解码完成的那一刻要靠它决定「现在该播了吗」。
+  bgmRequested = true
+
   const ctx = getPlayableContext()
-  if (ctx === null || bgmBuffer === null) return // 未就绪 —— 静默跳过（prewarm 可能还没解完）
+  if (ctx === null || bgmBuffer === null) return // 未就绪 —— 等 `prewarmBgm` 的回调
+
+  ensureContextRunning(ctx)
 
   try {
     // 重复调用不叠播：先停上一次（AC-D7）。
-    if (bgmSource !== null) {
-      try {
-        bgmSource.stop()
-      } catch {
-        // 已结束的节点再 stop() 会抛 InvalidStateError —— 忽略，它本来就停了。
-      }
-      bgmSource = null
-    }
+    stopBgmSource()
     const source = ctx.createBufferSource()
     source.buffer = bgmBuffer
     source.loop = true
@@ -331,13 +464,43 @@ export function startBgmIfReady(): void {
   }
 }
 
+/**
+ * 停掉正在播的 BGM，并**撤掉「该播了」这个意图**（AC-D7 的对称面）。
+ *
+ * ⚠️📎 **[CR] 2026-10-21 新增**：BGM 原本「永远不响」，所以**从来没有人需要停它**；
+ *   一旦 BGM 真的会响，退出战斗就必须真的停 ——
+ *   否则孩子点「返回开始界面」之后，战斗音乐还在响。
+ *   ⇒ `store.backToStart()`（`view` 唯一的出口）现在会调它。
+ *
+ * ⚠️ **绝不向调用方抛**（AC-D9）。
+ */
+export function stopBgm(): void {
+  bgmRequested = false
+  stopBgmSource()
+}
+
+/** 停掉当前那个源节点（已结束的节点再 stop() 会抛 InvalidStateError —— 忽略）。 */
+function stopBgmSource(): void {
+  if (bgmSource === null) return
+  try {
+    bgmSource.stop()
+  } catch {
+    // 已结束的节点再 stop() 会抛 InvalidStateError —— 忽略，它本来就停了。
+  }
+  bgmSource = null
+}
+
 // ── 内部：context / fetch / 起播 ─────────────────────────────────────────────
 
 /**
- * 取一个**可播放**的 context：不存在 / session 级不可用时返回 null。
+ * 取一个**可播放**的 context：不存在 / **永久** session 级不可用时返回 null。
  *
  * ⚠️ 刻意**不**在播放器里新建 AudioContext（AC-D2）—— 唯一的 context 出口是
  *   `unlockAudioSession()` 建的模块级那一个。
+ *
+ * ⚠️📎 **[CR] 2026-10-21**：**只挡永久的那条**（没有 AudioContext / 构造抛错）。
+ *   「`resume()` 被拒绝」是**可恢复**的 —— 挡它等于让一次偶发拒绝静音整个会话，
+ *   而挂起的 context 本身也不出声，所以挡不挡的**听感**一样，恢复能力差很多。
  */
 function getPlayableContext(): AudioContext | null {
   if (audioContextUnavailableReason !== null) return null
@@ -345,18 +508,50 @@ function getPlayableContext(): AudioContext | null {
 }
 
 /**
+ * context 被挂起时**就地再 resume 一次**（同步发起，不 await）。
+ *
+ * ⚠️ **为什么在这里 resume 而不是只在解锁时 resume 一次**：
+ *   `playSfx` / `startBgmIfReady` 是从组件点击一路同步下来的
+ *   （`applyAction` → effects-runner → 这里），**用户手势上下文还在** ——
+ *   而被挂起的 context（切后台 / 自动播放策略）在 resume 之前永远不出声。
+ *   ⇒ 这条路径是「本会话里唯一还有手势的机会」。
+ *
+ * ⚠️ **`resume()` 失败只记「可恢复」那条降级**（见 `audioSessionSuspendedReason`）——
+ *   它不把整个会话判死；下一次成功就会清掉。
+ */
+function ensureContextRunning(ctx: AudioContext): void {
+  if (ctx.state !== 'suspended') return
+  void ctx.resume().then(
+    () => {
+      clearSessionSuspended()
+    },
+    (err: unknown) => {
+      markSessionSuspended(`resume() 被拒绝，音频会话暂不可用：${describe(err)}`)
+    },
+  )
+}
+
+/**
  * 同步发起 `fetch` + `decodeAudioData`，结果通过回调交付。**不得 await**（AC-D6）。
  *
- * 覆盖**全部**失败形态并统一返回 `null`（AC-D5 / deferred ②）：
+ * 覆盖**全部**失败形态并统一交付 `null`（AC-D5 / deferred ②）：
  *   · `fetch` 本身抛（网络栈异常 / 残缺环境）
  *   · 响应非 2xx（404 等）
  *   · `decodeAudioData` 抛（解码器内部异常 —— deferred ②）
- * 任一发生都只记日志、返回 null，绝不冒到调用方。
+ * 任一发生都**把失败原因交回调用方**、返回 null，绝不冒到调用方。
+ *
+ * ⚠️📎 **[CR] 2026-10-21**：本函数**不再自己记日志** —— 原来它记一条、
+ *   调用方再记一条，一次 404 产生**两条** `[audio]` warn、降级版本号推高两次，
+ *   而它自己的注释却写着「不重复记」。⇒ 现在失败**原因**由这里交回，
+ *   由调用方合成**唯一一条**日志。
  */
-function fetchAudioBuffer(url: string, onReady: (buffer: AudioBuffer | null) => void): void {
+function fetchAudioBuffer(
+  url: string,
+  onReady: (buffer: AudioBuffer | null, reason: string | null) => void,
+): void {
   const ctx = audioCtx
   if (ctx === null) {
-    onReady(null)
+    onReady(null, '尚未解锁，音频通道不可用')
     return
   }
   try {
@@ -366,23 +561,26 @@ function fetchAudioBuffer(url: string, onReady: (buffer: AudioBuffer | null) => 
     void fetch(url)
       .then((response): Promise<AudioBuffer> | null => {
         if (!response.ok) {
-          markAssetFailed(`${url} 请求失败：HTTP ${response.status}`)
           return null
         }
         return response.arrayBuffer().then((data) => ctx.decodeAudioData(data))
       })
-      .then((buffer) => {
-        // 上一环返回 null ⇒ 已记过失败，直接交付（不重复记）。
-        onReady(buffer)
-      })
-      .catch((err: unknown) => {
-        markAssetFailed(`${url} 加载失败：${describe(err)}`)
-        onReady(null)
-      })
+      .then(
+        (buffer) => {
+          // 上一环返回 null ⇒ HTTP 非 2xx，失败原因在下面那条链上补齐。
+          if (buffer === null) {
+            onReady(null, '请求失败（响应非 2xx），已标记不再重试')
+            return
+          }
+          onReady(buffer, null)
+        },
+        (err: unknown) => {
+          onReady(null, `加载失败：${describe(err)}，已标记不再重试`)
+        },
+      )
   } catch (err) {
     // fetch 本身抛（极罕见但残缺环境会发生）—— 同步兜住，绝不外冒。
-    markAssetFailed(`${url} 发起请求失败：${describe(err)}`)
-    onReady(null)
+    onReady(null, `发起请求失败：${describe(err)}，已标记不再重试`)
   }
 }
 

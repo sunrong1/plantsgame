@@ -20,6 +20,7 @@ import {
   fakeAudio,
   installFakeAudio,
   resetFakeAudio,
+  stubFailingFetch,
 } from '../fixtures/fake-audio'
 import type { FakeUtterance } from '../fixtures/fake-audio'
 
@@ -195,6 +196,32 @@ describe('unlockAudioSequence（AC-1 三步同步块）', () => {
     expect(contexts).toHaveLength(1)
   })
 
+  // 📎 `[CR]` 2026-10-21 **补 AC-H6 ⑤** —— story 文档第 808 行逐字要求三条：
+  //   「①②⑤ 三条（`AudioContext` 不存在 / `new Audio()` 抛 / `getVoices()` 返回非数组）」。
+  //   ①② 有独立用例（见下方 `AC-H6 ①` 那个 describe），**⑤ 却没有** ——
+  //   既有那条 P6 用例测的是「`getVoices` **缺失**」，不是「返回**非数组**」。
+  //   两者是不同的坏法：缺失走 `typeof !== 'function'` 早返回，
+  //   非数组要走到 `raw.filter(...)` 才抛（`null.filter` / `'abc'.filter`）。
+  it.each([
+    ['null', null],
+    ['字符串', 'Samantha'],
+    ['普通对象', { 0: { name: 'Samantha', lang: 'en-US' }, length: 1 }],
+  ])('AC-H6 ⑤：getVoices() 返回 %s（非数组）时解锁链路照样跑完', async (_label, ret) => {
+    vi.stubGlobal('speechSynthesis', {
+      speaking: false,
+      cancel: () => {},
+      speak: () => {},
+      onvoiceschanged: null,
+      getVoices: () => ret,
+    })
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const { unlockAudioSequence } = await import('../../src/app/audio-unlock')
+
+    expect(() => unlockAudioSequence(), '非数组音色列表不得让解锁链路炸掉').not.toThrow()
+    expect(contexts, '第①步照常发生').toHaveLength(1)
+    warn.mockRestore()
+  })
+
   it('返回 void 而非 Promise —— 调用方不得 await（FR2）', async () => {
     const { unlockAudioSequence } = await import('../../src/app/audio-unlock')
 
@@ -327,7 +354,7 @@ describe('G72 —— 新入口不向调用方抛（AC-D9 / NFR13）', () => {
     expect(() => audio.startBgmIfReady(), '全静时起播 BGM 不得抛').not.toThrow()
   })
 
-  it('fetch 抛 / 响应非 2xx / decodeAudioData 抛，三种都不冒到调用方', async () => {
+  it('fetch 抛 / decodeAudioData 抛，两种都不冒到调用方', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const audio = await import('../../src/services/audio')
 
@@ -349,6 +376,32 @@ describe('G72 —— 新入口不向调用方抛（AC-D9 / NFR13）', () => {
     expect(() => audio2.playSfx('level-complete'), '解码抛不得冒到调用方').not.toThrow()
     await flush()
 
+    warn.mockRestore()
+  })
+
+  // 🚨📎 `[CR]` 2026-10-21 **G214 —— 用例标题写着「三种」，实际只验了两种。**
+  //   「响应非 2xx」这一支原先**没有任何用例**：
+  //   ① fetch 抛 / ② decodeAudioData 抛 都验了，唯独最常见的 404 没有 ——
+  //   而 404 正是 `G68`（失败即标记）测的那条，两边各测一半、合起来才完整。
+  it('响应非 2xx（404）不冒到调用方，且记成一条 asset 降级', async () => {
+    const fetchMock = vi.fn<(url: string) => Promise<unknown>>(() =>
+      Promise.resolve({ ok: false, status: 404, arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)) }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const audio = await import('../../src/services/audio')
+    audio.unlockAudioSession()
+    await flush()
+
+    expect(() => audio.playSfx('zombie-died'), '404 不得冒到调用方').not.toThrow()
+    await flush()
+
+    expect(fetchMock.mock.calls.length, '前置：确实发起了请求').toBe(1)
+    expect(
+      audio.audioDegradations().map((d) => `${d.scope}:${d.key}`),
+      '404 必须记成 scope=asset —— 不是 session（AC-D8）',
+    ).toEqual(['asset:sfx:zombie-died'])
+    // 「不重试」那半由 G68 守着，这里只确认 404 走的是**标记**这条路而不是崩了。
     warn.mockRestore()
   })
 })
@@ -524,5 +577,316 @@ describe('[CR 2026-10-17] 降级变更信号：版本号 + 订阅（三条写入
     expect(fired, '一次降级至少要通知一次').toBeGreaterThan(0)
     expect(audio.audioDegradationsVersion(), '一次降级至少要涨一次版本号').toBeGreaterThan(v0)
     off()
+  })
+})
+
+// ════════════════════════════════════════════════════════════════════════
+// [CR] 2026-10-21 —— 「BGM 永远不响」「resume 拒绝永久静音」「并发重复 fetch」
+// ════════════════════════════════════════════════════════════════════════
+
+/**
+ * 🚨 **G205 —— BGM 在真实进关路径上一次都没响过（`[CR]` 实测确认）。**
+ *
+ * ── 坏法（不是假想，是本 story `[DS]` 交付的真实代码）──────────────────────
+ * `StartView.onStart()` 的真实形状是**一个同步块里的两句**：
+ *
+ *   ```ts
+ *   unlockAudioSequence()   // ① ③步同步块，第③步 prewarmBgm 同步发起 fetch
+ *   enterLevel()            // 内部调 startBgmIfReady()
+ *   ```
+ *
+ * 而 `prewarmBgm` 的 `fetch + decodeAudioData` 是**异步**的 ⇒ 第二句执行的那一刻
+ * `bgmBuffer` 还是 `null` ⇒ `startBgmIfReady()` **直接 return**。
+ * 之后**再没有任何人调过它**（解码回调只赋值 buffer）⇒
+ * **BGM 永远不响，且零日志、零降级项** —— 连「坏了」都不是，是「没接上」。
+ *
+ * ── 为什么既有守卫抓不到 ───────────────────────────────────────────────────
+ * `AC-D7` 那条用例是「先 `prewarmBgm()` + `await flush()`（解码完成），
+ * 再 `startBgmIfReady()`」—— **它测的是「就绪之后起播」，而 bug 是「未就绪时起播」**。
+ * ⇒ 判据必须按**真实顺序**跑：两句之间**不 await**，flush 留给事后。
+ */
+describe('G205 —— BGM 在真实进关顺序上会响（[CR] 实测：修复前一次都没响过）', () => {
+  it('unlockAudioSequence() 与 startBgmIfReady() 同 tick ⇒ flush 之后有一个 loop 源节点', async () => {
+    const { audio } = await unlockedWithFetch()
+    // ⚠️ 走**真的** `app/audio-unlock.ts` 三步同步块，不是手搓三句 ——
+    //   `StartView.onStart()` 调的就是它，绕过它就等于测了一条不存在的链路。
+    const { unlockAudioSequence } = await import('../../src/app/audio-unlock')
+    const ctx = audio.getAudioContext() as unknown as FakeAudioContext
+
+    // ⚠️ 这两句之间**刻意不 await** —— 那就是 StartView.onStart() 的真实形状：
+    //   `unlockAudioSequence()`（内含 prewarmBgm 的同步 fetch 发起）
+    //   紧接 `enterLevel()`（内部就是 startBgmIfReady）。
+    unlockAudioSequence()
+    audio.startBgmIfReady()
+
+    // 起播**此刻**还没发生（buffer 还在解码）⇒ 这不是 bug，是设计的必然。
+    expect(
+      ctx.started.some((s) => s.loop),
+      '解码完成前不该已经起播 —— 若这条红了，说明判据写反了',
+    ).toBe(false)
+
+    await flush()
+
+    const loopSources = ctx.started.filter((s) => s.loop)
+    expect(
+      loopSources.length,
+      '解码完成后必须起播 —— 「进关了」与「解码好了」两个事实要会合（修复前这里是 0）',
+    ).toBe(1)
+    expect(loopSources[0]!.startCalls, 'BGM 起播一次').toBe(1)
+  })
+
+  it('反向自测：删掉解码回调里那句会合（`if (bgmRequested) startBgmIfReady()`）本条会红', async () => {
+    // ⚠️ 判据自检：不改生产代码，只把「起播」这一步从链路里摘掉，
+    //   确认断言真的依赖它 —— 否则这条守卫可能只是数着别的什么东西而绿。
+    const { audio } = await unlockedWithFetch()
+    const ctx = audio.getAudioContext() as unknown as FakeAudioContext
+    audio.prewarmBgm()
+    // 刻意**不**调 startBgmIfReady：等价于「意图从未被记下」。
+    await flush()
+    expect(
+      ctx.started.filter((s) => s.loop).length,
+      '判据必须依赖「意图已记下 + 解码完成后的会合」这条路径',
+    ).toBe(0)
+  })
+})
+
+/**
+ * 🚨 **G206 —— `stopBgm()` 是 AC-D7 的对称面（`[CR]` 新增出口）。**
+ *
+ * BGM 原本永远不响 ⇒ **从来没有人需要停它** ⇒ `store.backToStart()` 写着一句
+ * 「不停 BGM，BGM 停止策略属 1.14 / 1.18」。修复「BGM 会响」之后这句就变成真 bug：
+ * 孩子点「返回开始界面」，战斗音乐还在响。
+ * ⇒ `stopBgm()` 必须**同时**做两件事：停当前源节点（听得见的那半）、
+ * **并撤掉「该播了」这个意图**（否则下一次解码回调会把它重新拉起来 —— 那一半没人测过）。
+ */
+describe('G206 —— stopBgm() 同时停源节点与撤意图', () => {
+  it('stopBgm 停掉在播的源节点', async () => {
+    const { audio } = await unlockedWithFetch()
+    audio.prewarmBgm()
+    audio.startBgmIfReady()
+    await flush()
+    const ctx = audio.getAudioContext() as unknown as FakeAudioContext
+    const before = ctx.started.filter((s) => s.loop)
+    expect(before.length, '前置：此刻应在播').toBe(1)
+
+    audio.stopBgm()
+
+    expect(before[0]!.stopCalls, 'stopBgm 必须真的 stop 掉那个源节点').toBe(1)
+  })
+
+  it('stopBgm 之后不再有新的解码回调把 BGM 拉起来（意图已撤）', async () => {
+    const { audio } = await unlockedWithFetch()
+    const ctx = audio.getAudioContext() as unknown as FakeAudioContext
+
+    audio.prewarmBgm()
+    // ⚠️⚠️ `[CR]` 变异 M234 打到这里才发现首版是假绿。
+    //   首版只写「prewarm → stopBgm → flush」，**从不调 startBgmIfReady** ⇒
+    //   `bgmRequested` 始终是 false ⇒ 删掉 `stopBgm` 里那句 `bgmRequested = false`
+    //   **0 红**：那条变异在这个场景里是恒等变形，守卫压根没碰到它。
+    //   真正的坏法必须**先把意图记上**、再在解码完成**之前**撤掉：
+    //     点「开始游戏」（意图已记）→ BGM 还在下载 → 孩子秒点「返回」（撤意图）
+    //     → 下载完成 ⇒ 回调把音乐拉起来 ⇒ **开始界面上响起战斗音乐**。
+    audio.startBgmIfReady()
+    audio.stopBgm()
+    await flush()
+
+    expect(
+      ctx.started.filter((s) => s.loop).length,
+      '撤了意图之后解码完成也不该起播 —— 否则「返回开始界面」后音乐会自己回来',
+    ).toBe(0)
+  })
+
+  it('stopBgm 之后重新进关，BGM 仍能再响（意图可重新记下，不是单向闩锁）', async () => {
+    const { audio } = await unlockedWithFetch()
+    const ctx = audio.getAudioContext() as unknown as FakeAudioContext
+
+    audio.prewarmBgm()
+    audio.startBgmIfReady()
+    await flush()
+    audio.stopBgm()
+    audio.startBgmIfReady()
+
+    expect(
+      ctx.started.filter((s) => s.loop).length,
+      '重新进关必须能再起播 —— stopBgm 不能把 BGM 永久闩死',
+    ).toBe(2)
+  })
+})
+
+/**
+ * 🚨 **G207 —— 一次 `resume()` 拒绝曾经让整个会话永久静音（`[CR]` 实测确认）。**
+ *
+ * 原实现把 `resume()` 的拒绝写进**永久**的 `audioContextUnavailableReason`，
+ * 而那个标志**永不清除** ⇒ 一次偶发拒绝（自动播放策略抖动、切后台）之后，
+ * `getPlayableContext()` 永远返回 null ⇒ 之后所有音效与 BGM 都是哑的，
+ * 且 `isAudioSilent()` 永远 true ⇒ 1.17 的面板会显示「整台设备无音频」。
+ * 真实设备上「偶发一次就再也不响」是最难查的一类故障 —— 复现要靠真机抖动。
+ *
+ * ⇒ 拒绝只登记**可恢复**的 `audioSession`，**一次成功的 resume 把它清掉**。
+ */
+describe('G207 —— resume() 拒绝是可恢复的，不是永久静音（[CR] 实测：修复前永久静音）', () => {
+  it('resume 拒绝 ⇒ isAudioSilent 为 true，但降级项是可恢复的那一条', async () => {
+    fakeAudio.resumeRejects = true
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const { audio } = await unlockedWithFetch()
+
+    await flush()
+
+    expect(audio.isAudioSilent(), '拒绝期间确实是不出声的').toBe(true)
+    const degradations = audio.audioDegradations()
+    expect(
+      degradations.map((d) => `${d.scope}:${d.key}`),
+      '必须登记成 scope=session / key=audioSession 那条**可恢复**的降级',
+    ).toContain('session:audioSession')
+    expect(
+      degradations.some((d) => d.key === 'audioContext'),
+      '不能登记成 audioContext —— 那是永久那条，一登记就永不清除',
+    ).toBe(false)
+    warn.mockRestore()
+  })
+
+  it('之后一次成功的 resume 会清掉降级，音频恢复（G207 的另一半）', async () => {
+    fakeAudio.resumeRejects = true
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const { audio } = await unlockedWithFetch()
+    await flush()
+    expect(audio.isAudioSilent(), '前置：此刻被拒绝').toBe(true)
+
+    // ⚠️ 下一次手势：策略放开了，resume 成功。
+    fakeAudio.resumeRejects = false
+    audio.unlockAudioSession()
+    await flush()
+
+    expect(
+      audio.isAudioSilent(),
+      '一次成功的 resume 必须清掉降级 —— 否则「一次偶发拒绝」等于「本局永久哑」',
+    ).toBe(false)
+    expect(
+      audio.audioDegradations().some((d) => d.key === 'audioSession'),
+      '可恢复那条降级必须随之消失（面板要能看出它自己好了）',
+    ).toBe(false)
+    warn.mockRestore()
+  })
+
+  it('成功后音效真的又响了（降级标志不是摆设）', async () => {
+    fakeAudio.resumeRejects = true
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const { audio } = await unlockedWithFetch()
+    await flush()
+
+    fakeAudio.resumeRejects = false
+    audio.unlockAudioSession()
+    await flush()
+    audio.playSfx('answer-correct')
+    await flush(20)
+
+    const ctx = audio.getAudioContext() as unknown as FakeAudioContext
+    expect(
+      ctx.started.length,
+      '恢复之后 playSfx 必须真的起播 —— 只清标志不起播等于没修',
+    ).toBeGreaterThan(0)
+    warn.mockRestore()
+  })
+})
+
+/**
+ * 🚨 **G208 —— 同一 cue 的**并发**触发共用一次 fetch（AC-D4 在解码窗口内不成立）。**
+ *
+ * AC-D4 写的是「同一资源第二次及以后**不重新 fetch**」，而原实现只查**已解码**的缓存
+ * ⇒ 解码窗口内的第二次触发会**再发一次 fetch** ⇒ 平板上连建两座塔就把同一个 mp3
+ * 下载两遍、解码两遍，两份回调**各自起播一次** ⇒「建塔」音在同一瞬间叠着响两次。
+ *
+ * ⚠️ 既有 `AC-D4` 用例抓不到：它在两次触发**之间** `await flush()`，
+ *   第一次的解码已经落地 ⇒ 走的是「已解码缓存」那条路，窗口根本不存在。
+ *   ⇒ 这条判据**全程不 flush**，两次触发之间只有同步代码。
+ */
+describe('G208 —— in-flight 去重：同一 cue 并发触发只 fetch 一次', () => {
+  it('不等解码就触发两次 ⇒ fetch 一次、播放两次', async () => {
+    const { audio, fetchMock } = await unlockedWithFetch()
+    const ctx = audio.getAudioContext() as unknown as FakeAudioContext
+
+    audio.playSfx('tower-placed')
+    // ⚠️ **刻意不 flush** —— 这两下落在同一个解码窗口里。
+    audio.playSfx('tower-placed')
+
+    expect(
+      fetchMock.mock.calls.length,
+      '解码窗口内的第二次触发不得再发一次 fetch（AC-D4）',
+    ).toBe(1)
+
+    await flush(20)
+    // 并发是「同一事件响多次」不是「一次事件响一次」⇒ 两次触发两次起播，
+    // 但**只解码一次**。
+    //
+    // ⚠️ `[CR]` 这条链现在比修复前**长两拍**：`loadSfx` 那层 `new Promise` 包装
+    //   + 每个调用点各挂一次 `.then()`。实测 `flush(5)` 恰好差一拍 ⇒
+    //   拍数不是这里要守的东西，多给几拍，别让判据绑在微任务计数上。
+    expect(
+      ctx.started.length,
+      '两次触发各自起播一次（并发事件允许叠加），但不得叠着响两次是同一次下载的锅',
+    ).toBe(2)
+  })
+
+  it('三次并发触发（同一窗口）仍只 fetch 一次', async () => {
+    const { audio, fetchMock } = await unlockedWithFetch()
+    const ctx = audio.getAudioContext() as unknown as FakeAudioContext
+
+    audio.playSfx('answer-wrong')
+    audio.playSfx('answer-wrong')
+    audio.playSfx('answer-wrong')
+
+    expect(fetchMock.mock.calls.length, '三次并发触发仍只 fetch 一次').toBe(1)
+    await flush(20)
+    expect(ctx.started.length, '三次触发各自起播一次').toBe(3)
+  })
+})
+
+/**
+ * 🚨 **G209 —— 一次资源失败只记一条 `[audio]` 日志。**
+ *
+ * 原实现是「`fetchAudioBuffer` 内部记一条 + 调用方回调里再记一条」，
+ * 一次 404 产生**两条** warn，并把降级版本号**推高两次** ——
+ * 而它自己的注释却写着「不重复记」。⇒ 本 story 只改了两行（`fetchAudioBuffer`
+ * 把原因交回、不自己记；调用方合成唯一一条）。
+ *
+ * ⚠️ 这条判据守的是**日志条数**，不是「有没有记」—— 后者早就绿了。
+ */
+describe('G209 —— 一次资源失败只记一条 [audio] 日志', () => {
+  it('音效 404 ⇒ 恰好一条 warn，且版本号只涨一次', async () => {
+    stubFailingFetch()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const audio = await import('../../src/services/audio')
+    audio.unlockAudioSession()
+    await flush()
+    const v0 = audio.audioDegradationsVersion()
+
+    audio.playSfx('tower-placed')
+    await flush()
+
+    const lines = warn.mock.calls.map((c) => String(c[0])).filter((l) => l.includes('[audio]'))
+    expect(lines.length, `一次 404 只应有一条 [audio] 日志，实得 ${lines.length} 条：\n${lines.join('\n')}`).toBe(1)
+    expect(
+      audio.audioDegradationsVersion() - v0,
+      '一次失败只推高一次版本号 —— 推高两次会让 1.17 的面板重算两遍',
+    ).toBe(1)
+    warn.mockRestore()
+  })
+
+  it('BGM 404 ⇒ 同样恰好一条', async () => {
+    stubFailingFetch()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const audio = await import('../../src/services/audio')
+    audio.unlockAudioSession()
+    await flush()
+    warn.mockClear()
+    const v0 = audio.audioDegradationsVersion()
+
+    audio.prewarmBgm()
+    await flush()
+
+    const lines = warn.mock.calls.map((c) => String(c[0])).filter((l) => l.includes('[audio]'))
+    expect(lines.length, `BGM 一次失败只应有一条日志，实得 ${lines.length} 条：\n${lines.join('\n')}`).toBe(1)
+    expect(audio.audioDegradationsVersion() - v0, 'BGM 一次失败只推高一次版本号').toBe(1)
+    warn.mockRestore()
   })
 })

@@ -49,7 +49,7 @@
 #   epics.md 的销项说明处理。
 
 generated: 2026-10-12
-last_updated: 2026-10-20  # Story 2.2 已 done 并按 R-40 归档；运行记录与其审查结论见归档文档
+last_updated: 2026-10-21  # Story 1.14 首轮 [CR] 完成：4 条高危 patch 落盘 + G205–G214 + M232–M246；状态仍留 review（AC 与资产的曲目冲突待裁决）
                         # Story 2.2「难度阶梯规则落地」上下文已生成 → ready-for-dev（裁决与证据见其 story 文档）
                         # Story 2.1 —— ✅ **done**（`[CR]` 三层评审 + 16 变异红数 + D1-D4/P1-P27 全落地，见其 story 文档）
                         # Story 1.20 —— ✅ **done**（归档进 `_bmad-output/archive/`）
@@ -183,7 +183,7 @@ development_status:
   1-11-三种卡型与答题交互: done
   1-12-建造-阳光与射程可视化: done
   1-13-hud-阳光-心与进度: done
-  1-14-音效与-bgm-接入: review
+  1-14-音效与-bgm-接入: review   # [CR] 首轮完成，4 条高危 patch 全修；仍留 review —— deferred 第 3 条（曲目与 AC-H3 不符）待裁决
   1-15-存档与断点续学: review
   1-16-关卡流程-通关-失败与推进: done
   1-17-调试工具与会话回放: done

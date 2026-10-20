@@ -7,7 +7,9 @@
  *
  * ── 架构硬约束 4 的落点 ─────────────────────────────────────────────────────
  * 「副作用只在 `app/effects-runner.ts` 执行」。所以：
- *   · 本文件是 `src/` 里**唯一**调 SFX / BGM 播放函数的地方（守卫 G60 扫全仓）；
+ *   · 本文件是 `src/` 里**唯一**调 SFX / BGM 播放函数的地方
+ *     （守卫 **G60** 扫 `src/components` + `src/views` + `src/app`，
+ *      后者只放过本文件与 `app/audio-unlock.ts` 两个合法出口）；
  *   · `store.applyAction` 调本文件，**不**自己 import `services/audio`；
  *   · 组件调 `store.applyAction`，**不**直接碰音频。
  *
@@ -31,6 +33,7 @@ import {
   onAudioDegradationsChanged,
   playSfx,
   startBgmIfReady,
+  stopBgm,
 } from '../services/audio'
 import { writeSave } from '../services/save'
 
@@ -46,6 +49,7 @@ export {
   audioDegradationsVersion,
   onAudioDegradationsChanged,
   startBgmIfReady,
+  stopBgm,
 }
 
 /**
@@ -55,6 +59,11 @@ export {
  * ⚠️ **本函数绝不抛**（AC-E4）。某一条抛错只记 `WARN` 并**继续执行后续条目** ——
  *   理由是 `store.applyAction` 的调用方（组件门面）刻意没有 try/catch，
  *   冒上去就等于回合卡死，而 `epics.md` 的 Story 1.15 逐字要求「不阻断回合流转」。
+ *   ⚠️📎 **准确的范围（[CR] 2026-10-21 补）**：这条保证覆盖的是**已产生的 Effect 的执行**，
+ *   而 `runEffects(...)` 本身**不在** try 里 —— 它是纯函数，唯一会抛的是
+ *   `actionName()` 遇到**联合外**的 action（那是编程错误，**刻意**让它炸出来）。
+ *   1.15 的裁决「别把 catch 合并回循环外一层」正是为了保住 `assertNeverEffect` 的
+ *   编译期穷尽性 ⇒ 这里也不许为了「兜住 runEffects」而加外层 try。
  *   ⚠️📎 **1.15 的结论：catch 是「每条各自包」，不是「循环外包一层」** ——
  *   理由与代价逐条写在 `runOne` 的 `case 'SAVE'` 注释里（AC-E4 裁决），
  *   并在 `case 'SAVE'` 处留有指向。**别把它合并回循环外一层。**

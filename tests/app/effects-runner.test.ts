@@ -29,16 +29,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { OptionId, Progress, Question, State } from '../../src/core'
-import { playSfx, startBgmIfReady } from '../../src/services/audio'
+import { playSfx, startBgmIfReady, stopBgm } from '../../src/services/audio'
 import { afterEachUninstall, installFakeStorage } from '../fixtures/fake-storage'
 
 vi.mock('../../src/services/audio', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../src/services/audio')>()
-  return { ...actual, playSfx: vi.fn(), startBgmIfReady: vi.fn() }
+  return { ...actual, playSfx: vi.fn(), startBgmIfReady: vi.fn(), stopBgm: vi.fn() }
 })
 
 const playMock = vi.mocked(playSfx)
 const bgmMock = vi.mocked(startBgmIfReady)
+const stopBgmMock = vi.mocked(stopBgm)
 
 const core = await import('../../src/core')
 const { entriesOf } = await import('../../src/content')
@@ -208,5 +209,45 @@ describe('AC-E3 —— enterLevel 之后启动 BGM（裁决 5）', () => {
     applyAction(core.continueRound())
 
     expect(bgmMock, 'BGM 由「进关」触发，不是 action 触发（裁决 5）').not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * 🚨 **G213 —— 退出战斗必须停 BGM（`[CR]` 新增，`stopBgm` 的接线半）。**
+ *
+ * BGM 在 `[DS]` 交付时**永远不响**（解码回调不接「该播了」这个事实），
+ * 所以 `store.backToStart()` 的注释写「不停 BGM，BGM 停止策略属 1.14 / 1.18，本 story 不碰」——
+ * 那在「BGM 从不响」的前提下是**无害的**。
+ * 本 story 修好「BGM 会响」之后，同一句注释立刻变成真 bug：
+ * **孩子点「返回开始界面」，战斗音乐还在响**（而且会一直循环 39 秒那一段）。
+ *
+ * ⚠️ `view` 的两个出口是 `enterLevel()` 与 `backToStart()`（`[CR]` 已核），
+ *   ⇒ 停 BGM 只需要挂在这**一个**函数上；这一条判据守的就是那根线没断。
+ *   行为本身（真停源节点、真撤意图）在 `tests/services/audio.test.ts` 的 **G206**。
+ */
+describe('G213 —— 退出战斗要停 BGM（接线半）', () => {
+  it('backToStart 会调用 stopBgm', async () => {
+    const { backToStart } = await import('../../src/app/store')
+    stopBgmMock.mockClear()
+
+    backToStart()
+
+    expect(
+      stopBgmMock,
+      'BGM 现在真的会响 ⇒ 退出战斗必须真的停它，否则开始界面上一直放着战斗音乐',
+    ).toHaveBeenCalledTimes(1)
+  })
+
+  it('反向自测：判据认的是 stopBgm 这个门面，不是「恰好调了某个函数」', async () => {
+    const { backToStart } = await import('../../src/app/store')
+    stopBgmMock.mockClear()
+    const playBefore = playMock.mock.calls.length
+    const bgmBefore = bgmMock.mock.calls.length
+
+    backToStart()
+
+    expect(stopBgmMock, '必须调 stopBgm').toHaveBeenCalledTimes(1)
+    expect(playMock.mock.calls.length, '退出会战斗不该顺便播音效').toBe(playBefore)
+    expect(bgmMock.mock.calls.length, '退出会战斗不该重新起播 BGM').toBe(bgmBefore)
   })
 })

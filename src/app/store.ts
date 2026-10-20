@@ -61,7 +61,7 @@ import { playPronunciation } from '../services/pronunciation'
 import { readSave } from '../services/save'
 import { prefetchNextUnit, prefetchUnit } from '../services/asset-prefetch'
 
-import { runEffectsFromStore, startBgmIfReady } from './effects-runner'
+import { runEffectsFromStore, startBgmIfReady, stopBgm } from './effects-runner'
 import { devAdjust } from './dev-adjust'
 import { recordStep, resetSession } from './session-recorder'
 
@@ -1012,7 +1012,14 @@ export function restartLevel(): void {
  *
  * ⚠️ **只做 `view.value = 'start'` 一件事**：不清 `selectedEntryId`
  *   （它在本就由 {@link clearSelectionIfLeavingBuildPhase} 清空了）、
- *   **不读档、不写盘、不停 BGM**。BGM 停止策略属 1.14 / 1.18，本 story 不碰。
+ *   **不读档、不写盘**。
+ *
+ * ⚠️📎 **[CR] 2026-10-21（Story 1.14）补一行：停 BGM。**
+ *   原注释写「不停 BGM —— BGM 停止策略属 1.14 / 1.18，本 story 不碰」，
+ *   那在 BGM **永远不响**的前提下是无所谓的（`[CR]` 1.14 实测：BGM 一次都没响过）。
+ *   既然 BGM 现在真的会响，退出战斗就必须真的停 ——
+ *   否则孩子点「返回开始界面」之后，战斗音乐还在响。
+ *   ⇒ 走 `effects-runner` 的门面（架构硬约束 4：副作用只走 effects-runner）。
  *
  * ⚠️ **不落盘**是有意的：孩子的进度与战场刚刚由通关那一次 dispatch 落过盘
  *   （`core/effects.ts` 块 ④ 的 `level-complete` 行存 `null`）。
@@ -1023,6 +1030,7 @@ export function restartLevel(): void {
  */
 export function backToStart(): void {
   view.value = 'start'
+  stopBgm()
 }
 
 /**
