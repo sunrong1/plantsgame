@@ -44,7 +44,8 @@
 #   epics.md 的销项说明处理。
 
 generated: 2026-10-12
-last_updated: 2026-10-20  # Story 1.20 —— ✅ **done**（归档进 `_bmad-output/archive/`）
+last_updated: 2026-10-20  # Story 2.1 —— ✅ **done**（`[CR]` 三层评审 + 16 变异红数 + D1-D4/P1-P27 全落地，见其 story 文档）
+                        # Story 1.20 —— ✅ **done**（归档进 `_bmad-output/archive/`）
                         # [CS] Story 2.1「词图产能验证」上下文已生成 → ready-for-dev（7 条无人值守裁决与全部证据见其 story 文档）
                         #   用户裁决「G175 撞号」落地：本 story 的穷举判据 G175 → **G179**，
                         #     1.19 的 G175–G178 连续区段与其封存文档**一字未动**；
@@ -162,7 +163,7 @@ development_status:
   1-1-工程脚手架与启动界面: done
   # ⚠️ 1.2 与 1.10 的 `review` 是**有意留的**，不是漏转 —— 理由见各自 story 文档。
   #    按 R-42，运行复盘一律不写进本文件，只留状态与指针。
-  # 2-1 走 [DS]（无人值守）—— 复盘与实测值全在它自己的 story 文档里。
+  # 2-1 [CR] 完成 → done —— 复盘、实测值与三层评审全在它自己的 story 文档里。
   1-2-音频解锁与-tts-朗读: review
   1-3-朗读录音批量生成: done
   1-4-战斗内核与-5-条数值断言: done
@@ -185,7 +186,7 @@ development_status:
   1-20-相邻不同型-把植物不重复从巧合变成代码保证: done
   1-retrospective: optional
   epic-2: in-progress
-  2-1-词图产能验证: review
+  2-1-词图产能验证: done
   2-2-难度阶梯规则落地: backlog
   2-3-阳光经济档位扩展: backlog
   2-4-选项数量递进规则: backlog
