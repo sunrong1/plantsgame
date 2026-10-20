@@ -44,7 +44,8 @@
 #   epics.md 的销项说明处理。
 
 generated: 2026-10-12
-last_updated: 2026-10-20  # [CS] Story 2.2「难度阶梯规则落地」上下文已生成 → ready-for-dev（6 条无人值守裁决与全部证据见其 story 文档）
+last_updated: 2026-10-20  # [DS] Story 2.2 进行中（规则落地 → 守卫 → 文档 → 收尾）；运行记录见其 story 文档
+                        # [CS] Story 2.2「难度阶梯规则落地」上下文已生成 → ready-for-dev（6 条无人值守裁决与全部证据见其 story 文档）
                         # Story 2.1 —— ✅ **done**（`[CR]` 三层评审 + 16 变异红数 + D1-D4/P1-P27 全落地，见其 story 文档）
                         # Story 1.20 —— ✅ **done**（归档进 `_bmad-output/archive/`）
                         # [CS] Story 2.1「词图产能验证」上下文已生成 → ready-for-dev（7 条无人值守裁决与全部证据见其 story 文档）
@@ -188,7 +189,7 @@ development_status:
   1-retrospective: optional
   epic-2: in-progress
   2-1-词图产能验证: done
-  2-2-难度阶梯规则落地: ready-for-dev
+  2-2-难度阶梯规则落地: in-progress
   2-3-阳光经济档位扩展: backlog
   2-4-选项数量递进规则: backlog
   2-5-内容批次-1-单元-2-单单元试点: backlog
