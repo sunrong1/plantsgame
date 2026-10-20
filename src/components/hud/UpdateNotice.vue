@@ -87,6 +87,38 @@ const text = computed(() => (state.value.kind === 'update-ready' ? '有新版本
  * ⚠️ **safe-area 必需**：刘海 / 挖孔屏上，顶部安全区之外的系统状态栏
  *   会把这条提示盖掉一半。`.level-view` 已经为整页加了顶部安全区内边距，
  *   本组件是 `position: fixed`，脱离那个盒模型，必须自己再加一次。
+ *
+ * 🔥📎 **`[CR]` 2026-10-20：高度钉成 `--space-panel-pad`（16px）——
+ *   这条提示条**结构上不可能压住 HUD**。**
+ *   ⚠️ **改之前实测（真实构建产物 + 真实 chromium，inner 800×900 竖屏）**：
+ *     提示条 `top=0 bottom=32`（32px 高），而 HUD `top=16 bottom=59`
+ *     ⇒ **重叠 16px**；被盖住的叶子节点逐字是：
+ *       · `sun-counter__value`（"0"，30px 高）—— 上 9px 被盖；
+ *       · `progress-bar__label`（"第 1 单元 · 0/37"，19px 高）—— 上 10px 被盖（一多半）；
+ *       · `heart-row__shape` ×3（各 18px）—— 上 3px 被盖。
+ *     ⇒ 也就是说**阳光数字被削掉一截、进度标签被盖掉一半、三颗心的顶部被削掉**。
+ *   ⇒ **根因**：这条是 `position: fixed` 的浮层，而**没有任何地方为它预留高度** ——
+ *     `.level-view` / `.start-view` 的顶部内边距只有
+ *     `calc(var(--space-panel-pad) + env(safe-area-inset-top))`（16px），
+ *     而提示条自己高 32px。
+ *   ⇒ **修法（结构式，不是位置式）**：把提示条的高度钉成 **`--space-panel-pad`**，
+ *     与两个视图的顶部内边距**用同一个 token** ⇒
+ *     提示条底边 = `env(safe-area-inset-top) + --space-panel-pad`
+ *     = 视图内容顶边 ⇒ **恒不重叠**（差值恒为 0，不依赖任何测量）。
+ *   ⚠️ **为什么不改成「把 HUD 往下推」**：竖屏 800×900 下整页内容**恰好装得下**
+ *     （实测 `scrollHeight == clientHeight == 813`，零滚动）——
+ *     往下推 32px 会让题卡底部掉出视口，正是本 story P0-2 刚修掉的那个形态。
+ *     ⇒ 浮层**必须不占垂直预算**，而「高度 = 顶部内边距」正是唯一不占预算又不重叠的位置。
+ *   ⚠️ **字不会被切（实测）**：字是 `--text-body`（16px），`line-height` 也钉成
+ *     `var(--space-panel-pad)`（16px）⇒ 行盒正好等于条高。
+ *     ⚠️ 浏览器报的 `scrollHeight` 是 **17**（比 `clientHeight` 多 1）——
+ *       那是**字体的度量盒**（ascent+descent）比行盒高 1px，**不是墨迹被切**。
+ *     ⇒ 实测（真实 chromium 截图逐行数墨迹像素）：
+ *       生产版（16px / `overflow: hidden`）的墨迹占 **第 0–14 行**（15 行），
+ *       与「24px / `overflow: visible`」的对照版**逐行同形**
+ *       （对照版占第 40–54 行，形状 72/113/114/94/77/100/111/99/108/89/84/84/99/126/75），
+ *       第 15 行两边都只有 1 个噪点 ⇒ **一个字都没被切**。
+ *     （`--text-body` 是本项目的字号下限，不许再往下取档。）
  */
 .update-notice {
   position: fixed;
@@ -95,11 +127,17 @@ const text = computed(() => (state.value.kind === 'update-ready' ? '有新版本
   right: 0;
   z-index: 30;
 
+  /* 🔥 高度 = 视图的顶部内边距 ⇒ 恒不压住 HUD（理由见上方注释）。 */
+  height: var(--space-panel-pad);
+  line-height: var(--space-panel-pad);
+
   /* 穿透：不吃掉点击（AC-C3）。 */
   pointer-events: none;
 
   margin: 0;
-  padding: 4px var(--space-panel-pad);
+  /* ⚠️ **只有左右内边距**：上下内边距会让条高超过 `--space-panel-pad`，
+     而那个高度正是「不压住 HUD」的全部依据。 */
+  padding: 0 var(--space-panel-pad);
 
   /* ⚠️ 底色用 `--color-hud-panel`（与 manifest 的 `theme_color` 同源）：
      它是 tokens.css 里为「浅色内容叠在暗底」定的那块板，白字对比度充足。 */

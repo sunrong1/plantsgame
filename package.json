@@ -17,6 +17,7 @@
     "lint": "eslint .",
     "validate:content": "tsx scripts/validate-content.ts",
     "verify:deploy": "tsx scripts/verify-deploy.ts",
+    "verify:portrait": "tsx scripts/verify-portrait-layout.ts",
     "balance-sim": "tsx scripts/balance-sim.ts",
     "generate:voice": "tsx scripts/generate-voice.ts",
     "word-image-metrics": "tsx scripts/word-image-metrics.ts",

@@ -295,8 +295,18 @@ function applyAnswer(state: State, action: Action): State {
  *   `nextQuestion` 返回 `null` 在 `CONTINUE` 里意味着「全部答对 ⇒ 通关」。
  *   跳过若也接到那个 `null` 上，一个字都没答的孩子会看到「读完啦！」——
  *   本项目能造出的最糟的假陈述。
- *   ⇒ 这里 `rejectAction` 抛错；`app/store.ts` 的门面在 dispatch 前先问一遍，
+ *   ⇒ 这里 `rejectAction` 抛错；`app/store.ts` 的门面在 dispatch 前先问一遍
+ *     （**第 ④ 道守卫**：`nextQuestion(...)` 返回 `null` 就不派发），
  *     所以正常路径不会有异常冒到界面上（NFR13）。
+ *
+ * ⚠️📎 **`[CR]` 2026-10-20 补记**：上面那句「门面在 dispatch 前先问一遍」
+ *   **在修之前是假的** —— 门面只有三道守卫（相位 / 成员 / 是不是正确项），
+ *   **没有问**「跳完还有没有题」⇒ 本函数抛的错会**直接冒到 `@error` 事件回调里**
+ *   ⇒ 一次图片 404 就崩掉整局。
+ *   ⇒ 门面那道守卫已补上（`src/app/store.ts` 的 `reportImageFailure`），
+ *     行为级守卫见 `tests/app/skip-facade.test.ts` 的 **G200**。
+ *   ⇒ **本函数的这道 `rejectAction` 保持原样**：它守的是「局面不许推进到空题单」，
+ *     抛错是对的；该修的是**调用方**（门面）不该在这种情形下派发。
  */
 function applySkip(state: State, action: SkipQuestionAction): State {
   if (state.phase.kind !== 'awaiting-answer') {
@@ -309,6 +319,24 @@ function applySkip(state: State, action: SkipQuestionAction): State {
       action,
       `要跳过的是 ${action.entryId}，而当前问的是 ${question.entryId} —— ` +
         '跳过只能作用于当前这一道，否则会有一道好着的题凭空消失，而界面上看不出少了什么',
+    )
+  }
+  // ⚠️📎 `[CR]` 2026-10-20 补的一条：**`optionId` 必须属于当前这张卡**。
+  //   原注逐字说「`isCorrect` 在 id 不存在时**抛错**（AC-7），而 id 来自这张卡自己的选项，
+  //   所以这里正常路径不会抛；若真抛了，那是组件传错了 id，抛出来是对的」——
+  //   ⇒ **但 `applySkip` 自己并没有查过这个 id 属于这张卡**，
+  //     它直接调 `isCorrect(question.card, action.optionId)`。
+  //   ⇒ 后果：有人绕过门面直接 dispatch 时，抛出的错误逐字是
+  //     「所选选项 … 不在这张卡的选项里」——
+  //     **排查方向完全错位**（真实原因是「载荷的 id 错了」，而错误信息说的是「卡里没这个选项」，
+  //     读起来像内容层出了问题）。
+  //   ⇒ 这里先做成员检查，命中则走 `rejectAction` 给人话诊断。
+  if (!question.card.options.some((option) => option.id === action.optionId)) {
+    rejectAction(
+      state,
+      action,
+      `要跳过的选项 ${action.optionId} 不在当前这道题的选项里 —— ` +
+        '载荷里的 id 错了（正确项的 id 来自卡面，不是调用方自己编的）',
     )
   }
   // 🔥 1.18 `[DS]` 补的一条：**必须核对破掉的确实是正确项**。

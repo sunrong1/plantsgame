@@ -18,6 +18,24 @@
  *   （对照：`scripts/balance-sim.ts` import 真实 `core/` 是**允许**的，
  *     因为它跑在开发机上、且需要那份判据。这里不需要判据，只需要产物。）
  *
+ * ── ⚠️📎 它**确实** import 了 `vite.config.ts` —— 而那不违反 R-61 ───────────
+ *   `[CR]` 2026-10-20 实测抓到：部署前缀原本在本文件里**手抄**了一份
+ *   （`const DEPLOY_BASE = '/plantsgame/'`），而 `vite.config.ts` 里另有一份
+ *   （`export const DEPLOY_BASE = '/plantsgame/'`）—— **两个独立字面量**。
+ *   ⇒ 守卫 G157 那条判据只 grep **`vite.config.ts`** 那一份 ⇒ 改本文件这份**无人报警**。
+ *   ⇒ 而本文件里那条「所有根相对引用都带前缀」的判据逐字是
+ *   `rootRelativeRefs.filter((ref) => !ref.startsWith(DEPLOY_BASE))` ——
+ *     一旦这份副本被改成 `'/'`，**所有根相对引用都「带前缀」** ⇒ 判据静默放行
+ *     ⇒ **恰好放过了它要防的那个事故**（手写 `<link rel="manifest">` 不被重写 ⇒ 404
+ *       ⇒ manifest 整个失效）。
+ *   ⇒ 现在**从 `vite.config.ts` import 同一个常量** ⇒ 复制链从根上不存在。
+ *   ⚠️ **为什么这不违反「脚本不该依赖构建环境」**：本脚本是 **`postbuild`** 跑的
+ *   （`package.json` 逐字：`"postbuild": "npm run verify:deploy"`）——
+ *   也就是说它**本来就跑在刚跑完 `vite build` 的那台机器上**，构建工具链必然在位。
+ *   ⇒ 代价为零，而收益是「前缀只有一个来源」。
+ *   ⚠️ **守卫 G155 仍然成立**：本文件依然零 `src/` 路径、零 `import.meta.env`
+ *   （`vite.config.ts` 是**构建期配置**，不是应用代码；它自己也不 import `src/`）。
+ *
  * ── 纯函数 + `main()` 的分层（与 `validate-content.ts` 同款）───────────────────
  *   `verifyDeploy()` 收一个「文件系统」进去，返回结构化结果；
  *   `console.*` / `process.exit` **只**出现在 `main()` 里。
@@ -28,8 +46,7 @@
 import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 
-/** 部署前缀 —— 与 `vite.config.ts` 的 `base` 同源（1.11 的教训：两者必须一致）。 */
-const DEPLOY_BASE = '/plantsgame/'
+import { DEPLOY_BASE } from '../vite.config'
 
 /** 自检读的文件系统。测试注入内存实现，不碰真实 `dist/`。 */
 export interface DeployFs {
@@ -61,32 +78,50 @@ export interface DeployReport {
 const MANIFEST_TEXT_FIELDS = [
   'name',
   'short_name',
+  // ⚠️📎 `[CR]` 2026-10-20 补上 `description` 与 `orientation` ——
+  //   AC-B1 逐字列的字段集是
+  //   `name / short_name / description / start_url / scope / id / display /
+  //    orientation / theme_color / background_color / icons[]`，
+  //   而原清单**漏了 `description` 与 `orientation`** ⇒ 删掉它们构建照样全绿。
+  //   ⇒ 判据的字段集现在与 AC-B1 **逐字对齐**（一个不多一个不少，
+  //   外加 manifest 里本来就有的 `lang`）。
+  'description',
   'start_url',
   'scope',
   'id',
   'display',
+  'orientation',
   'theme_color',
   'background_color',
+  'lang',
 ] as const
 
 /** manifest 里必须带部署前缀的字段（决定 SW 作用域与启动落点）。 */
 const MANIFEST_BASE_FIELDS = ['start_url', 'scope', 'id'] as const
 
 /**
- * 产物里必须存在的图标（PWA 安装判据）。
+ * 产物里必须存在的图标（PWA 安装判据）—— 连同 manifest 里必须写全的属性。
  *
  * ⚠️ **四个，不是两个**：Android 的自适应图标（maskable）走**另一张**图 ——
  *   漏掉 maskable 那一对时 `any` 那一对照样在、主屏也照样装得上，
  *   症状是「图标被裁成一块看不出是什么的图形」，而任何**只看文件在不在**的检查都绿。
  *   ⇒ 两个 `purpose` 各取两档，缺一即红。
  *   （`icon.svg` / `maskable.svg` 是**源**，不部署、不进 manifest，不在此列。）
+ *
+ * ⚠️📎 `[CR]` 2026-10-20 补上 `sizes` 与 `purpose` 的**取值**判据 ——
+ *   原判据只判「文件存在」+「manifest 里出现过该路径」⇒
+ *   把四个 `purpose` 全改成 `any`（或全删掉 `sizes`）构建与自检**照样全绿**。
+ *   ⇒ 现在逐个图标断言它**带着正确的 `sizes` 与 `purpose`**。
  */
-const REQUIRED_ICONS = [
-  'icons/icon-192.png',
-  'icons/icon-512.png',
-  'icons/maskable-192.png',
-  'icons/maskable-512.png',
+const REQUIRED_ICON_SPECS = [
+  { path: 'icons/icon-192.png', sizes: '192x192', purpose: 'any' },
+  { path: 'icons/icon-512.png', sizes: '512x512', purpose: 'any' },
+  { path: 'icons/maskable-192.png', sizes: '192x192', purpose: 'maskable' },
+  { path: 'icons/maskable-512.png', sizes: '512x512', purpose: 'maskable' },
 ] as const
+
+/** 产物里必须存在的图标路径。 */
+const REQUIRED_ICONS = REQUIRED_ICON_SPECS.map((spec) => spec.path)
 
 /**
  * 产物自检本体 —— 纯函数，无副作用（不读盘、不打日志、不退出）。
@@ -106,11 +141,21 @@ export function verifyDeploy(fs: DeployFs): DeployReport {
   add('index-html-exists', indexHtml !== null, '`dist/index.html` 不存在 —— 站点根打不开')
   add('index-html-not-empty', (indexHtml?.length ?? 0) > 0, '`dist/index.html` 是 0 字节')
 
+  // ⚠️📎 `[CR]` 2026-10-20：**先把 HTML 注释剥掉再扫**。
+  //   本仓库的 `index.html` 注释里逐字写着 `<link rel="manifest">`（说明
+  //   「这条刻意不手写」），而朴素的正则会把**注释里的那串文字**当成一条真的
+  //   link ⇒ 「产物里恰好一条 manifest link」这条判据在**真实产物上恒红**
+  //   （实测：报「有 2 条」，其中一条是注释）。
+  //   ⇒ 这与 R-52（源码匹配前先剥注释）**同型**，只是对象从 JS 注释换成 HTML 注释。
+  const indexHtmlMarkup =
+    indexHtml === null ? '' : indexHtml.replace(/<!--[\s\S]*?-->/g, '')
+
   // ⚠️ 内容哈希判据**不是**「文件名里有没有横杠」（那种判据在关掉 hashing
   //   之后仍然绿 —— 名字照样带横杠），而是「index.html 引用到的每一个
   //   /assets/ 文件都真实存在于 dist 里」+「清单里没有裸文件名」。
-  const assetRefs =
-    indexHtml === null ? [] : [...indexHtml.matchAll(/(?:src|href)="(\/[^"]+\.(?:js|css))"/g)].map((m) => m[1]!)
+  const assetRefs = [
+    ...indexHtmlMarkup.matchAll(/(?:src|href)="(\/[^"]+\.(?:js|css))"/g),
+  ].map((m) => m[1]!)
   add(
     'index-references-assets',
     assetRefs.length >= 2,
@@ -145,10 +190,9 @@ export function verifyDeploy(fs: DeployFs): DeployReport {
   //   前面，整个 manifest 失效）。⇒ 与其逐个记「哪些属性会被重写」，
   //   不如在**产物**上断言「**所有**根相对引用都带 base 前缀」——
   //   哪种形态没被重写会当场红，而不是等部署后孩子看到空白。
-  const rootRelativeRefs =
-    indexHtml === null
-      ? []
-      : [...indexHtml.matchAll(/(?:src|href)="(\/[^"]*)"/g)].map((m) => m[1]!)
+  const rootRelativeRefs = [...indexHtmlMarkup.matchAll(/(?:src|href)="(\/[^"]*)"/g)].map(
+    (m) => m[1]!,
+  )
   const unprefixed = rootRelativeRefs.filter((ref) => !ref.startsWith(DEPLOY_BASE))
   add(
     'all-root-relative-refs-carry-base',
@@ -156,6 +200,30 @@ export function verifyDeploy(fs: DeployFs): DeployReport {
     `index.html 里有 ${unprefixed.join('、')} 没有以 \`${DEPLOY_BASE}\` 开头 —— ` +
       '它没被构建工具重写，部署在子路径下会指向站点根：孩子看到空白图标、' +
       '或整个 manifest 失效（本仓库已因此丢过全部录音与主屏图标）',
+  )
+
+  // ⚠️📎 `[CR]` 2026-10-20：AC-B3 逐字要求「产物里**恰好一条** `rel="manifest"` 的
+  //   link，且**带 base 前缀**」—— 而原判据只判「前缀」，**不数条数**。
+  //   ⇒ 多一条**带前缀**的 link 时全绿（而两条 manifest link 会让浏览器
+  //   取到哪一个不确定，症状是「装到主屏后图标是默认的」）。
+  //   ⚠️ 扫的是**剥掉注释后**的 `indexHtmlMarkup`（见上）—— 否则本仓库
+  //   `index.html` 注释里那串 `<link rel="manifest">` 会被数成一条。
+  const manifestLinks = [
+    ...indexHtmlMarkup.matchAll(/<link[^>]*\brel=["']manifest["'][^>]*>/gi),
+  ].map((m) => m[0])
+  add(
+    'manifest-link-exactly-one',
+    manifestLinks.length === 1,
+    `产物里有 ${manifestLinks.length} 条 \`rel="manifest"\` 的 link（应为恰好一条）—— ` +
+      '多于一条时浏览器取哪一条不确定，症状是「添加到主屏后图标是默认的」',
+  )
+  const manifestHref = manifestLinks.length === 1 ? /href=["']([^"']+)["']/.exec(manifestLinks[0]!) : null
+  add(
+    'manifest-link-carries-base',
+    manifestHref !== null && manifestHref[1]!.startsWith(DEPLOY_BASE),
+    `manifest 那条 link 的 href 没带 \`${DEPLOY_BASE}\` 前缀（实为 ` +
+      `${JSON.stringify(manifestHref?.[1])}）—— 它不会被构建工具重写，` +
+      '部署在子路径下 404 ⇒ manifest 整个失效（本仓库已因此丢过主屏图标）',
   )
 
   // ── ② manifest（AC-B1 / AC-B2）────────────────────────────────────────
@@ -194,8 +262,29 @@ export function verifyDeploy(fs: DeployFs): DeployReport {
   add('sw-not-empty', (sw?.length ?? 0) > 0, '`dist/sw.js` 是 0 字节 —— 注册成功但什么都不缓存')
   add(
     'sw-has-precache-manifest',
-    sw !== null && /\bprecache\b|\.precacheAndRoute|__WB_MANIFEST/.test(sw),
-    'SW 里看不到 precache 清单 —— 应用外壳不被缓存，飞行模式下打开是一张白纸',
+    parseInjectedManifest(sw).length > 0,
+    'SW 里看不到被注入的 precache 清单 —— 应用外壳不被缓存，飞行模式下打开是一张白纸',
+  )
+  // ⚠️📎 `[CR]` 2026-10-20：原判据 `/\bprecache\b|\.precacheAndRoute|__WB_MANIFEST/`
+  //   是**恒绿**的，逐条说清它为什么绿：
+  //   ① `\bprecache\b` 匹配到的是**缓存名的模板字符串**
+  //      （`` `${e}precache-${t}` ``）—— 那是**缓存名**，不是 precache **清单**；
+  //   ② `__WB_MANIFEST` 在**真实产物里出现 0 次** —— workbox-build 做文本替换时
+  //      把它**换成了字面量数组**（实测 `dist/sw.js` 里是
+  //      `[{"revision":"fe46491d…","url":"index.html"},…]`）。
+  //   ⇒ 真实产物之所以绿，**只靠 ①** ⇒ workbox 一天不注入清单，这条照样绿。
+  //   ⇒ 现在判据改成**认被注入的清单本身**（每个条目同时有 `revision` 与 `url` 两个键）。
+  const precachedUrls = parseInjectedManifest(sw).map((entry) => entry.url)
+  add(
+    'sw-precaches-app-shell',
+    precachedUrls.some((url) => /(^|\/)index\.html$/.test(url)),
+    'precache 清单里没有 `index.html` —— 飞行模式下打开的是**空页面**（AC-B8 逐字）',
+  )
+  add(
+    'sw-precaches-built-assets',
+    precachedUrls.some((url) => /\.js$/.test(url)) && precachedUrls.some((url) => /\.css$/.test(url)),
+    'precache 清单里没有构建后的 JS / CSS —— 外壳 HTML 被缓存了但它的脚本没被缓存，' +
+      '离线时打开是一片白（AC-B8 逐字）',
   )
   // ⚠️ **判据初版写成一个 OR**（`caches\.delete|\.keys\(\)`）⇒ **实测它放过了它要防的违规**：
   //   把 `caches.delete(...)` 整条删掉，`caches.keys()` 还在 ⇒ 判据仍绿。
@@ -241,6 +330,37 @@ export function verifyDeploy(fs: DeployFs): DeployReport {
       `manifest 没有引用 \`${icon}\` —— 图标躺在 dist 里但 Chrome 不认`,
     )
   }
+  // ⚠️📎 `[CR]` 2026-10-20：逐个图标断言 manifest 里那条声明的 `sizes` 与 `purpose` ——
+  //   「文件在」+「路径出现过」这两条**证明不了 Chrome 会用它**：
+  //   把四个 `purpose` 全改成 `any`，或全删掉 `sizes`，原判据照样全绿。
+  const manifestIconList = Array.isArray(manifest?.icons) ? (manifest!.icons as unknown[]) : []
+  for (const spec of REQUIRED_ICON_SPECS) {
+    const entry = manifestIconList.find(
+      (item): item is Record<string, unknown> => {
+        // ⚠️ `typeof item === 'object'` 把 `unknown` 收窄成 `object` ——
+        //   而 `object` **不能**用 `['src']` 索引（TS7053）⇒ 先落成
+        //   `Record<string, unknown>` 再取键。
+        if (typeof item !== 'object' || item === null) return false
+        const src = (item as Record<string, unknown>)['src']
+        return typeof src === 'string' && src.includes(spec.path)
+      },
+    )
+    const name = spec.path.replace(/^icons\//, '')
+    add(
+      `manifest-icon-sizes-${name}`,
+      entry !== undefined && entry['sizes'] === spec.sizes,
+      `manifest 里 \`${spec.path}\` 那条的 \`sizes\` 不是 \`${spec.sizes}\`（实为 ` +
+        `${JSON.stringify(entry?.['sizes'])}）—— Chrome 按 sizes 挑候选图标，` +
+        '挑不到就会退回用别的尺寸，主屏图标糊成一团',
+    )
+    add(
+      `manifest-icon-purpose-${name}`,
+      entry !== undefined && entry['purpose'] === spec.purpose,
+      `manifest 里 \`${spec.path}\` 那条的 \`purpose\` 不是 \`${spec.purpose}\`（实为 ` +
+        `${JSON.stringify(entry?.['purpose'])}）—— \`any\` 与 \`maskable\` 是**两张不同的图**，` +
+        '把它俩混成一种，Android 会把普通图标裁成自适应图标 ⇒ 主屏图标被裁掉一块',
+    )
+  }
 
   // ── ⑤ 内容资产（**这个 story 要治的那个**）────────────────────────────────
   // ⚠️ 这里**只判「存在」不判「能加载」** —— 后者要真机（AC-B8 / AC-F5 的人工项）。
@@ -284,6 +404,52 @@ export function verifyDeploy(fs: DeployFs): DeployReport {
   }
 
   return { checks, ok: checks.every((check) => check.ok) }
+}
+
+/** precache 清单里的一条。 */
+interface PrecacheEntry {
+  readonly url: string
+  readonly revision: string | null
+}
+
+/**
+ * 从产物 SW 里**解析出被注入的 precache 清单**。
+ *
+ * ⚠️ **为什么必须解析清单，而不是 grep 一个词**（`[CR]` 2026-10-20）：
+ *   workbox-build 做文本替换时把 `self.__WB_MANIFEST` **换成了字面量数组** ——
+ *   实测真实产物 `dist/sw.js` 里 `__WB_MANIFEST` 出现 **0 次**，
+ *   而清单长这样：
+ *   `[{"revision":"fe46491d…","url":"index.html"},{"revision":null,"url":"assets/index-xxx.js"},…]`
+ *   ⇒ 判据必须认「**一个同时带 `revision` 与 `url` 两个键的对象**」。
+ *
+ * ⚠️ **为什么用前瞻而不是「先找 revision 再找 url」**：
+ *   产物里还有 `function l(e){return e.revision===null?…}` 这种形态 ——
+ *   它的 `revision` 后面跟的是 `=`（不是 `:`）⇒ 用 `["']?revision["']?\s*:` 认不出它。
+ *   ⇒ 用两个前瞻各认一个键，**顺序无关**（workbox 换字段顺序也不会失配）。
+ *
+ * @param sw 产物 `sw.js` 的内容
+ * @returns 解析出的清单条目（解析不出就是空数组）
+ */
+export function parseInjectedManifest(sw: string | null): PrecacheEntry[] {
+  if (sw === null) return []
+  const out: PrecacheEntry[] = []
+  const objectPattern = /\{(?=[^{}]*["']?revision["']?\s*:)(?=[^{}]*["']?url["']?\s*:)[^{}]*\}/g
+  for (const match of sw.matchAll(objectPattern)) {
+    const text = match[0]
+    const url = /["']?url["']?\s*:\s*["']([^"']*)["']/.exec(text)
+    if (url === null) continue
+    const revision = /["']?revision["']?\s*:\s*(null|["']([^"']*)["'])/.exec(text)
+    out.push({
+      url: url[1]!,
+      revision:
+        revision === null
+          ? null
+          : revision[1] === 'null'
+            ? null
+            : (revision[2] ?? null),
+    })
+  }
+  return out
 }
 
 /** JSON 解析；失败返回 `null` 而**不抛** —— 上线前自检不该自己先崩。 */

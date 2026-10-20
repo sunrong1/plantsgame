@@ -22,9 +22,20 @@
 
 /** 应用对外呈现的三种「离线准备」状态。 */
 export type ServiceWorkerUiState =
-  /** 还没注册，或已注册且当前页面已被接管、无待生效的新版本。 */
+  /**
+   * 还没注册、已注册且当前页面已被接管、**或离线准备已完成**（SW 已 `activated`）——
+   * 且没有待生效的新版本。
+   *
+   * ⚠️📎 `[CR]` 2026-10-20 扩了含义：原来只有「没注册 / 已被接管」，
+   *   而「装好了但当前页还没被接管」这个窗口会落在 `preparing` 上**永远不消失**。
+   */
   | { kind: 'idle' }
-  /** 已注册但**还没接管当前页面** —— 离线能力要等下次启动才生效（首次安装的正常形态）。 */
+  /**
+   * 离线能力**正在准备**（SW 还在安装）—— 装完（`activated`）即转 `idle`。
+   *
+   * ⚠️ 离线能力本身要等**下次启动**才生效（首次安装的正常形态，刻意不调
+   *   `clients.claim()` —— AC-C2）。但「准备中」这个**状态**不该永远挂着。
+   */
   | { kind: 'preparing' }
   /** 有新版本装好了、停在 `waiting` —— 关掉应用再开才是新版本。 */
   | { kind: 'update-ready' }
@@ -36,10 +47,44 @@ type Listener = (state: ServiceWorkerUiState) => void
 const listeners = new Set<Listener>()
 let current: ServiceWorkerUiState = { kind: 'idle' }
 
-/** 向所有订阅者广播新状态。 */
+/**
+ * 向所有订阅者广播新状态。
+ *
+ * ⚠️📎 `[CR]` 2026-10-20：**逐个 try/catch** ——
+ *   原来逐字是 `for (const listener of listeners) listener(next)`（裸调）⇒
+ *   **一个坏订阅者就中断整条广播** ⇒ 其余组件**永远收不到状态更新**。
+ *   ⚠️ 而**同形态**的 `pronunciation-status.ts` 逐字逐个 `try { … } catch { … }`
+ *     —— 两个同款服务处理方式不一致，而**不一致的那一个**是坏的。
+ *   ⇒ 现在两侧对称：坏订阅者被吞掉并记 WARN，**不被踢出 `Set`**
+ *     （与 `pronunciation-status.ts` 同款判断：同一个订阅者下次还会被调用，
+ *     踢掉它会让它的界面永远停在旧状态）。
+ */
 function publish(next: ServiceWorkerUiState): void {
   current = next
-  for (const listener of listeners) listener(next)
+  for (const listener of listeners) {
+    try {
+      listener(next)
+    } catch (err) {
+      console.warn(
+        `[sw] 状态订阅者抛错，已忽略：${err instanceof Error ? err.message : String(err)}`,
+      )
+    }
+  }
+}
+
+/**
+ * **只**在当前状态是 `preparing` 时才改写它。
+ *
+ * ⚠️ **为什么要有这个门**：新版本提示（`update-ready`）是**要一直留着的** ——
+ *   孩子/家长必须看到「有新版本，下次启动生效」并真的去重启。
+ *   而「装完即完成」「被接管」这两条出路是在 `preparing` 之后发生的；
+ *   若它们无条件广播 `idle`，就会把刚报出来的 `update-ready` **抹掉** ——
+ *   症状是「提示闪一下就没了，家长以为没更新」。
+ *   ⇒ 门在这里，不在各个调用点。
+ */
+function publishIfPreparing(next: ServiceWorkerUiState): void {
+  if (current.kind !== 'preparing') return
+  publish(next)
 }
 
 /** 当前状态（供不便订阅的场景读一次）。 */
@@ -58,7 +103,16 @@ export function currentServiceWorkerState(): ServiceWorkerUiState {
  */
 export function subscribeServiceWorkerState(listener: Listener): () => void {
   listeners.add(listener)
-  listener(current)
+  // ⚠️📎 `[CR]` 2026-10-20：这次「立刻回放」也要有 try/catch（与 `publish` 侧对称）——
+  //   否则一个在挂载路径上抛错的订阅者会让**组件挂不上**，
+  //   而它**已经进了 `Set`** ⇒ 此后每次广播都再抛一次。
+  try {
+    listener(current)
+  } catch (err) {
+    console.warn(
+      `[sw] 状态订阅者抛错，已忽略：${err instanceof Error ? err.message : String(err)}`,
+    )
+  }
   return () => {
     listeners.delete(listener)
   }
@@ -93,6 +147,21 @@ export function isSecureContextForServiceWorker(): boolean {
  *
  * ⚠️ **这里没有 `updateServiceWorker()`、没有 `location.reload()`**（AC-C2）。
  *   waiting 的语义就是「新版本已就位，等所有页面关掉后自动接管」。
+ *
+ * 🔥📎 **`[CR]` 2026-10-20：补上「准备完成」与「接管」两条出路** ——
+ *   原来只广播 `preparing` / `update-ready` / `idle` 三种，
+ *   而 **`preparing` 永不消失**：
+ *   首次安装后**当前页面不会被接管**（刻意不调 `clients.claim()`，AC-C2）⇒
+ *   `navigator.serviceWorker.controller` 恒为 `null` ⇒
+ *   逐字 `publish(container.controller ? idle : preparing)` 每次都落在 `preparing`。
+ *   ⇒ 孩子第一次打开游戏就**永久**顶着「正在准备离线，下次启动生效」那条条
+ *     （实测它压住 HUD 顶部 16px —— 阳光数字、进度标签、心形都被削掉一截）。
+ *   ⇒ 现在有三条出路：
+ *     ① **装完即完成**：installing 的 `state` 推进到 `activated` ⇒ 准备完成 ⇒ `idle`；
+ *     ② **被接管**：容器派发 `controllerchange`（下一次导航后本页被接管）⇒ `idle`；
+ *     ③ **装失败**：`state` 变成 `redundant`（安装被放弃）⇒ `unsupported`（离线确实不可用）。
+ *   ⚠️ **`update-ready` 不被这三条覆盖**：只有当前状态是 `preparing` 时才允许改写它 ——
+ *     否则「装完即完成」会把刚报出来的「有新版本」抹掉。
  */
 function watchRegistration(registration: ServiceWorkerRegistration): void {
   const container = navigator.serviceWorker
@@ -103,6 +172,13 @@ function watchRegistration(registration: ServiceWorkerRegistration): void {
 
   if (registration.waiting) publish({ kind: 'update-ready' })
 
+  // ⚠️ **已经在跑的 SW**（本次注册之前就装好了）⇒ 准备早已完成 ⇒ `idle`。
+  //   这条修的是「第二次打开应用时 `preparing` 又冒出来」的形态：
+  //   此时 `controller` 通常非空（第一次启动后本页已被接管）⇒ 上一行已经给了 `idle`；
+  //   但「装好了却还没被接管」的窗口里（例如刚装完就刷新），`controller` 仍为 `null`
+  //   ⇒ 上一行会给 `preparing` ⇒ 而实际上它**已经装好了**。
+  if (registration.active && !registration.waiting) publish({ kind: 'idle' })
+
   registration.addEventListener('updatefound', () => {
     const installing = registration.installing
     if (!installing) return
@@ -112,9 +188,28 @@ function watchRegistration(registration: ServiceWorkerRegistration): void {
       //   不该对着刚装好的第一版提示「有新版本」（那是假话）。
       if (installing.state === 'installed' && container.controller) {
         publish({ kind: 'update-ready' })
+        return
+      }
+      // 🔥 装完（`activated`）⇒ 离线能力已就位（下次启动生效）⇒ 准备完成。
+      if (installing.state === 'activated') {
+        publishIfPreparing({ kind: 'idle' })
+        return
+      }
+      // ⚠️ `redundant` = 安装被放弃（装失败或被更新的安装顶掉）⇒ 离线确实不可用。
+      if (installing.state === 'redundant') {
+        publishIfPreparing({ kind: 'unsupported' })
       }
     })
   })
+
+  // ⚠️ **被接管**（`controllerchange`）：本页的控制权换人了 ⇒ 当前状态不再是「准备中」。
+  //   ⚠️ 浏览器 API 的类型上 `addEventListener` 一定在，但**测试用的假容器**未必有 ——
+  //   ⇒ 用 `typeof` 判一次，缺了也不该炸（静默降级，裁决 7）。
+  if (typeof container.addEventListener === 'function') {
+    container.addEventListener('controllerchange', () => {
+      publishIfPreparing({ kind: 'idle' })
+    })
+  }
 }
 
 /**

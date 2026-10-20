@@ -136,8 +136,26 @@ onBeforeUnmount(() => {
         自己读到哪了」）。⚠️ 别把这一句当「元进度」删掉 —— 那条禁令针对的是
         星星 / 分数 / streak，**不包括**「读到哪了」。
         ⚠️ 文案里**不出现任何数字**（AC-E1 末条），所以写的是事实而不是计数。
+
+        🔥📎 **`[CR]` 2026-10-20 更正两句里的全称量词**（用户裁决：**甲** ——
+        改成不含全称量词、且**不读任何新 state** 的表述）：
+        · 通关句原逐字「这个单元的**全部**单词都读过了。」——
+          而 1.18 自己引入了 `skippedEntryIds`（正确项词图加载失败 ⇒ 整题被跳过），
+          那种局里孩子**一个字都没读**，而屏幕上仍写着「全部单词都读过了」——
+          **本项目能造出的最糟的假陈述**（同 `reducer.applySkip` 拒绝
+          「题单被抽空」的理由）。
+        · 失败句原逐字「**答错**的单词，下次再见到就认识啦。」——
+          1.18 之后「没答对」有**两种**：答错了、以及被跳过了。
+          原句默认「全部没答对的词都是答错的」，而它未必成立。
+        ⇒ 现在的两句都**只描述已经做到的事**，不声称「全部」：
+          「这个单元里读过的单词，你都认识啦！」/「再见到它们，就认识啦！」。
+        ⚠️ **AC-E2 的判据不许因此失效**：守卫 `level-outcome.test.ts` 逐字断言
+          通关画面的文字匹配 `/单元|进度|已学|掌握/` ⇒ 新文案**保留「单元」**这个说法，
+          只去掉「全部」那个**假**的全称量词。
+        ⚠️ **判据不许放宽**（守卫 G90 的白名单）：组件**仍然只读 `phase.kind`**，
+          没有引入任何新的读法 ⇒ 不需要重新走一次裁决。
       -->
-      {{ won ? '这个单元的全部单词都读过了。' : '答错的单词，下次再见到就认识啦。' }}
+      {{ won ? '这个单元里读过的单词，你都认识啦！' : '再见到它们，就认识啦！' }}
     </p>
     <button
       ref="buttonEl"
@@ -187,8 +205,19 @@ onBeforeUnmount(() => {
    *   `.level-view` 改成了 `height: 100dvh` + 可滚动，
    *   内容可以贴着视口底边滚过去 ⇒ 浮层的内容必须自己避开手势条。
    *
-   * ⚠️ **只加上下，不加左右**：左右由 `.level-view` 的 padding 统一处理，
-   *   两处都加会让横屏下左右被叠加两次（安全区左右值在横屏时非零）。
+   * ⚠️ **只加上下，不加左右** —— ⚠️⚠️ **`[CR]` 2026-10-20：下面这句原本的理由是错的。**
+   *   原注释逐字写「左右由 `.level-view` 的 padding 统一处理，两处都加会叠加两次」。
+   *   `.level-view` **确实**加了左右（`LevelView.vue` 逐字
+   *   `calc(var(--space-panel-pad) + env(safe-area-inset-right))` / `…env(safe-area-inset-left)`），
+   *   **但那份 padding 根本碰不到本浮层** —— 本浮层是 `position: absolute; inset: 0`，
+   *   它的包含块是 `.level-view` 的 **padding box**，而 padding box **含** padding 区，
+   *   ⇒ `.level-view` 的 padding **不会**把浮层往里推。
+   *   实测（真实 chromium 800×900，往 `.level-view` 塞 `position:absolute; inset:0` 探针）：
+   *   `probe_left = 0` 而 `level_view_padding_left = "16px"` ⇒ `on_padding_box: true`。
+   *   ⇒ **「两处都加会叠加两次」这个理由不成立**，本浮层**是**应该自己加左右的；
+   *   之所以现在还没加，是因为改它属 1.16 的组件、已登记为 `deferred-work.md` 的 **W7**（含更正后的事实）。
+   *   ⚠️ 恢复时补在**本浮层自己的 padding** 上，别去改 `.level-view` ——
+   *   那会连带改战场与 HUD 的可用宽度（属布局口径变更，需先问人）。
    */
   padding-top: calc(var(--space-panel-pad) + env(safe-area-inset-top, 0px));
   padding-bottom: calc(var(--space-panel-pad) + env(safe-area-inset-bottom, 0px));

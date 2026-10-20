@@ -80,3 +80,61 @@ export function staleCacheNames(allNames: readonly string[], keep: readonly stri
 export function isMediaPathname(pathname: string): boolean {
   return /\.(?:mp3|svg|png|jpe?g|webp|gif)$/i.test(pathname)
 }
+
+/**
+ * precache 清单项的**缓存键**（workbox 的约定）。
+ *
+ * ⚠️ `revision` 为 `null` 时缓存键就是 URL 本身；非 `null` 时按 workbox 的约定
+ *   追加 `__WB_REVISION__` 查询串 —— 内容变了就换一个键，而不是命中旧条目。
+ *
+ * 🔥 **这条键的形状正是离线兜底那个 P0 的根**（`[CR]` 2026-10-20 实测）：
+ *   真实产物 `dist/sw.js` 的 precache 清单里 `index.html` 的 revision **非空**
+ *   （`{"revision":"fe46491d9ddb11cd22c1404ceabea996","url":"index.html"}`）
+ *   ⇒ 它的缓存键是 `index.html?__WB_REVISION__=fe46491d…`，
+ *   **与 `APP_SHELL`（不带查询串）不是同一个字符串**。
+ *   而 Cache API 的 `match()` 默认 `ignoreSearch: false`
+ *   ⇒ 查询串必须逐字相同才命中 ⇒ 不带查询串去查**必然落空**
+ *   ⇒ 飞行模式打开即抛「offline 且 precache 里没有应用外壳」⇒ 白屏。
+ *   ⇒ 查的时候**必须** `ignoreSearch: true`（见 `findAppShell`）。
+ */
+export function precacheCacheKey(entry: { url: string; revision: string | null }): string {
+  return entry.revision === null ? entry.url : `${entry.url}?__WB_REVISION__=${entry.revision}`
+}
+
+/**
+ * 缓存查询的**最小端口** —— 只要求 `match` 与 `ignoreSearch` 语义。
+ *
+ * ⚠️ 为什么不直接写 `CacheStorage`：那样这个文件就得引用 `CacheStorage` /
+ *   `CacheQueryOptions` 这些**全局作用域相关**的类型，
+ *   而 `sw-rules.ts` 同时被 `tsconfig.sw.json`（WebWorker lib）与
+ *   `tsconfig.test.json`（DOM lib）收录 —— 两套 lib 的同名类型互不相通。
+ *   ⇒ 端口用**泛型**自描述，零全局依赖。
+ */
+export interface CacheQueryPort<T> {
+  match(url: string, options: { ignoreSearch: boolean }): Promise<T | undefined>
+}
+
+/**
+ * 在缓存里找应用外壳 —— **必须忽略查询串**（AC-B8）。
+ *
+ * 🔥 **这是 `[CR]` 2026-10-20 抓到的 P0 的修复点**，原理逐字：
+ *   precache 里的 `index.html` 键带 `?__WB_REVISION__=…`（见 `precacheCacheKey`），
+ *   而 `APP_SHELL` 是不带查询串的绝对 URL。
+ *   `caches.match()` 默认 `ignoreSearch: false` ⇒ **两者不是同一个键** ⇒ 必然落空。
+ *   ⇒ `ignoreSearch: true` 让查找**只按路径**匹配 ⇒ 命中。
+ *
+ * ⚠️ **为什么把它做成纯函数**（而不是在 `sw.ts` 里直接写 `caches.match(APP_SHELL, {...})`）：
+ *   `sw.ts` 没法被 vitest 直接 import（node 环境下求值会在第一行 `self.addEventListener` 就炸），
+ *   所以判据落不到它身上 —— 这正是 AC-G7 警告的「跨模块接线漏网」。
+ *   把**查找这一段**搬到这里，判据就能**真的执行**它：
+ *   守卫用一个**按规范实现 `ignoreSearch` 语义的假缓存**喂给它，
+ *   断言它找得到那条带 revision 的条目；
+ *   而「假缓存不认 `ignoreSearch` 时就找不到」这条反向自测，
+ *   保证这条判据**不是恒真的**。
+ *
+ * ⚠️ **别把 `ignoreSearch` 去掉**：去掉 ⇒ 飞行模式下打开就是白屏（AC-B8 逐字失效），
+ *   而**没有任何一条守卫会红**（那正是 `[CR]` 判为「零守卫覆盖」的原因）。
+ */
+export async function findAppShell<T>(cache: CacheQueryPort<T>, shellUrl: string): Promise<T | undefined> {
+  return cache.match(shellUrl, { ignoreSearch: true })
+}

@@ -21,7 +21,7 @@
  * 一个坏掉的浮层不该把朗读链路带崩，而朗读是回合的主通路。
  */
 
-import { ref } from 'vue'
+import { readonly, ref } from 'vue'
 
 /**
  * 朗读状态。
@@ -83,7 +83,16 @@ export function publishPronunciationStatus(next: PronunciationStatus): void {
  */
 export function subscribePronunciationStatus(listener: (next: PronunciationStatus) => void): () => void {
   listeners.add(listener)
-  listener(status.value)
+  // ⚠️📎 `[CR]` 2026-10-20：这次「立刻回放」也要有 try/catch ——
+  //   原来逐字是 `listener(status.value)`（裸调）⇒ 订阅者在**挂载路径**上抛错时
+  //   ① **组件挂不上**（异常从 `subscribe` 里冒出去）；
+  //   ② 而那个订阅者**已经进了 `Set`** ⇒ 此后每次广播都再抛一次。
+  //   ⇒ 与 `publishPronunciationStatus` 侧的保护**对称**（同型两处，原来一处有一处没有）。
+  try {
+    listener(status.value)
+  } catch (err) {
+    console.warn(`[pronunciation] 朗读状态订阅者抛错，已忽略：${err instanceof Error ? err.message : String(err)}`)
+  }
   return () => {
     listeners.delete(listener)
   }
@@ -95,7 +104,12 @@ export function subscribePronunciationStatus(listener: (next: PronunciationStatu
  * ⚠️ **组件层不该直接写这个状态**：状态的唯一生产者是 `pronunciation.ts`，
  *   组件写了就会出现「浮层说在念，但根本没在念」——
  *   那种界面比没有反馈更糟。
+ *
+ * 🔥📎 **`[CR]` 2026-10-20：原来逐字是 `status as Readonly<Ref<…>>` ——
+ *   那是 R-51 第 2 类失效（`as` 只骗过了编译器，运行时完全可写）**。
+ *   ⇒ 现在用 Vue 的 `readonly()`：它返回的是一个**真的写不进去**的代理
+ *     （写入会在开发模式下告警、在生产模式下静默无效）。
  */
 export function pronunciationStatusRef(): Readonly<import('vue').Ref<PronunciationStatus>> {
-  return status as Readonly<import('vue').Ref<PronunciationStatus>>
+  return readonly(status)
 }

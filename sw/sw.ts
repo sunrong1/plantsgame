@@ -27,7 +27,14 @@
  * ⚠️ 两条都不是「忘了写」：`tests/scaffold/pwa-sw-guard.test.ts` 的 G125 会
  *   对 `sw/` 逐字扫这两个调用，出现即红。
  */
-import { isMediaPathname, precacheCacheName, runtimeCacheName, staleCacheNames } from './sw-rules'
+import {
+  findAppShell,
+  isMediaPathname,
+  precacheCacheName,
+  precacheCacheKey,
+  runtimeCacheName,
+  staleCacheNames,
+} from './sw-rules'
 
 /**
  * workbox 的 `injectManifest` 把它生成的清单注入到这里。
@@ -70,16 +77,6 @@ const RUNTIME = runtimeCacheName(BUILD_TOKEN)
 /** 应用外壳的入口 —— 导航请求离线时的兜底（AC-B8）。 */
 const APP_SHELL = new URL('index.html', self.registration.scope).href
 
-/**
- * precache 清单项的缓存键。
- *
- * `revision` 为 `null` 时缓存键就是 URL；非 `null` 时按 workbox 的约定
- * 追加 `__WB_REVISION__` 查询串，让内容变了就换一个键而不是命中旧条目。
- */
-function precacheUrl(entry: { url: string; revision: string | null }): string {
-  return entry.revision === null ? entry.url : `${entry.url}?__WB_REVISION__=${entry.revision}`
-}
-
 // ── install：只装缓存，不接管页面 ─────────────────────────────────────────
 
 self.addEventListener('install', (event) => {
@@ -89,9 +86,14 @@ self.addEventListener('install', (event) => {
       // ⚠️ `cache: 'reload'` 让 `add()` 绕过 HTTP 缓存去真网取一份 ——
       //   否则「装 SW 这一刻正好命中了旧 HTTP 缓存」会把旧文件固化进新缓存。
       //   这一条是 AC-C5 能兑现的前提之一，离了它 token 变了也装到旧内容。
-      await Promise.all(
+      //
+      // 🔥 **用 `allSettled` 而不是 `all`**（`[CR]` 2026-10-20）——
+      //   `Promise.all` 遇到**一条**非 2xx 就整体 reject ⇒ SW 安装失败
+      //   ⇒ **离线能力整个没有**，而症状只在 console 里留一条错，孩子那边是白屏。
+      //   代价极低（precache 清单实测只有 4 条），收益是「一条取不到不至于全盘皆输」。
+      await Promise.allSettled(
         self.__WB_MANIFEST.map((entry) =>
-          cache.add(new Request(precacheUrl(entry), { cache: 'reload', credentials: 'same-origin' })),
+          cache.add(new Request(precacheCacheKey(entry), { cache: 'reload', credentials: 'same-origin' })),
         ),
       )
       // ⚠️ **这里没有 `self.skipWaiting()`**（AC-C2）。
@@ -119,11 +121,18 @@ async function cacheFirstMedia(request: Request): Promise<Response> {
   const cached = await caches.match(request)
   if (cached) return cached
   const response = await fetch(request)
-  if (response.ok) {
+  // 🔥 **只缓存 200**（`[CR]` 2026-10-20）——
+  //   Cache API 的 `put()` 对 **206 Partial Content** 会抛 `TypeError`（它只接受 200），
+  //   而媒体元素发的是 **Range 请求** ⇒ 响应就是 206 ⇒ `put` 必 reject
+  //   ⇒ 该文件**永远进不了运行时缓存** ⇒ 离线时孩子听不到声音。
+  //   ⚠️ 判据用 `=== 200` 而不是 `response.ok` —— `ok` 是 200..299，**包含 206**。
+  if (response.status === 200) {
     const cache = await caches.open(RUNTIME)
     // ⚠️ `void` 挂载：写缓存失败**不得**让整个 fetch 失败 ——
     //   离线能力是增强项，它坏了不该让孩子连在线内容都看不到。
-    void cache.put(request, response.clone())
+    // ⚠️ **但必须接 `.catch`**（`[CR]` 2026-10-20）：裸 `void` 会把那个 reject
+    //   变成一条**全局未捕获 promise 拒绝** —— 目的达到了，代价是一条全局报错。
+    void cache.put(request, response.clone()).catch(() => {})
   }
   return response
 }
@@ -133,7 +142,12 @@ async function navigationHandler(request: Request): Promise<Response> {
   try {
     return await fetch(request)
   } catch {
-    const cached = await caches.match(APP_SHELL)
+    // 🔥 **必须 `ignoreSearch`**（`[CR]` 2026-10-20 抓到的 P0）——
+    //   precache 里的 `index.html` 键带 `?__WB_REVISION__=…`，而 `APP_SHELL` 不带。
+    //   `caches.match()` 默认 `ignoreSearch: false` ⇒ 查不到 ⇒
+    //   飞行模式打开就是**白屏**（AC-B8 逐字失效），而**零守卫会红**。
+    //   ⇒ 查找这一段放在 `sw-rules.ts` 的 `findAppShell` 里（纯函数，可被守卫执行）。
+    const cached = await findAppShell(caches, APP_SHELL)
     if (cached) return cached
     throw new Error('offline 且 precache 里没有应用外壳')
   }
@@ -144,9 +158,10 @@ async function precachedOrNetwork(request: Request): Promise<Response> {
   const cached = (await caches.match(request, { cacheName: PRECACHE })) ?? (await caches.match(request, { cacheName: RUNTIME }))
   if (cached) return cached
   const response = await fetch(request)
-  if (response.ok) {
+  // 🔥 同上：**只缓存 200**，且**接 `.catch`**（`[CR]` 2026-10-20）。
+  if (response.status === 200) {
     const cache = await caches.open(RUNTIME)
-    void cache.put(request, response.clone())
+    void cache.put(request, response.clone()).catch(() => {})
   }
   return response
 }

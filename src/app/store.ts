@@ -332,6 +332,34 @@ export function enterLevel(): void {
  *   进的是**下一个单元**而不是重打单元 1。
  *   `currentGame !== null` 那一支（断点续学）**一个字都没改** —— FR60 优先于单元推进。
  */
+/**
+ * 📎 **`[CR]` 2026-10-20：把题单之外的跳过记录剔掉**（读档规范化的一步）。
+ *
+ * ⚠️ **为什么需要**：1.18 给 `State` 加了第三个记账字段 `skippedEntryIds`，
+ *   而 `core/reducer.ts` 的 `assertDeckRelations` 对**不在题单里**的
+ *   `skippedEntryIds` **抛错**（它自己的注释逐字写着「存档来自旧内容版本、
+ *   题单被回滚时，这真的会发生」）。
+ *   ⇒ 而读档的规范化原本**只补齐缺失字段**（`Array.isArray(...) ? ... : {…}`），
+ *     **不剔除越界的 id** ⇒ 那样一份存档会落进 `assertInvariants` 的抛错路径
+ *     ⇒ catch 分支把**在途的那一局**退回从头开始。
+ *   ⚠️ **如实记**（不要夸大）：catch 分支逐字「**跨局进度保留**」，
+ *     所以丢的**不是**孩子的已学词，而是**在途的那一局**。
+ *     但那一格本来是 1.18 专门为「旧存档走补齐而不是走降级」开出来的 ——
+ *     1.18 的净效果是**扩大了 `assertInvariants` 的触发面**。
+ *   ⇒ 剔除越界 id 是**降级幅度最小**的修法：那些题在当前题单里根本不存在，
+ *     留着它们对局面**毫无用处**，只会在读档时把整局丢掉。
+ *
+ * ⚠️ **用存档自带的题单**（`restored.deck`）而不是当前 `state.value.deck` ——
+ *   存档里的那一局可能是**上一个单元**的（内容回滚 / 换内容版本），
+ *   而 `state.value` 这时还停在**新单元**的开局。
+ */
+function dropOutOfDeckSkipped(restored: State): State {
+  const deckIds = new Set(restored.deck.map((entry) => entry.entryId))
+  const kept = restored.skippedEntryIds.filter((entryId) => deckIds.has(entryId))
+  if (kept.length === restored.skippedEntryIds.length) return restored
+  return { ...restored, skippedEntryIds: kept }
+}
+
 function restoreFromSave(): void {
   const saveFile = readSave()
   if (saveFile === null) {
@@ -363,7 +391,9 @@ function restoreFromSave(): void {
   //     缺字段的旧存档一旦落进下面那个 try，catch 会把**进度一起清空**（AC-D4），
   //     而「升级回来发现要从头再学」是本作最不可接受的失败形态。
   const normalised: State = backfillLegacyBuildPhase(
-    Array.isArray(restored.skippedEntryIds) ? restored : { ...restored, skippedEntryIds: [] },
+    dropOutOfDeckSkipped(
+      Array.isArray(restored.skippedEntryIds) ? restored : { ...restored, skippedEntryIds: [] },
+    ),
   )
 
   try {
@@ -768,7 +798,7 @@ export function applyAction(action: Action): void {
  *     判定在这里做：`isCorrect` 是 `core` 的**唯一一份**判定实现，
  *     门面问它、**不复现**它（R-08：`app → core` 是合法方向）。
  *
- * ⚠️ **三道守卫，一道都不省**（缺一道就有具体的崩法）：
+ * ⚠️ **四道守卫，一道都不省**（缺一道就有具体的崩法）：
  *   ① `awaiting-answer` 之外**不上报**（AC-C5 让卡面在 `awaiting-build` 期间
  *      继续渲染，那时的 `imageFailed` 与当前题无关）。
  *   ② **这个 id 还得属于当前这张卡** —— 一张卡有多个选项破图时，
@@ -780,11 +810,22 @@ export function applyAction(action: Action): void {
  *      会**抛错**，理由同 ②。
  *   `reducer` 里还会把 ③ 再核一遍（双保险）。真抛出来说明有别的调用点绕过了门面 ——
  *      那时抛出来才是对的。
+ *   🔥📎 **`[CR]` 2026-10-20 补的第 ④ 道：题单被抽空时不跳。**
+ *      `reducer.applySkip` 在 `nextQuestion(...)` 返回 `null` 时会 `rejectAction`
+ *      （**抛错**）—— 理由逐字是「一个词都没答的孩子会看到『读完啦！』」。
+ *      ⚠️ **本门面原来没有这道守卫** ⇒ 抛错**直接冒到 `@error` 事件回调里** ——
+ *        没有任何人接 ⇒ 整局崩在一次图片 404 上。
+ *      ⚠️ 而 `reducer.applySkip` 的注释逐字写着「`app/store.ts` 的门面在 dispatch 前
+ *        先问一遍，所以正常路径不会有异常冒到界面上（NFR13）」——
+ *        **那句话是假的**：门面没问。这是本条守卫存在的全部理由。
+ *      ⇒ 现在门面**自己先问一遍**（用与 `applySkip` **同一个** `nextQuestion`），
+ *        抽不出题就**什么都不做**（那道题留在屏幕上，图片破着）。
  *
  * ⚠️ **幂等**：一道题只跳一次。跳完之后后续上报带着的是已被换掉的题的 id，
  *   由 ② 丢掉。
- * ⚠️ **不 throw、不 catch**（NFR12 运行时层）：三道守卫之后没有任何会抛的路径 ——
- *   `isCorrect` 只在 optionId 不属于这张卡时抛，而 ② 已经把它挡住了。
+ * ⚠️ **不 throw、不 catch**（NFR12 运行时层）：四道守卫之后没有任何会抛的路径 ——
+ *   `isCorrect` 只在 optionId 不属于这张卡时抛，而 ② 已经把它挡住了；
+ *   `applySkip` 会抛的两条（③ 与第 ④ 道）都被本门面提前挡住。
  */
 export function reportImageFailure(optionId: OptionId): void {
   const phase = state.value.phase
@@ -792,6 +833,12 @@ export function reportImageFailure(optionId: OptionId): void {
   const question = phase.question
   if (!question.card.options.some((option) => option.id === optionId)) return
   if (!isCorrect(question.card, optionId)) return
+  // 🔥 第 ④ 道守卫（`[CR]` 2026-10-20）—— 见上方注释。
+  //   ⚠️ `skippedEntryIds` 的**顺序与 `applySkip` 逐字一致**：先记跳过、再取下一题。
+  //     顺序反了的话这里会取到「当前这道题」（它此刻还不在 skipped 里）⇒
+  //     永远抽不出 `null` ⇒ 这道守卫**恒绿**（R-51 第 1 类失效）。
+  const skippedEntryIds = [...state.value.skippedEntryIds, question.entryId]
+  if (nextQuestion(state.value.deck, state.value.masteredEntryIds, skippedEntryIds) === null) return
   applyAction(skipQuestion(question.entryId, optionId))
 }
 

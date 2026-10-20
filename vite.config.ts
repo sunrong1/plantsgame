@@ -37,7 +37,7 @@ function icon(file: string): string {
 }
 
 /**
- * 📎 **Story 1.18 / AC-C5：`public/assets/**` 全量内容哈希。**
+ * 📎 **Story 1.18 / AC-C5：`public/**` 全量内容哈希。**
  *
  * 这个 token 是「SW 换代」的判据 —— 它一变，运行时缓存的名字就变，
  * `sw/sw-rules.ts` 的 `staleCacheNames()` 就会把上一代的缓存删掉。
@@ -48,28 +48,60 @@ function icon(file: string): string {
  *     都不会变 ⇒ `CacheFirst` 永远命中旧文件 ⇒ 孩子听到的是上一次的录音，
  *   页面上却没有任何东西看起来变了。Story 2.x 的每一次内容批次都会踩这个坑。
  *
+ * ⚠️📎 **`[CR]` 2026-10-20：哈希范围从 `public/assets` 扩到 `public/` 全量** ——
+ *   原范围只含 `public/assets`（录音 / 词图 / 塔图）。
+ *   ⚠️ **漏了 `public/icons`（主屏图标，`.png`）与 `public/favicon.svg`** ——
+ *     而 `sw/sw-rules.ts` 的 `isMediaPathname` 逐字把 `.png` 与 `.svg` 都算作**媒体**
+ *     ⇒ 图标**进运行时缓存**、URL 不带内容哈希 ⇒ 换一批图标时 token 不变
+ *     ⇒ 旧图标长期驻留 ⇒ **主屏图标永远是旧的**，而页面上没有任何东西看起来变了。
+ *   ⇒ 范围必须是「**会被写进运行时缓存的一切**」，也就是 `public/` 全量。
+ *
  * ⚠️ **为什么排序**：目录遍历顺序不保证稳定，不排序的话同一份内容两次构建
  *   可能算出两个不同的 token ⇒ 每次构建都「换代」，缓存永远命中不了。
  *
  * ⚠️ **路径也进哈希**：只哈希字节的话，把 `u1-dog.svg` 改名成 `u1-cat.svg`
  *   （字节相同）算不出变化。
  *
- * 实测：`public/assets` 下 85 个文件 / 1.8 MB，两次运行在 20ms 量级，
+ * ⚠️📎 **`[CR]` 2026-10-20：目录不存在时不再抛** ——
+ *   原实现用非递归的 `readdirSync` 直接调，目录不存在即抛
+ *   ⇒ **新克隆 / CI / 资产尚未生成**的环境里，`vite.config.ts` 在**模块加载期**就崩
+ *   ⇒ dev server 与 vitest **都起不来**，而报错信息指向 `readdirSync`（离源头很远）。
+ *   ⇒ 现在：读不到的目录**跳过**，一个文件都没有时哈希一个固定哨兵
+ *   （结果仍是 12 位十六进制，守卫 G128 的形状判据照样成立）。
+ *
+ * 实测：`public/` 下 92 个文件 / 1.8 MB，两次运行在 20ms 量级，
  * 相对 570ms 的构建可忽略。
  */
 export function assetToken(dir: string): string {
   const files: string[] = []
   const walk = (current: string): void => {
     // `.sort()` 保证遍历顺序稳定 —— 见上方注释第三条。
-    for (const name of readdirSync(current).sort()) {
+    let names: string[]
+    try {
+      names = readdirSync(current).sort()
+    } catch {
+      // ⚠️ 目录不存在或读不到 ⇒ 跳过它，而不是让整个构建崩掉。
+      return
+    }
+    for (const name of names) {
       const path = join(current, name)
-      if (statSync(path).isDirectory()) walk(path)
-      else files.push(path)
+      try {
+        if (statSync(path).isDirectory()) walk(path)
+        else files.push(path)
+      } catch {
+        // ⚠️ 竞态：遍历途中文件被删 / 权限变化 ⇒ 跳过这一条。
+      }
     }
   }
   walk(dir)
 
   const hash = createHash('sha256')
+  if (files.length === 0) {
+    // ⚠️ 一个文件都没有 ⇒ 没有「内容」可版本化。哈希一个固定哨兵，
+    //   让返回值仍是 12 位十六进制（G128 的形状判据按值形状写，不按来源写）。
+    hash.update('plantsgame-empty-asset-tree')
+    return hash.digest('hex').slice(0, 12)
+  }
   for (const file of files) {
     hash.update(file.slice(dir.length))
     hash.update(readFileSync(file))
@@ -173,14 +205,17 @@ export const pwaOptions: Partial<VitePWAOptions> = {
 }
 
 /**
- * 📎 **Story 1.18 / AC-C5：`public/assets/**` 的全量内容哈希。**
+ * 📎 **Story 1.18 / AC-C5：`public/**` 的全量内容哈希。**
  *
  * ⚠️ **顶层 `define` 是唯一管用的位置**（实测 `VitePWAOptions` 没有 `define` 键，
  *   写在插件选项里 typecheck 当场红：TS2353）。
  *   `vite-plugin-pwa` 是在**同一次 Vite 构建内**打包 `swSrc` 的
  *   （实测它出现在 vite build 自己的 `✓ N modules transformed` 计数里）。
+ *
+ * ⚠️📎 **`[CR]` 2026-10-20：范围从 `public/assets` 扩到 `public/`** ——
+ *   理由见 `assetToken()` 的注释第三条（图标也是媒体，也在运行时缓存里）。
  */
-export const assetTokenValue: string = assetToken('public/assets')
+export const assetTokenValue: string = assetToken('public')
 
 export default defineConfig({
   define: {

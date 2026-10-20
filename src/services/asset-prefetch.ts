@@ -134,19 +134,34 @@ export function prefetchUnit(unitNumber: number, onSettled?: (summary: PrefetchS
     return
   }
 
-  void run(unitNumber, urls).then((result) => {
-    onSettled?.(result)
-    if (result.errors > 0 || result.notFound > 0) {
-      // ⚠️ 逐字：静默降级记 WARN，**不抛、不弹窗、不切 view**（AC-E7 / NFR12）。
-      //   这条 WARN 是「图可能预取不到」的唯一线索；不记它，
-      //   孩子遇到的是一张永远不出现的卡，而没有任何东西指向网络。
+  // ⚠️📎 `[CR]` 2026-10-20：**补 `.catch`** ——
+  //   原来逐字是 `void run(...).then((result) => { onSettled?.(result); … })`，
+  //   **没有 `.catch`** ⇒ ① `onSettled` 回调抛错时整条链 reject
+  //   ⇒ **一条未捕获的 promise rejection**（模块头逐字「绝不抛（NFR12 的运行时层）」
+  //   与「本函数自身**从不** `throw`」两句都被它破掉）；
+  //   ② `run` 本身承诺「永远 resolve、绝不 reject」，所以真正的 reject 来源只有回调。
+  //   ⇒ 回调是**调用方给的**，本函数不该替它担保「它不抛」。
+  //   ⇒ 吞掉并记 WARN（静默降级的既定口径），不弹窗、不切 view。
+  void run(unitNumber, urls)
+    .then((result) => {
+      onSettled?.(result)
+      if (result.errors > 0 || result.notFound > 0) {
+        // ⚠️ 逐字：静默降级记 WARN，**不抛、不弹窗、不切 view**（AC-E7 / NFR12）。
+        //   这条 WARN 是「图可能预取不到」的唯一线索；不记它，
+        //   孩子遇到的是一张永远不出现的卡，而没有任何东西指向网络。
+        console.warn(
+          `[prefetch] 单元 ${unitNumber} 预取有损耗：${result.total} 张里 ` +
+            `${result.notFound} 张非 2xx、${result.errors} 张网络异常（${result.elapsedMs}ms）—— ` +
+            '已静默继续，正确项缺图的题会走 SKIP_QUESTION 过滤',
+        )
+      }
+    })
+    .catch((err: unknown) => {
       console.warn(
-        `[prefetch] 单元 ${unitNumber} 预取有损耗：${result.total} 张里 ` +
-          `${result.notFound} 张非 2xx、${result.errors} 张网络异常（${result.elapsedMs}ms）—— ` +
-          '已静默继续，正确项缺图的题会走 SKIP_QUESTION 过滤',
+        `[prefetch] 单元 ${unitNumber} 预取的回调抛错，已忽略：` +
+          `${err instanceof Error ? err.message : String(err)}`,
       )
-    }
-  })
+    })
 }
 
 /**
@@ -158,8 +173,12 @@ export function prefetchUnit(unitNumber: number, onSettled?: (summary: PrefetchS
  */
 export function prefetchNextUnit(unitNumber: number): void {
   if (!hasNextUnit(unitNumber)) return
-  // 下一个单元的预取**连日志都不打**：Epic 1 只有 1 个单元，本分支恒不触发；
-  // 真到了多单元时它跑在后台，不该在孩子的控制台上刷屏。
+  // ⚠️📎 `[CR]` 2026-10-20 更正一句**假话**：原文逐字「下一个单元的预取**连日志都不打**」——
+  //   而它调用的 `prefetchUnit` 在 `errors > 0 || notFound > 0` 时**照打**汇总 WARN。
+  //   ⇒ 今天无害（Epic 1 只有一个单元，本分支恒不触发），但那句话在 Epic 2
+  //     就会变成一句**与代码相反**的注释 —— 而注释是下一个人唯一的线索。
+  //   ⇒ 现在按事实写：它**会**打损耗汇总（那条 WARN 是「图可能预取不到」的唯一线索），
+  //     只是**不**为「正常完成」打任何日志。
   prefetchUnit(unitNumber + 1)
 }
 
