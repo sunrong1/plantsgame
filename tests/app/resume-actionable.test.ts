@@ -100,7 +100,7 @@ import { entriesOf } from '../../src/content'
 import { afterEachUninstall, installFakeStorage } from '../fixtures/fake-storage'
 import { stripComments } from '../fixtures/strip-comments'
 import type { FakeStorage } from '../fixtures/fake-storage'
-import type { State } from '../../src/core'
+import type { Phase, State } from '../../src/core'
 
 // ⚠️ `services/audio` 必须 mock：它会去真解码 mp3（与 `save-integration.test.ts` 同款）。
 vi.mock('../../src/services/audio', async (importOriginal) => {
@@ -138,11 +138,19 @@ function answerCorrectly(): void {
   store.applyAction(core.answer(hit.id))
 }
 
-/** 刚刚答对的那道题的 `entryId`（必须在 `answerCorrectly()` **之前**取 —— 之后相位就变了）。 */
-function lastAnsweredEntryId(): string {
-  const phase = store.state.value.phase
-  if (phase.kind !== 'awaiting-build') throw new Error(`前置：相位是 ${phase.kind}，不是 awaiting-build`)
-  return phase.question.entryId
+/**
+ * 重新读一次当前相位。
+ *
+ * ⚠️ **为什么必须走函数边界**：TypeScript 会把 `store.state.value.phase.kind`
+ *   在收窄之后**一直**当成那个字面量 —— 哪怕中间隔着一次 `applyAction()`。
+ *   本文件里前面刚判过 `=== 'awaiting-answer'`，于是后面读到的相位会被
+ *   错认成 `awaiting-answer` 变体，`=== 'awaiting-build'` 直接编译报错
+ *   （TS2367: no overlap）。
+ *   ⚠️ 这里**不用 `as` 强转** —— 强转会把「类型说不是」盖成「类型说是」，
+ *   判据从此说谎。
+ */
+function currentPhase(): Phase {
+  return store.state.value.phase
 }
 
 /** 走完一整个回合：答题 → 建造 → 开战 → 结算 → 推进到下一题。 */
@@ -366,7 +374,7 @@ describe('G170-b —— 建造期恢复也要有卡面（裁决 B：题面落进
     // ⚠️ 走**真实入口**：变异落在 `restoreFromSave()` 里，而 `remountLevel()`
     //   直接拿盘上字节覆盖内存、绕过了整条恢复链路 ⇒ 那种变异它结构上看不见。
     const wrapper = remountAfterRealRestore()
-    const restoredPhase = store.state.value.phase
+    const restoredPhase = currentPhase()
 
     expect(
       wrapper.find('.question-card').exists(),

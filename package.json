@@ -19,7 +19,8 @@
     "verify:deploy": "tsx scripts/verify-deploy.ts",
     "balance-sim": "tsx scripts/balance-sim.ts",
     "generate:voice": "tsx scripts/generate-voice.ts",
-    "word-image-metrics": "tsx scripts/word-image-metrics.ts"
+    "word-image-metrics": "tsx scripts/word-image-metrics.ts",
+    "word-image-throughput": "tsx scripts/word-image-throughput.ts"
   },
   "dependencies": {
     "vue": "~3.5.43",
