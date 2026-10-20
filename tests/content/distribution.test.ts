@@ -21,8 +21,14 @@
  *   同理 G188 只写「不增 / 不减」的话，一条**恒定不变**的曲线也能过。
  *   ⇒ 每条单调性断言后面都跟一条「总位移等于两锚点之差」的实值断言。
  * · **份额和的容差取 1e-12，并写明为什么**。三个份额各自独立插值，浮点误差上界
- *   约 `3 × eps ≈ 6.7e-16`；而任何真实违规（改一个系数、漏一项）偏差都 ≥ 0.05 ——
- *   容差比违规小 10 个数量级，不存在「容差大到放行违规」。
+ *   远低于 1e-12。
+ *   ⚠️ `[CR]` 2026-10-20 更正：原文写的是「浮点误差上界约 `3 × eps ≈ 6.7e-16`；
+ *   任何真实违规偏差都 ≥ 0.05 —— 容差比违规小 10 个数量级」。**后半句被本 story
+ *   自己的变异实测推翻**：M219 的偏差是 0.05，但 M223（首锚点 word 改 29/37）在单元 1
+ *   只偏 `1/37 = 0.027`，M221（word 曲线改恒定）在单元 2 只偏 `0.019` ——
+ *   都是「改一个系数」的最小量级，都远小于 0.05。
+ *   ⇒ 如实改成：**实测到的最小违规偏差约 0.019**，仍是容差的 10⁷ 倍以上 ⇒
+ *   容差没有放行任何真实违规，但差的是 **7 个数量级不是 10 个**。原文不得复活。
  * · **不写死具体份额**（R-56 的同款要求：本文件用实算，不用硬编码的期望表）。
  *   单元 1 与单元 20 的两个端点由 `CARD_DISTRIBUTION_ANCHORS` 给出，
  *   中间单元只验性质（范围 / 和 / 单调 / 步长），不验具体数值 ——
@@ -34,6 +40,27 @@
  * · 规则与三条性质：`src/content/distribution.ts` 的文件头 + `docs/card-distribution.md`
  * · 「过渡平滑，无单元出现断崖式跳变」：Story 2.2 AC 组 B（B2）
  * · 「难度递增只能由卡型分布与词汇承载」：同 AC 组 C（C2）
+ *
+ * ── 变异台账（[CR] 2026-10-20 补进测试文件） ──────────────────────────────
+ * ⚠️ 原来 M2xx 只活在 story 文档里，`grep M218 tests/ src/` 一条都搜不到，
+ *   「7 个变异」成了无从核对的散文。本 story 的变异号改写在这里，
+ *   沿用仓库既有惯例（deferred #39 说的「grep tests/ src/ 查上界」依赖的就是这个）。
+ * · **M218** 放宽越界判据 → 1 红（G187 抛错用例）
+ * · **M219** 末锚点 response 0.35 → 0.40 → 1 红（G187 份额和；G189 仍绿是对的，步长仍 ≤ 0.03）
+ * · **M220** word 插值终点反向 → 3 红（G187 份额和 + G188 不增 + G188 总位移）
+ * · **M221** word 曲线改恒定 → 2 红（G187 份额和 + G188 总位移；**G188「不增」仍绿**，
+ *   被「总位移」抓住 —— 那条反空转断言有牙的实测证据）
+ * · **M222** 线性插值改两档阶梯 → 2 红（仅 G189 上下界两条）
+ * · **M224** CardKindSchema 加第四型 → 2 红（G187 键集合 + 既有 `schema.test.ts`）
+ * · **M225**（[CR] 新增）守恒变异：首锚点 word 30/37 → 25/37、keyword 1/37 → 6/37，
+ *   三份额之和**仍 = 1** → **1 红，且只有 G190**（内容侧）红。
+ *   这条是 M223 的加强版：M223 顺带改了份额和所以 G187 会红，M225 不改和，
+ *   于是本文件**全部绿** —— 由此坐实「G188 总位移里的首锚点断言是恒真式」，
+ *   那一行已删除（见该测试内的注释）。
+ * · **M226**（[CR] 新增）让 `response` 插值终点反向 → 4 红。
+ *   补的是 M218–M224 的**空白**：M220 只反转了 `word`，G188 的
+ *   「句/对话层逐单元不减」那条断言在原 7 条变异里**从未被触发过**。
+ *   原样例会补上，但编号随文档重排，以 story 文档的变异表为事实源（R-32）。
  */
 
 import { describe, expect, it } from 'vitest'
@@ -74,7 +101,8 @@ describe('G187 —— 可计算 + 覆盖 1..20（AC-A2）', () => {
           `单元 ${unit} 的 ${kind} 份额 ${share} 不在 [0,1] —— 份额越界意味着插值的锚点写坏了`,
         ).toBe(true)
       }
-      const sum = dist.word + dist.keyword + dist.response
+      const shares = Object.values(dist)
+      const sum = shares.reduce((a, b) => a + b, 0)
       expect(
         Math.abs(sum - 1),
         `单元 ${unit} 的三份额之和是 ${sum}（应为 1，容差 ${SUM_TOLERANCE}）—— ` +
@@ -112,6 +140,17 @@ describe('G187 —— 可计算 + 覆盖 1..20（AC-A2）', () => {
       `末锚点的键集合与 CardKindSchema 的取值集合不一致（schema：${kinds.join('/')}）—— ` +
         '同一族卡在首末两个锚点上被计入的程度不一致 ⇒ 曲线在中途出现台阶',
     ).toEqual([...kinds].sort())
+    // ⚠️ `[CR]` 2026-10-20 补：原来只比**锚点**，没比**函数真正返回的那个对象**。
+    //   锚点对了而 `targetCardDistribution` 少拼一族键（插值那三行是字面量写的），
+    //   上面两条照样绿，而调用方拿到的是残缺分布。类型层 `Record<CardKind, number>`
+    //   会在编译期挡住，但这道运行期兜底得对着实际返回值也走一遍。
+    for (const unit of [FIRST_UNIT, 10, LAST_UNIT]) {
+      expect(
+        Object.keys(targetCardDistribution(unit)).sort(),
+        `单元 ${unit} 的返回分布键集合与 CardKindSchema 不一致 —— ` +
+          '插值那几行是逐字写的键，schema 增删卡型时它可能与锚点脱节',
+      ).toEqual([...kinds].sort())
+    }
   })
 })
 
@@ -147,8 +186,9 @@ describe('G188 —— 逐单元单调：单词不增、句/对话不减（AC-B1�
     const lastWord = targetCardDistribution(LAST_UNIT).word
     expect(
       lastWord,
-      `末单元的单词份额是 ${lastWord}，与首锚点相差 ${lastWord - firstWord} —— ` +
-        '整条曲线必须真的从首锚点走到末锚点，否则「单调」只是在描述一条不动的线',
+      `末单元的单词份额是 ${lastWord}，应逐字等于末锚点的 ` +
+        `${CARD_DISTRIBUTION_ANCHORS.last.word} —— 整条曲线必须真的从首锚点走到末锚点，` +
+        '否则「单调」只是在描述一条不动的线',
     ).toBeCloseTo(CARD_DISTRIBUTION_ANCHORS.last.word, 12)
     expect(
       sentenceLayerShare(LAST_UNIT),
@@ -158,11 +198,17 @@ describe('G188 —— 逐单元单调：单词不增、句/对话不减（AC-B1�
       CARD_DISTRIBUTION_ANCHORS.last.keyword + CARD_DISTRIBUTION_ANCHORS.last.response,
       12,
     )
-    expect(
-      firstWord,
-      `首单元的单词份额是 ${firstWord}，应等于首锚点的 ${CARD_DISTRIBUTION_ANCHORS.first.word} —— ` +
-        '单元 1 的锚点必须逐字取自真实内容（G190 在内容层复验这一点）',
-    ).toBeCloseTo(CARD_DISTRIBUTION_ANCHORS.first.word, 12)
+    // ⚠️ `[CR]` 2026-10-20 **删掉**了原来第三条断言
+    //   `expect(targetCardDistribution(FIRST_UNIT).word).toBeCloseTo(anchors.first.word, 12)`。
+    //   它是**恒真式**：`targetCardDistribution(1).word` 按插值定义就是
+    //   `FIRST_ANCHOR.word + (LAST-FIRST)*0 === FIRST_ANCHOR.word`，而
+    //   `CARD_DISTRIBUTION_ANCHORS.first === FIRST_ANCHOR` —— 拿 x 跟 x 比，永远绿。
+    //   实测坐实（守恒变异 M225）：把首锚点改成 word 25/37 + keyword 6/37
+    //   （三份额之和仍 = 1），G187 的和、G188 的不增、本条的位移全部**不红**，
+    //   只有 G190 红 —— 本条对那种变异零贡献。
+    //   「首锚点必须逐字取自真实内容」这条**真正的**断言在
+    //   `tests/content/unit-01.test.ts` 的 G190：它拿规则和 `unit-01.json` 两份
+    //   独立来源对撞，不是自己跟自己比。
   })
 })
 
@@ -182,10 +228,18 @@ describe('G189 —— 过渡平滑、无断崖（AC-B2）', () => {
     // ⚠️ 上一条是**上界**断言：相邻差恒等于 0（难度根本不升）照样全绿。
     //   断言允许的 0 正是它要防的违规 ⇒ 必须配一条下界。
     const steps = ALL_UNITS.slice(1).map((unit) => sentenceLayerShare(unit) - sentenceLayerShare(unit - 1))
+    // ⚠️ `[CR]` 2026-10-20 补：`Math.min()` 吃空数组返回 `Infinity`，
+    //   而 `Infinity > 0` 为真 ⇒ 单元区间一旦被收成一个点，这条断言会**静默恒绿**。
+    //   步数本身就是这条断言的前提，先把它钉住。
+    expect(
+      steps.length,
+      `相邻步长数组是空的（只覆盖了 ${ALL_UNITS.length} 个单元）—— ` +
+        '下面用 `Math.min()` 求下界，空数组会返回 `Infinity` 并让本条断言恒绿',
+    ).toBeGreaterThan(0)
     const min = Math.min(...steps)
     expect(
       min,
-      `19 个相邻步长里最小的是 ${min} —— 至少有一格没有上升，阶梯在那里停住了，` +
+      `${steps.length} 个相邻步长里最小的是 ${min} —— 至少有一格没有上升，阶梯在那里停住了，` +
         '此时「无断崖」全绿却毫无意义（难度不再逐层升上去）',
     ).toBeGreaterThan(0)
   })
