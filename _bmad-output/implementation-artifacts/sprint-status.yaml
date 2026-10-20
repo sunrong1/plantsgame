@@ -49,7 +49,7 @@
 #   epics.md 的销项说明处理。
 
 generated: 2026-10-12
-last_updated: 2026-10-20  # Story 2.2 在 review（[CR] 处理中）；运行记录见其 story 文档
+last_updated: 2026-10-20  # Story 2.2 已 done（[CR] 通过）；运行记录与其审查结论见其归档文档
                         # Story 2.2「难度阶梯规则落地」上下文已生成 → ready-for-dev（裁决与证据见其 story 文档）
                         # Story 2.1 —— ✅ **done**（`[CR]` 三层评审 + 16 变异红数 + D1-D4/P1-P27 全落地，见其 story 文档）
                         # Story 1.20 —— ✅ **done**（归档进 `_bmad-output/archive/`）
@@ -194,7 +194,7 @@ development_status:
   1-retrospective: optional
   epic-2: in-progress
   2-1-词图产能验证: done
-  2-2-难度阶梯规则落地: review
+  2-2-难度阶梯规则落地: done   # ⚠️ R-40 的归档未做：文档仍在 implementation-artifacts/
   2-3-阳光经济档位扩展: backlog
   2-4-选项数量递进规则: backlog
   2-5-内容批次-1-单元-2-单单元试点: backlog
