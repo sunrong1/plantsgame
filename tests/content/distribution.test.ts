@@ -182,7 +182,6 @@ describe('G188 —— 逐单元单调：单词不增、句/对话不减（AC-B1�
   it('总位移等于两锚点之差（单调断言不是空转：恒定不变的曲线过不了这一条）', () => {
     // ⚠️ R-51 第 1 类失效的预防：上面两条只写「不增 / 不减」的话，
     // 一条**完全恒定**的曲线（每一格都一样）也会绿 —— 那意味着难度不升反降。
-    const firstWord = targetCardDistribution(FIRST_UNIT).word
     const lastWord = targetCardDistribution(LAST_UNIT).word
     expect(
       lastWord,
