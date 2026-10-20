@@ -936,6 +936,105 @@ describe('G168 —— 宽屏下每个面板都被排了版（Story 1.19 / AC-H1�
     ).toEqual([])
   })
 
+  it('🔴 每个面板的 `grid-area` 必须**指向一个真实存在、且没人抢的格子**（G179 —— 第七轮补）', () => {
+    const vueByName = new Map<string, string>()
+    for (const file of vueFiles()) {
+      vueByName.set(file.slice(file.lastIndexOf('/') + 1, -4), readFileSync(file, 'utf8'))
+    }
+
+    // ⚠️🔥 **`[CR]` 第七轮补的洞**：G166 只判**区域图模板**的形状（`field` 与 `quiz` 不同列），
+    //   G168 只判「这个面板**有**一条带 `grid-area` 的规则」。
+    //   **两者都没说「面板 A 的 `grid-area` 名字」必须是「模板里存在、且没有别的面板在用」的。**
+    //   ⇒ 实测变异（子代理跑过，51/51 全绿）：
+    //       .level-view .hand-deck { grid-area: field; }
+    //     手牌与战场抢同一格 —— 战场不见了，界面上没有任何报错，而全套守卫绿灯。
+    //   ⇒ 同形态还有 `grid-area: nonexistent`：模板里没这个名字 ⇒ 浏览器整条忽略
+    //     ⇒ 面板落回自动布局、互相压盖 ⇒ 同样全绿。
+
+    // ① 模板里真实存在的格子名集合（从 `grid-template-areas` 逐字取）。
+    const areas = gridAreaNames(block)
+    expect(
+      areas.size,
+      '判据范围消失：宽屏块里解析不出任何 `grid-template-areas` 格子名',
+    ).toBeGreaterThan(0)
+
+    // ② 面板 → 它声明的格子名
+    const claimed = new Map<string, string>() // 格子名 -> 面板类名（用来查抢占）
+    const problems: string[] = []
+    for (const child of directChildrenOfLevelView(levelViewTemplate)) {
+      const rootClass = child.rootClass ?? rootClassOfComponent(child.tag, vueByName)
+      if (rootClass === null) continue
+      if (rootClass === 'level-outcome') continue // 绝对定位浮层，G168 下一条守它
+      const area = gridAreaOf(block, rootClass)
+      if (area === null) continue // 没排版的由上一条判
+      if (!areas.has(area)) {
+        problems.push(`.${rootClass} → \`grid-area: ${area}\`，但模板里没有这个格子名`)
+      }
+      const rival = claimed.get(area)
+      if (rival !== undefined) {
+        problems.push(`.${rootClass} 与 .${rival} 都占了 \`${area}\` 这一格`)
+      } else {
+        claimed.set(area, rootClass)
+      }
+    }
+    expect(
+      problems,
+      `🔴 面板与格子对不上：${problems.join('；')}。\n` +
+        '症状是某个面板**从画面上消失**或与别的面板压在一起，界面上没有任何报错。\n' +
+        '⚠️ G166/G168 各自都绿：G166 只看 `grid-template-areas` 的形状，' +
+        'G168 只看「有没有 grid-area 声明」—— 没有任何一条把它们**绑起来**。',
+    ).toEqual([])
+  })
+
+  it('反向自测：面板↔格子 判据分得清「抢占」与「指向不存在的格子」（R-53）', () => {
+    // ⚠️ **夹具自足，不引用活文件** —— 首版把自测写在真实 `block` 上做 `replace`，
+    //   结果变异真实 CSS 时**自测跟着一起红**，自测与被测对象耦合在一起。
+    //   自测要验的是**判据**，判据该在最小夹具上验。
+    const fixture = [
+      '.level-view {',
+      "  grid-template-areas:",
+      "    'hud     hud'",
+      "    'overlay quiz'",
+      "    'field   quiz'",
+      "    'hand    quiz';",
+      '}',
+      '.level-view .battle-grid { grid-area: field; }',
+      '.level-view .question-card { grid-area: quiz; }',
+      '.level-view .hand-deck { grid-area: hand; }',
+    ].join('\n')
+
+    // 前提自检：夹具本身必须是自洽的，否则下面的判据结果没有意义。
+    const areas = gridAreaNames(fixture)
+    expect([...areas].sort().join(','), '夹具自检：格子名集合解析错了').toBe('field,hand,hud,overlay,quiz')
+    expect(gridAreaOf(fixture, 'hand-deck'), '夹具自检：hand-deck 的格子取错了').toBe('hand')
+    // ⚠️ 祖先类名不算：`.level-view` 出现在每条选择器里，但它自己没被排版。
+    expect(
+      gridAreaOf(fixture, 'level-view'),
+      '夹具自检：祖先类名 `.level-view` 被当成了被排版的面板',
+    ).toBeNull()
+
+    // 🔴 形态一：抢占。`hand-deck` 与 `battle-grid` 抢 `field`。
+    const rival = fixture.replace('.hand-deck { grid-area: hand; }', '.hand-deck { grid-area: field; }')
+    expect(gridAreaOf(rival, 'hand-deck'), '判据自测自己红了：抢占形态取不到 `field`').toBe('field')
+    expect(gridAreaOf(rival, 'battle-grid'), '判据自测自己红了：抢占形态下另一方取错了').toBe('field')
+    // ⇒ 两者取到同一个名字 —— 上游那条判据正是拿它判「抢占」。
+    expect(
+      gridAreaOf(rival, 'hand-deck') === gridAreaOf(rival, 'battle-grid'),
+      '判据自测自己红了：抢占形态下两面板竟指向不同格子 ⇒ 上游判据会放过它',
+    ).toBe(true)
+
+    // 🔴 形态二：指向不存在的格子（浏览器会整条忽略这条声明）。
+    const bogus = fixture.replace('.hand-deck { grid-area: hand; }', '.hand-deck { grid-area: nonexistent; }')
+    expect(
+      gridAreaOf(bogus, 'hand-deck'),
+      '判据自测自己红了：不存在的格子名竟没被取出来',
+    ).toBe('nonexistent')
+    expect(
+      gridAreaNames(fixture).has(gridAreaOf(bogus, 'hand-deck') ?? ''),
+      '判据自测自己红了：`nonexistent` 竟被算进模板的合法格子名集合',
+    ).toBe(false)
+  })
+
   it('反向自测：判据分得清「格子名」与「面板类名」（第一版的恒真形态）', () => {
     // ⚠️ 这一条守的是本守卫**自己**那处假绿：初版拿 `grid-area` 的格子名
     //   （field/hud/overlay/quiz/hand）去比面板类名（battle-grid/…），
@@ -1157,6 +1256,48 @@ function panelsWithGridArea(block: string): ReadonlySet<string> {
     for (const cls of match[1].matchAll(/\.([A-Za-z][\w-]*)/g)) out.add(cls[1])
   }
   return out
+}
+
+/**
+ * 🔥📎 **G179（`[CR]` 第七轮新增）：`grid-template-areas` 里真实存在的格子名集合。**
+ *
+ * ⚠️ 必须取**模板里的名字**，不是「源码里出现过的名字」—— 后者会把
+ *   `grid-area: nonexistent` 这种**根本不存在**的格子也算进去，
+ *   判据就永远不会发现「面板指向了一个浏览器会整条忽略的名字」。
+ */
+function gridAreaNames(block: string): Set<string> {
+  const out = new Set<string>()
+  const decl = /grid-template-areas\s*:\s*([^;}]+)/.exec(block)
+  if (decl === null) return out
+  // 值是一串带引号的名字：`'hud hud' 'overlay quiz' …`
+  for (const q of decl[1].matchAll(/'([^']*)'|"([^"]*)"/g)) {
+    for (const name of (q[1] ?? q[2]).trim().split(/\s+/)) {
+      if (name !== '') out.add(name)
+    }
+  }
+  return out
+}
+
+/**
+ * 🔥📎 **G179（`[CR]` 第七轮新增）：某个面板声明的 `grid-area` 到底是哪一格。**
+ *
+ * ⚠️ 与 {@link panelsWithGridArea} 的区别：那个返回「选择器里出现过的**全部**类名」
+ *   （含祖先类名），这个只认**该面板自己的类名后面跟的那个格子名**。
+ *   ⚠️ 找不到时返回 `null`（而不是空串）—— 「没排版」与「排到了一个空名字」
+ *   是两件不同的事，混起来判据就永远分辨不出。
+ */
+function gridAreaOf(block: string, panelClass: string): string | null {
+  const rulePattern = /([^{}]+)\{([^{}]*)\}/g
+  let match: RegExpExecArray | null
+  while ((match = rulePattern.exec(block)) !== null) {
+    if (!/grid-area\s*:/.test(match[2])) continue
+    // 选择器的**最后一个**类名才是这条规则真正作用的那个元素。
+    const classes = [...match[1].matchAll(/\.([A-Za-z][\w-]*)/g)].map((c) => c[1])
+    const target = classes[classes.length - 1]
+    if (target !== panelClass) continue
+    return /grid-area\s*:\s*([^;}]+)/.exec(match[2])?.[1].trim() ?? null
+  }
+  return null
 }
 
 /**
