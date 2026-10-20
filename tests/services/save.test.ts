@@ -392,7 +392,7 @@ describe('AC-C2 / G79 —— 写盘点表逐行钉死，含一条负向', () => 
     //     **上面那张「逐行钉死」的表六行全绿**，全仓也没有任何一处断言重打时的条数。
     //   ⇒ 这条断言补上那个空缺：**恰好 1 条**（不是 `<= 1`）。
     const base = freshState()
-    const prev: State = { ...base, phase: { kind: 'awaiting-answer' } }
+    const prev: State = { ...base, phase: { kind: 'awaiting-answer', question: base.deck[0] } }
     const built = stateWithTower()
     const next: State = {
       ...base,
