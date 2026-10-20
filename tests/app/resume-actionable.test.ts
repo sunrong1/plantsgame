@@ -138,6 +138,13 @@ function answerCorrectly(): void {
   store.applyAction(core.answer(hit.id))
 }
 
+/** 刚刚答对的那道题的 `entryId`（必须在 `answerCorrectly()` **之前**取 —— 之后相位就变了）。 */
+function lastAnsweredEntryId(): string {
+  const phase = store.state.value.phase
+  if (phase.kind !== 'awaiting-build') throw new Error(`前置：相位是 ${phase.kind}，不是 awaiting-build`)
+  return phase.question.entryId
+}
+
 /** 走完一整个回合：答题 → 建造 → 开战 → 结算 → 推进到下一题。 */
 function playOneRound(): void {
   answerCorrectly()
@@ -347,13 +354,28 @@ describe('G170-b —— 建造期恢复也要有卡面（裁决 B：题面落进
     //   ⚠️ 上面两条量的是「存在」，判据粒度**粗于它要守的东西**（R-51 第四种形态）：
     //     若恢复时把题面错写成 deck 里的另一道，孩子看到的是一道**长得像但不是自己
     //     刚答的那道题**的卡面 —— 上面两条全绿，而症状是「回来以后题目变了」。
-    //   ⇒ 逐字比对：渲染出来的题面必须**就是盘上那份 state 的题面**。
-    const onDisk = store.state.value.phase
-    if (onDisk.kind !== 'awaiting-build') throw new Error(`前置：相位是 ${onDisk.kind}`)
+    //
+    // 🔥📎 **`[CR]` 第七轮推翻第六轮的这条判据本体：它是恒绿的。**
+    //   第六轮写的是 `toBe(onDisk.question.card.promptText)`，而那个 `onDisk`
+    //   取的是 **`store.state.value.phase`** —— `remountLevel()` 刚把内存换成
+    //   盘上那份，`QuestionCard` 的题面源又正是 `state.value.phase.question`
+    //   ⇒ **两边同源，比较的是 x 与 x**，恢复时哪怕把题换成 deck 里另一道，
+    //   内存与渲染一起变，`toBe` 依然成立。
+    //   ⇒ 基准必须取**孩子实际答过的那道题**（`answerCorrectly()` 之前记下
+    //     的 `entryId`），那才是独立于恢复链路的事实来源。
+    expect(
+      restoredPhase.kind === 'awaiting-build' ? restoredPhase.question.entryId : null,
+      '前置：盘上那份应当停在建造期并带着题面',
+    ).toBe(answeredEntryId)
+    expect(
+      restoredPhase.kind === 'awaiting-build' ? restoredPhase.question.card.promptText : null,
+      '🔴 恢复时把题面换成了另一道 —— 孩子看到的是「回来后题目变了」，' +
+        '而上面两条（卡面在、选项有 4 个）全绿。这正是这条判据存在的理由。',
+    ).toBe(answeredPrompt)
     expect(
       wrapper.find('.question-card__prompt').text(),
-      '渲染出来的题面与盘上那份对不上 —— 恢复时把题换成了另一道，孩子看到的是「回来后题目变了」',
-    ).toBe(onDisk.question.card.promptText)
+      '渲染出来的题面与盘上那份对不上 —— 组件渲染的不是 `state.phase.question`',
+    ).toBe(answeredPrompt)
   })
 
   it('G170 可行动层（第二轮）：建造期恢复出来的四个选项**全部点不动** —— 不许是「假可点」', () => {
