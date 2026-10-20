@@ -45,6 +45,7 @@
 
 generated: 2026-10-12
 last_updated: 2026-10-20  # Story 1.20 —— ✅ **done**（归档进 `_bmad-output/archive/`）
+                        # [CS] Story 2.1「词图产能验证」上下文已生成 → ready-for-dev（7 条无人值守裁决与全部证据见其 story 文档）
                         #   用户裁决「G175 撞号」落地：本 story 的穷举判据 G175 → **G179**，
                         #     1.19 的 G175–G178 连续区段与其封存文档**一字未动**；
                         #     代价如实记：1.20 区段变成 G173 / G174 / G179，不连续
@@ -182,8 +183,8 @@ development_status:
   # 1-20 由 [CC] 2026-10-19 注入；理由与取证见 1-19 的 Change Log 与 planning-artifacts/sprint-change-proposal-2026-10-19.md
   1-20-相邻不同型-把植物不重复从巧合变成代码保证: done
   1-retrospective: optional
-  epic-2: backlog
-  2-1-词图产能验证: backlog
+  epic-2: in-progress
+  2-1-词图产能验证: ready-for-dev
   2-2-难度阶梯规则落地: backlog
   2-3-阳光经济档位扩展: backlog
   2-4-选项数量递进规则: backlog
