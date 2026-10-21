@@ -83,7 +83,15 @@ const SPRINT_STATUS_MAX_LINE = 200
  *   二版上限 8 也偏松（塞 6 行仍绿）。收到 4 后实测：塞 3 行复盘即红。
  *   1.13 那一段原始复盘是 43 行 —— 在这条守卫下超限近 11 倍。
  */
-const SPRINT_STATUS_MAX_COMMENT_LINES = 4
+/**
+ * ⚠️ 2026-10-21 修正：阈值 4 → 6。
+ *   旧阈值 4 是给「`development_status:` 块及其之后」那 4 行指针留的，**量不到**
+ *   `last_updated:` 的续行复盘区 —— 2026-10-20/21 实测那区塞了 **113 行复盘**
+ *   （8,185 字符 = 全文件 66%），守卫 9/9 全绿、一声不吭。
+ *   现在测量范围扩到「`last_updated:` 行到文件末尾」，现值 **4** 行指针，
+ *   阈值 6 留 2 行余量。
+ */
+const SPRINT_STATUS_MAX_COMMENT_LINES = 6
 
 const walk = (dir: string, acc: string[] = []): string[] => {
   // 显式补尾斜杠：递归时目录名不带分隔符会拼出 `foo/barbaz` 这种不存在的路径
@@ -278,6 +286,66 @@ describe('R-40 已完成 story 归档（AC-2 / AC-3 / AC-4）', () => {
         '\n运行复盘属于 story 文档的 Completion Notes，按 R-42 不写在这里。' +
         '本文件只该有状态账本与一行指针。',
     ).toBeLessThanOrEqual(SPRINT_STATUS_MAX_COMMENT_LINES)
+  })
+
+  it('sprint-status.yaml 从 last_updated 行到文件末尾没有复盘（R-42，2026-10-21 补洞）', () => {
+    /*
+     * ⚠️⚠️ 这条是**第二次被绕过的同一个守卫**补上的洞：
+     *   2026-10-20 晚，`last_updated:` 后面挂了 **113 行复盘**（8,185 字符，
+     *   全文件 66%）—— 上面的守卫只量 `development_status:` 块**及其之后**，
+     *   那 113 行在它**上面**，于是它 9/9 全绿、一声不吭。
+     *   根因：守卫的测量范围是「按内容锚定的一个区段」，而复盘可以从**任何位置**
+     *   灌进来 —— 守卫没量到的地方就是它的盲区。
+     *   现在改成量「`last_updated:` 行到文件末尾」的**全部**注释行：
+     *   这一段覆盖了 `last_updated` 续行区 + `development_status` 块 + 其后的一切，
+     *   是复盘唯一能合法藏身的范围的超集。
+     *   ⚠️ 不去识别 BMAD 生成的静态结构头（那会让守卫在 BMAD 升级时假红）；
+     *     静态头在 `last_updated:` **之前**，本来就不该被这条守卫量。
+     */
+    const lines = readFileSync(SPRINT_STATUS, 'utf8').split('\n')
+    const lu = lines.findIndex((l) => l.startsWith('last_updated:'))
+
+    expect(lu, 'sprint-status.yaml 里找不到 last_updated: —— 本守卫会静默空转').toBeGreaterThan(-1)
+
+    const offenders = lines
+      .slice(lu)
+      .map((l, i) => ({ n: lu + i + 1, text: l }))
+      .filter((x) => /^\s*#/.test(x.text))
+
+    expect(
+      offenders.length,
+      `last_updated 之后已有 ${offenders.length} 行注释（上限 ${SPRINT_STATUS_MAX_COMMENT_LINES}）：\n` +
+        offenders.map((x) => `  第 ${x.n} 行 ${x.text.trim().slice(0, 60)}`).join('\n') +
+        '\n运行复盘属于 story 文档的 Completion Notes，按 R-42 不写在这里。' +
+        '本文件只该有状态账本与一行指针。',
+    ).toBeLessThanOrEqual(SPRINT_STATUS_MAX_COMMENT_LINES)
+  })
+
+  it('R-42 自检②：把复盘塞进 last_updated 的续行区，这条守卫必须红（2026-10-21 的实际漏洞）', () => {
+    // 2026-10-20/21 的真实事故：`last_updated:` 后面挂了 113 行复盘，
+    // 而旧守卫只量 `development_status:` 之后 —— 差 5 行就全绿放行。
+    // 这条自检把事故原样重演一遍：构造 → 必须超限。
+    const lines = readFileSync(SPRINT_STATUS, 'utf8').split('\n')
+    const lu = lines.findIndex((l) => l.startsWith('last_updated:'))
+    expect(lu, 'sprint-status.yaml 里找不到 last_updated:').toBeGreaterThan(-1)
+
+    const count = (ls: string[], from: number) => ls.slice(from).filter((l) => /^\s*#/.test(l)).length
+    expect(count(lines, lu), '现值本身已超限 —— 先把文件清干净再谈这条自检').toBeLessThanOrEqual(
+      SPRINT_STATUS_MAX_COMMENT_LINES,
+    )
+
+    // 事故原样重演：在 last_updated 之后塞 20 行复盘
+    const injected = [
+      ...lines.slice(0, lu + 1),
+      ...Array.from({ length: 20 }, (_, i) => `  # 第 ${i + 1} 行复盘：实测值、裁决理由、假绿复盘…`),
+      ...lines.slice(lu + 1),
+    ]
+
+    expect(
+      count(injected, lu),
+      '构造失效：塞进 last_updated 续行区的 20 行复盘没被算进去 —— ' +
+        '守卫的测量范围又被改窄了，这条自检就是它唯一的防线',
+    ).toBeGreaterThan(SPRINT_STATUS_MAX_COMMENT_LINES)
   })
 
   it('R-42 自检：把 1.13 那段真实复盘塞回去，这条守卫必须红（否则又是一次假绿）', () => {
