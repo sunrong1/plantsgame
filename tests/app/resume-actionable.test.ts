@@ -743,7 +743,7 @@ describe('G176 —— 读档**不抛穿**：存档里的单元号未填档位时
         savedAt: 1_700_000_000_000,
         progress: { currentUnitIndex: 0, masteredWordIds: learned },
         currentGame: {
-          unitNumber: 999, // ⚠️ 未填档位（`BALANCE_TIERS` 只覆盖 1-4）
+          unitNumber: 999, // ⚠️ 未填档位（`BALANCE_TIERS` 只覆盖 1-20）
           phase: { kind: 'awaiting-build', unlocked: [], sun: 50 }, // ⚠️ 旧存档：没有 question 字段
           turn: 2,
           hearts: 3,

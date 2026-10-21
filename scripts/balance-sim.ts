@@ -338,6 +338,15 @@ console.log(
 
 console.log('\n[balance] === 失败门槛 ===')
 console.log('[balance] 场景                              掉心  结束回合  结果（未结束 = 跑满 16 回合上限）')
+// ⚠️ **新增行**（Story 2.3 `[CR]`）：表头那句「16 回合上限」是**多数场景**的上限，
+//   而「后半程连错 7 题（1-3 全对）」那行的上限是 **10** 回合（`maxTurns: 10`）。
+//   ⇒ 读者若把表头当成逐行事实，会把那一行的「结束回合 10」读成「早早就结束了」。
+//   ⚠️ 表头**逐字未改**（Task 3.4「默认输出逐行未改」在本 `[CR]` 环仍生效），
+//   所以纠正以**新增行**的形式给出 —— 表头措辞本身的改写已登记 deferred-work。
+console.log(
+  '[balance] ⚠️ 上表表头的「16 回合上限」是**多数场景**的上限；' +
+    '「后半程连错 7 题（1-3 全对）」那一行的上限是 **10** 回合（那一行的「结束回合 10」即跑满）。',
+)
 const thresholdRows: readonly { label: string; correctAt: (turn: number) => boolean; maxTurns: number }[] = [
   { label: '开局连错 1 题（其余全对）', correctAt: (t) => t > 1, maxTurns: 16 },
   { label: '开局连错 2 题（其余全对）', correctAt: (t) => t > 2, maxTurns: 16 },
@@ -355,6 +364,22 @@ for (const { label, correctAt, maxTurns } of thresholdRows) {
   const result = run.state.phase.kind === 'level-failed' ? '失败' : run.state.phase.kind === 'level-complete' ? '通关' : '未结束'
   console.log(`[balance] ${label.padEnd(30)}  ${String(lost).padStart(2)}   ${String(run.turnsPlayed).padStart(4)}   ${result}`)
 }
+
+// ⚠️ **作用域限定**（AC-D4 —— GDD 原话必须随报告一起出现，**不许**被当成全局结论）。
+//   GDD 逐字：「一旦场上建起 3 座塔，**本单元数值下**这一局就不可能再输」——
+//   它的前提是**本单元的数值**与**本报告这一种建塔摆法**（可建列 1..7，col 8 已被禁）。
+//   ⇒ 报告是复测凭据，凭据若不带作用域，下游（GDD / `epics.md` / 3.2 / 3.6）
+//   引用的就是一条被剥掉前提的「通用规律」。
+console.log(
+  '[balance] ⚠️ 作用域限定（AC-D4）：「一旦场上建起 3 座塔，**本单元数值下**这一局就不可能再输」',
+)
+console.log(
+  `[balance]    ⇒ 它**只**在「单元 ${unitNumber} 的数值」+「本报告的建塔摆法（可建列 ` +
+    `${BUILDABLE_COLUMNS[0]}..${BUILDABLE_COLUMNS[BUILDABLE_COLUMNS.length - 1]}，col 8 已被禁）」下成立；`,
+)
+console.log(
+  '[balance]    **不是**跨档位的全局结论 —— 换单元、换摆法都必须各自复测后才谈得上。',
+)
 
 // 门槛两侧的逐回合轨迹：门槛是「第几回合输」而不只是「输不输」，
 // 只看总掉心数会让「整条曲线后移一回合」（hasReachedHouse/hasPassedHouse 那一等号之差）完全看不见。
@@ -593,13 +618,26 @@ function summarize(label: string, r: TowerRunResult): string {
  *   跑出来的那张「看起来有效」的门槛表**属于错误的档位**，
  *   而报告里没有任何东西会提示它 —— 这正是 R-23 记的那类 bug。
  *
+ * ⚠️ **只认十进制数字**（`[CR]` 2026-10-21）：`Number()` 会接受 `0x10`（= 16）
+ *   与 `1e1`（= 10），于是 `balance-sim -- 0x10` 会**静默跑成单元 16** ——
+ *   报告里虽然印着「模拟单元：16」，但人只会看到自己敲的是 `0x10`。
+ *   ⇒ 判据收紧为「去掉空白后逐字是十进制数字」，其余形态一律抛错。
+ *
  * @param raw 命令行原始字符串（`undefined` = 没给参数）
  */
 export function parseUnitNumber(raw: string | undefined): number {
   if (raw === undefined || raw.trim() === '') {
     return 1
   }
-  const parsed = Number(raw)
+  const trimmed = raw.trim()
+  // ⚠️ `\d` 在 JS 里**只认 ASCII 数字** —— 阿拉伯数字等 Unicode 数字也会被拒（正确）。
+  if (!/^\d+$/.test(trimmed)) {
+    throw new Error(
+      `单元号必须是正整数（十进制），收到 ${JSON.stringify(raw)} —— ` +
+        '用法：npm run balance-sim -- <单元号>（不传则跑单元 1）',
+    )
+  }
+  const parsed = Number(trimmed)
   if (!Number.isInteger(parsed) || parsed < 1) {
     throw new Error(
       `单元号必须是正整数，收到 ${JSON.stringify(raw)} —— ` +
@@ -633,6 +671,43 @@ function isMainModule(): boolean {
   }
 }
 
+/**
+ * CLI 入口：解析单元号。**非法输入友好失败** —— 只打一行原因，不打堆栈。
+ *
+ * ⚠️ 为什么不打堆栈（`[CR]` 2026-10-21）：未捕获异常会先喷一整段调用栈，
+ *   而「单元号写错了」是**用法问题**，不是程序缺陷 ⇒ 堆栈只会把重点埋掉。
+ *   （真正的程序缺陷仍会照常抛 —— 本函数只包住**参数解析**这一段。）
+ */
+function cliUnitNumber(raw: string | undefined): number {
+  try {
+    return parseUnitNumber(raw)
+  } catch (error) {
+    console.error(`[balance] ${error instanceof Error ? error.message : String(error)}`)
+    console.error('[balance] 用法：npm run balance-sim -- <单元号>（不传则跑单元 1）')
+    process.exit(1)
+  }
+}
+
+/**
+ * CLI 入口：单元号必须落在**已填档位**内。
+ *
+ * ⚠️ 为什么要在开跑**之前**查（`[CR]` 2026-10-21）：原先是「先打半张报告、
+ *   再抛未捕获异常 + 堆栈」—— 报错出现在最后，读报告的人根本看不到，
+ *   而屏幕上那份半张报告看起来还挺像模像样。
+ *   ⇒ 报错文案直接取 `tierForUnit()` 那句（它带「已填档位：1-4、5-10、11-20」清单）。
+ */
+function assertCliUnitIsSimulable(unitNumber: number): void {
+  try {
+    tierForUnit(unitNumber)
+  } catch (error) {
+    console.error(`[balance] ${error instanceof Error ? error.message : String(error)}`)
+    console.error('[balance] 用法：npm run balance-sim -- <单元号>（不传则跑单元 1）')
+    process.exit(1)
+  }
+}
+
 if (isMainModule()) {
-  main(parseUnitNumber(process.argv[2]))
+  const unitNumber = cliUnitNumber(process.argv[2])
+  assertCliUnitIsSimulable(unitNumber)
+  main(unitNumber)
 }

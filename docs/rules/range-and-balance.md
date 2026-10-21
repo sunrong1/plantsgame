@@ -38,11 +38,20 @@
 
 ### R-22 平衡模拟是 TypeScript，不得另起一份数值
 
-**规则** `npm run balance-sim` 跑 `scripts/balance-sim.ts`，它 import 真实的 `core/` reducer。**不得**用 Python 或任何复制数值的独立实现。
+**规则** `npm run balance-sim -- <单元号>` 跑 `scripts/balance-sim.ts`（**不带参数 = 单元 1**），它 import 真实的 `core/` reducer。**不得**用 Python 或任何复制数值的独立实现。
 
 **依据** 两份数值必然漂移。旧的 `balance-scan.py` 已被删除，原因见 R-23。
 
-**守卫** ⚠️ **无守卫** —— 没有测试扫描 `scripts/balance-sim.ts` 的 import。`core-boundary.test.ts` 只断言 npm script 存在，`reducer.test.ts` 里是注释级断言。**这条规则目前纯靠约定。**
+**守卫** ⚠️ **部分覆盖**（`[CR]` 2026-10-21 由「无守卫」升为「部分覆盖」）：
+- ✅ `tests/scripts/balance-sim.test.ts` **直接 import** `scripts/balance-sim.ts` ——
+  import 路径断了 / 模块导不进去，测试当场红；
+- ✅ **G229**（`[CR]` 2026-10-21 把扫描范围从 `src/` **扩到 `scripts/`**）扫该目录里
+  **有没有第二份档位字段**（`initialSun` / `sunPerCorrect` / `towerCost`，TS 与 JSON 两种形态）；
+- ✅ **G236**（`[CR]` 2026-10-21 新增）扫该目录里**有没有把数字字面量当单元号**
+  传进 `costOf` / `initialSunFor` / `sunPerCorrectFor` / `tierForUnit`。
+- ⚠️ **仍未覆盖**：没有任何测试断言该脚本的 import **指向真实 `src/core/`**
+  —— 只断言了「不重复定义档位字段」与「不写死单元号」；
+  脚本若改成「自己算一份数值但不叫那些字段名」，这两条都抓不住。
 
 **首现** Story 1.1（CLAUDE.md 硬约束 10）
 
@@ -71,8 +80,15 @@ Story 2.3 用**真实 reducer** 复测的结果是：**该结论在档位 1-2 �
 **G231**（跨档位失败门槛曲线）与 **G232**（第一次答对能建几座塔）——
 两者都跑**真实** `src/core/` reducer，把门槛数字与首次答对塔数钉成断言。
 ⚠️ 组件渲染层的 G17b（「每只 `state.zombies` 里的僵尸都渲染出且只渲染出一个元素」）守的是渲染层，不是模拟器。
-⚠️ **仍未覆盖**：`balance-sim` 内部**没有**「实体数量守恒」的自校验 ——
-G231 / G232 守的是**门槛数字**；若模拟器在**别的**维度上吞实体而门槛恰好不变，这两条不会红。
+✅ **`[CR]` 2026-10-21 补上「实体数量守恒」这一维**（本条规则逐字要求的「升级验证」）：
+**G237**（`tests/scripts/balance-sim.test.ts`）逐档核对**轨迹行数 = 回合数**、
+**回合号连续无缺号**、**答错计数 = 轨迹里答错的回合数**、**心数守恒**
+（剩余心 = max(0, 起始心 − 累计掉心)）。
+📎 **实测**：把 `runLevel` 里的 `rows.push` 改成「第 1 回合不记」，
+门槛数字与三档 stdout **一概不变** ⇒ G231 / G232 **一条都不红**，
+只有 G237 把它抓住（**1 红 / 2162**）—— 这正是本条说的「在**别的**维度上吞实体而门槛恰好不变」。
+⚠️ **仍未覆盖**：`balance-sim` 内部**没有**对**僵尸本身**（`state.zombies`）的数量守恒自校验 ——
+G237 守的是**轨迹行**；模拟器若在僵尸容器上吞实体而轨迹照记，G237 不会红。
 
 **首现** Story 1.5
 

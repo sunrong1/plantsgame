@@ -6,7 +6,7 @@
  * 迟早一改一漏，而「一改一漏」正是 `decision-log.md` 里三次手算错误的同一个根因，
  * 只是换了个位置（架构 `:649` 记的就是这件事）。
  *
- * Story 2.3 / 3.2 / 3.6 会反复引用本文件那句纪律。它不是客套话。
+ * Story 3.2 / 3.6 调数值时会反复引用本文件那句纪律。它不是客套话。
  *
  * 形态：档位表（tier 数组），不是散落的常量。理由见 BALANCE_TIERS 的注释。
  */
@@ -93,7 +93,7 @@ export const BALANCE_TIERS: readonly BalanceTier[] = Object.freeze([
  * 档位表的结构校验（[CR] P22）：空表、倒置区间、重叠区间**一律抛错**。
  *
  * 为什么每次查询都校验而不是模块加载时校验一次：3 档的表校验成本可忽略，
- * 而收益是 Story 2.3 追加畸形档位时**大声失败**，而不是「线性扫描静默取第一条命中」
+ * 而收益是**追加畸形档位时大声失败**，而不是「线性扫描静默取第一条命中」
  * 把重叠掩盖掉 —— 那正是数值静默漂移的最短路径。
  *
  * 旧版测试里「升序且不重叠」的守卫在表只有一条时循环体零次执行（空转守卫，
@@ -175,7 +175,7 @@ export function sunPerCorrectFor(unitNumber: number): number {
  * 某塔型在某单元的造价 —— 由**档位 × 塔型**共同决定（FR63 的三档三组数字）。
  *
  * ⚠️ [CR] P30：旧 JSDoc 写「造价是档位的，不是塔型的」，与实现 `towerCost[towerType]`
- * 当场矛盾（同档内 direct 50 / aoe 75 就是按塔型区分的）。Story 2.3 追加档位时
+ * 当场矛盾（同档内 direct 50 / aoe 75 就是按塔型区分的）。**追加档位时**
  * 若照旧注释只填一个数，三塔型造价会被静默压平。
  */
 export function costOf(towerType: TowerType, unitNumber: number): number {

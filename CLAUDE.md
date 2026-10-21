@@ -34,7 +34,7 @@ npm run test              # Vitest（pretest 会先跑 validate:content）
 npm run typecheck         # vitest 不查类型，改 .vue 后必跑（R-54）
 npm run lint
 npm run validate:content  # 内容校验，提交前必跑
-npm run balance-sim       # 平衡模拟，import 真实 core/
+npm run balance-sim -- <单元号>   # 平衡模拟，import 真实 core/（不带参数 = 单元 1）
 ```
 
 ## 架构硬约束

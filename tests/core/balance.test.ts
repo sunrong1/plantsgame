@@ -181,9 +181,94 @@ function isFullyFrozen(tier: BalanceTier): boolean {
   )
 }
 
+/**
+ * 判据（FR63 字面量）：返回与 `expected` **不一致**的字段描述。空数组 = 逐字一致。
+ *
+ * ⚠️ 为什么要把判据抽成函数（`[CR]` 2026-10-21）：AC-F3 要求每条新守卫都写
+ *   **反向自测**，而反向自测必须**调用判据本体**（R-51：抄一份「看起来一样」的
+ *   逻辑 = 测的是抄本，不是判据）。内联的 `toBe` 链**没有可调用的本体**。
+ */
+function fr63Mismatches(
+  expected: (typeof FR63_TIERS)[number],
+  tier: BalanceTier,
+): string[] {
+  const problems: string[] = []
+  const expectedRange = JSON.stringify([...expected.unitRange])
+  const actualRange = JSON.stringify([...tier.unitRange])
+  if (actualRange !== expectedRange) {
+    problems.push(`unitRange ${actualRange} ≠ ${expectedRange}`)
+  }
+  if (tier.initialSun !== expected.initialSun) {
+    problems.push(`initialSun ${tier.initialSun} ≠ ${expected.initialSun}`)
+  }
+  if (tier.sunPerCorrect !== expected.sunPerCorrect) {
+    problems.push(`sunPerCorrect ${tier.sunPerCorrect} ≠ ${expected.sunPerCorrect}`)
+  }
+  for (const type of ALL_TOWER_TYPES) {
+    if (tier.towerCost[type] !== expected.towerCost[type]) {
+      problems.push(`towerCost.${type} ${tier.towerCost[type]} ≠ ${expected.towerCost[type]}`)
+    }
+  }
+  return problems
+}
+
 /** 判据（报错文案）：运行期报错**不该**指向某个已完成的 story。 */
 function pointsAtAStory(text: string): boolean {
   return /Story\s*\d/.test(text)
+}
+
+/**
+ * 判据（档位字段副本）：**源码文本**里是否出现了档位字段的定义。
+ *
+ * ⚠️ **JSON 形态也必须命中**（`[CR]` 2026-10-21 修掉的盲区）：
+ *   旧判据是 `/\b(initialSun|sunPerCorrect|towerCost)\s*:/` —— 要求键名**未加引号**。
+ *   而 AC-E1 逐字点名的两类落点之一就是「**单元 JSON**」，JSON 的键是 `"initialSun"`，
+ *   中间多一个 `"` ⇒ 旧正则**一条都匹配不到** ⇒ 在 JSON 里抄一份档位配置，
+ *   守卫**全绿**（实测过）。⇒ 现在键名两侧的引号是**可选**的。
+ *
+ * ⚠️ 为什么不把 `unitRange` 也算进来：Story 2.2 的卡型分布锚点里**合法**有一个
+ *   `unitRange` 字段，那是**另一个概念**（卡型分段的覆盖范围），不是经济档位的副本。
+ *   把它算进来 = 判据误伤合规代码，然后被「放松」成恒绿。
+ */
+function sourceDefinesTierFields(source: string): boolean {
+  return /\b(initialSun|sunPerCorrect|towerCost)\b["']?\s*:/.test(stripComments(source))
+}
+
+/** 递归列出某个目录下的所有源文件（相对仓库根）。 */
+function sourceFiles(dir: string, acc: string[] = []): string[] {
+  for (const name of readdirSync(join(root, dir))) {
+    const relPath = `${dir}/${name}`
+    if (statSync(join(root, relPath)).isDirectory()) {
+      sourceFiles(relPath, acc)
+    } else if (/\.(ts|vue|json)$/.test(name)) {
+      acc.push(relPath)
+    }
+  }
+  return acc
+}
+
+/** 档位表的**唯一合法落点**（唯一事实源本人在内，不豁免）。 */
+const TIER_FIELD_EXEMPT: ReadonlySet<string> = new Set(['src/core/balance.ts'])
+
+/**
+ * 判据（档位字段副本）：返回**定义了档位字段**的文件清单。空数组 = 没有副本。
+ *
+ * ⚠️ 判据本体是 `sourceDefinesTierFields` —— 反向自测**调用它**（R-51）。
+ */
+function filesDefiningTierFields(dirs: readonly string[]): string[] {
+  const offenders: string[] = []
+  for (const dir of dirs) {
+    for (const file of sourceFiles(dir)) {
+      if (TIER_FIELD_EXEMPT.has(file)) {
+        continue
+      }
+      const source = readFileSync(join(root, file), 'utf8')
+      if (sourceDefinesTierFields(source)) {
+        offenders.push(file)
+      }
+    }
+  }
+  return offenders
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -263,19 +348,12 @@ describe('G223 —— FR63 三档字面量核对（AC-C3，第二道锁）', () 
     for (const expected of FR63_TIERS) {
       const first = expected.unitRange[0]
       const tier = tierForUnit(first)
+      // ⚠️ 判据本体是 `fr63Mismatches` —— 下面那条反向自测**调用它**（R-51）。
       expect(
-        [...tier.unitRange],
-        `FR63 第 ${first} 档的单元区间 —— 边界变了就是范围收窄或扩档，须先改 FR63`,
-      ).toEqual([...expected.unitRange])
-      expect(tier.initialSun, `FR63 第 ${first} 档初始阳光`).toBe(expected.initialSun)
-      expect(tier.sunPerCorrect, `FR63 第 ${first} 档答对增量`).toBe(expected.sunPerCorrect)
-      for (const type of ALL_TOWER_TYPES) {
-        expect(
-          tier.towerCost[type],
-          `FR63 第 ${first} 档的 ${type} 塔造价 —— 三塔型必须逐个对上，` +
-            '照旧注释只填一个数会把三塔型造价静默压平（[CR] P30）',
-        ).toBe(expected.towerCost[type])
-      }
+        fr63Mismatches(expected, tier),
+        `FR63 第 ${first} 档必须逐字一致 —— 区间变了就是范围收窄或扩档；` +
+          '三塔型造价必须逐个对上，照旧注释只填一个数会把三塔型造价静默压平（[CR] P30）',
+      ).toEqual([])
     }
   })
 
@@ -294,6 +372,19 @@ describe('G223 —— FR63 三档字面量核对（AC-C3，第二道锁）', () 
         tier.sunPerCorrect,
       )
     }
+  })
+
+  it('反向自测：判据本体会抓住「档位与 FR63 不符」（AC-F3 / R-51）', () => {
+    // ⚠️ 这条**调用判据本体**（`fr63Mismatches`），不是抄一份「看起来一样」的比较。
+    const doctored = { ...FR63_TIERS[0], sunPerCorrect: 999 }
+    expect(
+      fr63Mismatches(doctored, tierForUnit(1)),
+      '反向自测：答对增量被改必须被报出来 —— 否则 G223 就是恒绿的抄本检查',
+    ).not.toEqual([])
+    expect(
+      fr63Mismatches(FR63_TIERS[0], tierForUnit(1)),
+      '反向自测：真实首档必须零差异（判据不是恒真 —— 它真的在比）',
+    ).toEqual([])
   })
 })
 
@@ -368,6 +459,22 @@ describe('G224 —— 每一档都逐层冻结（AC-B2 / AC-F4）', () => {
       isFullyFrozen(BALANCE_TIERS[0]),
       '反向自测：真实首档确实已冻结（判据不是恒假）',
     ).toBe(true)
+  })
+
+  it('档位表的**外层数组**也被冻结（[CR] 2026-10-21 补回）', () => {
+    // ⚠️ **这条是被我漏掉的**（`[CR]` 2026-10-21 自查抓到）：改写本文件时，
+    //   旧的 `expect(Object.isFrozen(BALANCE_TIERS), 'BALANCE_TIERS 数组必须冻结')`
+    //   被拆成「逐档断言」时**一起删掉了**，而外层数组的运行期不可改写
+    //   从此**零守卫** —— 实测把 `Object.freeze([` 改回 `([`，
+    //   **全仓 71 文件 / 2149 条全绿、0 红**。
+    //   ⇒ 逐档冻结与外层冻结是**两层**，少一层就少一层。
+    expect(
+      Object.isFrozen(BALANCE_TIERS),
+      'BALANCE_TIERS 数组必须冻结 —— 数组本身可 push/splice = 第二份档位表能长出来，' +
+        '而全部平衡断言仍然绿',
+    ).toBe(true)
+    // 反向自测：普通数组确实不是冻结的（判据不是恒真）。
+    expect(Object.isFrozen([]), '反向自测：普通数组不是冻结的（判据不是恒真）').toBe(false)
   })
 })
 
@@ -487,20 +594,7 @@ describe('G230 —— 未填档位的报错文案（AC-B4）', () => {
 // ════════════════════════════════════════════════════════════════════════
 
 describe('G229 —— 档位配置在 src/core/balance.ts 之外没有副本（AC-E1）', () => {
-  /** 递归列出 `src/` 下的所有源文件（相对仓库根）。 */
-  function sourceFiles(dir: string, acc: string[] = []): string[] {
-    for (const name of readdirSync(join(root, dir))) {
-      const relPath = `${dir}/${name}`
-      if (statSync(join(root, relPath)).isDirectory()) {
-        sourceFiles(relPath, acc)
-      } else if (/\.(ts|vue|json)$/.test(name)) {
-        acc.push(relPath)
-      }
-    }
-    return acc
-  }
-
-  it('src/ 下除 balance.ts 外没有任何地方定义档位字段', () => {
+  it('src/ 与 scripts/ 下除 balance.ts 外没有任何地方定义档位字段', () => {
     // ⚠️ **判据只看对象字面量的键**（`initialSun:` / `sunPerCorrect:` / `towerCost:`），
     //   **不**看 `unitRange` —— Story 2.2 的卡型分布锚点里**合法**有一个
     //   `unitRange` 字段（`src/content/distribution.ts` 的 CARD_DISTRIBUTION_ANCHORS），
@@ -508,19 +602,11 @@ describe('G229 —— 档位配置在 src/core/balance.ts 之外没有副本（A
     //   把 `unitRange` 也算进来 = 判据会误伤合规代码，然后被「放松」成恒绿。
     // ⚠️ 先 `stripComments`（R-52）：本仓库的注释里**逐字写着**这些字段名 ——
     //   不剥注释，每条正则都会命中**自己写的说明文字**。
-    const keyPattern = /\b(initialSun|sunPerCorrect|towerCost)\s*:/
-    const offenders: string[] = []
-    for (const file of sourceFiles('src')) {
-      if (file === 'src/core/balance.ts') {
-        continue
-      }
-      const source = stripComments(readFileSync(join(root, file), 'utf8'))
-      if (keyPattern.test(source)) {
-        offenders.push(file)
-      }
-    }
+    // ⚠️ **扫描范围含 `scripts/`**（`[CR]` 2026-10-21 补）：`scripts/balance-sim.ts`
+    //   是**唯一**接触档位数值的地方（旧判据只扫 `src/`）——
+    //   在那里抄一份档位表，旧判据**一条都看不见**。
     expect(
-      offenders,
+      filesDefiningTierFields(['src', 'scripts']),
       '档位配置只能在 src/core/balance.ts 一处定义 —— 这些文件里出现了档位字段，' +
         '说明存在第二份事实源（一改一漏的起点）',
     ).toEqual([])
@@ -530,13 +616,15 @@ describe('G229 —— 档位配置在 src/core/balance.ts 之外没有副本（A
     // `src/core/index.ts` 是 core 的对外出口，转发 `BALANCE_TIERS` 是它的职责；
     // 除此之外任何地方提到它，都是「绕过 balance.ts 自己拿档位表」。
     const offenders: string[] = []
-    for (const file of sourceFiles('src')) {
-      if (file === 'src/core/balance.ts' || file === 'src/core/index.ts') {
-        continue
-      }
-      const source = stripComments(readFileSync(join(root, file), 'utf8'))
-      if (/\bBALANCE_TIERS\b/.test(source)) {
-        offenders.push(file)
+    for (const dir of ['src', 'scripts']) {
+      for (const file of sourceFiles(dir)) {
+        if (file === 'src/core/balance.ts' || file === 'src/core/index.ts') {
+          continue
+        }
+        const source = stripComments(readFileSync(join(root, file), 'utf8'))
+        if (/\bBALANCE_TIERS\b/.test(source)) {
+          offenders.push(file)
+        }
       }
     }
     expect(
@@ -545,20 +633,33 @@ describe('G229 —— 档位配置在 src/core/balance.ts 之外没有副本（A
     ).toEqual([])
   })
 
-  it('反向自测：判据本体会抓住「在组件里抄一份档位配置」', () => {
-    const keyPattern = /\b(initialSun|sunPerCorrect|towerCost)\s*:/
-    const fakeComponent = `
+  it('反向自测：判据本体会抓住「在组件里抄一份档位配置」（TS 与 JSON 两种形态）', () => {
+    // ⚠️ **JSON 那一支是本条被补上的原因**（`[CR]` 2026-10-21）：
+    //   AC-E1 逐字点名的落点之一就是「**单元 JSON**」，而旧判据要求键名未加引号
+    //   ⇒ JSON 里的 `"initialSun": 0` **匹配不到** ⇒ 在 JSON 里抄一份档位配置，
+    //   守卫**全绿**（实测过：29 条全绿）。
+    const fakeTs = `
       const LOCAL_TIERS = [
         { unitRange: [1, 4], initialSun: 0, sunPerCorrect: 50, towerCost: { direct: 50, slow: 50, aoe: 75 } },
       ]
     `
+    const fakeJson = `{"tiers":[{"unitRange":[1,4],"initialSun":0,"sunPerCorrect":50,"towerCost":{"direct":50,"slow":50,"aoe":75}}]}`
     expect(
-      keyPattern.test(fakeComponent),
-      '反向自测：组件里抄一份档位表必须被判为违规（判据不是恒假）',
+      sourceDefinesTierFields(fakeTs),
+      '反向自测：组件里抄一份档位表（TS 形态）必须被判为违规（判据不是恒假）',
     ).toBe(true)
     expect(
-      keyPattern.test('const x = { unitRange: [1, 4] }'),
+      sourceDefinesTierFields(fakeJson),
+      '反向自测：单元 JSON 里抄一份档位表（**JSON 形态**）必须被判为违规 —— ' +
+        '旧判据在这里是**失明**的（AC-E1 逐字点名的落点之一）',
+    ).toBe(true)
+    expect(
+      sourceDefinesTierFields('const x = { unitRange: [1, 4] }'),
       '反向自测：只用 unitRange 的不算违规 —— Story 2.2 的卡型锚点合法用它',
+    ).toBe(false)
+    expect(
+      sourceDefinesTierFields('const a = initialSunFor(1); const b = costOf("direct", 1)'),
+      '反向自测：只是**调用**派生函数不算违规 —— 那是合法取用，不是副本',
     ).toBe(false)
   })
 })

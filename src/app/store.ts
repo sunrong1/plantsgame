@@ -586,7 +586,7 @@ function backfillLegacyBuildPhase(state: State): State {
     //   ⇒ 局部降级而不是抛穿：`progress` 一概不动，**对局**退回一个能安全组装的终态。
     //   ⚠️ 退路不是 `createInitialState({ deck: [] })` —— 那条对空题单**抛错**
     //     （「题单不能为空」），会把这个洞从另一个方向再捅一次。
-    //   ⇒ 退路是「先试这个单元号，试不成退到单元 1」：`BALANCE_TIERS` 逐字覆盖 **1-4**，
+    //   ⇒ 退路是「先试这个单元号，试不成退到单元 1」：`BALANCE_TIERS` 逐字覆盖 **1-20**，
     //     所以单元 1 是**恒可组装**的那一个。
     try {
       console.warn(

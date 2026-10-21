@@ -7,11 +7,21 @@
  * · **G231 跨档位失败门槛** —— 三档的门槛曲线（复测结果，见下）。
  * · **G232 第一次答对能建几座塔** —— GDD 逐字点名要看的那个变量。
  * · **G233 CLI 端到端** —— 脚本真的能按参数跑，且默认跑单元 1。
+ * · **G234 回合级黄金基线**（`[CR]` 2026-10-21 补）—— AC-D2b 逐字要求的
+ *   「第 4 回合建成 / 第 4/5 回合各掉 1 心 / 迟到一回合 / 掉心落在第 4/5/6 回合」。
+ * · **G235 报告的作用域限定**（`[CR]` 2026-10-21 补）—— AC-D4：报告里必须带
+ *   GDD 那条「本单元数值下」的前提限定，不许把它当全局结论。
+ * · **G236 不得写死档位取值的单元号**（`[CR]` 2026-10-21 补）—— 补上
+ *   `simulateTower()` 里那处 `costOf(…, 1)` 的零覆盖洞。
+ * · **G237 实体守恒**（`[CR]` 2026-10-21 补）—— R-23：模拟器不得静默丢实体。
  *
  * ⚠️ **编号为什么是 G228 + G231 起跳，不是连号**：`tests/core/balance.test.ts`
  *   已经占了 **G229**（档位配置的单一事实源）与 **G230**（未填档位的报错文案）。
  *   ⇒ 本文件从 **G228**（2.3 起的第一个号）之后**跳到 G231**，
  *   避免同号两义（守卫编号跨文件撞车会让「G229 是哪条」无法回答）。
+ *
+ * ⚠️ **`[CR]` 2026-10-21 新增的 G234–G237 接着 G233 往后发** ——
+ *   全仓上界实测 **G233**（`grep -rhoP 'G[0-9]{2,3}'` 逐号核对，见 story 文档）。
  *
  * ── 为什么这个文件存在 ────────────────────────────────────────────────────
  * Story 2.3 之前，`scripts/balance-sim.ts` 把 `unitNumber` **写死成 1** ——
@@ -48,12 +58,16 @@
  */
 
 import { execFileSync } from 'node:child_process'
+import { readFileSync, readdirSync } from 'node:fs'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
-import { TOWER_TYPES, costOf, initialSunFor, sunPerCorrectFor, tierForUnit } from '../../src/core'
+import { HEARTS, TOWER_TYPES, costOf, initialSunFor, sunPerCorrectFor, tierForUnit } from '../../src/core'
 import { buildSyntheticDeck, parseUnitNumber, runLevel } from '../../scripts/balance-sim'
+
+import { stripComments } from '../fixtures/strip-comments'
 
 const root = fileURLToPath(new URL('../../', import.meta.url))
 
@@ -113,17 +127,20 @@ describe('G228 —— 命令行单元号解析（AC-D1）', () => {
   })
 
   it('给了合法单元号就照用', () => {
-    expect(parseUnitNumber('1')).toBe(1)
-    expect(parseUnitNumber('5')).toBe(5)
-    expect(parseUnitNumber('11')).toBe(11)
-    expect(parseUnitNumber('20')).toBe(20)
+    expect(parseUnitNumber('1'), '合法单元号 1 必须原样透传').toBe(1)
+    expect(parseUnitNumber('5'), '合法单元号 5 必须原样透传').toBe(5)
+    expect(parseUnitNumber('11'), '合法单元号 11 必须原样透传').toBe(11)
+    expect(parseUnitNumber('20'), '合法单元号 20 必须原样透传').toBe(20)
   })
 
   it('非法值一律抛错，不静默回退到 1', () => {
     // ⚠️ 静默回退是这里最危险的形态：`balance-sim 0` 若悄悄变成单元 1，
     //   跑出来的那张「看起来有效」的门槛表**属于错误的档位**，
     //   而报告里没有任何东西会提示它 —— 这正是 R-23 记的那类 bug。
-    for (const raw of ['0', '-1', '1.5', 'abc', '5x']) {
+    // ⚠️ `0x10` / `1e1` 也在这份清单里（`[CR]` 2026-10-21 补）：`Number()` 认这两种写法，
+    //   于是 `balance-sim -- 0x10` 会**静默跑成单元 16** —— 报告里虽印着「模拟单元：16」，
+    //   但人只看到自己敲的是 `0x10`。⇒ 判据收紧为「逐字是十进制数字」。
+    for (const raw of ['0', '-1', '1.5', 'abc', '5x', '0x10', '1e1', ' 1 2 ', '٣']) {
       expect(
         () => parseUnitNumber(raw),
         `单元号 ${JSON.stringify(raw)} 必须抛错，不得静默回退到 1`,
@@ -247,29 +264,49 @@ describe('G233 —— CLI 端到端（AC-D1 / Task 3.4）', () => {
     })
   }
 
-  it('不带参数 ⇒ 跑单元 1，且门槛复现 GDD 的黄金基线', () => {
-    const out = runCli()
-    expect(
-      out,
-      '脚本必须真的跑起来并打印报告 —— 一行都没有 = isMainModule() 判据坏了（静默失效方向）',
-    ).toContain('[balance] === 平衡模拟')
-    expect(out, '默认必须跑单元 1').toContain('[balance] 模拟单元：1（档位 1-4）')
+  /**
+   * 判据（CLI 报告的黄金基线）：返回「**该出现却没出现**」的内容清单。空数组 = 复现。
+   *
+   * ⚠️ 为什么要抽成判据（`[CR]` 2026-10-21，AC-F3 / R-51）：反向自测必须
+   *   **调用判据本体**；内联的 `toContain` 链没有可调用的本体，
+   *   于是「反向自测」只能另抄一份 —— 抄的那份与真判据分叉时，测试照样全绿。
+   */
+  function goldenBaselineGaps(out: string): string[] {
+    const gaps: string[] = []
+    if (!out.includes('[balance] === 平衡模拟')) {
+      gaps.push('报告头（脚本必须真的跑起来并打印报告）')
+    }
+    if (!out.includes('[balance] 模拟单元：1（档位 1-4）')) {
+      gaps.push('模拟单元行（默认必须跑单元 1）')
+    }
+    if (
+      !out.includes(
+        '[balance] 塔型选择：已解锁卡中造价最低者（direct/slow 50，aoe 75）',
+      )
+    ) {
+      gaps.push('档位 1 的塔型造价行（direct/slow 50，aoe 75）')
+    }
+    if (!out.includes('[balance] === 单塔命中校验（直射塔，造价 50，只建这一种）===')) {
+      gaps.push('单塔校验表头（造价必须现算，档位 1 恰好是 50）')
+    }
     // ⚠️ 下面两行是 GDD 的**黄金基线**（门槛夹在 3 与 4 之间）在 CLI 上的复现 ——
     //   数字取自真实运行结果，格式用 `\s+` 松开只因列宽是排版细节，
     //   而「2 颗心 / 13 回合 / 通关」「3 颗心 / 6 回合 / 失败」这三个数是**内容**。
-    expect(out, '档位 1 连错 3 题：2 颗心、13 回合、通关').toMatch(
-      /\[balance\] 开局连错 3 题（其余全对）\s+2\s+13\s+通关/,
-    )
-    expect(out, '档位 1 连错 4 题：3 颗心、6 回合、失败').toMatch(
-      /\[balance\] 开局连错 4 题（其余全对）\s+3\s+6\s+失败/,
-    )
-    // ⚠️ 造价行逐字未变（档位 1 的三个数 50/50/75 来自 balance.ts，非本文件写死）。
-    expect(out, '档位 1 的塔型造价行必须逐字未变').toContain(
-      '[balance] 塔型选择：已解锁卡中造价最低者（direct/slow 50，aoe 75）',
-    )
-    expect(out, '单塔校验表头的造价必须现算（档位 1 恰好是 50）').toContain(
-      '[balance] === 单塔命中校验（直射塔，造价 50，只建这一种）===',
-    )
+    if (!/\[balance\] 开局连错 3 题（其余全对）\s+2\s+13\s+通关/.test(out)) {
+      gaps.push('档位 1 连错 3 题的门槛行（2 颗心 / 13 回合 / 通关）')
+    }
+    if (!/\[balance\] 开局连错 4 题（其余全对）\s+3\s+6\s+失败/.test(out)) {
+      gaps.push('档位 1 连错 4 题的门槛行（3 颗心 / 6 回合 / 失败）')
+    }
+    return gaps
+  }
+
+  it('不带参数 ⇒ 跑单元 1，且门槛复现 GDD 的黄金基线', () => {
+    const out = runCli()
+    expect(
+      goldenBaselineGaps(out),
+      'CLI 报告必须逐字复现黄金基线 —— 一行都没有 = isMainModule() 判据坏了（静默失效方向）',
+    ).toEqual([])
   })
 
   it('带单元号 ⇒ 跑那一档，表头造价随之改变', () => {
@@ -301,5 +338,277 @@ describe('G233 —— CLI 端到端（AC-D1 / Task 3.4）', () => {
       () => runCli(['abc']),
       '非法单元号必须让脚本失败',
     ).toThrow()
+  })
+
+  it('反向自测：判据本体会认出「报告里没有黄金基线」（AC-F3 / R-51）', () => {
+    // ⚠️ 调用判据本体（`goldenBaselineGaps`），不另抄一份。
+    expect(
+      goldenBaselineGaps('这不是报告'),
+      '反向自测：一段无关文字必须被判为「黄金基线全缺」—— 否则判据恒真',
+    ).not.toEqual([])
+    expect(
+      goldenBaselineGaps(runCli()),
+      '反向自测：真实报告必须零缺口（判据不是恒假）',
+    ).toEqual([])
+  })
+})
+
+// ════════════════════════════════════════════════════════════════════════
+// G234 —— 回合级黄金基线（AC-D2b 的回合级内容）
+// ════════════════════════════════════════════════════════════════════════
+
+describe('G234 —— 回合级黄金基线（AC-D2b）', () => {
+  /**
+   * 判据（轨迹里程碑）：**建成回合** + **掉心回合清单**。
+   *
+   * ⚠️ 为什么必须钉到回合级（`[CR]` 2026-10-21）：AC-D2b 逐字把「错算掉心时机」
+   *   列为控制组必须揭穿的失败模式，而**只钉住结局**的守卫揭不穿它 ——
+   *   实测把 `rows.push({ turn: turn + 1 })`（每一回合整体后移一回合）打进去，
+   *   GDD 的「第 4 回合建成 / 第 4/5 回合各掉 1 心」当场被推翻，
+   *   而 G231 / G232 / G233 **43 条全绿**。
+   */
+  function milestones(
+    unitNumber: number,
+    wrongCount: number,
+  ): {
+    readonly buildTurn: number | null
+    readonly heartLoss: readonly { readonly turn: number; readonly lost: number }[]
+  } {
+    const deck = buildSyntheticDeck(10, unitNumber)
+    const run = runLevel(deck, (turn) => turn > wrongCount, unitNumber, { maxTurns: 16 })
+    const built = run.rows.find((row) => row.towers > 0)
+    return {
+      buildTurn: built === undefined ? null : built.turn,
+      heartLoss: run.rows
+        .filter((row) => row.heartsLost > 0)
+        .map((row) => ({ turn: row.turn, lost: row.heartsLost })),
+    }
+  }
+
+  /** 判据（轨迹文本）：把一回合轨迹压成 `回合→(塔,心掉,剩心)` 的串。 */
+  function trajectory(unitNumber: number, wrongCount: number): string {
+    const deck = buildSyntheticDeck(10, unitNumber)
+    const run = runLevel(deck, (turn) => turn > wrongCount, unitNumber, { maxTurns: 16 })
+    return run.rows
+      .map((row) => `${row.turn}→(${row.towers},-${row.heartsLost},${row.hearts})`)
+      .join(' ')
+  }
+
+  it('连错 3 题：第 4 回合建成、第 4/5 回合各掉 1 心（GDD 逐字）', () => {
+    expect(
+      milestones(1, 3),
+      'GDD 黄金基线：连错 3 题时它在**第 4 回合**建成、**第 4/5 回合各掉 1 心**',
+    ).toEqual({
+      buildTurn: 4,
+      heartLoss: [
+        { turn: 4, lost: 1 },
+        { turn: 5, lost: 1 },
+      ],
+    })
+  })
+
+  it('连错 4 题：迟到一回合（第 5 回合建成）、掉心落在第 4/5/6 回合（GDD 逐字）', () => {
+    expect(
+      milestones(1, 4),
+      'GDD 黄金基线：连错 4 题时它**迟到一回合**、掉心落在**第 4/5/6 回合**',
+    ).toEqual({
+      buildTurn: 5,
+      heartLoss: [
+        { turn: 4, lost: 1 },
+        { turn: 5, lost: 1 },
+        { turn: 6, lost: 1 },
+      ],
+    })
+  })
+
+  it('逐字复现 GDD 引用的那段轨迹', () => {
+    // ⚠️ 这一段是 GDD §Economy Across Levels 逐字引用的**证据本身**。
+    expect(
+      trajectory(1, 3),
+      'GDD 引用的轨迹「4→(1,-1,2) 5→(2,-1,1) 6→(3,-0,1)」必须逐字复现',
+    ).toContain('4→(1,-1,2) 5→(2,-1,1) 6→(3,-0,1)')
+  })
+
+  it('反向自测：判据能区分「连错 3 题」与「连错 4 题」（不是恒真）', () => {
+    const three = milestones(1, 3)
+    const four = milestones(1, 4)
+    expect(three.buildTurn, '反向自测：连错 3 题的建成回合').toBe(4)
+    expect(four.buildTurn, '反向自测：连错 4 题的建成回合（迟到一回合）').toBe(5)
+    expect(
+      three.heartLoss.length,
+      '反向自测：两个场景的掉心回合数必须不同 —— 否则判据分不出场景',
+    ).not.toBe(four.heartLoss.length)
+  })
+})
+
+// ════════════════════════════════════════════════════════════════════════
+// G235 —— 报告必须带 AC-D4 的作用域限定
+// ════════════════════════════════════════════════════════════════════════
+
+describe('G235 —— 报告的作用域限定（AC-D4）', () => {
+  /** 判据：返回「报告里**该有却没有**」的作用域限定要素。空数组 = 带了。 */
+  function scopeQualifierGaps(out: string): string[] {
+    const gaps: string[] = []
+    if (!out.includes('作用域限定')) {
+      gaps.push('「作用域限定」字样')
+    }
+    if (!out.includes('本单元数值下')) {
+      gaps.push('GDD 原话的「本单元数值下」')
+    }
+    if (!out.includes('3 座塔')) {
+      gaps.push('「3 座塔」这个条件本身')
+    }
+    if (!out.includes('全局结论')) {
+      gaps.push('「不是全局结论」的声明')
+    }
+    return gaps
+  }
+
+  it('CLI 报告里带着 GDD 那条作用域限定', () => {
+    const out = execFileSync('node_modules/.bin/tsx', ['scripts/balance-sim.ts'], {
+      cwd: root,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+    expect(
+      scopeQualifierGaps(out),
+      'AC-D4：报告**必须**带上「一旦场上建起 3 座塔，本单元数值下这一局就不可能再输」的' +
+        '作用域限定 —— 报告是这次复测的凭据，凭据不带前提就是一条被剥掉前提的结论',
+    ).toEqual([])
+  })
+
+  it('反向自测：判据能认出「报告里没有作用域限定」', () => {
+    expect(
+      scopeQualifierGaps('[balance] === 平衡模拟\n[balance] 开局连错 3 题……'),
+      '反向自测：一份不带限定的报告必须被判为「缺限定」—— 否则判据恒真',
+    ).not.toEqual([])
+    expect(
+      scopeQualifierGaps('作用域限定（AC-D4）：本单元数值下 / 3 座塔 / 不是全局结论'),
+      '反向自测：带限定的文本必须零缺口（判据不是恒假）',
+    ).toEqual([])
+  })
+})
+
+// ════════════════════════════════════════════════════════════════════════
+// G236 —— 脚本里不得写死档位取值的单元号
+// ════════════════════════════════════════════════════════════════════════
+
+describe('G236 —— 不得写死档位取值的单元号（AC-D1 / R-51）', () => {
+  /**
+   * 判据：源码里「把**写死的数字**当单元号传进档位取值函数」的落点。
+   *
+   * ⚠️ 为什么要这条结构守卫（`[CR]` 2026-10-21）：`simulateTower()` 里那一处
+   *   `costOf(towerType, unitNumber)` 改回 `costOf(towerType, 1)` 之后，
+   *   **输出断言一条都抓不住** —— 实测 71 文件 / 2149 条全绿，且三档的 stdout
+   *   与干净版**逐字节相同**（今天数字恰好不翻转 ⇒ 它是一个**等价变异体**）。
+   *   ⇒ 光靠「断言报告内容」永远补不上这个洞 ⇒ 补一条**结构**守卫：
+   *   档位取值函数**只准**接受变量，不准接受数字字面量。
+   */
+  function hardcodedUnitLookups(source: string): string[] {
+    const code = stripComments(source)
+    const patterns = [
+      /\bcostOf\s*\([^)]*?,\s*(\d+)\s*\)/g,
+      /\b(?:initialSunFor|sunPerCorrectFor|tierForUnit)\s*\(\s*(\d+)\s*\)/g,
+    ]
+    const hits: string[] = []
+    for (const pattern of patterns) {
+      for (const match of code.matchAll(pattern)) {
+        hits.push(match[0].replace(/\s+/g, ' '))
+      }
+    }
+    return hits
+  }
+
+  it('scripts/ 下没有任何地方把数字字面量当单元号传进档位取值函数', () => {
+    const offenders: string[] = []
+    for (const name of readdirSync(join(root, 'scripts'))) {
+      if (!/\.(ts|vue|json)$/.test(name)) {
+        continue
+      }
+      const source = readFileSync(join(root, 'scripts', name), 'utf8')
+      const hits = hardcodedUnitLookups(source)
+      if (hits.length > 0) {
+        offenders.push(`scripts/${name}: ${hits.join(' / ')}`)
+      }
+    }
+    expect(
+      offenders,
+      '档位取值必须走传入的单元号 —— 写死一个数字就等于那个分支**静默地**只在测第 1 档，' +
+        '而输出断言今天抓不住它（等价变异体）',
+    ).toEqual([])
+  })
+
+  it('反向自测：判据能认出「写死的单元号」', () => {
+    expect(
+      hardcodedUnitLookups('const c = costOf(towerType, 1)'),
+      '反向自测：`costOf(…, 1)` 必须被抓住（判据不是恒假）',
+    ).not.toEqual([])
+    expect(
+      hardcodedUnitLookups('const c = costOf(towerType, unitNumber)'),
+      '反向自测：走变量的合法取法必须放行（判据不是恒真）',
+    ).toEqual([])
+  })
+})
+
+// ════════════════════════════════════════════════════════════════════════
+// G237 —— 实体守恒（R-23）
+// ════════════════════════════════════════════════════════════════════════
+
+describe('G237 —— 模拟器不得静默丢实体（R-23）', () => {
+  /** 判据：返回「本该出现却没有出现」的回合号。空数组 = 没丢。 */
+  function missingTurns(
+    rows: readonly { readonly turn: number }[],
+    turnsPlayed: number,
+  ): number[] {
+    const seen = new Set(rows.map((row) => row.turn))
+    const missing: number[] = []
+    for (let turn = 1; turn <= turnsPlayed; turn += 1) {
+      if (!seen.has(turn)) {
+        missing.push(turn)
+      }
+    }
+    return missing
+  }
+
+  it('三档各跑一局：轨迹行数 = 回合数，且没有缺号', () => {
+    // ⚠️ Task 3.3 逐字要求「参数化后**逐档**核对实体守恒」——
+    //   而 AC-D1 逐字把 R-23 的「不得静默丢实体」写成了硬要求。
+    for (const unit of TIER_STARTS) {
+      const deck = buildSyntheticDeck(10, unit)
+      const run = runLevel(deck, (turn) => turn > 3, unit, { maxTurns: 16 })
+      expect(
+        run.rows.length,
+        `单元 ${unit}：轨迹行数必须等于回合数 —— 少一行就是有实体被静默吞掉（R-23）`,
+      ).toBe(run.turnsPlayed)
+      expect(
+        missingTurns(run.rows, run.turnsPlayed),
+        `单元 ${unit}：回合号必须连续无缺 —— 缺号 = 那一回合的实体被静默吞掉（R-23）`,
+      ).toEqual([])
+      expect(
+        run.totalWrong,
+        `单元 ${unit}：答错计数必须与轨迹里答错的回合数一致 —— 计数与实体不同步 = 有一半实体丢了`,
+      ).toBe(run.rows.filter((row) => !row.correct).length)
+      const last = run.rows[run.rows.length - 1]
+      const totalLost = run.rows.reduce((sum, row) => sum + row.heartsLost, 0)
+      // ⚠️ 心数守恒的**正确**写法带夹取：reducer 把心数夹在 0，
+      //   「本回合掉的心多于剩余心」是**合法**情况 ⇒ 写成 `HEARTS - totalLost`
+      //   会在那种局里假红（把合法行为当成 bug）。
+      expect(
+        last === undefined ? -1 : last.hearts,
+        `单元 ${unit}：心数守恒 —— 剩余心必须等于 max(0, 起始 ${HEARTS} − 累计掉心 ${totalLost})`,
+      ).toBe(Math.max(0, HEARTS - totalLost))
+    }
+  })
+
+  it('反向自测：判据能认出「被吞掉的一回合」', () => {
+    const doctored = [{ turn: 1 }, { turn: 3 }, { turn: 4 }]
+    expect(
+      missingTurns(doctored, 4),
+      '反向自测：缺了第 2 回合就必须被报出来 —— 否则这条判据恒绿',
+    ).toEqual([2])
+    expect(
+      missingTurns([{ turn: 1 }, { turn: 2 }], 2),
+      '反向自测：没缺号时不得报（判据不是恒假）',
+    ).toEqual([])
   })
 })

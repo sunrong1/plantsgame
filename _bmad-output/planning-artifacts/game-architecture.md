@@ -985,7 +985,7 @@ npm install
 npm run dev              # Vite 8 开发服务器
 npm run test             # Vitest
 npm run validate:content # 内容校验，提交前必跑
-npm run balance-sim      # 平衡模拟，import 真实 core/
+npm run balance-sim -- <单元号>   # 平衡模拟，import 真实 core/（不带参数 = 单元 1）
 ```
 
 ### 环境要求
