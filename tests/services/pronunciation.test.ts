@@ -134,6 +134,7 @@ beforeEach(() => {
   // 「无 Audio 环境」都会被静默破坏，而且在 700 行之下根本查不到这个 hook。
   // 移到顶部，让「本文件全局 stub 了什么」在一屏之内说得清。
   audioInstances.length = 0
+  fakeAudioConstructorThrows = false
   vi.stubGlobal('Audio', FakeAudioImpl)
 })
 
@@ -822,6 +823,14 @@ interface FakeAudio {
 
 const audioInstances: FakeAudio[] = []
 
+/**
+ * 让**下一次** `new Audio()` 直接抛错（AC-H6 ② 的构造分支）。
+ *
+ * ⚠️ 这是模块级开关，不是实例字段 —— 构造器抛错时实例根本没建起来，
+ *   实例上挂开关等于「抛错的那一刻开关还没设上」。
+ */
+let fakeAudioConstructorThrows = false
+
 class FakeAudioImpl implements FakeAudio {
   src: string
   paused = true
@@ -834,6 +843,12 @@ class FakeAudioImpl implements FakeAudio {
   private handlers: Record<string, (() => void)[]> = {}
 
   constructor(src: string) {
+    // ⚠️ `[CR]` 2026-10-21 二轮新增：AC-H6 ② 要求覆盖「`new Audio()` **构造**抛错」，
+    //   而本 fake 原先只会让 `play()` 抛 ⇒ 那条分支**零覆盖**。
+    //   真实世界里构造抛错是有的（残缺实现 / CSP 拦截 / 隐私模式扩展被禁）。
+    if (fakeAudioConstructorThrows) {
+      throw new Error('Audio 构造抛错（残缺实现 / 被策略拦截）')
+    }
     this.src = src
     audioInstances.push(this)
   }
@@ -1671,5 +1686,58 @@ describe('ensureVoices 的冷却重试判据（[CR] 2026-10-16）', () => {
     // 第三步 prewarmBgm() 根本执行不到。这里直接验证那一层。
     const { unlockAudioSequence } = await import('../../src/app/audio-unlock')
     expect(() => unlockAudioSequence(), '解锁三步不得被畸形音色打断').not.toThrow()
+  })
+})
+
+/**
+ * 🚨 **G252 —— AC-H6 ②「`new Audio()` 抛错」此前是**零覆盖**的一条分支。**
+ *
+ * ── 坏法 ───────────────────────────────────────────────────────────────────
+ * AC-H6 逐字要求本 story 补齐三条「已 try/catch 但零测试」的分支，
+ * 其中 ② 是「`new Audio()` 抛错」。而本文件的 fake `FakeAudioImpl` 的
+ * **构造器从不抛错**（只有 `play()` 能抛 / 能 reject）⇒
+ * `playRecording()` 里那个 `try { el = new AudioCtor(...) } catch { … return false }`
+ * **从来没被执行过** ⇒ 那一行 catch 是纯装饰。
+ *
+ * ⚠️ 为什么这条分支值得测：构造抛错时 `playRecording` 返回 `false`
+ *   ⇒ `playPronunciation` 落到 `speakWithTts` ⇒ **孩子仍然听到词**。
+ *   一旦这条回落断了，孩子点词**一声不吭** —— 而「点了没反应」在平板上
+ *   与「孩子没点到」长得一模一样（正是本 story 全部自动化验收落在结构上的理由）。
+ *
+ * ⚠️ 断言写法：**不许只断言「没抛」** —— 那正是这条分支原先的状态（它没抛，
+ *   因为它压根没被走到）。必须同时断言「确实走了构造抛错那条路」
+ *   （WARN 文本 + 真的发起了 TTS + 没有建出 Audio 实例）。
+ */
+describe('G252 —— `new Audio()` 构造抛错时回落到设备 TTS（AC-H6 ② / AC-D9）', () => {
+  it('构造抛错 ⇒ 不向调用方抛，且真的回落到设备 TTS', async () => {
+    withVoices([{ name: 'Samantha', lang: 'en-US' }])
+    fakeAudioConstructorThrows = true
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const { playPronunciation } = await import('../../src/services/pronunciation')
+
+    expect(
+      () => playPronunciation('dog', 'u1-dog'),
+      '构造抛错也不许冒到调用方 —— store 是无保护直接调的，冒出去会打断答题流程',
+    ).not.toThrow()
+    await flushMicrotasks()
+
+    expect(
+      warn.mock.calls.map((c) => String(c[0])).some((m) => m.includes('录音构造失败')),
+      '必须留下「录音构造失败，转 TTS」的 WARN —— 那条 WARN 是这条分支唯一的现场证据',
+    ).toBe(true)
+    expect(audioInstances.length, '构造抛错了却建出了 Audio 实例 —— 说明根本没走构造抛错那条路').toBe(0)
+    expect(synth.spoken.length, '构造失败必须回落到设备 TTS —— 孩子点词仍然要听到声音').toBe(1)
+    expect(synth.spoken[0]!.text, '回落时念的应当是这个词').toBe('dog')
+  })
+
+  it('判据自检：把开关关掉，同一条断言会红（证明上一条不是恒绿）', async () => {
+    withVoices([{ name: 'Samantha', lang: 'en-US' }])
+    fakeAudioConstructorThrows = false
+    const { playPronunciation } = await import('../../src/services/pronunciation')
+    playPronunciation('dog', 'u1-dog')
+    await flushMicrotasks()
+
+    expect(audioInstances.length, '前提：不抛错时确实建出了 Audio 实例').toBe(1)
+    expect(synth.spoken.length, '前提：不抛错时不该走 TTS（主通路是录音）').toBe(0)
   })
 })

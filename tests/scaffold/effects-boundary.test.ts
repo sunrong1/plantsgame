@@ -780,3 +780,80 @@ describe('G211 —— `src/app/**` 的音频边界：只能经 effects-runner �
     expect(judge('effects-runner.ts', "import { playSfx } from '../services/audio'\n"), '名单内必须放过').toBe(false)
   })
 })
+
+/**
+ * 🚨 **G250 —— AC-B2 的 import 白名单 + AC-C7 的两条禁令，此前**一条守卫都没有**。**
+ *
+ * ── 坏法 ───────────────────────────────────────────────────────────────────
+ * AC-B2 逐字写「**允许** import 的只有 `./types.js`、`./hud.js`、`./actions.js`、
+ * `./balance.js`」，AC-C7 逐字写「**不许**在 `effects.ts` 里 `import.meta.glob`
+ * 或 `fs.existsSync`」—— 而这两条**一条守卫都没有**：
+ *   · G59 逐条扫的是「代码里出现了什么**标识符**」（window / Date / Math.random…），
+ *     **没有一条扫 import** ⇒ 有人写 `import { existsSync } from 'node:fs'`，
+ *     G59 全绿 —— 「零 DOM」守住了，「零文件系统」没守住；
+ *   · `../content/` 那条 G59 有（`not.toMatch(/\.\.\/content\//)`），
+ *     但那是**逐字符串**匹配，不是白名单 —— 加一个 `import ... from '../words.js'`
+ *     照样放行。
+ *
+ * ⚠️ 这两条一旦破，坏法是**静默**的：
+ *   · `import.meta.glob` 把构建期文件系统知识引进 core ⇒ core 测试依赖 vite 构建，
+ *     `vitest` 之外的 runner（node --test）直接崩；
+ *   · `fs.existsSync` 让 core 判据**依赖磁盘** ⇒ 「音效文件在不在」这个本层
+ *     无权知道的事实（AC-C7）偷偷渗进判据 ⇒ 换台机器测试结果就变。
+ */
+describe('G250 —— core/effects.ts 的 import 白名单与 AC-C7 禁令（AC-B2 / AC-C7）', () => {
+  const source = stripComments(readFileSync(join(root, 'src/core/effects.ts'), 'utf8'))
+
+  /** AC-B2 逐字列出的四个允许项。 */
+  const ALLOWED = new Set(['./types.js', './hud.js', './actions.js', './balance.js'])
+
+  /** 抽出源码里出现的**全部**模块说明符（静态 import / 副作用 import / 动态 import）。 */
+  function moduleSpecifiers(src: string): string[] {
+    const specs = new Set<string>()
+    for (const m of src.matchAll(/\bfrom\s+'([^']+)'/g)) specs.add(m[1]!)
+    for (const m of src.matchAll(/\bimport\s+'([^']+)'/g)) specs.add(m[1]!)
+    for (const m of src.matchAll(/\bimport\s*\(\s*'([^']+)'\s*\)/g)) specs.add(m[1]!)
+    return [...specs]
+  }
+
+  it('判据自检：抽得出说明符，且四个允许项**都能被认出来**', () => {
+    const specs = moduleSpecifiers(source)
+    expect(specs.length, '判据自检：一个 import 都没抽出来 —— 判据已失明').toBeGreaterThan(0)
+    // ⚠️ 不要求真实源码 import 满四个（用到几个是实现的事），
+    //   只要求**白名单里的每一个都能被这套抽取认出来** —— 否则白名单可能写了四个
+    //   死条目，判据却只认 `./types.js`（那就成了「恰好对上了」的假绿）。
+    const probe = [...ALLOWED].map((s, i) => `import { x${i} } from '${s}'`).join('\n')
+    expect(
+      moduleSpecifiers(probe).sort(),
+      '判据自检：白名单里的说明符有哪一个没被认出来',
+    ).toEqual([...ALLOWED].sort())
+  })
+
+  it('AC-B2：import 的只有那四个白名单模块', () => {
+    for (const spec of moduleSpecifiers(source)) {
+      expect(
+        ALLOWED.has(spec),
+        `core/effects.ts import 了白名单之外的「${spec}」—— AC-B2 只允许 ${[...ALLOWED].join(' / ')}`,
+      ).toBe(true)
+    }
+  })
+
+  it('AC-C7：不许 import.meta.glob（构建期文件系统知识不许进 core）', () => {
+    expect(source, 'core/effects.ts 不许用 import.meta.glob —— 那会让 core 依赖 vite 构建').not.toMatch(
+      /import\.meta\.glob/,
+    )
+  })
+
+  it('AC-C7：不许 fs.existsSync / 任何 node:fs（core 判据不许依赖磁盘）', () => {
+    expect(source, 'core/effects.ts 不许 import node:fs —— 本层无权知道音频文件在不在磁盘上').not.toMatch(
+      /node:fs/,
+    )
+    expect(source, 'core/effects.ts 不许出现 fs.existsSync（AC-C7 逐字禁令）').not.toMatch(/existsSync/)
+  })
+
+  it('反向自检：把白名单外的说明符塞进判据，它会红（证明判据不是恒真）', () => {
+    const probe = "import { words } from '../content/index.js'\nimport { x } from 'node:fs'"
+    const bad = [...moduleSpecifiers(probe)].filter((s) => !ALLOWED.has(s))
+    expect(bad.length, '反向自检：探针里的两个说明符都该被白名单拒绝').toBe(2)
+  })
+})

@@ -59,12 +59,22 @@ const sfxBuffers = new Map<SfxCue, AudioBuffer>()
  */
 const loadingSfx = new Map<SfxCue, Promise<void>>()
 
-/** 已确认失败（404 / 解码失败 / 非 2xx）的资源键。**失败即标记，不再重试**（AC-D5）。 */
-const failedSfx = new Set<SfxCue>()
+/**
+ * 已确认失败（404 / 解码失败 / 非 2xx）的资源键 → **真实的失败原因**。
+ * **失败即标记，不再重试**（AC-D5）。
+ *
+ * ⚠️📎 **[CR] 2026-10-21 补：为什么从 `Set` 变成 `Map`** ——
+ *   原来失败原因只进了 `console.warn`，而 `audioDegradations()` 给每条 asset
+ *   降级写死一句「音效加载或解码失败，已标记不再重试」⇒ 家长在平板上打开
+ *   调试面板看到的是**一句废话**：是文件没部署？是解码器炸了？还是当时离线？
+ *   面板答不出来，而唯一带真实原因的地方是家长在平板上看不到的 console。
+ *   ⇒ AC-D8 的 `reason` 字段逐字要求「带原因」⇒ 这里把原因**存下来**。
+ */
+const failedSfx = new Map<SfxCue, string>()
 
-/** BGM 的已解码 buffer；BGM 已失败标记。 */
+/** BGM 的已解码 buffer；BGM 已失败标记（带真实原因，同 `failedSfx`）。 */
 let bgmBuffer: AudioBuffer | null = null
-let bgmFailed = false
+let bgmFailedReason: string | null = null
 
 /**
  * BGM **正在加载**（防止「反复点 5 次开始游戏」把同一个 39 秒 mp3 下载 5 遍）。
@@ -170,7 +180,20 @@ export function onAudioDegradationsChanged(cb: () => void): () => void {
  */
 function noteDegradationsChanged(): void {
   degradationsVersion += 1
-  for (const cb of degradationListeners) cb()
+  for (const cb of degradationListeners) {
+    // ⚠️📎 **[CR] 2026-10-21 补：监听器抛错不许打断调用链** ——
+    //   这条链上的调用方是「**绝不向调用方抛**」（AC-D9）的入口：
+    //   `unlockAudioSession()`（抛出去就冒到解锁三步，第③步 `prewarmBgm()` 根本执行不到）
+    //   与 `loadSfx()` 的加载回调（抛出去就 **`resolve()` 永不执行** ⇒
+    //   那条 promise 永远 pending ⇒ 那个 cue 从此**永久哑掉**，
+    //   而 `loadingSfx` 里还攥着这条永不 settle 的 promise ⇒ 后续每次触发都跟着它空转）。
+    //   ⇒ 一个坏监听器（面板在卸载后还碰了 ref）就能让音效**永久失声**。
+    try {
+      cb()
+    } catch (err) {
+      console.warn(`[audio] 降级监听器抛错（已忽略，不打断音频链）：${describe(err)}`)
+    }
+  }
 }
 
 /** 降级状态的当前版本号（纯整数；配 {@link onAudioDegradationsChanged} 用）。 */
@@ -181,9 +204,23 @@ export function audioDegradationsVersion(): number {
 /**
  * 是否全静（AudioContext 整个不可用）。
  *
- * ⚠️ **只**由 `audioContextUnavailableReason` 决定，**不**等价于
- *   `audioDegradations().length > 0` —— 单个音效坏了不等于设备无音频（AC-D8，
- *   变异 **M123** 专打「把它写成后者」的写法）。
+ * ⚠️📎 **[CR] 2026-10-21 更正：这条注释原先写「**只**由 `audioContextUnavailableReason`
+ *   决定」—— 那在本轮之前是对的，本轮把 `resume()` 拒绝拆到**可恢复**那条之后，
+ *   注释没跟着改 ⇒ 一个信注释的人会把代码「改回」刚拆掉的那个永久静音行为
+ *   （R-41：书面口径必须与代码一致）。
+ *
+ * **现在由两条 session 级标志决定**：
+ *   · `audioContextUnavailableReason` —— **永久**：没有 `AudioContext` / 构造抛错；
+ *   · `audioSessionSuspendedReason` —— **可恢复**：`resume()` 被拒绝或抛错，
+ *     下一次成功的 `resume()` 会把它清掉。
+ *   AC-D8 逐字写的是「`isAudioSilent()` **只**表示「`AudioContext` 整个不可用」
+ *   （`AudioContext` 不存在 / 构造抛错 / **被浏览器拒绝** ⇒「全静但可玩」）」——
+ *   「被浏览器拒绝」这一支正是**可恢复**那条 ⇒ 两项都在 AC-D8 的字面口径内。
+ *
+ * ⚠️ **仍然**不等价于 `audioDegradations().length > 0` —— 单个音效坏了
+ *   不等于设备无音频（AC-D8，变异 **M123** 专打「把它写成后者」的写法）。
+ *   面板靠**两条不同的 key**（`audioContext` / `audioSession`）把「永久」与
+ *   「会自己好」分开显示，不必靠这个布尔量区分。
  */
 export function isAudioSilent(): boolean {
   return audioContextUnavailableReason !== null || audioSessionSuspendedReason !== null
@@ -201,11 +238,11 @@ export function audioDegradations(): readonly AudioDegradation[] {
     //   而 `resume()` 拒绝只要下一次手势 resume 成功就会消失。
     list.push({ scope: 'session', key: 'audioSession', reason: audioSessionSuspendedReason })
   }
-  for (const cue of failedSfx) {
-    list.push({ scope: 'asset', key: `sfx:${cue}`, reason: '音效加载或解码失败，已标记不再重试' })
+  for (const [cue, reason] of failedSfx) {
+    list.push({ scope: 'asset', key: `sfx:${cue}`, reason })
   }
-  if (bgmFailed) {
-    list.push({ scope: 'asset', key: 'music:battle-loop', reason: 'BGM 加载或解码失败，已标记不再重试' })
+  if (bgmFailedReason !== null) {
+    list.push({ scope: 'asset', key: 'music:battle-loop', reason: bgmFailedReason })
   }
   return list
 }
@@ -291,14 +328,27 @@ export function unlockAudioSession(): void {
     // ⚠️📎 **[CR] 2026-10-21**：拒绝**不**登记成永久 session 降级 ——
     //   它只登记「可恢复」那一条，而**一次成功的 resume 会把它清掉**。
     //   原实现把拒绝写进永久那条且永不清除 ⇒ 一次偶发拒绝静音整个会话。
-    void audioCtx.resume().then(
-      () => {
-        clearSessionSuspended()
-      },
-      (err: unknown) => {
-        markSessionSuspended(`resume() 被拒绝，音频会话暂不可用：${describe(err)}`)
-      },
-    )
+    try {
+      void audioCtx.resume().then(
+        () => {
+          clearSessionSuspended()
+        },
+        (err: unknown) => {
+          markSessionSuspended(`resume() 被拒绝，音频会话暂不可用：${describe(err)}`)
+        },
+      )
+    } catch (err) {
+      // ⚠️📎 **[CR] 2026-10-21 补：同步抛错与「Promise 被拒绝」是同一个失败原因** ——
+      //   残缺 polyfill 上 `resume` 可能根本不是函数、closed context 会抛
+      //   `InvalidStateError` ⇒ 异常是**同步**抛出的。
+      //   ⇒ 若让它落到下面那个外层 catch，它会被记成**永久** session 降级
+      //   （`markSessionUnavailable`），而那个标志**永不清除**
+      //   ⇒ **一个完全可用的 AudioContext 被永久判死**
+      //   （`getPlayableContext()` 从此返回 null，所有音效与 BGM 都哑）
+      //   —— 正是本轮刚拆掉的那个「一次偶发失败静音整个会话」的形态，
+      //   只是换了个抛出方式。⇒ **同一个失败原因必须得到同一个生命周期。**
+      markSessionSuspended(`resume() 抛错，音频会话暂不可用：${describe(err)}`)
+    }
   } catch (err) {
     // deferred ①：解锁链路任何意外都必须被 service 层兜住 ——
     // `audio-unlock.ts` 刻意**不**在同步块外层兜异常（理由是「不得在此吞异常」，
@@ -376,8 +426,9 @@ function loadSfx(cue: SfxCue): Promise<void> {
     const url = `${SFX_BASE_PATH}${cue}.mp3`
     void fetchAudioBuffer(url, (buffer, reason) => {
       if (buffer === null) {
-        failedSfx.add(cue)
-        markAssetFailed(`音效 ${cue} ${reason ?? '加载失败，已标记不再重试'}`)
+        const why = reason ?? '加载失败，已标记不再重试'
+        failedSfx.set(cue, why)
+        markAssetFailed(`音效 ${cue} ${why}`)
       } else {
         sfxBuffers.set(cue, buffer)
       }
@@ -398,21 +449,26 @@ function loadSfx(cue: SfxCue): Promise<void> {
  */
 export function prewarmBgm(): void {
   // 已缓存或已失败 ⇒ 无事可做（AC-D5 失败即标记，AC-D4 解码一次）。
-  if (bgmBuffer !== null || bgmFailed) return
+  if (bgmBuffer !== null || bgmFailedReason !== null) return
   // ⚠️📎 **[CR] 2026-10-21**：**正在加载**时也不重复发起 ——
   //   「反复点 5 次开始游戏」（AC-8）会让同一个 39 秒的 mp3 被下载 5 遍。
   if (bgmLoading) return
 
   const ctx = getAudioContext()
-  if (ctx === null) return // 未解锁 —— ⚠️ 见下方「谁会再试」
+  // 未解锁 ⇒ **无从解码**（`decodeAudioData` 是 context 的方法）。
+  // ⚠️ **本函数不负责解锁** —— 解锁是 `unlockAudioSession()` 的活，
+  //   它排在解锁三步的第①步（`app/audio-unlock.ts`）。
+  //   ⇒ 这里**不重试**：没有 context 时再试一百次也是同一个结果。
+  if (ctx === null) return
 
   // ⚠️ 同步发起 fetch（不 await）。失败记 asset 降级，不阻断解锁链路。
   bgmLoading = true
   void fetchAudioBuffer(`${MUSIC_BASE_PATH}battle-loop.mp3`, (buffer, reason) => {
     bgmLoading = false
     if (buffer === null) {
-      bgmFailed = true
-      markAssetFailed(`BGM ${reason ?? '加载失败，已标记不再重试'}`)
+      const why = reason ?? '加载失败，已标记不再重试'
+      bgmFailedReason = why
+      markAssetFailed(`BGM ${why}`)
       return
     }
     bgmBuffer = buffer
@@ -443,6 +499,18 @@ export function prewarmBgm(): void {
 export function startBgmIfReady(): void {
   // 意图先记下来：解码完成的那一刻要靠它决定「现在该播了吗」。
   bgmRequested = true
+
+  // ⚠️📎 **[CR] 2026-10-21 补：意图记下了，却没人负责去「试」** ——
+  //   第一轮修的是「解码完成后没人起播」；本轮补的是**另一半**：
+  //   「进关了」这个事实发生时，**如果根本没有人在加载**（解锁三步被打断、
+  //   或调用方绕过解锁三步直接进了关），那么光有 `bgmRequested` 这个
+  //   **意图**没有人执行 ⇒ BGM 永远静默，且零日志、零降级项（连「坏了」都不是）。
+  //   ⇒ 意图必须**自己**发起一次加载 —— 这就是原注释里那句
+  //   「见下方『谁会再试』」指向的机制：**它当时根本不存在**。
+  //
+  // ⚠️ **三个条件缺一不可**：已解好（不必再解）/ 已失败（AC-D5 失败即标记，
+  //   不许重试）/ 正在加载（别把同一个 39 秒 mp3 下载两遍）。
+  if (bgmBuffer === null && bgmFailedReason === null && !bgmLoading) prewarmBgm()
 
   const ctx = getPlayableContext()
   if (ctx === null || bgmBuffer === null) return // 未就绪 —— 等 `prewarmBgm` 的回调

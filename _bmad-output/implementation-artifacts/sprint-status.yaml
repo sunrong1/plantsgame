@@ -49,7 +49,8 @@
 #   epics.md 的销项说明处理。
 
 generated: 2026-10-12
-last_updated: 2026-10-21  # Story 2.3「阳光经济档位扩展」[CR] 三层审查完成 → done（17 patch + 3 defer；档位 3 门槛宽一问仍未裁决，见其 story 文档）
+last_updated: 2026-10-21  # Story 1.14「音效与 BGM 接入」[CR] 第二轮完成 → done（5 条行为 patch + 文档 patch；新增 G246–G252 / M296–M307；2 条 deferred 结清、4 条新延后）；文档已归档
+                        # Story 2.3「阳光经济档位扩展」[CR] 三层审查完成 → done（17 patch + 3 defer；档位 3 门槛宽一问仍未裁决，见其 story 文档）
                         # Story 1.15 [CR] 第二轮完成：清档不再全清 + 空读撤 read 降级 + AC-C5 后半句补 G245 + G218 整张对账 + G215 判据单一导出；新增 G243–G245 / M290–M295；AC-B5/C5/D1/G3 四处追认；状态 → done，文档已归档
                         # Story 2.2「难度阶梯规则落地」上下文已生成 → ready-for-dev（裁决与证据见其 story 文档）
                         # Story 2.1 —— ✅ **done**（`[CR]` 三层评审 + 16 变异红数 + D1-D4/P1-P27 全落地，见其 story 文档）
@@ -184,7 +185,7 @@ development_status:
   1-11-三种卡型与答题交互: done
   1-12-建造-阳光与射程可视化: done
   1-13-hud-阳光-心与进度: done
-  1-14-音效与-bgm-接入: review   # [CR] 首轮完成，4 条高危 patch 全修；仍留 review —— deferred 第 3 条（曲目与 AC-H3 不符）待裁决
+  1-14-音效与-bgm-接入: done   # [CR] 第二轮完成：意图没人执行 / 坏监听器打断音频链 / resume 同步抛错被判永久 / 降级项丢真实原因 / AC-H6 ② 零覆盖 / AC-B2·AC-C7 无守卫；新增 G246–G252 / M296–M307；2 条 deferred 结清；文档已归档
   1-15-存档与断点续学: done   # [CR] 第二轮完成：清档不再全清 + 空读撤 read 降级 + AC-C5 后半句补 G245 + G218 整张对账 + G215 判据单一导出；新增 G243–G245 / M290–M295；AC-B5/C5/D1/G3 四处追认；文档已归档
   1-16-关卡流程-通关-失败与推进: done
   1-17-调试工具与会话回放: done

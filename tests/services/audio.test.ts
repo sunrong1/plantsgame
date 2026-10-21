@@ -406,7 +406,16 @@ describe('G72 —— 新入口不向调用方抛（AC-D9 / NFR13）', () => {
   })
 })
 
-describe('AC-H6 ① —— deferred 的「AudioContext 不存在 / new Audio() 抛」两条分支', () => {
+/**
+ * ⚠️ `[CR]` 2026-10-21 二轮**订正**：本 describe 原标题写的是
+ *   「「AudioContext 不存在 / **new Audio() 抛**」两条分支」——
+ *   但第二条测的是 **`new AudioContext()`**（`src/services/audio.ts` 的 context），
+ *   **不是** `new Audio()`（`src/services/pronunciation.ts` 的录音元素）。
+ *   标题在骗人 ⇒ 读的人以为 `new Audio()` 那条已被覆盖，实际它**零覆盖**。
+ *   ⇒ 现标题按实际内容写；`new Audio()` 那条由 **`G252`**
+ *   （`tests/services/pronunciation.test.ts`）覆盖。
+ */
+describe('AC-H6 ① —— deferred 的两条分支：「AudioContext 不存在」与「new AudioContext() 抛」（[CR] 订正标题）', () => {
   it('① AudioContext 不存在：unlockAudioSession 记 session 降级且不抛', async () => {
     vi.stubGlobal('AudioContext', undefined)
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
@@ -888,5 +897,257 @@ describe('G209 —— 一次资源失败只记一条 [audio] 日志', () => {
     expect(lines.length, `BGM 一次失败只应有一条日志，实得 ${lines.length} 条：\n${lines.join('\n')}`).toBe(1)
     expect(audio.audioDegradationsVersion() - v0, 'BGM 一次失败只推高一次版本号').toBe(1)
     warn.mockRestore()
+  })
+})
+
+// ════════════════════════════════════════════════════════════════════════
+// [CR] 2026-10-21 第二轮 —— 「意图没人执行」「坏监听器打断音频链」
+// 「resume 同步抛错被判永久」「降级项丢真实原因」
+// ════════════════════════════════════════════════════════════════════════
+
+/**
+ * 🚨 **G246 —— 「进关了」这个意图必须能自己发起加载。**
+ *
+ * ── 坏法（第一轮修掉的那条的**另一半**）─────────────────────────────────────
+ * 第一轮把「解码完成后没人起播」修好了（`bgmRequested` 意图 × 解码完成 两个事实会合）。
+ * 本轮补的是**另一半**：**意图记下了，却没人负责去「试」** ——
+ * `startBgmIfReady()` 只在 `prewarmBgm()` 的成功回调里被调用过，
+ * 而那次调用早于解码完成 ⇒ `bgmBuffer` 恒为 null ⇒ 直接 return。
+ * ⇒ 于是「进关了」这个事实**必须**有人执行，否则 BGM 永远静默，
+ *   **零日志、零降级项**（连「坏了」都不是，是「没人去试」）。
+ *
+ * ⚠️ 触发场景：解锁三步被打断，或调用方绕过解锁三步直接进关。
+ * 原代码里那句「见下方『谁会再试』」指向的机制**根本不存在** ——
+ * 全仓库搜不到「谁会再试」这四个字，注释指向的是一片空白。
+ */
+describe('G246 —— 意图必须能自己发起加载（[CR] 实测：修复前没人执行）', () => {
+  it('没人在加载时，startBgmIfReady() 自己发起一次预解，解码完成后真的起播', async () => {
+    const { audio, fetchMock } = await unlockedWithFetch()
+    const ctx = audio.getAudioContext() as unknown as FakeAudioContext
+
+    // ⚠️ 刻意**不**调 prewarmBgm() —— 这就是「意图已记、但根本没有人在加载」的场景。
+    audio.startBgmIfReady()
+
+    const musicCalls = fetchMock.mock.calls.map((c) => String(c[0])).filter((u) => u.includes('battle-loop.mp3'))
+    expect(
+      musicCalls.length,
+      '意图必须自己发起加载 —— 否则 BGM 永远静默，且零日志零降级项（连「坏了」都不是）',
+    ).toBe(1)
+
+    await flush()
+    expect(
+      ctx.started.filter((s) => s.loop).length,
+      '解码完成后必须起播 —— 意图与「解码好了」两个事实要会合',
+    ).toBe(1)
+  })
+
+  it('已经在加载中时不得再发一次请求（同一个 39 秒 mp3 不许下载两遍）', async () => {
+    const { audio, fetchMock } = await unlockedWithFetch()
+    audio.prewarmBgm()
+    audio.startBgmIfReady()
+    audio.startBgmIfReady()
+    await flush()
+    const musicCalls = fetchMock.mock.calls.map((c) => String(c[0])).filter((u) => u.includes('battle-loop.mp3'))
+    expect(musicCalls.length, '正在加载时重复调 startBgmIfReady 不得再发第二次请求').toBe(1)
+  })
+
+  it('BGM 已失败时不重试（AC-D5 失败即标记，不再重试）', async () => {
+    const fetchMock = stubFailingFetch()
+    const audio = await import('../../src/services/audio')
+    audio.unlockAudioSession()
+    await flush()
+
+    audio.startBgmIfReady()
+    await flush()
+    const after = fetchMock.mock.calls.length
+    expect(after, '前提：这一次确实发起了请求并失败了').toBeGreaterThan(0)
+
+    audio.startBgmIfReady()
+    await flush()
+    expect(
+      fetchMock.mock.calls.length,
+      '失败即标记：BGM 已经失败之后不得再发请求（AC-D5）',
+    ).toBe(after)
+  })
+})
+
+/**
+ * 🚨 **G247 —— 降级监听器抛错不许打断音频链。**
+ *
+ * ── 坏法 ───────────────────────────────────────────────────────────────────
+ * `noteDegradationsChanged()` 原先是 `for (const cb of listeners) cb()` ——
+ * **一个监听器抛错，后面的监听器全部收不到通知**，而抛错本身还会往上冒：
+ *   · 同步路径（`unlockAudioSession` 遇到没有 `AudioContext`）⇒ 异常冒到调用方，
+ *     而解锁三步的第③步 `prewarmBgm()` **根本执行不到**；
+ *   · 异步路径（`loadSfx` 的加载回调）⇒ 异常变成 **unhandled rejection**，
+ *     且 `resolve()` 永不执行 ⇒ 那条 promise 永远 pending ⇒
+ *     那个 cue 从此**永久失声**（`loadingSfx` 里还攥着这条永不 settle 的 promise）。
+ *
+ * ⚠️ 1.17 的调试面板就是这些监听器之一 ⇒ 面板一坏，整个通知链就断。
+ */
+describe('G247 —— 降级监听器抛错不许打断音频链（AC-D9 绝不向调用方抛）', () => {
+  it('坏监听器抛错时，unlockAudioSession 仍不向调用方抛', async () => {
+    // 没有 AudioContext ⇒ 走 session 级降级（**同步**路径，异常会当场冒出去）。
+    vi.stubGlobal('AudioContext', undefined)
+    const audio = await import('../../src/services/audio')
+    let called = 0
+    audio.onAudioDegradationsChanged(() => {
+      called += 1
+      throw new Error('坏监听器')
+    })
+
+    expect(
+      () => audio.unlockAudioSession(),
+      '坏监听器不许把异常抛给调用方 —— 那会冒到解锁三步，第③步 prewarmBgm 根本执行不到',
+    ).not.toThrow()
+    expect(called, '判据自检：坏监听器确实被调用过（否则本条恒绿）').toBeGreaterThan(0)
+  })
+
+  it('坏监听器不许挡住后面的监听器（1.17 的面板必须照样收到通知）', async () => {
+    vi.stubGlobal('AudioContext', undefined)
+    const audio = await import('../../src/services/audio')
+    audio.onAudioDegradationsChanged(() => {
+      throw new Error('坏监听器')
+    })
+    let reached = 0
+    audio.onAudioDegradationsChanged(() => {
+      reached += 1
+    })
+
+    audio.unlockAudioSession()
+    expect(reached, '排在坏监听器后面的那个必须照样被通知 —— 否则面板再也不刷新').toBeGreaterThan(0)
+  })
+})
+
+/**
+ * 🚨 **G248 —— `resume()` 同步抛错与「Promise 被拒绝」必须是同一个生命周期。**
+ *
+ * ── 坏法 ───────────────────────────────────────────────────────────────────
+ * 第一轮把「`resume()` 被拒绝」拆成**可恢复**的那条（一次成功 resume 就清掉），
+ * 理由是「一次偶发拒绝静音整个会话是最难查的故障」。
+ * 但**同步抛错**（残缺 polyfill 上 `resume` 不是函数、closed context 抛
+ * `InvalidStateError`）落到了外层 catch ⇒ 被记成**永久**的 session 降级
+ * ⇒ 那个标志**永不清除** ⇒ **一个完全可用的 AudioContext 被永久判死**
+ * （`getPlayableContext()` 从此返回 null，所有音效与 BGM 都哑）。
+ * ⇒ 同一个失败原因，因抛出形态不同而得到两种**相反**的生命周期。
+ */
+describe('G248 —— resume() 同步抛错是可恢复的，不是永久静音（[CR] 实测）', () => {
+  it('resume 同步抛错 ⇒ 记「可恢复」那条，不记「永久」那条', async () => {
+    class ThrowingResumeContext extends FakeAudioContext {
+      override resume(): Promise<void> {
+        throw new Error('resume 抛错（残缺 polyfill）')
+      }
+    }
+    vi.stubGlobal('AudioContext', ThrowingResumeContext)
+    const audio = await import('../../src/services/audio')
+
+    expect(
+      () => audio.unlockAudioSession(),
+      'resume 抛错也不许冒到调用方（AC-D9）',
+    ).not.toThrow()
+
+    const degradations = audio.audioDegradations()
+    expect(
+      degradations.some((d) => d.key === 'audioSession'),
+      'resume 失败必须记成「可恢复」那一条 —— 它下一次成功就会自己好',
+    ).toBe(true)
+    expect(
+      degradations.some((d) => d.key === 'audioContext'),
+      '❌ 绝不能记成「永久无 AudioContext」—— context 是好的，只是这一次 resume 没成；' +
+        '永久那条永不清除 ⇒ 一个可用的 AudioContext 被永久判死，整个会话静音',
+    ).toBe(false)
+  })
+
+  it('之后一次成功的 resume 会清掉这条降级（可恢复的另一半）', async () => {
+    class ThrowingResumeContext extends FakeAudioContext {
+      override resume(): Promise<void> {
+        throw new Error('resume 抛错（残缺 polyfill）')
+      }
+    }
+    vi.stubGlobal('AudioContext', ThrowingResumeContext)
+    const audio = await import('../../src/services/audio')
+    audio.unlockAudioSession()
+    expect(
+      audio.audioDegradations().some((d) => d.key === 'audioSession'),
+      '前提：此刻确实挂着可恢复那条',
+    ).toBe(true)
+
+    // 让 resume 恢复正常，再走一次解锁。
+    const ctx = audio.getAudioContext() as unknown as { resume: () => Promise<void> }
+    ctx.resume = () => Promise.resolve()
+    audio.unlockAudioSession()
+    await flush()
+
+    expect(
+      audio.audioDegradations().some((d) => d.key === 'audioSession'),
+      '一次成功的 resume 必须清掉可恢复那条 —— 否则一次偶发失败就静音到会话结束',
+    ).toBe(false)
+  })
+})
+
+/**
+ * 🚨 **G249 —— 资产级降级项必须带**真实**失败原因。**
+ *
+ * ── 坏法 ───────────────────────────────────────────────────────────────────
+ * 失败原因只进了 `console.warn`，而 `audioDegradations()` 给每条 asset 降级
+ * 写死一句「音效加载或解码失败，已标记不再重试」⇒
+ * 家长在平板上打开调试面板看到的是**一句废话**：
+ * 是文件没部署？是解码器炸了？还是当时离线？**面板答不出来**，
+ * 而唯一带真实原因的地方是家长在平板上看不到的 console。
+ * ⇒ AC-D8 的 `reason` 字段逐字要求「带原因」。
+ */
+describe('G249 —— 资产级降级项带真实失败原因（AC-D8 的 reason 字段）', () => {
+  it('音效 404 ⇒ reason 写明「非 2xx」，不是那句对所有失败都一样的废话', async () => {
+    stubFailingFetch()
+    const audio = await import('../../src/services/audio')
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    audio.unlockAudioSession()
+    audio.playSfx('heart-lost')
+    await flush()
+
+    const hit = audio.audioDegradations().find((d) => d.key === 'sfx:heart-lost')
+    expect(hit, '失败资源必须出现在降级清单里（1.17 面板要能看到）').toBeDefined()
+    expect(
+      hit!.reason,
+      'reason 必须写明真实原因（这里是「响应非 2xx」），面板上家长才分得清「没部署」与「当时离线」',
+    ).toContain('2xx')
+    expect(
+      hit!.reason,
+      '不能是那句对所有失败都一样的通用废话 —— 那等于没带原因',
+    ).not.toBe('音效加载或解码失败，已标记不再重试')
+  })
+
+  it('解码失败 ⇒ reason 里带着解码器抛出来的原话', async () => {
+    const fetchMock = vi.fn<(url: string) => Promise<unknown>>(() =>
+      Promise.resolve({ ok: true, status: 200, arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)) }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    const audio = await import('../../src/services/audio')
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    audio.unlockAudioSession()
+    const ctx = audio.getAudioContext() as unknown as {
+      decodeAudioData: (b: ArrayBuffer) => Promise<unknown>
+    }
+    ctx.decodeAudioData = () => Promise.reject(new Error('解码器炸了'))
+    audio.playSfx('zombie-died')
+    await flush()
+
+    const hit = audio.audioDegradations().find((d) => d.key === 'sfx:zombie-died')
+    expect(hit, '解码失败也必须进降级清单').toBeDefined()
+    expect(hit!.reason, '解码失败的原因要带原话 —— 面板上要能看出是解码器的问题').toContain('解码器炸了')
+  })
+
+  it('BGM 失败 ⇒ 同样带真实原因', async () => {
+    stubFailingFetch()
+    const audio = await import('../../src/services/audio')
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    audio.unlockAudioSession()
+    await flush()
+    audio.prewarmBgm()
+    await flush()
+
+    const hit = audio.audioDegradations().find((d) => d.key === 'music:battle-loop')
+    expect(hit, 'BGM 失败必须进降级清单').toBeDefined()
+    expect(hit!.reason, 'BGM 的失败原因同样要写真话').toContain('2xx')
   })
 })

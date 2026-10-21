@@ -22,6 +22,7 @@
  * 「许可证不明确的素材入库」，字段空着等于没登记。
  */
 
+import { createHash } from 'node:crypto'
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 
@@ -212,5 +213,83 @@ describe('G59 反向自检 —— CUES 列表没跟 SfxCue 脱节', () => {
     // 防「判据永远返回空集」那种假绿：如果正则改了导致 cuesDeclaredInCore() 返回 []，
     // 上面的 toEqual 会因为 CUES 非空而红 —— 这里把这一点钉死。
     expect(cuesDeclaredInCore().length, '正则没抓到任何 SfxCue 成员，判据已失明').toBeGreaterThan(0)
+  })
+})
+
+/**
+ * 🚨 **G251 —— 登记的「扫描范围」与「逐条真实」此前各漏了一半。**
+ *
+ * ── 漏的一半之一：磁盘扫描只收 `.mp3` ──────────────────────────────────────
+ * G67 的磁盘 → SOURCES 那条写的是 `readdirSync(SFX_DIR).filter(f => f.endsWith('.mp3'))`
+ * ⇒ 一个 `.ogg` / `.wav` / `.m4a` 躺在 `public/assets/audio/sfx/` 里
+ * **完全不会被发现** ⇒ 那是 AC-H2 逐字要杀的「来源不明的素材入库」，
+ * 而守卫放行了。⇒ 扫描范围必须是**目录里的所有文件**（登记文件本身除外）。
+ *
+ * ── 漏的一半之二：`toMatch(/^CC0/)` 允许了它要防的那种登记 ─────────────────
+ * AC-H1 逐字写「⚠️ `license` 字段必须**逐条真实**，**不许统一填一个 `CC0` 了事**」，
+ * 而守卫写的是 `expect(record.license).toMatch(/^CC0/)` ——
+ * **裸字符串 `"CC0"` 照样过线** ⇒ 守卫正在放行 AC-H1 点名要杀的那种填法。
+ * ⇒ 判据必须比「以 CC0 开头」更严：裸 `CC0` 不许，必须写出具体许可名。
+ *
+ * ⚠️ **「各条 license 互不相同」是**不可满足**的** —— 七个音效与 BGM 全部来自
+ *   同一个 CC0 库，许可文本**理应**一字不差。真去断言「互不相同」会逼着人
+ *   编出假差异（那才是真的造假）。⇒ 这里断言的是**可满足**的残留：
+ *   ① 每条许可是**已知的一种**（不许含糊成「见来源页」）；
+ *   ② 裸 `CC0` 不许（必须带具体许可名）；
+ *   ③ 许可文本不得是**照抄**出来的占位（逐条必须带自己的限定语）。
+ */
+describe('G251 —— 登记的扫描范围与「逐条真实」（AC-H1 / AC-H2）', () => {
+  /** 已知的许可形态 —— 只有两种来源：CC0 库、AI 生成。 */
+  const KNOWN_LICENSE_PREFIXES = ['CC0', 'CC-BY', 'AI-generated']
+
+  it('G251：磁盘上**任何**文件都得登记（不限 .mp3）—— 否则 .ogg/.wav 会当没看见', () => {
+    const onDisk = readdirSync(SFX_DIR).filter((f) => f !== 'SOURCES.json' && !f.startsWith('.')).sort()
+    const registered = sources.sfx.map((r) => r.file).sort()
+    expect(
+      onDisk,
+      '磁盘上出现了**未登记**的文件（不限 mp3）—— 那就是 AC-H2 禁止的「来源不明的素材入库」',
+    ).toEqual(registered)
+
+    const musicOnDisk = readdirSync(MUSIC_DIR).filter((f) => !f.startsWith('.')).sort()
+    const musicRegistered = sources.music.map((r) => r.file).sort()
+    expect(musicOnDisk, 'BGM 目录上出现了**未登记**的文件').toEqual(musicRegistered)
+  })
+
+  it('G251：登记的许可不许是裸「CC0」（AC-H1 逐字禁令）', () => {
+    for (const record of [...sources.sfx, ...sources.music]) {
+      expect(
+        record.license.trim(),
+        `${record.file} 的许可写成了裸「CC0」—— AC-H1 明写「不许统一填一个 CC0 了事」，必须写出具体许可名`,
+      ).not.toBe('CC0')
+      expect(
+        record.license.trim().replace(/^CC0/i, '').length,
+        `${record.file} 的许可除「CC0」外没有任何限定语 —— 那是占位，不是登记`,
+      ).toBeGreaterThan(0)
+      expect(
+        KNOWN_LICENSE_PREFIXES.some((p) => record.license.startsWith(p)),
+        `${record.file} 的许可「${record.license}」不是已知的一种（${KNOWN_LICENSE_PREFIXES.join(' / ')}）—— ` +
+          '含糊的许可等于没登记',
+      ).toBe(true)
+    }
+  })
+
+  it('G251：七个音效 + BGM 的文件内容两两不同（不许一个音效顶七个 cue）', () => {
+    const files = [
+      ...sources.sfx.map((r) => join(SFX_DIR, r.file)),
+      ...sources.music.map((r) => join(MUSIC_DIR, r.file)),
+    ]
+    const hashes = new Map<string, string>()
+    for (const file of files) {
+      const hash = createHash('sha256').update(readFileSync(file)).digest('hex')
+      const clash = [...hashes.entries()].find(([, h]) => h === hash)
+      expect(clash, `「${file}」与「${clash?.[0] ?? ''}」内容完全相同 —— 一个音效顶了多条 cue`).toBeUndefined()
+      hashes.set(file, hash)
+    }
+    expect(hashes.size, '判据自检：登记的文件一个都没算进去').toBe(files.length)
+  })
+
+  it('G251：登记的来源页（url）两两不同（不许一个来源页登记成好几条）', () => {
+    const urls = [...sources.sfx, ...sources.music].map((r) => r.url)
+    expect(new Set(urls).size, `来源页有重复：${urls.join(' / ')} —— 那说明两条登记指的是同一个来源`).toBe(urls.length)
   })
 })
