@@ -47,7 +47,13 @@ import {
   clearAssetDegradationsForTest,
   markAssetDegraded,
 } from '../../src/services/asset-degradations'
-import { readSave, writeSave, SAVE_KEY, SAVE_SCHEMA_VERSION } from '../../src/services/save'
+import {
+  clearSaveDegradationsForTest,
+  readSave,
+  writeSave,
+  SAVE_KEY,
+  SAVE_SCHEMA_VERSION,
+} from '../../src/services/save'
 import { afterEachUninstall, installFakeStorage } from '../fixtures/fake-storage'
 import { exportedFunctionBody } from '../fixtures/exported-function-body'
 import type { FakeStorage } from '../fixtures/fake-storage'
@@ -105,6 +111,14 @@ beforeEach(() => {
   // ⚠️ 存档那个**没有 `clear…ForTest`**（与 `asset-degradations.ts` 不同）——
   //   `clearSave()` 是有真实语义的「玩家要求清档」，拿它清降级登记是误用。
   //   诚实的复位方式是**成功写一次**：`save.ts` 逐字约定「一次成功写入会清空全部降级项」。
+  // 📎 **`[CR]` 2026-10-21 第二轮更正**：上面那句「成功写一次会清空**全部**降级项」
+  //   **已经不成立** —— 一次成功写入只清**自己那侧**
+  //   （`write` / `parse` / `schema-version` / `invariant`），
+  //   `read` 不在其中（读得到说不了写得进去，见守卫 G222 / G244）。
+  //   ⇒ 复位改用**专用的测试复位口** `clearSaveDegradationsForTest()`
+  //     （`save.ts` 新增，理由与 `clearAssetDegradationsForTest` 同款），
+  //     否则「上一例留下的 `read` 降级」会漏给下一例。
+  clearSaveDegradationsForTest()
   writeSave({ currentUnitIndex: 0, masteredWordIds: [] }, null)
   clearAssetDegradationsForTest()
   // ⚠️ **会话录制也是模块级状态**（`app/store` 是单例），本文件原先漏了复位。
@@ -708,6 +722,14 @@ describe('[CR 2026-10-17] 面板先开着、之后才降级 ⇒ 它必须自己�
         '全靠 `noteDegradationsChanged()` 通知。面板说好了而实际也可能好了，' +
         '但反过来「说没好」会让家长反复去查一个已经修好的问题',
     ).toContain('没有降级项')
+    // ⚠️📎 **`[CR]` 2026-10-21 第二轮补一条更精确的判据**：
+    //   「没有降级项」是**面板的空态文案** —— 它在「降级段压根没渲染出来」时
+    //   也可能照样出现 ⇒ 单看它证明不了「**这一条**被清掉了」。
+    //   ⇒ 补一条「`key=parse` 不在了」：它问的是**具体那一项**。
+    expect(
+      panel.text(),
+      '底层已经清掉的那一条（key=parse）还挂在面板上 —— 精确判据，别只看空态文案。',
+    ).not.toContain('key=parse')
   })
 
   it('反向自测：没有订阅时这条判据会红（证明它不是恒绿）', async () => {

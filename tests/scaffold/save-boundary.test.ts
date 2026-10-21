@@ -36,7 +36,14 @@ import { resolve } from 'node:path'
 import { Linter } from 'eslint'
 import { beforeAll, describe, expect, it } from 'vitest'
 
+import eslintConfig from '../../eslint.config.js'
 import { PROBE_FILES, probeFilesExist, rulesForFile, severityOf } from '../fixtures/eslint-rules'
+
+/** eslint flat config 的一个块（本仓只用到 `files` 与 `rules`）。 */
+interface EslintBlock {
+  files?: string | string[]
+  rules?: Record<string, unknown>
+}
 
 /** 读源码；测试目录在仓库内，故以 `process.cwd()` 为基准（与 `PROBE_FILES` 一致）。 */
 function readSource(relPath: string): string {
@@ -410,6 +417,45 @@ describe('G83 —— ESLint：禁令仍守 core/ 与 content/，且不外溢到 
     //   就必须让名单能被当成普通字符串查**。收窄类型反而挡住了判据本身。
   ] satisfies readonly string[]
 
+  /**
+   * 📎 `[CR]` 2026-10-21 第二轮：eslint 配置里「**只禁 await**」那一块的 `files`。
+   *
+   * ⚠️ **为什么直接读配置文件**（而不是问 ESLint 的最终生效结果）：
+   *   `rulesForFile()` 只能回答「**某个**文件在不在名单里」，
+   *   答不了「名单里**总共**有谁」—— 而「名单被扩大」正是本条要抓的。
+   *   ⚠️ 也**不能**对 `eslint.config.js` 做子串匹配：那份配置里到处是注释，
+   *   注释里逐字写着 `src/services/save.ts` 之类的路径（为什么不能禁它、为什么它合理需要 await）
+   *   —— 子串匹配数到的会是**注释**（R-52）。
+   *   ⇒ 求值**真实配置**（与 `tests/scaffold/audio-unlock-guard.test.ts` 同一姿势）。
+   *
+   * ⚠️ **为什么要挑出「只禁 await」的那一个块**：flat config 里同名规则**后块覆盖前块**，
+   *   禁 `.then()` 的那个块（`src/app/audio-unlock.ts`）**也**禁 `AwaitExpression`
+   *   —— 它是**另一个**文件、**另一条**规则（配置文件自己的注释逐字记着这个坑）。
+   *   把两个块混在一起数，名单就永远对不上「那三个」。
+   */
+  async function awaitBanFiles(): Promise<readonly string[]> {
+    const blocks = eslintConfig as unknown as EslintBlock[]
+    const owners = blocks.filter((block) => {
+      const rule = block.rules?.['no-restricted-syntax']
+      if (!Array.isArray(rule)) return false
+      const entries = rule.slice(1) as readonly { readonly selector?: string }[]
+      const bansAwait = entries.some((e) => e.selector === 'AwaitExpression')
+      const bansThen = entries.some((e) => (e.selector ?? '').includes("property.name='then'"))
+      return bansAwait && !bansThen
+    })
+    if (owners.length !== 1) {
+      // ⚠️ 构造失效**当场抛**：静默返回空数组会让下面那条断言变成「名单是空的」
+      //   ⇒ 反而「通过」—— 那是一条恒绿守卫。
+      throw new Error(
+        `构造失效：期望恰好 1 个「只禁 await」的 eslint 块，实际 ${owners.length} 个 —— ` +
+          '判据问的不是它了，先修判据',
+      )
+    }
+    const files = owners[0].files
+    if (files === undefined) return []
+    return Array.isArray(files) ? files : [files]
+  }
+
   it('G218：禁 await 名单逐字覆盖那三个文件（放宽别的不能顺手放宽它）', async () => {
     await Promise.all(
       AWAIT_BANNED.map(async (path) => {
@@ -432,6 +478,31 @@ describe('G83 —— ESLint：禁令仍守 core/ 与 content/，且不外溢到 
       AWAIT_BANNED.includes('src/services/save.ts'),
       '判据自检：save.ts 不该被写进禁 await 名单里',
     ).toBe(false)
+  })
+
+  // 📎📎 `[CR]` 2026-10-21 第二轮新增 —— 把「那三个文件」从**逐个查**改成**整张对账**。
+  //
+  // ⚠️ **原来那条不够**：它逐个查那三个文件「在不在名单里」，
+  //   却**没查「名单里还有没有别人」** ⇒ 往那个块里加第 4 个文件，它照样全绿。
+  //   而那个块是「**只禁 await**」的那一个（另一个块还禁 `.then()`）——
+  //   加进去的文件**立刻**不许写 await，而这个变化**不报错、不变红**
+  //   （要等到下一个人真的写 await 才炸，那时它已经长在配置里很久了）。
+  //   ⚠️ 配置文件自己的注释逐字写着「Story 1.14 的 save.ts 合理需要 await」——
+  //     名单被悄悄扩大，正是「改配置时顺手」会发生的事。
+  //
+  // 📎 **怎么问才准**：直接读**配置文件本身**（flat config 的数组），
+  //   找出「拥有 `no-restricted-syntax`、禁 `AwaitExpression`、**且不**禁 `.then()`」
+  //   的那**一个**块，把它的 `files` 与期望名单**对账**（集合相等，不只是包含）。
+  it('G218：禁 await 名单**逐字就是**那三个文件（不多不少）', async () => {
+    const files = await awaitBanFiles()
+
+    expect(
+      [...files].sort(),
+      '🔴 禁 await 的名单与「那三个文件」不相等 —— 名单被扩大了：' +
+        '被加进去的文件立刻不许写 await，而这个变化不报错、不变红。' +
+        '（配置文件自己的注释写着「Story 1.14 的 save.ts 合理需要 await」——' +
+        '往那个块里顺手加一行是最容易犯的那种。）',
+    ).toEqual([...AWAIT_BANNED].sort())
   })
 })
 

@@ -106,6 +106,28 @@ function onlySaveEffect(prev: State, next: State): { readonly currentGame: State
   return one
 }
 
+/**
+ * 📎 **`[CR]` 2026-10-21 第二轮：G215 的判据本体 —— 抽到模块级并导出。**
+ *
+ * ⚠️ **为什么要导出**（AC-13「判据单一导出」）：守卫与「反向自测」必须是**同一份**判据。
+ *   原来判据是个写在 `it()` 里的局部 lambda，而守卫那一侧断言的是 `toEqual(['clear'])`
+ *   —— 那是**两份**判据 ⇒ 反向自测证明的只是「我临时写的那份 lambda 认得出差别」，
+ *   **证明不了守卫的鉴别力**。
+ *   ⇒ 现在守卫与自测都调这一个函数：守卫问「当前实现合规吗」，自测问
+ *     「旧写法会被判不合规吗」—— 两边同一份判据，改弱了它两边一起弱。
+ *
+ * @returns 违规原因；`null` 表示合规。
+ */
+export function clearDegradationVerdict(keys: readonly string[]): string | null {
+  if (keys.includes('read')) {
+    return '把「删不掉」登记成了 read —— 面板会照着 read 告诉家长「根本读不到存档」'
+  }
+  if (!keys.includes('clear')) {
+    return '没有登记 clear —— 「删不掉」这件事在降级表里查不到'
+  }
+  return null
+}
+
 // ══════════════════════════════════════════════════════════════════════════
 
 describe('AC-B3 / G74 —— writeSave 的返回值逐字区分「存上了」与「没存上」', () => {
@@ -198,7 +220,10 @@ describe('AC-B7 / G75 —— 存档内容坏了：读不出来、降级为 parse
     )
 
     expect(saveApi.readSave(), '缺 masteredWordIds 的 progress 不是 Progress').toBeNull()
-    expect(saveApi.saveDegradations().map((d) => d.key)).toEqual(['parse'])
+    expect(
+      saveApi.saveDegradations().map((d) => d.key),
+      'progress 字段不完整 ⇒ 归 parse（不是 schema-version）—— 归错会让 1.17 对家长说错原因',
+    ).toEqual(['parse'])
   })
 })
 
@@ -665,7 +690,10 @@ describe('AC-B7 —— readSave 的两条 null 语义可区分', () => {
 describe('G215 —— clearSave 的 catch：可达、且登记的键不冒充 read', () => {
   it('前置：throwOnRemove 真的能让 removeItem 抛（判据自检，否则下面两条是空转）', () => {
     storage.throwOnRemove = true
-    expect(() => storage.removeItem(saveApi.SAVE_KEY)).toThrow(/removeItem/)
+    expect(
+      () => storage.removeItem(saveApi.SAVE_KEY),
+      '判据自检：throwOnRemove 必须真的能让 removeItem 抛 —— 否则下面两条是空转',
+    ).toThrow(/removeItem/)
     storage.throwOnRemove = false
   })
 
@@ -679,9 +707,9 @@ describe('G215 —— clearSave 的 catch：可达、且登记的键不冒充 re
     const keys = saveApi.saveDegradations().map((d) => d.key)
     expect(saveApi.isSaveDegraded(), '删不掉必须登记降级，否则面板一个字都不显示').toBe(true)
     expect(
-      keys,
+      clearDegradationVerdict(keys),
       '「删不掉」不是「读不到」—— 登记成 read 会让面板对家长说错原因（AC-B4 的 key 语义）',
-    ).toEqual(['clear'])
+    ).toBeNull()
     expect(keys, '反向：绝不能是 read').not.toContain('read')
     warn.mockRestore()
   })
@@ -692,11 +720,24 @@ describe('G215 —— clearSave 的 catch：可达、且登记的键不冒充 re
     saveApi.writeSave(busyProgress(), null)
     saveApi.clearSave()
 
-    // 判据本体抽出来喂「旧写法」—— 不改生产代码，只证明这条判据认得出差别。
-    const judge = (keys: readonly string[]): boolean =>
-      keys.includes('clear') && !keys.includes('read')
-    expect(judge(saveApi.saveDegradations().map((d) => d.key)), '当前实现应判过').toBe(true)
-    expect(judge(['read']), "旧写法 ['read'] 必须判不过 —— 否则本条守卫恒真").toBe(false)
+    // ⚠️📎 **`[CR]` 2026-10-21 第二轮：判据本体抽到模块级（AC-13「判据单一导出」）。**
+    //   原来这个判据是个**写在 `it()` 里的局部 lambda** —— 守卫那一侧断言的是
+    //   `toEqual(['clear'])`，反向自测那一侧断言的是**另一个** lambda。
+    //   两者是**两份**判据 ⇒ 反向自测证明的是「我写的那份 lambda 认得出差别」，
+    //   **不是**「守卫用的那条判据认得出差别」⇒ 它证明不了守卫的鉴别力。
+    //   ⇒ 现在守卫与自测**共用同一份**（见文件里那份导出的 `clearDegradationVerdict`）。
+    expect(
+      clearDegradationVerdict(saveApi.saveDegradations().map((d) => d.key)),
+      '当前实现应判过',
+    ).toBeNull()
+    expect(
+      clearDegradationVerdict(['read']),
+      "旧写法 ['read'] 必须判不过 —— 否则本条守卫恒真",
+    ).not.toBeNull()
+    expect(
+      clearDegradationVerdict([]),
+      '一条都没登记也必须判不过 —— 「删不掉」必须留痕，否则面板一个字都不显示',
+    ).not.toBeNull()
     warn.mockRestore()
   })
 })
@@ -736,9 +777,13 @@ describe('[CR 2026-10-17] 增与删**四条路径**都要发信号', () => {
   })
 
   // ⚠️📎 **「清空」那几条比「登记」更容易被漏掉**：登记路径全部汇进 `markDegraded`
-  //   一个函数，而清空散在 `writeSave` / `readSave` / `clearSave` **三处** `degraded.clear()`
+  //   一个函数，而「清空」散在 `writeSave` / `readSave` / `clearSave` **三处**
   //   —— 每处都得记得跟一句通知。评审变异实测：删掉其中任意一处通知，
   //   只判「登记」的判据**全绿**。
+  // 📎 **`[CR]` 2026-10-21 第二轮更正**：原文逐字写的是「三处 `degraded.clear()`」——
+  //   而那三处**早就不写** `degraded.clear()` 了：现在统一走 `resolveDegradations(...)`
+  //   （各自只清自己那侧），**通知也由它统一发**（`if (changed)` 才发，空转不广播）。
+  //   ⇒ 这句注释逐字描述的是一个**已经不存在的写法** —— 别让注释守着旧代码（R-37）。
   it('写成功清空降级项：版本号递增 **且** 订阅被调用', () => {
     storage.throwOnSet = true
     saveApi.writeSave(freshProgress(), null)
@@ -793,9 +838,21 @@ describe('[CR 2026-10-17] 增与删**四条路径**都要发信号', () => {
   })
 
   it('`clearSave()` 的清空也发信号', () => {
-    storage.throwOnSet = true
-    saveApi.writeSave(freshProgress(), null)
-    storage.throwOnSet = false
+    // ⚠️📎 **`[CR]` 2026-10-21 第二轮改夹具，按 R-57 留痕。**
+    //   原来这条用例靠 `throwOnSet` 造一条 **`write`** 降级，再靠 `clearSave()` 全清它。
+    //   而 **`clearSave()` 现在刻意不清 `write`**（守卫 G244：一次成功的 `removeItem`
+    //   证不了 `setItem` 写得进去）⇒ 原夹具下这条用例会**恒红**，
+    //   而且红得有道理：它测的其实是「clearSave 会把 `write` 一起抹掉」那个
+    //   **已被判为缺陷**的行为。
+    //   ⇒ 换成 `clearSave` **确实**能清掉的那一项（`parse`：坏字节被删掉了）。
+    //     登记 `parse` 的路子是「盘上躺着一段非 JSON」→ `readSave()` 读不懂。
+    storage.data.set(saveApi.SAVE_KEY, '不是 JSON')
+    saveApi.readSave()
+    expect(
+      saveApi.saveDegradations().map((d) => d.key),
+      '前置：确实登记了一条 parse —— 造不出来的话下面全在空转',
+    ).toEqual(['parse'])
+
     const before = saveApi.saveDegradationsVersion()
     let fired = 0
     const off = saveApi.onSaveDegradationsChanged(() => {
@@ -804,7 +861,7 @@ describe('[CR 2026-10-17] 增与删**四条路径**都要发信号', () => {
 
     saveApi.clearSave()
 
-    expect(saveApi.saveDegradations()).toHaveLength(0)
+    expect(saveApi.saveDegradations(), '盘上什么都不剩了 ⇒ parse 不再描述任何东西').toHaveLength(0)
     expect(saveApi.saveDegradationsVersion(), 'clearSave 的清空漏了').toBeGreaterThan(before)
     expect(fired, 'clearSave 的清空没通知').toBe(1)
     off()
@@ -895,7 +952,10 @@ describe('G222 —— 一次成功只清自己那侧，降级项的语义是「�
     //   ⇒ 正确的构造是：**把好字节放回盘上再读一次**。
     storage.data.set(saveApi.SAVE_KEY, '不是 JSON')
     saveApi.readSave()
-    expect(saveApi.saveDegradations().map((d) => d.key)).toEqual(['parse'])
+    expect(
+      saveApi.saveDegradations().map((d) => d.key),
+      '前置：坏 JSON 必须登记 parse —— 造不出来的话下面「清掉它」是空转',
+    ).toEqual(['parse'])
     expect(
       saveApi.readSave(),
       '前置：坏 JSON 那次必须返回 null —— 返回了有值说明内容层收窄了',
@@ -916,15 +976,29 @@ describe('G222 —— 一次成功只清自己那侧，降级项的语义是「�
     ).toHaveLength(0)
   })
 
-  it('`clearSave()` 仍然全清 —— 没有数据就没有毛病可描述', () => {
+  it('🔴 `clearSave()` **不再**全清 —— 删得掉证不了写得进去', () => {
+    // ⚠️📎 **`[CR]` 2026-10-21 第二轮改判据，按 R-57 留痕。**
+    //   原文逐字是「`clearSave()` 仍然全清 —— 没有数据就没有毛病可描述」，
+    //   断言 `toHaveLength(0)`。
+    //   ⇒ **判据整个翻过来了**：全清是**错的**。
+    //   理由：一次成功的 `removeItem` 只证明**删得掉** ——
+    //     证不了 `setItem` 写得进去（**配额满时 `removeItem` 照样成功**），
+    //     也证不了 `getItem` 读得到。
+    //   ⇒ 而「存不进去」这件事在**清档之后依然成立**（配额还是满的）；
+    //     全清会让面板从「存不进去」变成「存档正常」——
+    //     与本 describe 里另外两条守的是**同一个失败形态**，只是这条路是「清档」。
+    //   ⇒ 守卫 G244 逐键钉住新语义（变异 M291 实测它会红）。
     seedWriteDegradation()
 
     saveApi.clearSave()
 
     expect(
-      saveApi.saveDegradations(),
-      'clearSave 之后盘上什么都不剩 ⇒ 全部降级项都该消失（这是唯一合法的全清）',
-    ).toHaveLength(0)
+      saveApi.saveDegradations().map((d) => d.key),
+      '🔴 clearSave 把在册的 write 降级抹掉了 —— 删得掉证不了写得进去；' +
+        '家长点一次「重置进度」，面板就从「存不进去」变成「存档正常」，' +
+        '而孩子此后每一次落盘都在丢进度。',
+    ).toEqual(['write'])
+    expect(saveApi.isSaveDegraded(), '写侧仍在降级 ⇒ 面板必须仍在显示').toBe(true)
   })
 
   it('没真的删到东西时**不**发信号（空转不广播）', () => {
@@ -945,5 +1019,143 @@ describe('G222 —— 一次成功只清自己那侧，降级项的语义是「�
     ).toBe(0)
     expect(saveApi.saveDegradationsVersion(), '版本号不该因空转而递增').toBe(before)
     off()
+  })
+})
+
+// ════════════════════════════════════════════════════════════════════════
+// [CR] 2026-10-21（Story 1.15 评审第二轮）—— 空读与清档的清理范围
+// ════════════════════════════════════════════════════════════════════════
+
+/**
+ * 🚨📎 **G243 —— 一次成功的 `getItem`（**哪怕读到 `null`**）能撤掉 `read` 降级。**
+ *
+ * ── 它守的是什么 ───────────────────────────────────────────────────────────
+ * `'read'` 这条降级项成立的**唯一**原因是 `localStorage.getItem` **抛了错**
+ * （无痕模式 / 存储被系统禁用 / 权限被拒）。
+ * ⇒ 一旦 `getItem` **成功返回了**（哪怕返回 `null`），「读不到」这件事就不成立了。
+ *
+ * ⚠️ **不撤的后果不是「多显示一条」，而是「永久误导」**：
+ *   一次性的存储故障（浏览器隐私设置被临时改、无痕模式退出、系统清理存储后恢复）
+ *   会让 1.17 的面板**永远**挂着「读不到存档 —— 浏览器可能禁用了本地存储」
+ *   ⇒ 家长去查浏览器的隐私设置 ⇒ 查不出问题 ⇒ 这块面板从此成了一块摆设。
+ *
+ * ⚠️ **判据的方向**：不是断言「表空了」，而是断言「**该留的还在**」——
+ *   一次空读只证得了「**读侧**通了」，证不得「**写侧**也通了」，
+ *   所以 `write` 必须**仍然在册**（否则就成了 G222 守的「全清」那个缺陷）。
+ */
+describe('G243 —— 一次成功的 getItem（哪怕是空读）撤掉 read 降级，但不碰 write', () => {
+  it('读侧坏过一次之后，一次成功的空读把它撤掉', () => {
+    storage.throwOnGet = true
+    saveApi.readSave()
+    expect(
+      saveApi.saveDegradations().map((d) => d.key),
+      '前置：确实登记了一条 read —— 造不出来的话下面在空转',
+    ).toEqual(['read'])
+    storage.throwOnGet = false
+
+    // 盘上没有存档 ⇒ getItem 成功返回 null（**不是**抛错）。
+    const back = saveApi.readSave()
+
+    expect(back, '前置：这次读的是「没有存档」，不是「读失败」').toBeNull()
+    expect(
+      saveApi.saveDegradations().map((d) => d.key),
+      '🔴 一次成功的空读没有撤掉 read 降级 —— 存储早就修好了，' +
+        '面板却会永远告诉家长「读不到存档」，家长去查浏览器设置、查不出问题。',
+    ).toEqual([])
+  })
+
+  it('空读只清读侧：写侧仍在降级时必须**留着**（与 G222 同一原则）', () => {
+    // 造一条 `write` 降级（配额满）—— 写失败 ⇒ 盘上**没有**数据。
+    storage.throwOnSet = true
+    saveApi.writeSave(freshProgress(), null)
+    expect(
+      saveApi.saveDegradations().map((d) => d.key),
+      '前置：确实登记了一条 write',
+    ).toEqual(['write'])
+    expect(storage.data.size, '前置：写失败了，盘上确实没有数据 ⇒ 下一次读是空读').toBe(0)
+    storage.throwOnSet = false
+
+    saveApi.readSave()
+
+    expect(
+      saveApi.saveDegradations().map((d) => d.key),
+      '🔴 一次空读把在册的 write 降级抹掉了 —— 读得到说不了写得进去；' +
+        '配额还是满的，孩子此后每一次落盘都在丢进度，而面板说「存档正常」。',
+    ).toEqual(['write'])
+  })
+})
+
+/**
+ * 🚨📎 **G244 —— `clearSave()` 不得抹掉 `write` / `read` 两条。**
+ *
+ * ── 它守的是什么 ───────────────────────────────────────────────────────────
+ * 一次成功的 `removeItem` 只证明**删得掉**：
+ *   · 证不了 `setItem` 写得进去 —— **配额满时 `removeItem` 照样成功**；
+ *   · 证不了 `getItem` 读得到 —— 读侧失败是 `getItem` 抛，与删不删无关。
+ * ⇒ 原来那句 `degraded.clear()` 会把在册的 `write` 一起抹掉。
+ *   真实场景：配额满 ⇒ 记 `write` ⇒ 家长在调试面板点「重置进度」
+ *   ⇒ `clearSave()` 成功 ⇒ 全清 ⇒ **面板从「存不进去」变成「存档正常」**
+ *   ⇒ 而孩子此后每一次落盘都在丢进度。
+ * ⇒ 这与 G222 守的「一次成功只清自己那侧」是**同一个失败形态**，
+ *   只是那条发生在读写之间，这一条发生在**清档**这条路上。
+ *
+ * ⚠️ **判据的方向**：断言「**该留的还在**」，不是「表空了」——
+ *   「表空了」正是本 story 原本那条会误判的判据。
+ */
+describe('G244 —— clearSave 只清「描述盘上这份数据」的那几项', () => {
+  it('清档不得抹掉在册的 `write` 降级（配额满：删得掉，写不进去）', () => {
+    storage.throwOnSet = true
+    saveApi.writeSave(freshProgress(), null)
+    expect(
+      saveApi.saveDegradations().map((d) => d.key),
+      '前置：确实登记了一条 write',
+    ).toEqual(['write'])
+    storage.throwOnSet = false
+
+    saveApi.clearSave()
+
+    expect(
+      saveApi.saveDegradations().map((d) => d.key),
+      '🔴 clearSave 把在册的 write 降级抹掉了 —— 删得掉证不了写得进去；' +
+        '家长点一次「重置进度」，面板就从「存不进去」变成「存档正常」，' +
+        '而孩子此后每一次落盘都在丢进度。',
+    ).toEqual(['write'])
+    expect(saveApi.isSaveDegraded(), '写侧仍在降级 ⇒ 面板必须仍在显示').toBe(true)
+  })
+
+  it('清档不得抹掉在册的 `read` 降级（读侧坏过就是坏过，与删不删无关）', () => {
+    storage.throwOnGet = true
+    saveApi.readSave()
+    expect(
+      saveApi.saveDegradations().map((d) => d.key),
+      '前置：确实登记了一条 read',
+    ).toEqual(['read'])
+    storage.throwOnGet = false
+
+    saveApi.clearSave()
+
+    expect(
+      saveApi.saveDegradations().map((d) => d.key),
+      '🔴 clearSave 把在册的 read 降级抹掉了 —— 删得掉证不了读得到；' +
+        '无痕模式读档失败正是本文件头逐字点名的「静默丢进度」形态。',
+    ).toEqual(['read'])
+  })
+
+  it('清档**确实**清掉「描述盘上这份数据」的那几项（不是什么都不清）', () => {
+    // 盘上躺着一段非 JSON ⇒ 读它会登记 `parse`。
+    storage.data.set(saveApi.SAVE_KEY, '不是 JSON')
+    saveApi.readSave()
+    expect(
+      saveApi.saveDegradations().map((d) => d.key),
+      '前置：确实登记了一条 parse',
+    ).toEqual(['parse'])
+
+    saveApi.clearSave()
+
+    expect(
+      saveApi.saveDegradations().map((d) => d.key),
+      '盘上什么都不剩了 ⇒ 「字节坏了」不再描述任何东西 ⇒ 必须被清掉。' +
+        '（这一条是反向侧：只守「不许清」会退化成「什么都不许清」。）',
+    ).toEqual([])
   })
 })

@@ -87,7 +87,7 @@ export interface SaveDegradation {
  * 降级项的分类 —— 「**哪一步坏了**」。
  *
  * ⚠️ AC-B5 逐字写的是**三个** key（`'write' | 'parse' | 'schema-version'`），
- * 而这里是**五个** —— 多出来的两条各自有理由，且**都不在 AC 的字面范围内**：
+ * 而这里是**六个** —— 多出来的**三条**各自有理由，且**都不在 AC 的字面范围内**：
  *
  * · `read` —— `epics.md` 的 AC 点的是三条失败路径，`localStorage` **读**失败不在其中。
  *   但它**真实且常见**：无痕模式下取 `localStorage` 属性本身就抛 SecurityError。
@@ -149,6 +149,19 @@ export type SaveDegradationKey =
  *     而那正是本文件头逐字点名的「静默丢进度」形态。
  *   ⇒ 「读到一份好存档」不等于「存得进去」。这两件事今天被当成了一件事。
  *   守卫 **G222** 逐键钉住（变异 M259 / M260）。
+ *
+ * 📎 **`[CR]` 2026-10-21 第二轮：清档也不再全清**（守卫 **G244**）。
+ *   原来 `clearSave()` 成功后写的是 `degraded.clear()` —— 那是**全清**。
+ *   而「一次成功的 `removeItem`」只能证明**删得掉**，证不了：
+ *   · `setItem` 写得进去（配额满时 `removeItem` 照样成功）；
+ *   · `getItem` 读得到（读侧失败是 `getItem` 抛，与删不删无关）。
+ *   ⇒ 全清的后果与 G222 那两条**完全同型**：配额满 ⇒ 记 `write` ⇒ 家长点一次
+ *     「重置进度」⇒ `clearSave()` 成功 ⇒ 全清 ⇒ **面板对家长说「存档正常」**，
+ *     而孩子此后每一次落盘都在丢进度。
+ *   ⇒ 现在 `clearSave()` 只清「**描述盘上这份数据**」的那几项
+ *     （`clear` / `parse` / `schema-version` / `invariant`）——
+ *     盘上什么都不剩了，那几项确实不再描述任何东西；
+ *     而 `write` / `read` 说的是**存储本身**的状态，删不删都还在。
  */
 const degraded = new Map<SaveDegradationKey, string>()
 
@@ -168,6 +181,45 @@ const RESOLVED_BY_WRITE: readonly SaveDegradationKey[] = [
  *   一次成功读档压根没碰到那份对局。
  */
 const RESOLVED_BY_READ: readonly SaveDegradationKey[] = ['read', 'parse', 'schema-version']
+
+/**
+ * 📎 **`[CR]` 2026-10-21 第二轮新增：一次成功的 `getItem`（**哪怕读到 `null`**）能证明的那几项。**
+ *
+ * ⚠️ **为什么空读也算证据**：`'read'` 的含义是「**根本读不到数据**」，
+ *   而它成立的**唯一**原因是 `localStorage.getItem` **抛了错**
+ *   （无痕模式 / 存储被系统禁用 / 权限被拒）。
+ *   ⇒ 一旦 `getItem` **成功返回了**（哪怕返回 `null`，意思是「盘上确实没有存档」），
+ *     「读不到」这件事就**不成立了** —— 存储是通的。
+ *   ⚠️ **反过来的错误更常见**：一个早就修好的存储问题，会让面板**永远**挂着
+ *     「读不到存档 —— 浏览器可能禁用了本地存储」，而实际上孩子正在正常玩。
+ *     家长看到这条会去查浏览器的隐私设置 —— 查不到问题 ⇒ 面板就成了一块摆设。
+ *   ⇒ 与 {@link RESOLVED_BY_READ} 的区别：那是「读到**好字节**」，
+ *     这条是「**读得到**（哪怕是空的）」—— 两者都证得了「读侧通了」，
+ *     但只有前者证得了「盘上那份字节是好的」。
+ *   ⇒ ⚠️ **刻意只含 `read`**：这条只管「**读得到吗**」这一个事实。
+ *     「盘上那份字节**是不是好的**」是另一个事实 —— 读到了好字节才证得了它
+ *     （`RESOLVED_BY_READ`）；而「那份字节**已经不在了**」是**清档**那侧的事实
+ *     （`RESOLVED_BY_CLEAR` 负责）。⇒ 三条名单各管一件事，不互相代办。
+ *
+ * 📎 守卫 **G243** 逐键钉住（变异 M290）。
+ */
+const RESOLVED_BY_EMPTY_READ: readonly SaveDegradationKey[] = ['read']
+
+/**
+ * 📎 **`[CR]` 2026-10-21 第二轮新增：一次成功的 `removeItem` 能证明的那几项。**
+ *
+ * ⚠️ **刻意不含 `write` 与 `read`**：删得掉说不了写得进去、也说不了读得到
+ *   （见 `degraded` 的注释里那一段）。这条与 {@link RESOLVED_BY_WRITE}、
+ *   {@link RESOLVED_BY_READ} 一起，把「一次成功只清自己那侧」补成了**三侧**。
+ *
+ * 📎 守卫 **G244** 逐键钉住（变异 M291）。
+ */
+const RESOLVED_BY_CLEAR: readonly SaveDegradationKey[] = [
+  'clear',
+  'parse',
+  'schema-version',
+  'invariant',
+]
 
 /**
  * 降级登记表的版本号 —— **只在 `degraded` 增删时递增**（`[CR]` 2026-10-17 补）。
@@ -348,6 +400,13 @@ export function readSave(): SaveFile | null {
 
   if (raw === null) {
     // 第一次玩。没有存档**不是失败**，不记降级（AC-B7 的表第一行）。
+    // ⚠️📎 `[CR]` 2026-10-21 第二轮：但**读侧**的降级项要清掉（守卫 G243 / 变异 M290）。
+    //   `getItem` **成功返回了**（返回 `null` 而不是抛错）⇒ 存储是通的
+    //   ⇒ 「读不到存档」这件事**不成立了** ⇒ 早先登记的那条 `read` 得撤掉。
+    //   ⚠️ 不撤的后果：一次性的存储故障（浏览器隐私设置被临时改、无痕模式退出）
+    //     会让面板**永远**挂着「读不到存档」⇒ 家长去查浏览器设置、查不出问题
+    //     ⇒ 这块面板从此成摆设。
+    resolveDegradations(RESOLVED_BY_EMPTY_READ)
     return null
   }
 
@@ -454,16 +513,38 @@ function isPlainObject(value: unknown): value is State {
  * 登记降级」，不是「删掉证据」。它存在是因为 1.17 的调试面板需要「重置进度」的落点。
  *
  * ⚠️ 调它**不会**登记降级项：删干净了就是没有存档，那是正常状态。
+ *
+ * 📎📎 **`[CR]` 2026-10-21 第二轮：它也**不再全清**降级表**（守卫 G244 / 变异 M291）。
+ *   一次成功的 `removeItem` 只证明**删得掉** —— 证不了 `setItem` 写得进去
+ *   （配额满时 `removeItem` 照样成功），也证不了 `getItem` 读得到。
+ *   ⇒ 原来那句 `degraded.clear()` 会把在册的 `write` 一起抹掉 ⇒
+ *     家长点一次「重置进度」，面板就从「存不进去」变成「存档正常」，
+ *     而孩子此后每一次落盘都在丢进度（与 G222 那两条同型）。
+ *   ⇒ 现在只清「描述**盘上这份数据**」的那几项（`RESOLVED_BY_CLEAR`）。
  */
 export function clearSave(): void {
   try {
     localStorage.removeItem(SAVE_KEY)
-    // 📎 **这里是唯一一处合法的全清**（`[CR]` 2026-10-21）：盘上**什么都不剩了**，
-    //   而降级项的语义是「描述盘上这份数据的毛病」—— 没有数据，就没有毛病可描述。
-    //   `writeSave` / `readSave` 那两处不行，它们只能证明**自己那一侧**恢复了。
-    degraded.clear()
-    noteDegradationsChanged()
+    // 盘上什么都不剩了 ⇒ 「字节坏了」「版本不对」「对局非法」不再描述任何东西。
+    // ⚠️ **刻意不碰 `write` / `read`**：它们说的是**存储本身**的状态，与盘上有无数据无关。
+    resolveDegradations(RESOLVED_BY_CLEAR)
   } catch (err) {
     markDegraded('clear', `清不掉存档（${describe(err)}）—— 浏览器可能禁用了本地存储`)
   }
+}
+
+/**
+ * 📎 **`[CR]` 2026-10-21 第二轮新增：清空降级登记表 —— **只给测试用**。**
+ *
+ * ⚠️ **生产代码不许调它**。`clearSave()` 是有真实语义的「玩家要求清档」，
+ *   而它**刻意不清** `write` / `read`（见上）⇒ **它不是登记表的重置**。
+ *   ⇒ 需要一份干净登记表给下一条用例时，只能用本函数。
+ * ⚠️ 之所以要有它：`degraded` 是**模块级** `Map`，不会自动复位 ——
+ *   而「没有降级项时不露『重试写入』按钮」这类判据**必须**在空表上成立。
+ *   命名带 `ForTest` 就是为了让任何误用都在 code review 里一眼看见
+ *   （与 `services/asset-degradations.ts` 的 `clearAssetDegradationsForTest` 同款）。
+ */
+export function clearSaveDegradationsForTest(): void {
+  degraded.clear()
+  noteDegradationsChanged()
 }

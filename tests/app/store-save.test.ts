@@ -309,3 +309,77 @@ describe('AC-D4 —— 恢复失败安全降级：不抛、不弹窗、照常开
     ).toEqual(['read'])
   })
 })
+
+/**
+ * 🚨📎 **`[CR]` 2026-10-21 第二轮新增：G245 —— AC-C5 的**第二半句**此前**没有任何守卫**。**
+ *
+ * ── 它守的是什么 ───────────────────────────────────────────────────────────
+ * AC-C5 逐字：「而**从内存恢复后立刻再存一次**，`progress` 与恢复进来的那份逐字相等。」
+ *
+ * ⚠️ **story 文档此前声称它有守卫 —— 那个声称是错的**：
+ *   它指的是 `tests/app/save-integration.test.ts` 的「落盘结果能被 `readSave` 原样读回
+ *   （端到端闭合）」—— 而那是**同一个常量写进去再读出来**（写→读往返），
+ *   **中间根本没有「恢复」这一步** ⇒ 它证明的是「`writeSave` 忠实搬运它拿到的东西」，
+ *   **不是**「从存档恢复之后，再存一次，落盘的仍与恢复进来的那份逐字相等」。
+ *   ⇒ AC 的第二半句**零守卫覆盖**（守卫编号 G175 那条守着的是别的）。
+ *
+ * ── 为什么这条 AC 值得守 ───────────────────────────────────────────────────
+ * 「恢复 → 再存一次」是**断点续学的常态路径**（孩子刷新页面 ⇒ 恢复 ⇒ 玩 ⇒ 落盘）。
+ * 若恢复过程**动过**进度（少一条已掌握的词、把单元号重置成 0），
+ * 那么**第一次落盘就会把这份损坏的进度写进盘上** ⇒ 一次刷新就把孩子的跨局成果抹掉，
+ * 而界面上看不出任何异常（进度条只是少了几格）。
+ * ⚠️ 旧实现里**真的有过**这个 bug：`restoreFromSave` 的 catch 分支曾写
+ *   `progress.value = { currentUnitIndex: 0, masteredWordIds: [] }` ——
+ *   一次内容回滚就把孩子全部跨局已学清空（已由 1.19 的裁决 1 修掉，
+ *   但**成功路径**至今没有守卫）。
+ */
+describe('G245 —— 从存档恢复后立刻再存一次：落盘的与恢复进来的那份逐字相等', () => {
+  it('恢复 → 再存一次 ⇒ 盘上的 progress 与**盘上原来那份**逐字相等', () => {
+    const game = advancedState()
+    seedSave(busyProgress, game)
+
+    store.enterLevel()
+
+    expect(
+      store.progress.value,
+      '前置：恢复确实把存档里那份进度喂了回来 —— 不成立的话下面在空转',
+    ).toEqual(busyProgress)
+
+    // 「立刻再存一次」：app 层把**恢复后的内存态**原样落盘。
+    // ⚠️ 刻意**不**走 `applyAction`：那会推进一回合，进度自然就变了，
+    //   而 AC 这一句问的是「恢复 ⇒ 再存」这条**原样**的往返。
+    saveApi.writeSave(store.progress.value, store.state.value)
+
+    const back = saveApi.readSave()
+    expect(back, '前置：再存一次之后读得回来').not.toBeNull()
+    expect(
+      back?.progress,
+      '🔴 恢复后再存一次，落盘的 progress 与恢复进来的那份**不**逐字相等 —— ' +
+        '这意味着恢复过程动过进度，而第一次落盘就会把这份损坏写进盘上，' +
+        '一次刷新就把孩子的跨局成果抹掉，且界面上看不出任何异常。',
+    ).toEqual(busyProgress)
+  })
+
+  it('恢复 → 再存一次 ⇒ **那一局**还在（不是被换成了初始局面）', () => {
+    const game = advancedState()
+    seedSave(busyProgress, game)
+
+    store.enterLevel()
+    saveApi.writeSave(store.progress.value, store.state.value)
+
+    const back = saveApi.readSave()
+    expect(back, '前置：再存一次之后读得回来').not.toBeNull()
+    // ⚠️ 断言**局面的形状**而不是整个对象逐字相等：恢复路径上有一道**规范化**
+    //   （`dropOutOfDeckSkipped` / `backfillLegacyBuildPhase`，1.18/1.19 加的），
+    //   它可能给旧存档补字段 ⇒ 逐字相等会把「合法的规范化」也判成违规。
+    expect(
+      back?.currentGame?.turn,
+      '🔴 恢复后再存一次，在途的那一局不见了 —— 孩子刷新一次就回到这一局的起点，' +
+        '而进度条还停在他刚才的位置。',
+    ).toBe(game.turn)
+    expect(
+      back?.currentGame?.towers.length,
+      '🔴 恢复后再存一次，已种下的塔不见了 —— 断点续学续的是「半局」，不是「重开」。',
+    ).toBe(game.towers.length)
+  })
+})

@@ -43,7 +43,7 @@ import {
   onAssetDegradationsChanged,
 } from '../../src/services/asset-degradations'
 import { audioDegradations } from '../../src/services/audio'
-import { clearSave, saveDegradations, writeSave } from '../../src/services/save'
+import { clearSave, clearSaveDegradationsForTest, saveDegradations, writeSave } from '../../src/services/save'
 import LevelView from '../../src/views/LevelView.vue'
 
 import {
@@ -69,6 +69,14 @@ beforeEach(() => {
   resetFakeAudio()
   state.value = createInitialState({ unitNumber: 1, deck: DECK })
   clearAssetDegradationsForTest()
+  // 📎 **`[CR]` 2026-10-21 第二轮补**：存档那个降级登记表也是**模块级** `Map`
+  //   （本文件的 import 是**静态**的 ⇒ `vi.resetModules()` 对它无效）。
+  //   ⇒ 上一例登记的 `write` 会漏给下一例 —— 而「没有降级项时不露按钮」那条
+  //     **必须**在空表上才成立，漏清就会变成**靠执行顺序的运气**。
+  //   ⚠️ 复位**不能**用 `clearSave()`：它有真实语义（清档），
+  //     而且 `[CR]` 第二轮起它**刻意不清** `write` / `read`
+  //     （守卫 G244：删得掉证不了写得进去）⇒ 它**不是**登记表的重置。
+  clearSaveDegradationsForTest()
 })
 
 afterEachUninstall()
@@ -285,7 +293,17 @@ describe('G115 —— 「重试写入」真的重写一次并让降级项消失�
     await panel.find('button[data-action="retry-save-write"]').trigger('click')
     await panel.vm.$nextTick()
 
-    expect(saveDegradations(), '写成功了，降级项必须由 save.ts 自己清掉').toEqual([])
+    // ⚠️📎 **`[CR]` 2026-10-21 第二轮改判据方向**（从「表空了」改成「该留的还在」）。
+    //   原来逐字是 `expect(saveDegradations(), …).toEqual([])` ——
+    //   那是**「表空了」**方向：它会顺带要求「**别的**降级项也都不许在」，
+    //   而本文件的前一条用例（`路径三`）刚好在盘上留了一条 `write` ——
+    //   ⇒ 这条断言能不能过，取决于**前面那条用例跑没跑**、跑成什么样。
+    //   正确的问法是「**写侧那条降级项**有没有被清掉」。
+    expect(
+      saveDegradations().map((d) => d.key),
+      '🔴 写成功了，`write` 降级项却还在 —— 面板会一直挂着「存不进去」，' +
+        '而存储其实已经好了（家长会反复去查一个已经修好的问题）。',
+    ).not.toContain('write')
     expect(storage.data.size, '「重试写入」必须真的写下去一盘 —— 否则它只是个清标志的按钮').toBe(1)
     const panel2 = mount(DebugPanel)
     expect(panel2.text(), '面板要刷新到「没有降级项」').toContain('没有降级项')

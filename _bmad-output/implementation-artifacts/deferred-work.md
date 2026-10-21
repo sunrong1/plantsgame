@@ -1145,7 +1145,12 @@ Story 1.12 之后的 `SunCounter` / `HeartRow` / `ProgressBar` 一类**尺寸类
   **恢复条件**：若 1.15 存档格式要求「本存档累计获得多少阳光」，
   或 1.17 的 DebugPanel 要显示它 ⇒ 走 `[CC]` 加字段，**不要**在 1.13 补。
 
-### 3. `progress` 是内存态，进度条在刷新页面后归零（裁决 3）—— 归 1.15
+### 3. `progress` 是内存态，进度条在刷新页面后归零（裁决 3）—— 归 1.15 ✅ **已结（Story 1.15 `[DS]`）**
+
+> 📎 **2026-10-21 复审补标**（R-35：结清要在**原条目**上标注，不只在顶部汇总表里）：
+> **已达成** —— `src/services/save.ts` 按 `schemaVersion` 序列化 `{ currentUnitIndex, masteredWordIds }`
+> 两个键（键名逐字未改），`enterLevel()` 读档时**原样喂回** `progress` ref，**未做任何版本迁移**。
+> 守卫 **G74 / G78**（G78 = R-06 的正式守卫）。详见本文件顶部汇总表第 40 行。
 
 - 形状逐字锁死为 `game-architecture.md` 决策 5 的 `SaveFile['progress']`：
   `{ currentUnitIndex, masteredWordIds }` 两个键，**键名一个都不许改**。
@@ -1288,6 +1293,12 @@ Story 1.12 之后的 `SunCounter` / `HeartRow` / `ProgressBar` 一类**尺寸类
 另有 2 条 dismissed 未登记（见下），以及 13 条 patch 挂在 story 的 `### Review Findings`。
 
 - **`unitTotal` 的 computed 在渲染期可 throw（1.15 读档后的第一条失败链）** — `src/views/LevelView.vue:65`
+  ✅ **已结（Story 1.15 `[DS]` + `[CR]`）** —— `LevelView.vue` 的 `unitTotal` 改成 try/catch，
+  取不到单元就退回 `0` 并记 WARN（`0` 是 `core/hud.ts` 的 `progressDisplay` 早已定义的形状）。
+  ⚠️ **2026-10-21 复审补标**（R-35）：这个修复**原本零守卫** ——
+  本条与下一条当年回填的「守卫 G84」**两处都对不上**（G84 是 `save.ts` 的 import 扫描）；
+  已补 **G221**（`tests/components/level-view-unit-total.test.ts`，5 条，变异 M254/M255/M256）。
+  详见本文件顶部汇总表第 42 行。
   `entriesOf(state.unitNumber)` → `src/content/index.ts:85` 的 `getUnit` 取不到单元就 **throw**（不是返回 `undefined`，这是内容层的刻意设计）。
   今天 `state.unitNumber` 恒为 `FIRST_UNIT_NUMBER = 1`（`store.ts:49`），不会触发。
   但 1.15 一旦按 `SaveFile.currentGame` 原样还原 `State`，`unitNumber` 就来自存档 —— 若内容回滚或存档来自别的内容版本，
@@ -1297,6 +1308,10 @@ Story 1.12 之后的 `SunCounter` / `HeartRow` / `ProgressBar` 一类**尺寸类
   ⚠️ 与 `deferred-work.md` 里已登记的「`progress` 要喂给存档」是同一批风险。
 
 - **`progress` 只是模块内存态，刷新即丢，进度条肉眼可见回退** — `src/app/store.ts:108`
+  ✅ **已结（Story 1.15 `[DS]`）** —— `services/save.ts` 按 `schemaVersion` 序列化这两个键，
+  `enterLevel()` 读档时**原样喂回** `progress` ref（**未做任何版本迁移**）。
+  ⚠️ **2026-10-21 复审补标**（R-35）：结清要在**原条目**上标注，不只在顶部汇总表里。
+  详见本文件顶部汇总表第 41 行。
   本项目部署为 PWA。孩子学会 12 个词后进度条显示 `12/37`，随后任何一次刷新 / PWA 重启 / 页面重载 ⇒ 模块重新求值 ⇒
   `progress` 回到 `{currentUnitIndex: 1, masteredWordIds: []}` ⇒ 进度条**倒退到 `0/37`**。
   `ProgressBar.vue` 文件头写着「若出现回退，那不是动画该掩盖的事，是判据出了问题」——
@@ -1485,7 +1500,9 @@ Story 1.12 之后的 `SunCounter` / `HeartRow` / `ProgressBar` 一类**尺寸类
 ## Deferred from: code review of story-1-15-存档与断点续学 (2026-10-21)
 
 `[CR]` 三层并行对抗评审（Blind Hunter / Edge Case Hunter / Acceptance Auditor）。
-本节 3 条，均**不在 1.15 的范围内**，逐条附「恢复条件」。
+本节 **5** 条（📎 原文写「3 条」是**计数失实**，第二轮更正 —— 实际列了 5 条），
+均**不在 1.15 的范围内**，逐条附「恢复条件」。
+📎 **第二轮（2026-10-21 复审）另有一节**：「Deferred from: code review of story-1-15（第二轮）」。
 
 ### 1. 🔴 `assertInvariants()` 不检查 `state.unitNumber` —— 读档能放一份「不存在单元」的对局进 `state`
 
@@ -1563,6 +1580,67 @@ Story 1.12 之后的 `SunCounter` / `HeartRow` / `ProgressBar` 一类**尺寸类
   任何动存档 schema 的 story，顺带定下「解析层拒什么、逻辑层抛什么」的清单。
   ——
   `src/services/save.ts`, `_bmad-output/implementation-artifacts/1-15-存档与断点续学.md`
+
+
+## Deferred from: code review of story-1-15-存档与断点续学 (第二轮) (2026-10-21)
+
+`[CR]` **复审**（第二轮）三层并行对抗评审，评审对象是 commit `4747781`（第一轮 `[CR]` 落地的那个 commit）。
+本节 **3 条**，均**不在 1.15 的范围内**，逐条附「恢复条件」。
+
+### 1. 🔴 `restoreNextUnit()` 的两条失败路径**只 `console.warn`，不登记降级项**
+
+- **事实**：`store.ts` 的 `restoreFromSave()` 在 `currentGame === null` 时调 `restoreNextUnit(savedProgress)`，
+  而那个函数有**两条**失败分支：
+  ① 「存档指向的单元**未录入**」⇒ `console.warn` 后**保持当前战场**；
+  ② `buildStateFor(targetUnitNumber)` **抛** ⇒ `console.warn` 后**保持当前战场**。
+  ⇒ 两条都**不**调 `markRestoreDegraded(...)` ⇒ `isSaveDegraded()` 仍为 false
+  ⇒ **1.17 的调试面板一个字都不显示**，而家长看到的是「重进后停在上一局、进度条却不动」——
+  **没有任何可查的原因**。
+- ⚠️ **为什么这与第一轮修的那条同型、却没一起修**：第一轮修的是 `restoreFromSave()` **自己**的
+  `assertInvariants` 抛错那条路径（守卫 **G220**）—— 那条已经登记了 `'invariant'`。
+  ⇒ **`restoreNextUnit` 的这两条是另外两条路径**，它们发生在**组装下一局**时，
+    与「盘上那份对局非法」是两件事。
+- **为什么不在 1.15 修**：要给它们**各配一个键**（比如「单元未录入」与「组装失败」），
+  就是**再加两个降级键**（今天的键集合已经是 AC-B5 之外的三条偏离），
+  而**键的语义要 1.17 的面板文案一起定稿**（见本文件「`SaveDegradationKey` 从 4 键长到 6 键」那条）。
+  ⇒ **加键与定文案是同一件事**，不该由一次评审顺手做掉。
+- **恢复条件**：任何要动 `restoreNextUnit` 或给 `SaveDegradationKey` 加键的 story，
+  同一次改动里补上这两条路径的降级登记，并**顺带把 1.17 的面板文案定稿**。
+  —
+  `src/app/store.ts`, `src/services/save.ts`, `src/components/debug/DebugPanel.vue`
+
+### 2. 「一次成功的空读撤掉 `read` 降级」这条语义，**只对 `enterLevel` 这一个调用点**成立过
+
+- **事实**：第二轮给 `readSave()` 的 `raw === null` 分支加了 `resolveDegradations(RESOLVED_BY_EMPTY_READ)`
+  —— 理由是「`getItem` **成功返回了** ⇒ 存储是通的 ⇒『读不到』这件事不成立了」。
+  ⚠️ 这条语义**依赖一个前提**：调用方是**「我只是想读一下存档」**，
+    而不是**「我明知道读不到，想留个记录」**。
+  ⇒ 今天 `readSave()` **只有一个调用点**（`store.ts` 的 `restoreFromSave()`）⇒ 前提成立。
+- **风险**：将来若出现**第二个**读档入口（例如设置页里的「检查存档」，
+  或家长在别的设备上手动导入了坏档），那条入口**可能**希望 `read` 降级**留着**。
+  ⇒ 到时候需要复核，而不是照抄今天这行。
+- **恢复条件**：**新增任何 `readSave()` 的调用点**时，
+  复核那一处是否也要「空读撤掉 `read`」；若不要，在那一处显式注释理由。
+  —
+  `src/services/save.ts`, `src/app/store.ts`
+
+### 3. `src/services/save.ts` 现在带一个**测试专用导出**，而**全仓没有**「生产代码不许 import `*ForTest`」的守卫
+
+- **事实**：第二轮给 `save.ts` 加了 `clearSaveDegradationsForTest()`
+  （与 `services/asset-degradations.ts` 的 `clearAssetDegradationsForTest()` 同款）。
+  ⚠️ **同款的缺口在 `asset-degradations.ts` 上早就存在** ——
+  **全仓没有任何一条守卫**拦着 `src/` 去 import 这两个 `*ForTest` 导出。
+  ⇒ 一旦有人图省事在生产代码里调 `clearSaveDegradationsForTest()`，
+  **降级登记表会被悄悄清空** ⇒ 面板对家长说「存档正常」，而孩子此后每一次落盘都在丢进度 ——
+  **和 G222 / G244 守的那两个缺陷完全同型**。
+- **为什么不在 1.15 修**：这是一条**跨文件**的规则（禁 `src/**` import 任何 `*ForTest` 导出），
+  属于 `tests/scaffold/` 的边界守卫家族，改动面比 1.15 大；
+  而且 `asset-degradations.ts` 那个同类缺口**不是 1.15 引入的** ——
+  1.15 只是**又添了一个同类**。
+- **恢复条件**：任何要加「测试专用导出」或要动 `tests/scaffold/` 边界守卫的 story，
+  同一次改动里补一条「`src/**` 不得 import 名字以 `ForTest` 结尾的导出」的守卫。
+  —
+  `src/services/save.ts`, `src/services/asset-degradations.ts`, `tests/scaffold/`
 
 
 ## Deferred from: story-1-16-关卡流程-通关-失败与推进 `[DS]` (2026-10-17)
