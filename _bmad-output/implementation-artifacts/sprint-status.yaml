@@ -49,7 +49,8 @@
 #   epics.md 的销项说明处理。
 
 generated: 2026-10-12
-last_updated: 2026-10-21  # Story 1.15 [CR] 三层评审完成：降级登记 + clearSave 错标签 + 「一次成功只清自己那侧」+ G215–G222 + M247–M261；AC-C5 追认；状态仍留 review
+last_updated: 2026-10-21  # Story 2.3「阳光经济档位扩展」上下文已生成 → ready-for-dev（6 条无人值守裁决与全部证据见其 story 文档）
+                        # Story 1.15 [CR] 三层评审完成：降级登记 + clearSave 错标签 + 「一次成功只清自己那侧」+ G215–G222 + M247–M261；AC-C5 追认；状态仍留 review
                         # Story 2.2「难度阶梯规则落地」上下文已生成 → ready-for-dev（裁决与证据见其 story 文档）
                         # Story 2.1 —— ✅ **done**（`[CR]` 三层评审 + 16 变异红数 + D1-D4/P1-P27 全落地，见其 story 文档）
                         # Story 1.20 —— ✅ **done**（归档进 `_bmad-output/archive/`）
@@ -195,7 +196,7 @@ development_status:
   epic-2: in-progress
   2-1-词图产能验证: done
   2-2-难度阶梯规则落地: done
-  2-3-阳光经济档位扩展: backlog
+  2-3-阳光经济档位扩展: ready-for-dev   # [CS] 完成 —— 6 条无人值守裁决与全部证据见其 story 文档
   2-4-选项数量递进规则: backlog
   2-5-内容批次-1-单元-2-单单元试点: backlog
   2-6-内容批次-2-单元-3-7: backlog
