@@ -20,7 +20,7 @@ import type { Tower, TowerType } from './types.js'
  *
  * 字段名与 `gdd.md` 经济表（FR63）的列名一一对应，读表即对得上 —— 这是本 story
  * 自主设计的九条里唯一被显式要求的取舍（Dev Notes §5）。架构全文没有 `Tier` 类型定义，
- * 所以字段名由本 story 定死；改名的代价是 Story 2.3 要重写全部三档。
+ * 所以字段名由本 story 定死；**改名的代价是要重写全部三档**。
  */
 export interface BalanceTier {
   /** 覆盖的单元号，闭区间。单元 → 档位靠线性扫描，不用算术分区间（Dev Notes §5）。 */
@@ -36,21 +36,37 @@ export interface BalanceTier {
 /**
  * 档位表。
  *
- * **Epic 1 只填单元 1–4 一档**，逐字对应 FR63：
- * `1-4 → 0 / +50 / 50,50,75`。
- * 档位 5–10（`50 / +75 / 75,75,110`）与 11–20（`100 / +100 / 100,100,150`）
- * **留空** —— 值就写在 FR63 里，但本 story 不填。
+ * **三档全填**（Story 2.3 落地），逐字对应 FR63 与 GDD §Economy Across Levels：
+ * | 单元 | 初始阳光 | 答对增量 | 直射/减速/范围造价 | 比例 |
+ * |---|---|---|---|---|
+ * | 1–4  | 0  | +50  | 50 / 50 / 75  | 1 : 1 |
+ * | 5–10 | 50 | +75  | 75 / 75 / 110 | 1 : 1 |
+ * | 11–20| 100| +100 | 100 / 100 / 150| 1 : 1 |
  *
- * 为什么填了反而有害：`tierForUnit()` 对未填档位必须抛错（AC-3），
- * 一旦现在把三档都填上，Story 1.6 录入单元 5 的内容时，
- * 「这一档的数值还没被试玩校准过」这件事就再也说不清了。
- * 留空 ⇒ 抛错 ⇒ 在 Story 2.3 真正落地该档时才需要填。
+ * 比例恒为 1:1 的含义：**单次答对所得阳光恰好等于最低塔造价**（FR64 的等号取法）。
+ * 「恰好」不是巧合 —— 比例取等时，**答对增量本身**恰好够买一座塔。
  *
- * ⇒ **Story 2.3 是往这个数组里追加两条，不是改结构。**
+ * ⚠️ **「跨档位的失败门槛不动」这句只在档位 1-2 成立**（Story 2.3 实测，真实 reducer）：
+ *   比例之外还有**初始阳光**这一项。档位 3 的 `initialSun = 100` **恰好等于**它的塔造价 100，
+ *   于是「初始 100 + 第一次答对 +100 = 200」够买 **2** 座塔；
+ *   档位 1（0 + 50）与档位 2（50 + 75）都只够买 1 座。
+ *   ⇒ 档位 3 的失败门槛夹在 **4 与 5 之间**，比档位 1-2（夹在 3 与 4 之间）**宽一问**。
+ *   ⚠️ 宽 = **更宽容**，不是更难 ⇒「阳光递增不承载难度递增」这一推论**实质上仍成立**，
+ *     但「门槛不动」这句**逐字不成立**。
+ *   ⇒ 守卫：`tests/core/balance.test.ts` 的 G226（比例）/ G227（边界），
+ *     `tests/scripts/balance-sim.test.ts` 的 G231（门槛曲线）/ G232（首次答对塔数）。
+ *   ⇒ 「档位 3 要不要与前两档对齐门槛」是**产品裁决**，本 story 不擅自改数值
+ *     （FR63 的值已由用户拍板）⇒ 已登记 `deferred-work.md` 条目 45。
+ *   ⚠️ 这条结论的**旧**证据（出自有 `dict[col]` 覆盖 bug 的 Python 模拟器）已作废，
+ *     现以 Story 2.3 的实测为准 —— 见 GDD §Economy Across Levels。
+ *
+ * ⚠️ **`towerCost` 必须三塔型逐个填**（[CR] P30）：旧 JSDoc 写「造价是档位的，不是塔型的」，
+ *   与实现 `towerCost[towerType]` 当场矛盾（同档内 direct 50 / aoe 75 就是按塔型区分的）。
+ *   只填一个数会把三塔型造价**静默压平**。
  *
  * ⚠️ 逐层 `Object.freeze`（[CR] P16）：类型层的 `readonly` 防不住运行期的 `as` 强转
  * ——「单一事实源」必须在运行期也不可改写，否则任何代码都能无痕篡改平衡数值，
- * 而全部平衡断言仍然绿。冻结状态由 balance.test.ts 的 `Object.isFrozen` 用例锁死。
+ * 而全部平衡断言仍然绿。冻结状态由 balance.test.ts 的 **G224**（逐档断言）锁死。
  */
 export const BALANCE_TIERS: readonly BalanceTier[] = Object.freeze([
   Object.freeze({
@@ -58,6 +74,18 @@ export const BALANCE_TIERS: readonly BalanceTier[] = Object.freeze([
     initialSun: 0,
     sunPerCorrect: 50,
     towerCost: Object.freeze({ direct: 50, slow: 50, aoe: 75 }),
+  }),
+  Object.freeze({
+    unitRange: Object.freeze([5, 10] as const),
+    initialSun: 50,
+    sunPerCorrect: 75,
+    towerCost: Object.freeze({ direct: 75, slow: 75, aoe: 110 }),
+  }),
+  Object.freeze({
+    unitRange: Object.freeze([11, 20] as const),
+    initialSun: 100,
+    sunPerCorrect: 100,
+    towerCost: Object.freeze({ direct: 100, slow: 100, aoe: 150 }),
   }),
 ])
 
@@ -119,12 +147,17 @@ export function tierForUnit(unitNumber: number, tiers: readonly BalanceTier[] = 
       return tier
     }
   }
-  // 抛错信息里带上「已填哪些档位」—— 接手 Story 2.3 的人不必翻代码就知道要补哪条。
+  // 抛错信息里带上「已填哪些档位」—— 接手的人不必翻代码就知道要补哪条。
+  // ⚠️ **不写死任何区间，也不指向某个 story**（Story 2.3 / G230）：
+  //   这段文案旧版写着「档位 5-10 与 11-20 的数值见 FR63，由 Story 2.3 追加。」——
+  //   那个 story 做完之后，这句话会**每天都**出现在单元 21+ 的报错里，
+  //   指向一个已经做完的事 ⇒ 一句会误导下一个人去找已完成工作的活注释。
+  //   区间由实际档位表推导 ⇒ 表变了文案自动跟着变，永远不会过期。
   const filled = tiers.map((t) => `${t.unitRange[0]}-${t.unitRange[1]}`).join('、')
   throw new Error(
     `单元 ${unitNumber} 落在未填档位上。已填档位：${filled}。` +
       '未填档位不回退默认值（AC-3）—— 回退即静默漂移。' +
-      '档位 5-10 与 11-20 的数值见 FR63，由 Story 2.3 追加。',
+      '未覆盖的单元区间见 FR63。',
   )
 }
 

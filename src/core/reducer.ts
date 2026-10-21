@@ -485,8 +485,12 @@ function applyResolve(state: State, action: Action): State {
   // 归一化到一个有定义的状态。
   const hearts = Math.max(0, state.hearts - heartsLost)
 
-  // ⚠️ AC-11：结算**不清空塔**。塔跨回合持久是 FR82，也是 GDD 那条
-  // 「递增阳光不改变失败门槛」的论据 —— 每回合清空的话多出来的阳光什么也买不到。
+  // ⚠️ AC-11：结算**不清空塔**。塔跨回合持久是 FR82，也是「阳光递增不承载难度递增」
+  // 这条论据的机制前提 —— 每回合清空的话多出来的阳光什么也买不到。
+  // ⚠️ Story 2.3 复测补记：塔持久**不**等于「门槛不改变」—— 门槛还取决于
+  // 「第一次答对能建几座塔」，而初始阳光是 1:1 比例之外的另一个项
+  // （档位 3 的初始阳光恰好等于塔造价 ⇒ 能建 2 座 ⇒ 门槛比前两档宽一问）。
+  // 见 GDD §Economy Across Levels。
   return {
     ...state,
     zombies,
