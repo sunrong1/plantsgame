@@ -135,6 +135,42 @@ export function probeFilesExist(): { path: string; exists: boolean }[] {
   return PROBE_FILES.map((path) => ({ path, exists: existsSync(resolve(process.cwd(), path)) }))
 }
 
+/**
+ * 🔥 **任意路径**的规则表 —— 不受 `PROBE_FILES` 白名单限制。
+ *
+ * ── 为什么需要它（`[CR]` 2026-10-21 复审 Story 1.10 实测）────────────────────
+ *   G15（Story 1.10 / AC-14）用 `rulesForFile(COMPONENT_PROBE)` 问
+ *   「`src/components/**` 上有没有禁 `core/balance` 的规则」，
+ *   而 `COMPONENT_PROBE` 是**一个**文件（`src/components/battle/Tower.vue`）。
+ *   ⇒ 那条守卫实际覆盖的是「全仓 18 个组件里的 1 个」。
+ *
+ *   实测（在独立副本里做，主仓库未写入）：把 `eslint.config.js` 里那个块的
+ *   `files` 从「`src/components/` + 两星一斜杠 + `*.{ts,vue}`，以及 `src/views/` 同样的那个」
+ *   收窄成只覆盖 `src/components/battle/` 子树的那个 glob ——
+ *   battle 子树仍受管 ⇒ **G15 全绿、整仓 `eslint .` exit 0**，
+ *   而 `hand/` / `quiz/` / `hud/` / `debug/` 的组件同时失去
+ *   「不得直读 `core/balance`」与「不得 import `services/audio`」两条禁令。
+ *
+ *   ⇒ 修法不是「再加一个探针」（那是名单型判据的老毛病：名单不会跟着 story 长大），
+ *   而是**把磁盘上真实存在的每一个组件文件都问一遍** —— 见守卫 **G238**。
+ *
+ * ⚠️ **本函数不做 `PROBE_FILES` 白名单检查，这是刻意的**：
+ *   白名单存在的理由是「探针必须是真实存在的文件」（`calculateConfigForFile`
+ *   对不存在的路径会按最接近的 glob 兜底）。本函数的调用方**自己**枚举磁盘上的
+ *   真实文件，所以白名单在这里只会挡路。调用方仍须保证路径真实存在。
+ */
+export async function rulesForAnyFile(filePath: string): Promise<Record<string, unknown>> {
+  anyFileEslint ??= new ESLint()
+  const config = await anyFileEslint.calculateConfigForFile(resolve(process.cwd(), filePath))
+  // ⚠️ 与 `resolveAll` 同款处理：被全局 `ignores` 排除的文件，ESLint 返回
+  //   `undefined` 而不是空配置 —— 直接读 `config.rules` 会抛 `TypeError`，
+  //   把「守卫正确地发现了文件被忽略」降级成「测试崩了」。
+  return (config?.rules ?? {}) as Record<string, unknown>
+}
+
+/** 供 `rulesForAnyFile` 复用的 ESLint 实例 —— 构造不便宜，实例本身是纯只读的。 */
+let anyFileEslint: ESLint | null = null
+
 /** 该文件是否被 flat config 的**全局** `ignores` 排除（被排除 ⇒ ESLint 根本不 lint 它）。 */
 export function isGloballyIgnored(filePath: string): string | undefined {
   const ignores = (eslintConfig as unknown as EslintBlock[])

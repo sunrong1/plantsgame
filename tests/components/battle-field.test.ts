@@ -51,7 +51,14 @@ import {
 } from '../../src/core'
 import type { State, Tower as TowerEntity, Zombie as ZombieEntity } from '../../src/core'
 import { makeSyntheticDeck } from '../fixtures/synthetic-deck'
-import { optionsOf, patternStrings, rulesForFile, severityOf } from '../fixtures/eslint-rules'
+import {
+  optionsOf,
+  patternStrings,
+  rulesForAnyFile,
+  rulesForFile,
+  severityOf,
+} from '../fixtures/eslint-rules'
+import { ZOMBIE_ASSET_URL } from '../../src/services/asset-url'
 
 // 组件**源码**用 Vite 的 `?raw` 导入 —— jsdom 下 `import.meta.url` 是 http:// URL，
 // `fileURLToPath()` 会抛 `TypeError: The URL must be of scheme file`。
@@ -175,7 +182,11 @@ export function g14Violation(css: string, cols: number, rows: number): string | 
   //     而两个 AC 都是真的 —— 那说明判据的分工没写清，不是任一方错了。
   const repeatMatch = /grid-template-columns:\s*repeat\(\s*(\d+)\s*,\s*(?:minmax\(\s*0\s*,\s*1fr\s*\)|1fr)\s*\)/.exec(grid)
   if (repeatMatch === null) {
-    return '读不到 .battle-grid 的 grid-template-columns: repeat(N, minmax(0, 1fr)) —— G14 无从取 N'
+    // ⚠️📎 `[CR]` 2026-10-21 复审更正：这条文案原来写死 `repeat(N, minmax(0, 1fr))`，
+    //   而**判据本身已经放宽成两种写法都收**（`minmax(0, 1fr)` 与裸 `1fr`）。
+    //   ⇒ 文案在说「只认 minmax」，判据却在两种都放过 —— 一条自相矛盾的失败信息
+    //   会把排障方向带偏（人会去查是不是轨道形态写错了，而真因是 repeat() 整个没读到）。
+    return '读不到 .battle-grid 的 grid-template-columns: repeat(N, …) —— G14 无从取 N'
   }
   const n = Number(repeatMatch[1])
   if (n !== cols) {
@@ -230,11 +241,21 @@ describe('G14 —— .battle-grid 的重复次数与 aspect-ratio 与网格常�
   it('M42：把 repeat() 的次数改坏（不同步 COLS），G14 必须红', () => {
     // 用**真实文件**当底稿，只把 `repeat(9, minmax(0, 1fr))` 的 N 换成 N+3 ——
     // 这正是「COLS 从 9 改成 12 而忘了同步 CSS」留下的样子。
-    // ⚠️ 替换模式必须跟着实际写法走（AC-D4 之后是 `minmax(0, 1fr)`），
-    //   否则这个变异改不动任何东西，`toContain` 断言会因为「原文无违规」而**假红**。
+    // ⚠️📎 `[CR]` 2026-10-21 复审放宽：替换模式原来**只认 `minmax(0, 1fr)`**，
+    //   而 AC-D4 之前 CSS 写的是裸 `1fr` ⇒ 轨道形态一变，这条变异就**静默空转**
+    //   （`String.replace` 匹配不到就原样返回）。
+    //   幸好它旁边有「变异没改到任何东西」那道防护会红 —— 但那条红的理由是
+    //   「变异没生效」，不是「守卫咬住了违规」⇒ 变异覆盖面被收窄了。
+    //   ⇒ 现在两种轨道写法都接受，与判据的放宽保持一致。
+    // ⚠️📎 模式**必须锚在 `grid-template-columns:` 上**（不是光秃秃的 `repeat(`）：
+    //   本文件里**注释中**也出现过 `repeat(9, 1fr)`（引架构原句那处），
+    //   光秃秃的模式会先改到**注释里那一份**，判据（内部会剥注释）读到的真 CSS
+    //   一字未动 ⇒ 变异空转、这条用例以「expected null to contain …」假红。
+    //   —— 这是 R-52「源码匹配型守卫必须先剥注释」的**变体**：
+    //   这次不是判据要剥，是**变异**不能改到注释里。
     const mutated = css.replace(
-      /repeat\(\s*(\d+)\s*,\s*minmax\(\s*0\s*,\s*1fr\s*\)\s*\)/,
-      `repeat(${COLS + 3}, minmax(0, 1fr))`,
+      /grid-template-columns:\s*repeat\(\s*(\d+)\s*,\s*(?:minmax\(\s*0\s*,\s*1fr\s*\)|1fr)\s*\)/,
+      `grid-template-columns: repeat(${COLS + 3}, minmax(0, 1fr))`,
     )
 
     expect(css, '变异没改到任何东西 —— 替换模式与实际写法对不上，这条是假红').not.toBe(mutated)
@@ -242,8 +263,17 @@ describe('G14 —— .battle-grid 的重复次数与 aspect-ratio 与网格常�
   })
 
   it('M42 的反向：aspect-ratio 写反（行 / 列），G14 也必须红', () => {
-    const mutated = css.replace(/aspect-ratio:\s*9\s*\/\s*5\s*;/, 'aspect-ratio: 5 / 9;')
+    // ⚠️📎 `[CR]` 2026-10-21 复审改写：原来这里写死 `9 / 5`，
+    //   而 COLS/ROWS 一变（网格尺寸调整是常事），`String.replace` 匹配不到
+    //   ⇒ **变异静默空转**，该用例以「expected null to contain '格子就不是正方形'」失败 ——
+    //   红的理由与真正的问题无关，指向错误对象。
+    //   ⇒ 模式改为**由 COLS/ROWS 推导**，并补上「变异没生效」那道防护。
+    const mutated = css.replace(
+      new RegExp(`aspect-ratio:\\s*${COLS}\\s*\\/\\s*${ROWS}\\s*;`),
+      `aspect-ratio: ${ROWS} / ${COLS};`,
+    )
 
+    expect(mutated, '这次变异没改到任何东西 —— aspect-ratio 的字面量与 COLS/ROWS 对不上').not.toBe(css)
     expect(g14Violation(mutated, COLS, ROWS)).toContain('格子就不是正方形')
   })
 
@@ -343,6 +373,47 @@ describe('G15 —— 组件不得直接读战斗数值', () => {
 // G17 / G17b / G18 —— 渲染出的战场结构
 // ══════════════════════════════════════════════════════════════════════════════
 
+/**
+ * 合法格子键的全集 —— **独立枚举**，不是从被测代码的同一份循环里推出来的。
+ *
+ * ⚠️ 用 core 的 `cellKey` 重新生成一遍：若 `BattleField` 的遍历漏了一格或重复一格，
+ *   两个集合就会不等。
+ */
+export function legalCellKeys(): Set<string> {
+  const legal = new Set<string>()
+  for (let row = 0; row < ROWS; row += 1) {
+    for (let col = 0; col < COLS; col += 1) legal.add(cellKey(row, col))
+  }
+  return legal
+}
+
+/**
+ * G17 的判据 —— **真守卫与 M43 共用同一个函数**。
+ *
+ * ⚠️📎 `[CR]` 2026-10-21 **复审新增**（G242）：G17 原来**没有导出判据**，
+ *   守卫生inline断言、变异在测试体内**另抄一份**集合逻辑，两边各写各的
+ *   ⇒ 守卫生效时 M43 察觉不到，守卫被削弱时 M43 也察觉不到。
+ *   实测：把 G17 那条「集合相等」的两行 `expect` 删掉 ⇒ 本文件 **73 条全绿**
+ *   （含 M43 那条）—— 一条「守 45 格唯一性」的守卫可以被无声删掉。
+ *   ⇒ 这正是 AC-13 逐字写的：「**判据必须是单一导出的函数，守卫与变异问同一个那个**」。
+ *
+ * ⚠️ 判据是**集合相等**而不是「元素个数相等」——
+ *   44 个唯一坐标 + 1 个重复坐标同样是 45 个元素。
+ */
+export function g17Violation(rendered: readonly string[], legal: ReadonlySet<string>): string | null {
+  const unique = new Set(rendered)
+  if (unique.size !== legal.size) {
+    return (
+      `渲染出的 ${rendered.length} 个坐标里只有 ${unique.size} 个不同值 —— ` +
+      `有格子渲染成了同一个 key，${legal.size} 格静默变成了 ${unique.size} 格`
+    )
+  }
+  for (const key of legal) {
+    if (!unique.has(key)) return `合法坐标 ${key} 没有被渲染出来 —— 战场少了一格`
+  }
+  return null
+}
+
 describe('G17 —— 战场恰好 45 格，且坐标组合与合法集完全相等', () => {
   beforeEach(() => {
     state.value = emptyState()
@@ -360,32 +431,23 @@ describe('G17 —— 战场恰好 45 格，且坐标组合与合法集完全相�
       .findAll('.battle-cell')
       .map((cell) => cell.attributes('data-row') + ',' + cell.attributes('data-col'))
 
-    // 独立枚举：不是从被测代码的同一份循环里推出来的，而是用 core 的
-    // cellKey 重新生成一遍。若 `BattleField` 的遍历漏了一格或重复一格，
-    // 两个集合就会不等。
-    // ⚠️ 必须是**集合相等**而不是「元素个数相等」——
-    //   44 个唯一坐标 + 1 个重复坐标同样是 45 个元素。
-    const legal = new Set<string>()
-    for (let row = 0; row < ROWS; row += 1) {
-      for (let col = 0; col < COLS; col += 1) legal.add(cellKey(row, col))
-    }
-
-    expect(new Set(rendered).size, '有格子渲染成了同一个 key —— 45 格静默变成了 44 格').toBe(legal.size)
-    expect(new Set(rendered)).toEqual(legal)
+    expect(g17Violation(rendered, legalCellKeys()), '有格子渲染成了同一个 key —— 45 格静默变成了 44 格').toBeNull()
   })
 
   it('M43：让两格渲染成同一个 key，G17 必须红', () => {
-    // 判据是上面那条「集合相等」。这里问的是判据本身：
-    // 把最后一格的坐标改成第一格的，集合立刻少一个元素。
-    const legal = new Set<string>()
-    for (let row = 0; row < ROWS; row += 1) {
-      for (let col = 0; col < COLS; col += 1) legal.add(cellKey(row, col))
-    }
+    // ⚠️📎 `[CR]` 2026-10-21 **复审改写**：原来这条在测试体内**另拼了一份**
+    //   本地集合再断言两个本地集合不等 —— 它**从不碰被测代码，也不调用 G17 的判据**
+    //   （G17 当时根本没有导出判据函数）。⇒ 把 G17 的核心断言整条删掉，
+    //   本条**照样全绿**（实测：删掉后本文件 73 条全绿，含本条）。
+    //   ⇒ 这正是 AC-13 逐字要求的反面：「**判据必须是单一导出的函数，
+    //   守卫与变异问同一个那个**」（Story 1.9 的 P0：判据被抄多份，
+    //   真守卫整体停用后全套仍全绿）。
+    //   现在 M43 问的是 `g17Violation` —— 判据被削弱，变异立刻察觉。
+    const legal = legalCellKeys()
     const mutated = [...legal]
     mutated[mutated.length - 1] = cellKey(0, 0)
 
-    expect(new Set(mutated).size).not.toBe(legal.size)
-    expect(new Set(mutated)).not.toEqual(legal)
+    expect(g17Violation(mutated, legal)).toContain('同一个 key')
   })
 
   it('DOM 顺序是行优先（先左到右，再下一行）—— G18 判据的前提', () => {
@@ -1037,6 +1099,334 @@ describe('主链路 —— 点开始游戏一定切到战场', () => {
     const mutated = stripComments(levelViewSource).replace(/<BattleField\b[^>]*\/?>/g, '')
 
     expect(mutated, '这次变异没生效 —— 会因下面 toMatch 空绿').not.toMatch(/<BattleField\b/)
+  })
+})
+
+// ══════════════════════════════════════════════════════════════════════════════
+// G238 —— 组件层的 import 禁令覆盖**每一个**组件与视图文件
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * 磁盘上真实存在的 `src/components/**` 与 `src/views/**` 下的所有 `.ts` / `.vue`。
+ *
+ * ⚠️📎 `[CR]` 2026-10-21 复审新增（G238）。
+ *   **为什么不能用 `PROBE_FILES` 那种手写名单**：名单型判据的老毛病是
+ *   「名单不会跟着 story 一起长大」—— Story 1.19 的 G140 已经为同一个病
+ *   改过一次（从 3 个手写文件改成扫全仓 `tests/`）。
+ *   ⇒ 这里直接枚举磁盘，**新增组件默认出_guard**。
+ */
+function componentAndViewFiles(): string[] {
+  const root = resolve(process.cwd(), 'src')
+  const found: string[] = []
+  const walk = (dir: string): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name)
+      if (entry.isDirectory()) {
+        walk(full)
+      } else if (entry.name.endsWith('.vue') || entry.name.endsWith('.ts')) {
+        found.push(relative(process.cwd(), full).replace(/\\/g, '/'))
+      }
+    }
+  }
+  walk(join(root, 'components'))
+  walk(join(root, 'views'))
+  return found.sort()
+}
+
+/**
+ * 组件层那个 ESLint 块必须同时具备的**两条**禁列。
+ *
+ * ⚠️ 两条都必须查：只查 `core/balance` 的话，1.14 的 AC-G7（禁 `services/audio`）
+ *   就没人守了 —— 而它们**在同一个块里**（`eslint.config.js` 的注释逐字写着
+ *   「必须同块，不能另开一个 `src/components/**` 的块」，因为 flat config 里
+ *   同名规则后块覆盖前块）。
+ */
+const REQUIRED_COMPONENT_BANS = ['core/balance', 'services/audio'] as const
+
+/**
+ * G238 的判据 —— 真守卫与变异共用同一个函数。
+ *
+ * ⚠️ 与 G15 的差别只有一处，但那一处是全部：
+ *   G15 问的是「**那一个**探针文件上有没有这条规则」；
+ *   G238 问的是「**每一个**组件与视图文件上有没有这条规则」。
+ *   差别看起来很小，实测差别是：G15 覆盖全仓 18 个组件里的 **1 个**。
+ */
+export function g238Violation(rule: unknown): string | null {
+  if (rule === undefined) {
+    return '该文件上没有 no-restricted-imports 规则 —— 这个组件不受任何 import 禁令管辖'
+  }
+  if (severityOf(rule) !== 'error') {
+    return (
+      `严重级别是 ${String(severityOf(rule))} 而不是 error —— ` +
+      'eslint . 不带 --max-warnings，warn 不会让 lint 失败，防线等于没有'
+    )
+  }
+  const patterns = patternStrings(optionsOf(rule))
+  const missing = REQUIRED_COMPONENT_BANS.filter((needle) => !patterns.some((p) => p.includes(needle)))
+  if (missing.length > 0) {
+    return (
+      `禁列里少了 ${missing.join('、')}（当前禁的是：${patterns.join(' / ') || '空'}）—— ` +
+      '组件可以直接 import 它，而 eslint . 不会报'
+    )
+  }
+  return null
+}
+
+describe('G238 —— 组件层的 import 禁令覆盖每一个组件与视图文件', () => {
+  it('src/components/** 与 src/views/** 下的每一个 .ts/.vue 都受两条禁列管辖', async () => {
+    const files = componentAndViewFiles()
+
+    expect(
+      files.length,
+      'src/components 或 src/views 下一个文件都没扫到 —— 目录扫描本身坏了（否则下面是一轮漂亮的空绿）',
+    ).toBeGreaterThan(10)
+
+    for (const file of files) {
+      const rule = (await rulesForAnyFile(file))['no-restricted-imports']
+      expect(
+        g238Violation(rule),
+        `${file} 不受组件层禁令管辖 —— 收窄 eslint 块的 files 就能悄悄放过它`,
+      ).toBeNull()
+    }
+  })
+
+  it('反向：G15 的探针文件确实在这个清单里（证明上面不是「扫到了别的目录」）', () => {
+    expect(componentAndViewFiles()).toContain(COMPONENT_PROBE)
+  })
+
+  it('反向：判据本身能区分 —— 规则缺失 / 降成 warn / 少一条禁列，三种都要报出来', () => {
+    expect(g238Violation(undefined)).toContain('没有 no-restricted-imports 规则')
+    expect(g238Violation(['warn', { patterns: ['**/../core/balance', '**/../services/audio'] }])).toContain(
+      '严重级别',
+    )
+    expect(g238Violation(['error', { patterns: ['**/../core/balance'] }])).toContain('services/audio')
+  })
+})
+
+// ══════════════════════════════════════════════════════════════════════════════
+// G239 —— 僵尸图的 URL 也带部署 base（塔侧早有断言，僵尸侧原本没有）
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * G239 的判据 —— 真守卫与变异共用同一个函数。
+ *
+ * ⚠️📎 `[CR]` 2026-10-21 复审新增。
+ *   塔侧早有断言（「塔图 URL 带部署 base」，在 AC-8 那组里），
+ *   **僵尸侧却没有** —— 而 `Zombie.vue` 的 `:src` 绑的是 `ZOMBIE_ASSET_URL`
+ *   这一个常量，看源码「像是对的」，可那不是证据。
+ *   实测：把 `Zombie.vue` 的 `:src` 改成 `'/assets/zombies/zombie.svg'`
+ *   （去掉 base）⇒ **整仓 2162 条全绿**。
+ *   ⇒ 部署到子路径后僵尸图全部 404 —— 正是 G16 存在的那个场景
+ *   （Story 1.2 修过的录音 404 同源）。
+ */
+export function g239Violation(src: string | undefined): string | null {
+  if (src === undefined) return '僵尸的 <img> 没有 src —— 界面上根本看不见僵尸'
+  if (src !== ZOMBIE_ASSET_URL) {
+    return (
+      `僵尸图 URL 是 ${src} 而不是 ${ZOMBIE_ASSET_URL} —— ` +
+      '部署到子路径后它会 404，而塔图有断言、僵尸图没有'
+    )
+  }
+  return null
+}
+
+describe('G239 —— 僵尸图的 URL 带部署 base（与 G16 同一口径）', () => {
+  it('渲染出的僵尸 <img src> 等于 ZOMBIE_ASSET_URL', () => {
+    state.value = makeState([], [createZombie({ id: 'z1', col: 6, hp: 100 })])
+    const wrapper = mount(BattleField)
+
+    const src = wrapper.find('[data-zombie="z1"]').attributes('src')
+
+    expect(g239Violation(src), '僵尸 <img> 的 src 不对 —— 部署到子路径后它会 404').toBeNull()
+  })
+
+  it('反向：判据能抓住「去掉 base 的硬编码路径」（证明上面不是恒真）', () => {
+    expect(g239Violation('/assets/zombies/zombie.svg')).toContain('而不是')
+    expect(g239Violation(undefined)).toContain('没有 src')
+  })
+})
+
+// ══════════════════════════════════════════════════════════════════════════════
+// G240 —— 僵尸行 = 浅土路径，且这一行的下标由 COLS 推导
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * G240 的判据 —— 真守卫与变异共用同一个函数。
+ *
+ * ⚠️📎 `[CR]` 2026-10-21 复审新增。
+ *   `BattleField.vue` 逐字承诺：「僵尸行走的那一行铺成浅土路径 ——
+ *   孩子要能一眼看出『僵尸从右边沿着这条路过来』，而那条路必须是连续的。」
+ *   而这条承诺由一条**手算的** `:nth-child(n + 19):nth-child(-n + 27)` 实现，
+ *   **零守卫**：实测把它改成 `var(--color-bg)` ⇒ 212 条全绿；
+ *   实测把 `COLS` 从 9 改成 10 而这条选择器不动 ⇒ 浅土路径横跨第 2 行末格与
+ *   第 3 行前 8 格（**画歪了**），而 G14 / G17 / G18 / G30b **全部照绿**，
+ *   36 条红的标题里**没有一条**提到路径。
+ *   ⇒ 「守卫先红」那句注释在今天**不成立** —— 它靠的是别的守卫偶然会红，不是这条。
+ */
+export function g240Violation(source: string, cols: number, zombieRow: number): string | null {
+  const code = stripComments(source)
+  const m = /\.battle-cell:nth-child\(n\s*\+\s*(\d+)\):nth-child\(-n\s*\+\s*(\d+)\)\s*\{([^}]*)\}/.exec(code)
+  if (m === null) {
+    return '读不到「僵尸行 = 浅土路径」那条 nth-child 规则 —— 路径行没画，或选择器改了形状'
+  }
+  const from = Number(m[1])
+  const to = Number(m[2])
+  const expectedFrom = zombieRow * cols + 1
+  const expectedTo = (zombieRow + 1) * cols
+  if (from !== expectedFrom || to !== expectedTo) {
+    return (
+      `路径行选中的是 DOM 第 ${from}~${to} 格，而僵尸行（第 ${zombieRow + 1} 行）在 ${cols} 列下是` +
+      `第 ${expectedFrom}~${expectedTo} 格 —— 浅土路径画歪了，僵尸走在草地上`
+    )
+  }
+  const bg = /background-color\s*:\s*([^;]+);/.exec(m[3])
+  if (bg === null) return '路径行规则里没有 background-color —— 僵尸行没有独立的底色'
+  if (!/var\(\s*--color-path\s*\)/.test(bg[1])) {
+    return (
+      `路径行用的是 ${bg[1].trim()} 而不是 var(--color-path) —— ` +
+      '「僵尸从右边沿着这条路过来」这条视觉承诺失效'
+    )
+  }
+  return null
+}
+
+describe('G240 —— 僵尸行 = 浅土路径，且这一行的下标由 COLS 推导', () => {
+  it('路径行选中的是僵尸行，且用 --color-path 铺底', () => {
+    expect(g240Violation(battleFieldSource, COLS, ZOMBIE_ROW)).toBeNull()
+  })
+
+  it('反向：COLS 改了而 nth-child 下标没跟着改，必须被抓住（这正是「守卫先红」那句承诺）', () => {
+    expect(g240Violation(battleFieldSource, COLS + 1, ZOMBIE_ROW)).toContain('画歪了')
+  })
+
+  it('反向：把路径行换成草地绿必须被抓住', () => {
+    const mutated = battleFieldSource.replace(
+      'background-color: var(--color-path);',
+      'background-color: var(--color-bg);',
+    )
+
+    expect(mutated, '这次变异没改到任何东西 —— 路径行那条声明的写法变了').not.toBe(battleFieldSource)
+    expect(g240Violation(mutated, COLS, ZOMBIE_ROW)).toContain('--color-path')
+  })
+})
+
+// ══════════════════════════════════════════════════════════════════════════════
+// G241 —— 横屏断点里的 .battle-grid 覆盖块不得与 COLS/ROWS 打架
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * G241 的判据 —— 真守卫与变异共用同一个函数。
+ *
+ * ⚠️📎 `[CR]` 2026-10-21 复审新增。
+ *   G14 与 1.18 的 G133 **只读 `BattleField.vue` 的 scoped 样式**，
+ *   而 `src/styles/responsive.css` 里还有一块 `.level-view .battle-grid`
+ *   —— 它的优先级与 scoped 的 `.battle-grid[data-v-*]` **同为 (0,2,0)**，
+ *   靠**源码顺序**决胜（`responsive.css` 的注释逐字记着这件事）。
+ *   ⇒ 在那块里写 `grid-template-columns: repeat(3, …)` 或 `aspect-ratio: 3 / 1`
+ *   就会让横屏下的战场变成 3 列、格子不再正方形，而**没有任何一条守卫会红**。
+ *   实测：加上那两行 ⇒ `battle-field.test.ts` + `portrait-layout.test.ts`
+ *   **145 条全绿**。
+ */
+export function g241Violation(source: string, cols: number, rows: number): string | null {
+  const code = stripComments(source)
+  const blocks = [...code.matchAll(/([^{}]*\.battle-grid[^{}]*)\{([^}]*)\}/g)]
+  if (blocks.length === 0) {
+    return 'responsive.css 里读不到任何 .battle-grid 规则块 —— 判据可能扫错了地方（那是一轮空绿）'
+  }
+  for (const [, selector, body] of blocks) {
+    const repeat = /grid-template-columns\s*:\s*repeat\(\s*(\d+)\s*,/.exec(body)
+    if (repeat !== null && Number(repeat[1]) !== cols) {
+      return (
+        `responsive.css 的 \`${selector.trim()}\` 把列数写成 ${repeat[1]} 而不是 ${cols} —— ` +
+        '横屏下战场与 core/grid.ts 错位，而它优先级与 scoped 样式相同'
+      )
+    }
+    const ratio = /aspect-ratio\s*:\s*(\d+)\s*\/\s*(\d+)\s*;/.exec(body)
+    if (ratio !== null && (Number(ratio[1]) !== cols || Number(ratio[2]) !== rows)) {
+      return (
+        `responsive.css 的 \`${selector.trim()}\` 的 aspect-ratio 是 ${ratio[1]} / ${ratio[2]}，` +
+        `而不是 ${cols} / ${rows} —— 横屏下格子不再是正方形，塔与僵尸被拉伸`
+      )
+    }
+  }
+  return null
+}
+
+describe('G241 —— 横屏断点里的 .battle-grid 覆盖块不得与 COLS/ROWS 打架', () => {
+  it('responsive.css 里的 .battle-grid 覆盖块没有另起一套网格形状', () => {
+    const source = readFileSync(resolve(process.cwd(), 'src/styles/responsive.css'), 'utf8')
+
+    expect(g241Violation(source, COLS, ROWS)).toBeNull()
+  })
+
+  it('反向：在覆盖块里塞一套 3 列 / 3:1 的网格，必须被抓住', () => {
+    const source = readFileSync(resolve(process.cwd(), 'src/styles/responsive.css'), 'utf8')
+    const mutated = source.replace(
+      '.level-view .battle-grid {',
+      '.level-view .battle-grid {\n    grid-template-columns: repeat(3, minmax(0, 1fr));\n    aspect-ratio: 3 / 1;',
+    )
+
+    expect(mutated, '这次变异没改到任何东西 —— 覆盖块的选择器变了').not.toBe(source)
+    expect(g241Violation(mutated, COLS, ROWS)).toContain('而不是')
+  })
+})
+
+// ══════════════════════════════════════════════════════════════════════════════
+// G242 —— 判据纪律自检：G17 的判据只有一份实现（Story 1.9 的 P0 的同型防线）
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * 本文件自己的源码 —— 用来做**判据纪律自检**。
+ *
+ * ⚠️ 为什么需要它：Story 1.9 的 P0 是「守卫真身与变异各抄了一份判据，
+ *   把真守卫整体停用后全套仍全绿」。`asset-url-guard.test.ts` 早就为
+ *   `g16Violations` 写过同款自检；本文件当时**没有** ——
+ *   于是 G17 一直没有导出判据，M43 在测试体内另抄了一份集合逻辑，
+ *   两边各写各的。实测（`[CR]` 2026-10-21 复审）：把 G17 那条
+ *   「45 个 (data-row, data-col) 组合与合法集完全相等」整条删掉
+ *   ⇒ 本文件 **83 条全绿**（含 M43）—— 一条守「45 格唯一性」的守卫
+ *   可以被无声删掉。
+ *
+ * ⚠️ **本条能守住什么、不能守住什么**（如实写清楚，不夸大）：
+ *   · 能守住：**判据只有一份实现**（定义恰好一次）+ **守卫生效的判定用的就是它**
+ *     （本文件里 `g17Violation(` 至少出现三次：定义、守卫、M43）。
+ *     ⇒ 守卫生效的判定若被换成「测试体内另抄的一份」，本条立刻红。
+ *   · 不能守住：把守卫生效的那条 `expect` 整个删掉、同时**保留** M43 的调用 ——
+ *     那时本文件里 `g17Violation(` 只剩两次 ⇒ 本条**仍然会红**（3 次的下限兜住了它）。
+ *   ⇒ 这两条合起来，本文件**第一次**具备「守卫生效的判定与变异问同一个函数」的
+ *     机器可查证据（AC-13 逐字要求）。
+ */
+describe('G242 —— 判据纪律自检：G17 的判据只有一份实现', () => {
+  // ⚠️ **必须先剥注释**（R-52）：上面那段 JSDoc 里逐字提到了判据的名字与调用形态，
+  //   不剥的话它自己就把计数撑上去了 —— 一次「自检把自己算进去」的假红。
+  const selfSource = stripComments(
+    readFileSync(resolve(process.cwd(), 'tests/components/battle-field.test.ts'), 'utf8'),
+  )
+
+  it('G17 的判据在本文件里只被定义了一次（没有第二份拷贝）', () => {
+    // ⚠️ 模式**动态拼**：写成字面量的话，这段代码自己就成了「第二个定义」。
+    const definitions = selfSource.match(new RegExp(['export function g17', 'Violation'].join(''), 'g')) ?? []
+
+    expect(
+      definitions.length,
+      `G17 的判据被定义了 ${definitions.length} 次 —— 判据被抄多份，真守卫停用后全套仍会全绿` +
+        '（Story 1.9 的 P0）',
+    ).toBe(1)
+  })
+
+  it('守卫生效的判定与 M43 问的是同一个函数（删掉守卫生效的判定 ⇒ 本条红）', () => {
+    const calls = selfSource.match(/g17Violation\(/g) ?? []
+
+    // 三次 = 定义 1 + 守卫生效的判定 1 + M43 1。
+    // ⚠️📎 失败消息里**不能**逐字写出「判据名 + 左括号」——
+    //   那行模板字符串本身就在被统计的源码里，会把自己算成第 N 次
+    //   （首版就踩了这个：变异 M289 打上来时全绿，因为消息串把它补回了 3 次）。
+    //   ⇒ 消息里只写判据名，不带左括号。
+    expect(
+      calls.length,
+      `本文件里判据 \`g17Violation\` 的调用只出现 ${calls.length} 次 —— ` +
+        '守卫生效的判定或 M43 有一处已经不再问这个判据本体了',
+    ).toBeGreaterThanOrEqual(3)
   })
 })
 
