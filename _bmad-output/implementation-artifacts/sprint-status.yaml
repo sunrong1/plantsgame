@@ -49,7 +49,8 @@
 #   epics.md 的销项说明处理。
 
 generated: 2026-10-12
-last_updated: 2026-10-21  # Story 1.14「音效与 BGM 接入」[CR] 第二轮完成 → done（5 条行为 patch + 文档 patch；新增 G246–G252 / M296–M307；2 条 deferred 结清、4 条新延后）；文档已归档
+last_updated: 2026-10-21  # Story 2.4「选项数量递进规则」[CS] 上下文已生成 → ready-for-dev（8 条裁决：档位表形态 / 档位边界复用 / 档位数字 2-3-3·3-4-4·4-4-4 / 4 列网格冲突 / 落点 / 单元 1 数据 / 可机器判边界 / 起号；见其 story 文档）
+                        # Story 1.14「音效与 BGM 接入」[CR] 第二轮完成 → done（5 条行为 patch + 文档 patch；新增 G246–G252 / M296–M307；2 条 deferred 结清、4 条新延后）；文档已归档
                         # Story 2.3「阳光经济档位扩展」[CR] 三层审查完成 → done（17 patch + 3 defer；档位 3 门槛宽一问仍未裁决，见其 story 文档）
                         # Story 1.15 [CR] 第二轮完成：清档不再全清 + 空读撤 read 降级 + AC-C5 后半句补 G245 + G218 整张对账 + G215 判据单一导出；新增 G243–G245 / M290–M295；AC-B5/C5/D1/G3 四处追认；状态 → done，文档已归档
                         # Story 2.2「难度阶梯规则落地」上下文已生成 → ready-for-dev（裁决与证据见其 story 文档）
@@ -198,7 +199,7 @@ development_status:
   2-1-词图产能验证: done
   2-2-难度阶梯规则落地: done
   2-3-阳光经济档位扩展: done   # [CR] 三层审查完成（17 patch + 3 defer）；档位 3 门槛宽一问仍未裁决（deferred-work 条目 45），见 story 文档
-  2-4-选项数量递进规则: backlog
+  2-4-选项数量递进规则: ready-for-dev   # [CS] 上下文已生成（裁决与证据见其 story 文档）：档位表 2/3/3·3/4/4·4/4/4；4 列网格冲突已裁决；起号 G253 / M308
   2-5-内容批次-1-单元-2-单单元试点: backlog
   2-6-内容批次-2-单元-3-7: backlog
   2-7-内容批次-3-单元-8-13: backlog
