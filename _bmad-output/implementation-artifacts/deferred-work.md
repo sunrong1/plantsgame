@@ -39,7 +39,7 @@
 > |---|---|
 > | 1.13 第 3 条「`progress` 是内存态，进度条在刷新页面后归零」 | ✅ **已结** —— `src/services/save.ts` 按 `schemaVersion` 序列化 `{ currentUnitIndex, masteredWordIds }` 两个键（键名逐字未改），`enterLevel()` 读档时**原样喂回** `progress` ref，**未做任何版本迁移**（版本不匹配走「安全降级为从头开始」，FR61）。守卫 **G74 / G78**（G78 = R-06 的正式守卫，钉「局末 `currentGame === null` 且 `progress` 逐字不变」）。 |
 > | 1.13 dismissed 的「`progress` 只是模块内存态，刷新即丢，进度条肉眼可见回退」 | ✅ **同上，结清** —— `ProgressBar.vue` 文件头写的「若出现回退，那不是动画该掩盖的事」如今有判据撑着。⚠️ 代价是**新增了一条失败链**：读档失败时进度会退回初始（`store.ts` 的 `restoreFromSave` 逐字 WARN 记录了这一点，不是静默）。 |
-> | 1.13 dismissed 的「`unitTotal` 的 computed 在渲染期可 throw（1.15 读档后的第一条失败链）」 | ✅ **已结** —— `LevelView.vue` 的 `unitTotal` 改成 try/catch，取不到单元就退回 `0` 并记 WARN。`0` 是**已定义好**的形状：`core/hud.ts` 的 `progressDisplay` 对 `unitTotal === 0` 早已取 `ratio = 0`。⚠️ 报错**没有**被吞掉 —— 开局路径 `store.ts` 的 `initialState()` 那里仍有 try/catch 和人话提示。守卫 **G84**（含 `Linter.verify` 真跑一条验证 + 假阳性对照）。 |
+> | 1.13 dismissed 的「`unitTotal` 的 computed 在渲染期可 throw（1.15 读档后的第一条失败链）」 | ✅ **已结** —— `LevelView.vue` 的 `unitTotal` 改成 try/catch，取不到单元就退回 `0` 并记 WARN。`0` 是**已定义好**的形状：`core/hud.ts` 的 `progressDisplay` 对 `unitTotal === 0` 早已取 `ratio = 0`。⚠️ 报错**没有**被吞掉 —— 开局路径 `store.ts` 的 `initialState()` 那里仍有 try/catch 和人话提示。<br>🔥📎 **`[CR]` 2026-10-21 更正两处失实并补上真守卫**：本行原先写「守卫 **G84**（含 `Linter.verify` 真跑一条验证 + 假阳性对照）」—— **两处都对不上**。G84 是 `save.ts` 的 import 扫描（`只 import ../core`，零 Vue / 零 app/），与渲染期兜底毫无关系；带 `Linter.verify` 的是 **G83**（禁 await 名单不含 `save.ts`），而**那两条一条都覆盖不到这个行为** ⇒ **这个修复原本零守卫**，属 `guard-zero-coverage-is-the-real-crate`（照着「别把 try/catch 删掉」的注释删掉兜底，没有一条测试会红）。<br>已补 **G221**（`tests/components/level-view-unit-total.test.ts`，5 条）：读 `ProgressBar` 的 `unitTotal` prop 必须是 `0`、恰好一条 `[hud]` WARN 且点名单元号、正常单元号不受影响、反向自测把「同型无兜底计算」证明成会抛；并把**两条前提也断言出来**（`entriesOf(99)` 真的抛、`assertInvariants` 真的**不**查 `unitNumber`）—— 前提塌了当场红，而不是留一条恒绿的假覆盖。变异 M254（拿掉 try/catch）**3 红** / M255（兜底返回非 0）**1 红** / M256（拿掉 WARN）**1 红**。 |
 > | 1.14 第 1 条「🔥 M117 全量 0 红 —— `RESTART_LEVEL` 的 `Math.max(0, …)` 夹取无任何守卫」 | ✅ **到期条件已成立并已补** —— 该条逐字写的恢复条件是「Story 1.15 或 1.16 动 `RESTART_LEVEL` / **心数写入路径**时，同一次改动里补一条反向断言」。1.15 正是新增了第二条心数写入路径：`restoreFromSave` 把 `localStorage` 里的 `hearts` 直接写进 `state.value`（此前 `hearts` 只可能由 reducer 产生）。反向断言见 `tests/app/store-save.test.ts`「心数为**负**同样退回」，变异 **M99**（去掉 `assertCounters` 的 `state.hearts < 0` 一半）**2 红**。<br>⚠️ **为什么原先那条 0 红不是缺口**：deferred 条目点名的 `Math.max(0, …)` 夹取今天在 `reducer.ts` 的 `applyResolve` 里，不在 `RESTART_LEVEL` 分支 —— `restart()` 走 `createInitialState`，心数直接回到满值，根本没有夹取。那条 0 红是**等价变异体**（两处夹取重合），不是「无人守」。 |
 > | 1.14 第 2 条「M120 实测 0 红 —— 批量级 try/catch 与单条级 try/catch 当前完全冗余」 | ✅ **已裁决并结清** —— 该条逐字要求「1.15 接 `SAVE` 前应当重新评估这一层」。裁决：**选 ② 收窄**（把 try/catch 收进 `case 'SAVE'`），不选 ① 在循环外加一层。<br>⚠️ 同时**纠正原条目的一处失实**：它写「外层为何仍值得留着」，好像那层一直存在 —— 实测 1.14 `[DS]` 交付的代码里**整条循环外没有 try/catch**（M120 那个变异是**加**一层，加了之后 7 条守卫 0 红）。<br>理由与代价逐条写在 `src/app/effects-runner.ts` 的 `case 'SAVE'` 注释里（AC-E4 裁决）：① 会把 `assertNeverEffect` 重新兜住，编译期穷尽性退化成一条 WARN；② 下 `assertNeverEffect` 仍在任何 try 之外，`Effect` 联合漏成员时**立刻炸**，可见性一步没减。 |
 > | 1.13 第 2 条「不引入 `sunEarned` 累计阳光字段（裁决 4）—— 归 1.16 或 1.17」 | ⏸ **仍未触发**，但恢复条件已**实测过一次**并留下记录：该条逐字写「**若 1.15 存档格式要求**「本存档累计获得多少阳光」」⇒ 1.15 的 `SaveFile` 只有 `progress` + `currentGame` 两个字段（裁决 2 / 架构决策 5），**没有**累计阳光。⇒ 触发条件为假，本条**继续挂着**，不因为「1.15 已经做过存档了」就顺手结掉。<br>⚠️ 留这一行是因为 1.13 写它时**没人能确定 1.15 的存档形状**；现在能确定了，而答案是「不带」—— 这个否定结论本身值得留痕，否则下一个人会重新推一遍。 |
@@ -1472,6 +1472,89 @@ Story 1.12 之后的 `SunCounter` / `HeartRow` / `ProgressBar` 一类**尺寸类
   把「前缀合规 + 不在逐帧路径」做成一条通用守卫，而不是继续逐模块手写断言。
   —
   `docs/rules/architecture.md`, `tests/scaffold/save-boundary.test.ts`
+
+
+## Deferred from: code review of story-1-15-存档与断点续学 (2026-10-21)
+
+`[CR]` 三层并行对抗评审（Blind Hunter / Edge Case Hunter / Acceptance Auditor）。
+本节 3 条，均**不在 1.15 的范围内**，逐条附「恢复条件」。
+
+### 1. 🔴 `assertInvariants()` 不检查 `state.unitNumber` —— 读档能放一份「不存在单元」的对局进 `state`
+
+- **事实**：`assertInvariants` 只查 grid / towers / deck / phase / 计数器 / 塔型 / 僵尸 / 实体 id，
+  **一处都没提单元号**。实测 `{ ...一份合法的单元 1 对局, unitNumber: 99 }` **原样通过**。
+- **后果**：那份对局一路进到渲染期，`LevelView` 的 `unitTotal` computed 撞 `entriesOf(99)` 抛 ——
+  **只靠组件里那个 try/catch 兜住**。也就是说，逻辑层本该拦下的东西，今天靠 UI 层兜底。
+- ⚠️ 这条**不是「有个洞没人管」**：兜底已经补上并由 **G221** 钉住（5 条用例，变异 M254/M255/M256）。
+  登记的是**更深的那一层** —— 兜底再对，也改变不了「不变量检查漏了单元号」这件事本身。
+- **为什么不在 1.15 修**：加 `unitNumber` 不变量是 **`core/` 的领域约束变更**，
+  属于新 story 的 AC 范围，不是评审能顺手塞进 1.15 的补丁。
+- **恢复条件**：任何一个动 `assertInvariants` 或给 `State` 加存档字段的 story，
+  同一次改动里补 `unitNumber` 校验，并**把 G221 的第一条前置断言翻过来**
+  （那时它会红 —— 红了才说明 UI 兜底不再是唯一防线）。
+  —
+  `src/core/reducer.ts`, `tests/components/level-view-unit-total.test.ts`
+
+### 2. `LevelView.vue` 的 computed 里 `console.warn` —— R-14 只扫 `src/core/`
+
+- **事实**：R-14 逐字是「`src/core/` 源码里 `console.` 零出现」，
+  `no-restricted-globals` 那一块也只挂在 `core/` 与 `content/`。
+  ⇒ 组件 / 视图 / 服务层的日志**今天完全没有机器守卫**，只能靠 review。
+- **为什么不在 1.15 修**：把 R-14 扩到 `src/views/` 会**立刻判红 `LevelView.vue` 这一处**，
+  而这一处的 WARN 是 AC-D3 明确要的（「报错仍留在，别静默降级」）
+  ⇒ **扩边界与改行为是两件事**，需要一次专门裁决，不是评审能顺手做的取舍。
+- **恢复条件**：任何要把 R-14 扩到组件 / 视图层的 story，
+  顺带裁决「组件里哪些 console 是允许的、形状是什么」。
+  —
+  `docs/rules/architecture.md`, `src/views/LevelView.vue`
+
+### 3. `SaveDegradationKey` 从 4 键长到 6 键，但没进本 story 的偏离表
+
+- **事实**：新增 `clear`（1.15 `[CR]`，原本「删不掉存档」被报成 `'read'`）
+  与 `invariant`（1.15 `[CR]`，对局状态非法）。
+- **现状：刻意不进偏离表** —— 偏离表记的是「实现没做到 AC」，
+  而这两个键是**把 AC 要求的降级分类补全**（AC-D4 逐字「降级项已登记（AC-B4）」），
+  是**达成**而非偏离。事实源是 `src/services/save.ts` 的 `SaveDegradationKey` 注释。
+- ⚠️ **顺带核实过 1.17 的调试面板不需要改**：它 `for (const item of saveDegradations())`
+  逐条渲染 `key=${item.key}`，新键**自动出现**；「重试写入」按钮在 `invariant` 时也会露脸，
+  而它写的正是内存里那份降级后的新对局 ⇒ **恰好能修好盘上那份坏的**，不需要额外接线。
+- **恢复条件**：1.17 的调试面板若要给每个键配**专门文案**（当前是通用渲染），
+  那时把六键逐条文案一并定稿。
+  —
+  `src/services/save.ts`, `src/components/debug/DebugPanel.vue`
+
+### 4. AC-D1 逐字要求「先喂 progress 再喂 state，顺序不可换」—— 但这条 AC **不可判定**
+
+- **事实**：`progress` 与 `state` 是两个独立 ref，**先后赋值的结果完全一样**，
+  没有任何可观测差异能钉住顺序。AC 给的理由「喂反了会让进度条与战场对不上」
+  在数据流上不成立（两者互不派生）。
+- **为什么现在才提**：`tests/app/store-save.test.ts` 的文件头原先**声称**覆盖了顺序，
+  `[CR]` 逐行核过之后发现 10 条用例里**没有一条**断言顺序 ⇒ 那句话是**假覆盖**，
+  已在本轮删掉并改成如实说明（R-52 的同型：判据声称的覆盖不存在）。
+- ⚠️ **留这一条是因为文件头说了「登记为 AC 需要重写或明确降级」**，
+  而那句话当时**没有任何去处** —— 注释里的承诺背后没有登记，等于没有承诺。
+- **恢复条件**：下一次改 `epics.md` 的 AC 正文时（R-32 的时机），
+  把 AC-D1 第 2 条改成可判定的口径，或显式标注「顺序不构成约束，理由已失效」。
+  —
+  `_bmad-output/implementation-artifacts/1-15-存档与断点续学.md`, `tests/app/store-save.test.ts`
+
+### 5. 存档边界的结构校验很浅：`parseSaveFile` + `isPlainObject(value): value is State`
+
+- **事实一**：`progress` 只校验 `typeof p.currentUnitIndex === 'number'`，
+  而这对 `NaN` / `-1` / `1.5` **全为真** ⇒ 一份手改或损坏的存档能让 HUD 显示
+  「NaN/60」或负数单元号，**不报任何错**。
+  `masteredWordIds` 只校验「字符串数组」，内容里已删除的词 id 会永远留在表里。
+- **事实二**：`isPlainObject(value): value is State` 是一个**不健全的类型谓词** ——
+  它凭「是个非数组对象」就把 `unknown` 收窄成 `State` 这个判别联合，
+  于是 `parseSaveFile` 的返回类型**声称**它验证过一个 `State`，而它没有。
+- **为什么不在 1.15 修**：这属于 `[DS]` 第 3 条已登记的那条
+  （「`parseSaveFile` 只做底线形状校验 —— 对局的新字段没有对应的拒绝判据」）的**同型扩大**。
+  收窄结构校验会连带影响 `assertInvariants` 的职责边界（哪些该在解析层拒、哪些该在逻辑层抛），
+  是**架构层面的划分**，不是评审能顺手做的。
+- **恢复条件**：与本文件里「`parseSaveFile` 只做底线形状校验」那条**同一次**处理 ——
+  任何动存档 schema 的 story，顺带定下「解析层拒什么、逻辑层抛什么」的清单。
+  ——
+  `src/services/save.ts`, `_bmad-output/implementation-artifacts/1-15-存档与断点续学.md`
 
 
 ## Deferred from: story-1-16-关卡流程-通关-失败与推进 `[DS]` (2026-10-17)

@@ -57,6 +57,20 @@ function stripComments(source: string): string {
 const SAVE_SOURCE = readSource('src/services/save.ts')
 const SAVE_CLEAN = stripComments(SAVE_SOURCE)
 
+/**
+ * 📎 `[CR]` 2026-10-21（Story 1.15 评审）补：AC-E1 逐字点的是**三个**文件 ——
+ *   `src/services/save.ts` / `src/app/effects-runner.ts` / `src/app/store.ts` ——
+ *   而 G82 原先只扫**第一个**。
+ * ⚠️ 这不是「多扫一个目录更保险」：另两个是 app 层文件，**同样能 import
+ *   `components/debug/DebugPanel`**，而 1.17 之后那个组件**真的存在**了 ⇒
+ *   前向依赖会从后门溜进来，而全套件 0 红。
+ */
+const AC_E1_FILES = [
+  'src/services/save.ts',
+  'src/app/effects-runner.ts',
+  'src/app/store.ts',
+] as const
+
 /** `core/` 与 `content/` 各取一份真文件做「禁令仍然生效」的实证。 */
 const CORE_SAMPLE = stripComments(readSource('src/core/effects.ts'))
 const CONTENT_SAMPLE = stripComments(readSource('src/content/schema.ts'))
@@ -163,7 +177,16 @@ describe('G86 —— R-04 的存档那一半：只有 effects-runner 能写盘�
         const clean = stripComments(readSource(file))
         // ⚠️ 正则必须**排除声明处**（`export function writeSave(`）——
         //   只排除文件名是不够的：别的文件重新导出同名函数也会被算成调用点。
-        for (const m of clean.matchAll(new RegExp(`(?<![\\w.])${fn}\\s*\\(`, 'g'))) {
+        //
+        // 📎 **`[CR]` 2026-10-21 把 lookbehind 从 `(?<![\w.])` 改成 `(?<![\w])`** ——
+        //   原来那个 `.` 是在**放过成员表达式调用**：任何 `sv.writeSave(` 前面都有个点
+        //   ⇒ **一条都匹配不上** ⇒ 有人 `import * as sv from '../services/save'`
+        //   再用 `sv.writeSave(...)` 另起一处调用点，本守卫**照样全绿**。
+        //   而本守卫的全部意义就是 R-04 的「只有 effects-runner 能写盘」，
+        //   它不能在这种形态下失效。**变异 M261 实测 1 红。**
+        // ⚠️ **去掉 `.` 不会误伤 import**：`import { writeSave } from …` 里那个名字
+        //   后面跟的是 ` }` 而不是 `(` ⇒ 匹配不上。
+        for (const m of clean.matchAll(new RegExp(`(?<![\\w])${fn}\\s*\\(`, 'g'))) {
           const at = m.index ?? 0
           if (/export\s+(async\s+)?function\s+$/.test(clean.slice(Math.max(0, at - 40), at))) continue
           if (allowed !== null && file === allowed) continue
@@ -230,6 +253,28 @@ describe('G82 —— 零前向依赖：不得引用 DebugPanel / components/debu
       SAVE_CLEAN,
       '不得静态 import 调试面板，也不得动态 import —— 判据只拦 require / import(...) 形态',
     ).not.toMatch(/\b(require\s*\(|import\s*\()/)
+  })
+
+  // 📎 `[CR]` 2026-10-21（Story 1.15 评审）：G216 —— AC-E1 点名的**另两个文件**。
+  it.each([...AC_E1_FILES])('%s 同样不得前向依赖 1.17 的调试面板（AC-E1）', (file) => {
+    // ⚠️ **判据自检**：先证明「剥完注释的真代码还在」，否则「把整份文件读空」
+    //   也能让下面三条 not.toMatch 全部通过 —— 这是本文件第 3 次栽在这类空转上。
+    const clean = stripComments(readSource(file))
+    expect(clean.length, `${file} 剥完注释后不该是空的 —— 判据空转了`).toBeGreaterThan(100)
+    expect(clean, '自检：真代码必须保留').toMatch(/\b(export|import|const|function)\b/)
+
+    expect(clean, `${file} 不得引用 DebugPanel`).not.toMatch(/\bDebugPanel\b/)
+    expect(clean, `${file} 不得依赖 components/debug`).not.toMatch(/components\/debug/)
+    expect(clean, `${file} 不得动态 import 调试面板`).not.toMatch(/\b(require\s*\(|import\s*\()/)
+  })
+
+  it('反向自测：三份文件都真的进了扫描范围（少一个就判红）', () => {
+    // ⚠️ 判据自检（R-53）：AC-E1 逐字点的是三个文件名，这里逐字比对 ——
+    //   有人把 AC_E1_FILES 缩成一项时，本条当场红，而不是安静地少扫两个文件。
+    expect(
+      [...AC_E1_FILES],
+      'AC-E1 逐字点的是 save.ts / effects-runner.ts / store.ts 三个文件，少一个都不行',
+    ).toEqual(['src/services/save.ts', 'src/app/effects-runner.ts', 'src/app/store.ts'])
   })
 })
 
@@ -301,6 +346,38 @@ describe('G83 —— ESLint：禁令仍守 core/ 与 content/，且不外溢到 
     ).toEqual([])
   })
 
+  // 🚨📎 `[CR]` 2026-10-21（Story 1.15 评审）**G217** —— 上面那三条用的
+  //   `restrictedGlobalsMessages` 是拿**本文件里手抄的 `RESTRICTED_GLOBALS`** 拼出来的配置，
+  //   跟 `eslint.config.js` **零关联**。
+  //   ⇒ 后果：有人给 `eslint.config.js` 的 `src/core/**` 块加上 `src/services/save.ts`
+  //     （或新建一个 `src/services/**` 块带 `no-restricted-globals`）——
+  //     **`npm run lint` 当场红**（存档服务写 `localStorage` 被自己的禁令拦住），
+  //     而**本文件五条一条都不红**，因为它们问的是那份手抄的配置。
+  //   ⇒ 「save.ts 不在禁名单里」这一条，**从来没有人问过真配置**。
+  //   （名单**内容**另有守卫看着：`tests/scaffold/core-boundary.test.ts` 与
+  //     `tests/content/content-boundary.test.ts`。缺的是「save.ts 不在其覆盖范围内」。）
+  it('G217：问**真配置** —— save.ts 上没有 no-restricted-globals', async () => {
+    const rules = await rulesForFile('src/services/save.ts')
+    expect(
+      rules['no-restricted-globals'],
+      '真实 eslint.config.js 把 no-restricted-globals 施加到了 save.ts 上 —— ' +
+        '存档服务写 localStorage 会被自己的禁令拦住，`npm run lint` 当场红',
+    ).toBeUndefined()
+  })
+
+  it('G217：core/ 与 content/ 在真配置上**确实有**这条禁令（否则上一条恒真）', async () => {
+    // ⚠️ 上一条断言 `toBeUndefined()`，它要真的有鉴别力就得**证明反侧为真** ——
+    //   否则「`rulesForFile` 对任何文件都返回 undefined」也能让上一条全绿。
+    // ⚠️ 只能用 `PROBE_FILES` 里已有的路径 —— `rulesForFile` 对表外的文件会抛。
+    for (const path of ['src/core/balance.ts', 'src/content/schema.ts']) {
+      const rules = await rulesForFile(path)
+      expect(
+        severityOf(rules['no-restricted-globals']),
+        `${path} 在真配置上必须有 no-restricted-globals —— 否则 G217 的上一条是恒真断言`,
+      ).toBe('error')
+    }
+  })
+
   it('save.ts 在真实配置下**不在**禁 await 名单里', () => {
     // ⚠️ 断言的是「规则里没有 save.ts 这条路径」，而不是「规则不存在」。
     //   `rulesForFile` 返回的是**最终生效**的配置（含 glob 匹配顺序与 ignores），
@@ -314,9 +391,28 @@ describe('G83 —— ESLint：禁令仍守 core/ 与 content/，且不外溢到 
     })
   })
 
-  it('禁 await 名单仍然覆盖那三个文件（放宽别的不能顺手放宽它）', () => {
-    return Promise.all(
-      ['src/app/audio-unlock.ts', 'src/app/effects-runner.ts'].map(async (path) => {
+  // 🚨📎 `[CR]` 2026-10-21（Story 1.15 评审）**G218** —— 原用例标题写着
+  //   「禁 await 名单仍然覆盖**那三个**文件」，实际只查了**两个**，
+  //   而且其中一个（`audio-unlock.ts`）根本**不在**那条名单上 ——
+  //   它在**另一个** eslint 块里（那个块同时禁 `await` 与 `.then()`）。
+  //   ⇒ 真配置里只禁 `AwaitExpression` 的那块，逐字覆盖的是这三个文件：
+  //   **`src/services/audio.ts` / `src/services/pronunciation.ts` / `src/app/effects-runner.ts`**。
+  //   原来那两个**恰好各漏掉一个**：audio.ts 与 pronunciation.ts 从来没被查过。
+  //   ⚠️ 这就是本仓库记过的「判「N 处」却只判了其中一部分」——
+  //     标题里的数字是判据的一部分，标题错了守卫就名不副实。
+  const AWAIT_BANNED = [
+    'src/services/audio.ts',
+    'src/services/pronunciation.ts',
+    'src/app/effects-runner.ts',
+    // ⚠️ **刻意不给 `as const`** —— 那会把元素类型收窄成三者的字面量联合，
+    //   于是下面反向自测里的 `AWAIT_BANNED.includes('src/services/save.ts')`
+    //   变成 TS2345（不在联合里）⇒ **要证明「名单外的东西不在名单里」，
+    //   就必须让名单能被当成普通字符串查**。收窄类型反而挡住了判据本身。
+  ] satisfies readonly string[]
+
+  it('G218：禁 await 名单逐字覆盖那三个文件（放宽别的不能顺手放宽它）', async () => {
+    await Promise.all(
+      AWAIT_BANNED.map(async (path) => {
         const rules = await rulesForFile(path)
         expect(
           severityOf(rules['no-restricted-syntax']),
@@ -324,6 +420,18 @@ describe('G83 —— ESLint：禁令仍守 core/ 与 content/，且不外溢到 
         ).toBe('error')
       }),
     )
+  })
+
+  it('G218：反向自测 —— 名单外的文件（save.ts）不在禁 await 名单里', async () => {
+    const rules = await rulesForFile('src/services/save.ts')
+    expect(
+      rules['no-restricted-syntax'],
+      'save.ts 不在禁 await 名单上（1.15 的存档服务是同步的，没有理由禁）',
+    ).toBeUndefined()
+    expect(
+      AWAIT_BANNED.includes('src/services/save.ts'),
+      '判据自检：save.ts 不该被写进禁 await 名单里',
+    ).toBe(false)
   })
 })
 

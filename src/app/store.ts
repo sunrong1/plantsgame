@@ -58,7 +58,7 @@ import {
 } from '../core'
 import type { Action, OptionId, Progress, State } from '../core'
 import { playPronunciation } from '../services/pronunciation'
-import { readSave } from '../services/save'
+import { readSave, markRestoreDegraded } from '../services/save'
 import { prefetchNextUnit, prefetchUnit } from '../services/asset-prefetch'
 
 import { runEffectsFromStore, startBgmIfReady, stopBgm } from './effects-runner'
@@ -451,6 +451,18 @@ function restoreFromSave(): void {
     }
     console.warn(
       `[save] 存档里的对局不合法，已退回从头开始（**跨局进度保留**）：${describeRestore(err)}`,
+    )
+    // 📎 `[CR]` 2026-10-21（Story 1.15 评审）：把这件事登记进降级表。
+    //
+    // ⚠️ **为什么原来只 `console.warn` 不够**：AC-D4 逐字要求「降级项**已登记**
+    //   （AC-B4）」，而 1.17 的调试面板照 `saveDegradations()` 显示 ——
+    //   不登记 ⇒ 面板一个字都不显示 ⇒ 家长看到的是「重进后从头开始」，
+    //   **没有任何东西指向「存档里的那一局坏了」这个原因**。
+    // ⚠️ **为什么不能由 save.ts 自己登记**：失败发生在 `readSave()`
+    //   **已经成功返回之后**（JSON 合法、版本也对、字段齐全），
+    //   那条路径上 save 侧没有任何失败可登记 ⇒ 只能由 app 层递进来。
+    markRestoreDegraded(
+      `存档里的对局不合法（违反状态不变量），已退回从头开始：${describeRestore(err)}`,
     )
   }
 }

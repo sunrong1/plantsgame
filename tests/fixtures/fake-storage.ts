@@ -19,8 +19,19 @@
  * 2. **`setItem` 抛**（隐私模式 / 配额满 / Safari 无痕）⇒ 降级 `'write'`。
  * 3. **`getItem` 抛**（同上，但发生在读侧）⇒ 降级 `'read'`。
  *    ⚠️ 2 与 3 必须是**两个开关**：把它们合成一个「localStorage 不可用」会让
- *    「读失败被报成存失败」这类张冠李戴的假绿溜过去（1.15 偏离 4 就是为它加的第 4 个键）。
+ *    「读失败被报成存失败」这类张冠李戴的假绿溜过去 ——
+ *    `clearSave()` 曾把「删不掉」报成 `'read'`，正是靠**独立**的 `throwOnRemove`
+ *    才暴露出来（见第 5 条）。
  * 4. **键里躺着一段非 JSON 字符串** ⇒ 降级 `'parse'`，且**原串不能被动过**。
+ * 5. 📎 **`[CR]` 2026-10-21 补：`removeItem` 抛**（`throwOnRemove`）——
+ *    没有它，第 4 种情况是缺的：`clearSave()` 的 catch **整段是死代码**，
+ *    用例里构造不出来，于是「清不掉存档」被报成 `'read'` 这么久都没人发现。
+ *    ⇒ 与上面同一条纪律：判据必须能在坏输入上被触发（R-50 第 ② 步）。
+ *
+ * ⚠️ **原注释写着「1.15 偏离 4 就是为它加的第 4 个键」—— 那是悬空引用**：
+ *   1.15 偏离表第 4 条是「改动 1.14 的 `SAVE` 成员」，与降级键毫无关系。
+ *   降级键的增补记在 `src/services/save.ts` 的 `SaveDegradationKey` 注释与
+ *   `deferred-work.md`「Deferred from: code review of story-1-15」。
  *
  * ⚠️ **不做的事**（都是「看起来更真、实际让守卫失去鉴别力」的假增强）：
  *   · 不实现容量上限 —— 配额抛错由 `throwOnSet` 开关直接给，比模拟字节数可靠；
@@ -59,6 +70,17 @@ export class FakeStorage {
   /** `getItem` 是否抛错。⚠️ 与 `throwOnSet` 分开，见文件头第 3 点。 */
   throwOnGet = false
 
+  /**
+   * 📎 `[CR]` 2026-10-21 补（Story 1.15 评审）：`removeItem` 是否抛错。
+   *
+   * ⚠️ **为什么必须独立成一个开关**：没有它，`save.ts` 的 `clearSave()` 那条
+   *   catch 分支**在任何测试里都构造不出来** —— 它是**死代码 + 错标签**：
+   *   分支里登记的降级键是 `'read'`，而 `'read'` 按 `SaveDegradationKey` 的
+   *   注释逐字定义为「**根本读不到数据**」，与「删不掉」是两件事。
+   *   错标签之所以能一直活着，正是因为**没有开关能走到那条路**。
+   */
+  throwOnRemove = false
+
   get length(): number {
     return this.data.size
   }
@@ -85,6 +107,9 @@ export class FakeStorage {
 
   removeItem(key: string): void {
     this.calls.push({ op: 'remove', key })
+    if (this.throwOnRemove) {
+      throw new Error('localStorage.removeItem 被拒绝（隐私模式）')
+    }
     this.data.delete(key)
   }
 

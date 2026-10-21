@@ -86,13 +86,44 @@ export interface SaveDegradation {
 /**
  * 降级项的分类 —— 「**哪一步坏了**」。
  *
- * ⚠️ `read` 是偏离 4（见 story 偏离表）：`epics.md` 的 AC 逐字点的是三条失败路径
- * （写失败 / JSON 损坏 / 版本不匹配），`localStorage` **读**失败不在其中。
- * 但它是**真实且常见**的 —— 无痕模式下取 `localStorage` 属性本身就抛 SecurityError ——
- * 且**不能**归进 `parse`：`parse` 的含义是「这份数据读不懂」，
- * 而读失败是「根本读不到数据」，混起来会让 1.17 的面板对家长说错原因。
+ * ⚠️ AC-B5 逐字写的是**三个** key（`'write' | 'parse' | 'schema-version'`），
+ * 而这里是**五个** —— 多出来的两条各自有理由，且**都不在 AC 的字面范围内**：
+ *
+ * · `read` —— `epics.md` 的 AC 点的是三条失败路径，`localStorage` **读**失败不在其中。
+ *   但它**真实且常见**：无痕模式下取 `localStorage` 属性本身就抛 SecurityError。
+ *   且**不能**归进 `parse`：`parse` 的含义是「这份数据读不懂」，
+ *   而读失败是「根本读不到数据」，混起来会让 1.17 的面板对家长说错原因。
+ *
+ * · 🚨📎 **`clear` —— `[CR]` 2026-10-21 新增（Story 1.15 评审）**。
+ *   `clearSave()` 的 catch 原本登记的是 **`'read'`**，而那里的数据**明明读得到**
+ *   （读不到的话早就走 `readSave` 那条路了）—— 只是**删不掉**。
+ *   ⇒ 面板会照着 `'read'` 的定义告诉家长「根本读不到存档」，
+ *     而真相是「存得进去、也读得到，就是删不掉」—— **对家长说错了原因**。
+ *   ⚠️ 这条错标签**活了整个 1.15**，因为 `fake-storage.ts` 的 `removeItem`
+ *     当时**没有抛错开关** ⇒ 那条 catch 分支在任何用例里都构造不出来
+ *     ⇒ 「错标签」与「死代码」是同一个原因的两个后果（R-50 第 ② 步：
+ *     **判据必须能在坏输入上被触发**，否则它护不护得住都验不出来）。
+ *
+ * · 🚨📎 **`invariant` —— `[CR]` 2026-10-21 新增（Story 1.15 评审）**。
+ *   盘上的数据 **JSON 合法、版本也对、字段齐全**，但那份**对局的状态**违反了
+ *   `core/assertInvariants`（内容回滚、或存档来自另一个内容版本）。
+ *   ⇒ 它既不是「读不到」（读得到），也不是「读不懂」（JSON 合法），
+ *     更不是「存不进去」（那就是 `write`）—— **单开一个键**，
+ *     否则面板只能显示一句都不准确的话。
+ *   ⚠️ 这条只由 `app/store.ts` 经 {@link markRestoreDegraded} 登记：
+ *     失败发生在 `readSave()` **已经成功返回之后**，save 侧自己登记不了。
+ *
+ * ⚠️ 这三条偏离**都没有进 1.15 的偏离表**（表里第 4 条是「改动 1.14 的 `SAVE` 成员」，
+ * 与降级键毫无关系 —— 原注释写「`read` 是偏离 4」是一处**悬空引用**）。
+ * ⇒ 登记在 `deferred-work.md`「Deferred from: code review of story-1-15」，并已更正此处指向。
  */
-export type SaveDegradationKey = 'write' | 'read' | 'parse' | 'schema-version'
+export type SaveDegradationKey =
+  | 'write'
+  | 'read'
+  | 'parse'
+  | 'schema-version'
+  | 'clear'
+  | 'invariant'
 
 // ── 降级标志（AC-B4 / AC-B5）────────────────────────────────────────────────
 
@@ -102,11 +133,41 @@ export type SaveDegradationKey = 'write' | 'read' | 'parse' | 'schema-version'
  * ⚠️ **不是日志，是状态**：`Map` 而不是数组，因为 1.17 的面板要「一次性列出所有
  * **正在生效**的降级项」—— 同一个 key 反复失败 10 次仍只是一项。
  *
- * ⚠️ **一次成功写入会清空全部降级项**：写成功说明存储恢复了，
- * 而新写进去的这份数据必然 JSON 合法、版本正确 ⇒ 之前记的 `parse` /
- * `schema-version` 已经**不再生效**。这也正是 1.17 的「重试写入」按钮的语义。
+ * ⚠️ **一次成功只清「这次真的修好了」的那几项，不是全清**（`[CR]` 2026-10-21 修）：
+ *   · **写成功** ⇒ `write` 不再成立（新字节合法、版本正确），
+ *     `parse` / `schema-version` 也**跟着**不成立 —— 坏字节已经被新字节替换掉了。
+ *     `invariant` 同理：降级后写进去的是内存里那份合法对局。
+ *   · **读成功** ⇒ `read` / `parse` / `schema-version` 不再成立
+ *     （这次读到的字节确实是好的）。
+ *   · **两侧都不许顺带抹掉对方** —— 这一条是本 story 之前的行为错误：
+ *     原来两处都写 `degraded.clear()`。真实的坏法是**配额满**：
+ *     `setItem` 抛 ⇒ 记 `write`；孩子刷新页面 ⇒ `enterLevel()` 读档，
+ *     盘上那份**旧的**存档读得到（坏的是写，不是读）⇒ `readSave` 成功
+ *     ⇒ `degraded.clear()` ⇒ `isSaveDegraded()` 变 false，
+ *     **1.17 的面板对家长说「存档正常」，而孩子此后每一次落盘都在丢进度。**
+ *     反过来也一样：一次成功的**写**会抹掉「读不到存档」——
+ *     而那正是本文件头逐字点名的「静默丢进度」形态。
+ *   ⇒ 「读到一份好存档」不等于「存得进去」。这两件事今天被当成了一件事。
+ *   守卫 **G222** 逐键钉住（变异 M259 / M260）。
  */
 const degraded = new Map<SaveDegradationKey, string>()
+
+/** 一次成功的**写**能证明恢复的那几项（见上）。 */
+const RESOLVED_BY_WRITE: readonly SaveDegradationKey[] = [
+  'write',
+  'parse',
+  'schema-version',
+  'invariant',
+]
+
+/**
+ * 一次成功的**读**能证明恢复的那几项（见上）。
+ *
+ * ⚠️ **刻意不含 `write` 与 `invariant`**：读得到说不了写得进去，
+ *   而 `invariant` 是 app 层在**读成功之后**才登记的（`restoreFromSave`），
+ *   一次成功读档压根没碰到那份对局。
+ */
+const RESOLVED_BY_READ: readonly SaveDegradationKey[] = ['read', 'parse', 'schema-version']
 
 /**
  * 降级登记表的版本号 —— **只在 `degraded` 增删时递增**（`[CR]` 2026-10-17 补）。
@@ -146,6 +207,23 @@ function noteDegradationsChanged(): void {
   for (const cb of degradationListeners) cb()
 }
 
+/**
+ * 只删掉 {@link keys} 里**当前确实在册**的那几项。
+ *
+ * ⚠️ **刻意不是 `degraded.clear()`**：全清会把「读成功」当成「写得进去」的证据，
+ *   而配额满时这两件事恰好是分开的（见 `degraded` 的注释）。
+ * ⚠️ **真的删到了东西才 `noteDegradationsChanged()`** —— 空转时递增版本号
+ *   会白白唤醒所有订阅者（1.17 面板的 `computed` 白重算），
+ *   而「什么都没变」本来就不该被广播成一次变化。
+ */
+function resolveDegradations(keys: readonly SaveDegradationKey[]): void {
+  let changed = false
+  for (const key of keys) {
+    if (degraded.delete(key)) changed = true
+  }
+  if (changed) noteDegradationsChanged()
+}
+
 /** 降级登记表的当前版本号（纯整数；配 {@link onSaveDegradationsChanged} 用）。 */
 export function saveDegradationsVersion(): number {
   return degradedVersion
@@ -172,6 +250,33 @@ function markDegraded(key: SaveDegradationKey, reason: string): void {
   degraded.set(key, reason)
   noteDegradationsChanged()
   console.warn(`[save] ${reason}`)
+}
+
+/**
+ * 📎 **`[CR]` 2026-10-21 新增（Story 1.15 评审）：给 app 层一条登记降级的通道。**
+ *
+ * 🚨 **为什么需要它**：AC-D4 逐字要求「降级项**已登记**（AC-B4）」，
+ * 而 `store.ts` 的 `restoreFromSave()` 在 `assertInvariants` 抛错那条路径上
+ * **只 `console.warn`** ⇒ `isSaveDegraded()` 仍是 `false`、`saveDegradations()` 仍是 `[]`
+ * ⇒ **1.17 的调试面板一个字都不显示**。
+ * 而 `restoreFromSave` 的 catch 发生在 `readSave()` **已经成功返回之后**
+ * （数据读到了、JSON 合法、版本也对），所以**它自己那条路径登记不了任何键**
+ * —— 这个信息只能由 app 层递进来。
+ *
+ * ⚠️ **本函数刻意不 `console.warn`** —— 调用方（`restoreFromSave`）**已经**就
+ *   同一件事记了一条更完整的 WARN（「已退回从头开始（**跨局进度保留**）」）。
+ *   走 `markDegraded` 会让同一件事在 console 里出现**两条**，
+ *   而 `store-save.test.ts` 里那条「必须留一条 `[save]` WARN」的断言数的是条数 ——
+ *   **同一个事实记两遍，是噪音也是判据的敌人**（R-37 登记只走记账）。
+ *
+ * ⚠️ **这不是「让 app 层随便写降级表」**：键与原因都收窄成
+ *   「`invariant` + 一句人话」，且**只暴露这一个键** ——
+ *   `write` / `read` / `clear` 三条仍然是 `services/save.ts` 自己的失败，
+ *   外部登记它们会让「哪一步坏了」这个分类失去意义。
+ */
+export function markRestoreDegraded(reason: string): void {
+  degraded.set('invariant', reason)
+  noteDegradationsChanged()
 }
 
 /** 把一个 unknown 变成一句可读的说明（不抛，NFR14）。 */
@@ -208,8 +313,7 @@ export function writeSave(progress: Progress, currentGame: State | null): boolea
     }
     localStorage.setItem(SAVE_KEY, JSON.stringify(payload))
     // ⚠️ 先清降级项再记日志：写成功说明存储恢复了（见 `degraded` 的注释）。
-    degraded.clear()
-    noteDegradationsChanged()
+    resolveDegradations(RESOLVED_BY_WRITE)
     console.info(
       `[save] 已存档（单元序号 ${progress.currentUnitIndex} · 已掌握 ${progress.masteredWordIds.length} 词` +
         `${currentGame === null ? ' · 本局已结束' : ` · 第 ${currentGame.turn} 回合`}）`,
@@ -255,9 +359,9 @@ export function readSave(): SaveFile | null {
     return null
   }
 
-  // 读到一份可用的存档 ⇒ 之前的失败理由已不成立。
-  degraded.clear()
-  noteDegradationsChanged()
+  // 读到一份可用的存档 ⇒ **读侧**与「字节坏了」那两类不再成立。
+  // ⚠️ **刻意不碰 `write`**：读得到说不了写得进去（配额满时这两件事是分开的）。
+  resolveDegradations(RESOLVED_BY_READ)
   return parsed.file
 }
 
@@ -354,9 +458,12 @@ function isPlainObject(value: unknown): value is State {
 export function clearSave(): void {
   try {
     localStorage.removeItem(SAVE_KEY)
+    // 📎 **这里是唯一一处合法的全清**（`[CR]` 2026-10-21）：盘上**什么都不剩了**，
+    //   而降级项的语义是「描述盘上这份数据的毛病」—— 没有数据，就没有毛病可描述。
+    //   `writeSave` / `readSave` 那两处不行，它们只能证明**自己那一侧**恢复了。
     degraded.clear()
     noteDegradationsChanged()
   } catch (err) {
-    markDegraded('read', `清不掉存档（${describe(err)}）—— 浏览器可能禁用了本地存储`)
+    markDegraded('clear', `清不掉存档（${describe(err)}）—— 浏览器可能禁用了本地存储`)
   }
 }

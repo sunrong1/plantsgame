@@ -9,7 +9,15 @@
  *     而进度条已经显示 12/37 —— 两块 HUD 自相矛盾，无报错
  *   · 读了、喂了 `state`，但**没喂 `progress`** ⇒ 进度条肉眼可见回退，
  *     而 `ProgressBar.vue` 的文件头逐字写着「若出现回退，那不是动画该掩盖的事」
- * ⇒ 本文件把「两样都喂」与「喂的顺序」分别钉死。
+ * ⇒ 本文件把「两样都喂」钉死。
+ *
+ * ⚠️📎 **`[CR]` 2026-10-21 删掉「与喂的顺序」这半句** —— 它是**文件头声称的覆盖
+ *   并不存在**：AC-D1 要求「先喂 progress 再喂 state，顺序不可换」，而 10 条用例里
+ *   **没有一条**断言顺序。更根本的是：这条 AC 在当前架构下**不可判定** ——
+ *   `progress` 与 `state` 是两个独立 ref，先后赋值的结果完全一样，
+ *   **没有任何可观测差异**能钉住顺序（AC 给的理由「喂反了会让进度条与战场对不上」
+ *   在数据流上不成立：两者互不派生）。⇒ 登记为「AC 需要重写或明确降级」，
+ *   别让一句做不到的叮嘱挂在文件头上冒充覆盖。
  *
  * ── 为什么 ──────────────────────────────────────────────────────────────────
  * 1. **`readSave()` 真的被调**，且**在 `view` 切到 level 之后**才调 ——
@@ -20,6 +28,12 @@
  * 3. **`localStorage` 用共享 fake**（R-37：`tests/fixtures/fake-storage.ts`
  *    是全仓唯一一份）。不装的话 `readSave()` 会静默降级成 `'read'`，
  *    **没有一条用例变红** —— 守卫自己先漏那就太难看了。
+ * 4. 🔥📎 **`[CR]` 2026-10-21：每例 `vi.resetModules()`** —— 原先本文件在顶层
+ *    `await import()` 一次，于是 `services/save.ts` 的模块级 `degraded`（一个 Map）
+ *    **跨用例泄漏**。实测：在「读不到」那条前面插一条「留下一个 parse 降级」的用例，
+ *    它的 `toEqual(['read'])` 立刻变成 `['parse', 'read']` 而红
+ *    ⇒ **那条精确匹配的断言一直只在「前面的用例恰好清了降级表」时才成立**，
+ *    是靠执行顺序的运气，不是判据。逐条重 import 每例一份干净的 Map。
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -32,10 +46,15 @@ let storage: FakeStorage
 let info: ReturnType<typeof vi.spyOn>
 let warn: ReturnType<typeof vi.spyOn>
 
-const core = await import('../../src/core')
-const content = await import('../../src/content')
-const saveApi = await import('../../src/services/save')
-const store = await import('../../src/app/store')
+/**
+ * 📎 `[CR]` 2026-10-21：改成 `let` + 逐例 `beforeEach` 重 import ——
+ * 见文件头第 4 点（`degraded` 跨用例泄漏）。类型走**动态 import 的返回值**，
+ * 与 `level-flow.test.ts` 同一姿势。
+ */
+let core: typeof import('../../src/core')
+let content: typeof import('../../src/content')
+let saveApi: typeof import('../../src/services/save')
+let store: typeof import('../../src/app/store')
 
 /** 一份结构合法的初始对局。 */
 function freshState(): State {
@@ -68,8 +87,18 @@ function seedSave(progress: Progress, currentGame: State | null): void {
 
 const busyProgress: Progress = { currentUnitIndex: 2, masteredWordIds: ['u1-hello', 'u1-cat'] }
 
-beforeEach(() => {
+beforeEach(async () => {
+  // ⚠️ **先装 fake 再 import**：虽然 `save.ts` 是惰性读 `localStorage`，
+  //   但顺序固定下来比「碰巧没关系」可靠 —— 将来某个模块在求值期就读它时，
+  //   得到的是一份坏掉的 storage，而不是一条看不懂的报错。
   storage = installFakeStorage()
+  // 🔥 每例一份干净的模块图：`degraded` 是 `services/save.ts` 的**模块级 Map**，
+  //   不重置就会跨用例泄漏，让精确匹配的断言变成「靠执行顺序的运气」。
+  vi.resetModules()
+  core = await import('../../src/core')
+  content = await import('../../src/content')
+  saveApi = await import('../../src/services/save')
+  store = await import('../../src/app/store')
   info = vi.spyOn(console, 'info').mockImplementation(() => {})
   warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
   store.state.value = freshState()
@@ -194,6 +223,18 @@ describe('AC-D4 —— 恢复失败安全降级：不抛、不弹窗、照常开
 
     expect(store.state.value.hearts, '对局必须退回初始那一局').toBe(3)
     expect(store.state.value.turn).toBe(1)
+    // 🚨📎 **`[CR]` 2026-10-21 新增（G220）**：AC-D4 逐字要求「降级项**已登记**
+    //   （AC-B4）」，而这条路径原先**只 `console.warn`** ⇒
+    //   `isSaveDegraded()` 仍为 false ⇒ **1.17 的面板一个字都不显示**。
+    //   ⚠️ 上面已有的 WARN 计数断言**照不到它** —— 它数的是 console，不是降级表。
+    expect(
+      saveApi.isSaveDegraded(),
+      '对局非法必须登记降级项 —— 不登记的话调试面板什么都不显示，家长看不到原因',
+    ).toBe(true)
+    expect(
+      saveApi.saveDegradations().map((d) => d.key),
+      "对局状态非法单开 'invariant' 键：既不是读不到(read)、也不是读不懂(parse)、也不是存不进去(write)",
+    ).toContain('invariant')
     // 🔥📎 **`[CR]` 第六轮裁决 1（用户 2026-10-19）改判据，按 R-57 留痕。**
     //   原文逐字是「**对局非法 ⇒ 进度一并退回，避免留下半截事实**」，
     //   断言 `toEqual({ currentUnitIndex: 0, masteredWordIds: [] })`。
@@ -237,6 +278,24 @@ describe('AC-D4 —— 恢复失败安全降级：不抛、不弹窗、照常开
       store.progress.value,
       '🔴 负心数就把跨局进度一并清空了 —— 裁决 1：降级只丢**对局**（FR58）',
     ).toEqual(busyProgress)
+  })
+
+  // 🚨📎 **`[CR]` 2026-10-21 新增：这条用例本身就是「模块隔离」的守卫。**
+  //
+  //   它**故意**在盘上留一份坏 JSON，让 `readSave()` 登记一条 `parse` 降级。
+  //   下面那条 `toEqual(['read'])` 因此只有在「每例一份干净的 `degraded`」时
+  //   才成立 —— 原先本文件顶层 import 一次、`degraded` 跨用例泄漏时，
+  //   插入本条就会把下面那条打成 `['parse', 'read']`（**实测过**）。
+  //   ⇒ 它锁住的是「逐例 `vi.resetModules()` 这条纪律」，不是读档的什么行为。
+  it('G219：本用例故意留下一条 parse 降级（下一条靠它证明模块已隔离）', () => {
+    storage.data.set(saveApi.SAVE_KEY, '{ 坏 JSON')
+
+    store.enterLevel()
+
+    expect(
+      saveApi.saveDegradations().map((d) => d.key),
+      '前置：本例确实在盘上留下了一条降级项 —— 留不下来说明夹具没生效',
+    ).toEqual(['parse'])
   })
 
   it('localStorage 读不到（无痕模式）⇒ 降级为 read，不抛', () => {

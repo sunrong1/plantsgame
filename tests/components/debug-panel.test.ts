@@ -47,7 +47,7 @@ import {
   clearAssetDegradationsForTest,
   markAssetDegraded,
 } from '../../src/services/asset-degradations'
-import { readSave, writeSave } from '../../src/services/save'
+import { readSave, writeSave, SAVE_KEY, SAVE_SCHEMA_VERSION } from '../../src/services/save'
 import { afterEachUninstall, installFakeStorage } from '../fixtures/fake-storage'
 import { exportedFunctionBody } from '../fixtures/exported-function-body'
 import type { FakeStorage } from '../fixtures/fake-storage'
@@ -672,14 +672,33 @@ describe('[CR 2026-10-17] 面板先开着、之后才降级 ⇒ 它必须自己�
   //   而「清空」这条路上**没有人 bump** —— 它完全依赖底层的通知。
   it('降级被**底层**清掉（一次成功的 `readSave`）也要刷 —— 没人 bump 就靠通知', async () => {
     const panel = mount(DebugPanel)
-    storage.throwOnSet = true
-    writeSave(progress.value, state.value)
+    // 🔥📎 **`[CR]` 2026-10-21 改夹具，按 R-57 留痕（Story 1.15 评审带出来的连带项）。**
+    //
+    // ⚠️ **原来这条用例的夹具恰恰钉住了 1.15 的一个行为错误**：它先 `throwOnSet`
+    //   造一条 **`write`** 降级，再靠一次成功的 `readSave()` 把它清掉 ——
+    //   **「读得到」被当成了「写得进去」的证据**。真实的坏法就是**配额满**：
+    //   `setItem` 抛 ⇒ 记 `write`；孩子刷新页面 ⇒ 读档，盘上那份**旧的**存档读得到
+    //   ⇒ 降级被抹 ⇒ **面板对家长说「存档正常」，而孩子此后每一次落盘都在丢进度。**
+    //   ⇒ 1.15 已把它改成「一次成功**只清自己那侧**」（守卫 G222，变异 M259/M260）。
+    //   ⇒ **本用例的意图不是「write 会被读抹掉」**（那已被判为缺陷），
+    //     意图是「**底层**清掉降级项时面板要自己刷出来，没人 bump」。
+    //   ⇒ 夹具换成 `parse`：字节坏了 → 一次 `readSave()` 登记 `parse`；
+    //     再把**好字节**放回盘上 → 一次成功的读把它清掉。
+    //     **清理路径仍然全程在底层**（没点任何按钮、没 bump），本意一个字未改。
+    storage.data.set(SAVE_KEY, '不是 JSON')
+    readSave()
     await nextTick()
-    expect(panel.text(), '前置：这一行应当在').toContain('key=write')
+    expect(panel.text(), '前置：这一行应当在').toContain('key=parse')
 
-    // ⚠️ **不点任何按钮**：存储恢复正常后，一次成功的读就把降级项清掉了
-    //   （`save.ts` 的「读到一份可用的存档 ⇒ 之前的失败理由已不成立」）。
-    storage.throwOnSet = false
+    storage.data.set(
+      SAVE_KEY,
+      JSON.stringify({
+        schemaVersion: SAVE_SCHEMA_VERSION,
+        savedAt: 1,
+        progress: progress.value,
+        currentGame: null,
+      }),
+    )
     readSave()
     await nextTick()
 
