@@ -203,6 +203,10 @@
 | DF-190 | 待触发 | Story 2.9 | Story 2.9 试玩验收时逐条人工过；或另建生僻词表 / 语义距离词典后补机器守卫 | 「语义近但字面远」的选项（如 `Thank you!` ~ `I am fine, thank you.`）字符级编辑距离抓不到 —— 属人工项 | [`df-190`](./deferred-details.md#df-190) |
 | DF-191 | 待触发 | Story 1.19 | Story 1.19 试玩验收时人工复核视角；在出现「机器判视角」的手段前不得结清 | 单词卡**图片**选项的视角一致性机器判不了 —— `docs/art-direction.md` §5.4 台账是目视结论 | [`df-191`](./deferred-details.md#df-191) |
 | DF-192 | 待触发 | 未指派 | 横屏布局单开 story 改 `src/styles/responsive.css` 的 2×2 规则时（该规则被守卫 G169 钉死） | 横屏下选项网格被强制 2 列 ⇒ 3 个选项排成 **2 + 1 两行**；本 story 不动横屏布局 | [`df-192`](./deferred-details.md#df-192) |
+| DF-193 | 待裁决 | Story 2.9 | Story 2.9 试玩验收时决定 `NEAR_DUPLICATE_MAX_DISTANCE` 是否从 2 调高，或为 3–4 字母短词另立一条判据 | `scripts/validate-content.ts` 的 `NEAR_DUPLICATE_MAX_DISTANCE = 2` 会误杀「字面近、语义远」的 3–4 字母短词（如 `red` ~ `bed`） | [`df-193`](./deferred-details.md#df-193) |
+| DF-194 | 待排期 | 未指派 | 下次改 `src/styles/tokens.css` / `src/app/store.ts` / `src/core/types.ts` / `src/core/reducer.ts` / `src/styles/responsive.css` 的注释时一并更正 | `src/styles/tokens.css` 等 5 处注释仍逐字写「四个选项」，与单元 1 现在的 2 / 3 个选项不符 | [`df-194`](./deferred-details.md#df-194) |
+| DF-195 | 待裁决 | Story 1.19 / Story 2.9 | Story 1.19 或 2.9 试玩验收时决定是否打乱选项顺序（以及是否把「正确项位置」纳入内容校验） | `src/content/units/unit-01.json` 全部 37 张卡的正确项都在第 0 位 ⇒「永远点最左边」100% 命中 | [`df-195`](./deferred-details.md#df-195) |
+| DF-196 | 待排期 | 未指派 | 下次给 `scripts/validate-content.ts` 补「文件名 ↔ `unitNumber` 交叉核对」时（单元 2 起录入时更值钱） | `scripts/validate-content.ts` 的 `loadUnitFiles` 不核对文件名与 `unitNumber` ⇒ `unit-05.json` 写 `unitNumber: 1` 也能过校验 | [`df-196`](./deferred-details.md#df-196) |
 
 ## 新增一条
 

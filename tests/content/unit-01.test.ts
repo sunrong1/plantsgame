@@ -34,6 +34,7 @@ import { getUnit, parseUnit, UNITS } from '../../src/content'
 import { targetCardDistribution } from '../../src/content/distribution'
 import { targetOptionCount } from '../../src/content/option-count'
 import { UnitSchema } from '../../src/content/schema'
+import type { CardKind } from '../../src/content/schema'
 
 const root = fileURLToPath(new URL('../../', import.meta.url))
 const voiceDir = join(root, 'public/assets/audio/voice')
@@ -45,6 +46,30 @@ const manifest = JSON.parse(readFileSync(join(voiceDir, 'manifest.json'), 'utf8'
 
 const unit = getUnit(1)
 const entries = unit.entries
+
+/**
+ * G264 的**判据本体** —— 抽成函数，正向用例与反向自测**都调它**。
+ *
+ * ⚠️ **为什么要抽**（`[CR]` 2026-10-23 修）：反向自测必须能「把违规形态真写进去，
+ *   断言那条守卫会红」—— 若判据只存在于某条 `it` 的循环体里，反向自测**够不着它**
+ *   （只能另写一份手写比较，于是判据被改坏时反向自测照样绿）。
+ *   ⇒ 判据本体是一个**函数**，两边共用同一份实现。
+ */
+function assertOptionCountsMatchRule(
+  cards: readonly { entryId: string; card: { kind: CardKind; options: readonly unknown[] } }[],
+  unitNumber = 1,
+): void {
+  for (const entry of cards) {
+    const want = targetOptionCount(unitNumber, entry.card.kind)
+    expect(
+      entry.card.options.length,
+      `${entry.entryId}（${entry.card.kind} 卡）有 ${entry.card.options.length} 个选项，` +
+        `而规则说单元 ${unitNumber} 的 ${entry.card.kind} 卡应当是 ${want} 个 —— ` +
+        '两者必须一致：改内容要同步改 src/content/option-count.ts 的档位表（或反之），' +
+        '否则「档内同值」只是一句没有人核对过的承诺',
+    ).toBe(want)
+  }
+}
 
 /** 磁盘上录音文件的 id（去扩展名）。 */
 const mp3Ids = (): string[] =>
@@ -214,27 +239,26 @@ describe('AC-17 —— 三种卡型成规模存在（FR19）', () => {
   //    但它**只保证规则自洽**，不保证**内容真的按它录**。
   //    ⇒ 规则改了不碰内容、或内容改了不碰规则，两边都会红 —— 难度阶梯不会落空。
   it('G264：每张卡的选项数 === 规则算出的档 1 目标值（逐卡核对，零容差）', () => {
-    for (const entry of entries) {
-      const want = targetOptionCount(1, entry.card.kind)
-      expect(
-        entry.card.options.length,
-        `${entry.entryId}（${entry.card.kind} 卡）有 ${entry.card.options.length} 个选项，` +
-          `而规则说单元 1 的 ${entry.card.kind} 卡应当是 ${want} 个 —— ` +
-          '两者必须一致：改内容要同步改 src/content/option-count.ts 的档位表（或反之），' +
-          '否则「档内同值」只是一句没有人核对过的承诺',
-      ).toBe(want)
-    }
+    assertOptionCountsMatchRule(entries)
   })
 
-  it('G264 反向自测：把一张卡多塞一个选项 ⇒ 上面那条立刻红（判据真能咬住它）', () => {
+  it('G264 反向自测：把一张卡多塞一个选项 ⇒ 判据本体立刻红（判据真能咬住它）', () => {
     // ⚠️ R-51 / T6.5：判据必须真能咬住它要防的那个违规。
-    //   这里在**夹具**上多塞一个选项（不动真实内容），证明判据不是恒真的。
+    //   这里在**夹具**上多塞一个选项（不动真实内容），并**把违规夹具喂进判据本体**
+    //   —— 断言它会红。
+    // ⚠️⚠️ **为什么必须喂进判据本体**（`[CR]` 2026-10-23 修）：
+    //   原来的反向自测只断言「夹具多塞的那个选项 ≠ 规则的目标值」——
+    //   那是一条**与判据无关**的断言：判据本体被掏空 / 写反时，它照样绿。
+    //   （本仓已知的假绿形态之一：反向自测没调用判据本体。）
     const first = entries[0]
-    const padded = { ...first, card: { ...first.card, options: [...first.card.options, first.card.options[0]] } }
+    const padded = {
+      ...first,
+      card: { ...first.card, options: [...first.card.options, first.card.options[0]] },
+    }
     expect(
-      padded.card.options.length,
-      '夹具没造出「多一个选项」⇒ 反向自测本身失效',
-    ).not.toBe(targetOptionCount(1, first.card.kind))
+      () => assertOptionCountsMatchRule([padded]),
+      '判据在「多一个选项」的违规夹具上没红 ⇒ 判据本身失效（它可能恒真）',
+    ).toThrow()
   })
 
   it('每张卡恰有一个正确项（FR16 在真实数据上的复验）', () => {

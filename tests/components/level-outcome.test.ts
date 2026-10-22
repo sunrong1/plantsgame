@@ -34,6 +34,7 @@ import LevelView from '../../src/views/LevelView.vue'
 import levelOutcomeSource from '../../src/components/hud/LevelOutcome.vue?raw'
 import { stripComments } from '../helpers/contrast'
 import { questionOf } from '../fixtures/synthetic-deck'
+import { targetOptionCount } from '../../src/content/option-count'
 
 enableAutoUnmount(afterEach)
 
@@ -529,15 +530,29 @@ describe('AC-D5 —— 终态下没有可点的假东西（集成在真 <LevelVi
     return w
   }
 
+  /**
+   * 此刻屏幕上那张卡**应该有几个选项** —— 期望值取**规则**（`targetOptionCount`）。
+   *
+   * ⚠️⚠️ **`[CR]` 2026-10-23 更正 —— 这个文件的 state 来自**真 store**，不是合成题单**：
+   *   `src/app/store.ts` 的 `buildStateFor(unitNumber)` 用的是 `entriesOf(unitNumber)`
+   *   —— **真实内容**（单元 1 的 `unit-01.json`）⇒ 卡面上渲染几个选项，取决于
+   *   **内容层那条规则**（Story 2.4：档 1 单词卡 2 个 / 关键词卡 3 个 / 回应卡 3 个）。
+   *   ⚠️ 此前这里写的是「合成题单的 4 个选项」⇒ 实测直接红（渲染出来是 **2** 个）。
+   *
+   * ⇒ 期望值取 `targetOptionCount(state.unitNumber, card.kind)`：它由**规则**算出，
+   *   与被渲染的 DOM **不同源** ⇒ 卡空了（0 个选项）时这条断言会红，不是恒真。
+   */
+  function expectedOptionCountOf(current: typeof state.value): number {
+    const question = questionOf(current)
+    return targetOptionCount(current.unitNumber, question.card.kind)
+  }
+
   it('前置：建造期里卡面 / 手牌区 / 「开战」按钮**都在**（否则下面几条是恒绿）', async () => {
     // ⚠️ R-51：**只钉「终态下没有」的话，一条把手牌区永远藏起来的实现照样绿**。
     const w = await enterLevelAndBuild()
 
     expect(w.findAll('.option-card').length, '建造期卡面必须在（AC-C5 的反馈载体）').toBe(
-      // ⚠️ **实算，不写死 4**（Story 2.4 / R-57 留痕）：单元 1 的单词卡从
-      //   4 个选项降到 2 个，写死的 4 会当场变红，而红的原因是「内容按设计变了」。
-      //   来源取题面自己的 options（内容层），不与选项数规则绑死。
-      questionOf(state.value).card.options.length,
+      expectedOptionCountOf(state.value),
     )
     expect(w.find('.hand-deck').exists(), '建造期手牌区必须在').toBe(true)
     expect(w.find('.hand-deck__start').exists(), '建造期「开战」按钮必须在').toBe(true)
@@ -546,7 +561,7 @@ describe('AC-D5 —— 终态下没有可点的假东西（集成在真 <LevelVi
   it.each(['level-failed', 'level-complete'] as const)('%s：卡面 / 手牌区 / 开战按钮 三者全部不渲染', async (kind) => {
     const w = await enterLevelAndBuild()
     expect(w.findAll('.option-card').length, '前置：卡面此刻必须在屏幕上').toBe(
-      questionOf(state.value).card.options.length,
+      expectedOptionCountOf(state.value),
     )
 
     pushInto(kind)

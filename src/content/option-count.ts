@@ -198,12 +198,20 @@ export function targetOptionCount(
     )
   }
   const tier = optionCountTierForUnit(unitNumber, tiers)
-  const count = tier.counts[kind]
-  if (count === undefined) {
+  // ⚠️ **必须用 `hasOwn` 判存在性，不能用 `counts[kind] === undefined`** ——
+  //   `counts` 是普通对象字面量 ⇒ `counts['toString']` / `counts['__proto__']` /
+  //   `counts['constructor']` 会命中 `Object.prototype` 上的继承属性 ⇒
+  //   `=== undefined` 为假 ⇒ **不抛错**，而是把一个函数（或 `Object.prototype`）
+  //   当成「选项数」返回给调用方。
+  //   （`Object.freeze` 挡不住原型链查找 —— 冻结的是自有属性，不是原型。）
+  //   实测：`targetOptionCount(1, 'toString')` 曾返回 `function toString() { … }`。
+  //   ⇒ 任何没过 `CardKind` 校验的调用方（脚本里的 `kind as …` 强转就是这种）
+  //     会拿到一个「看起来合理」的非数字值，而这条守卫一次都不会响。
+  if (!Object.hasOwn(tier.counts, kind)) {
     throw new Error(
       `档位 ${tier.unitRange[0]}-${tier.unitRange[1]} 没有卡型 ${kind} 的选项数 —— ` +
         '档位表的键集合必须与 CardKindSchema 的取值集合一致。',
     )
   }
-  return count
+  return tier.counts[kind]
 }

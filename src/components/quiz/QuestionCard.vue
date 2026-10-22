@@ -73,7 +73,7 @@ const spokenEntryId = ref<string | null>(null)
  *   改之前是「**任何**非 `awaiting-answer` 的相位都用上一道题」，
  *   而 `Phase` 有**六个**变体 ⇒ `resolving` / `round-over` /
  *   **`level-complete` / `level-failed`** 四种也都在兜底范围里。
- *   ⇒ 失败之后卡面、四个选项、反馈条**全都还留在屏幕上**，
+ *   ⇒ 失败之后卡面、那一张卡的几个选项、反馈条**全都还留在屏幕上**，
  *     而此时点它们没有任何事发生 —— 这正是 AC-D5 说的「假可点」。
  *
  * ⚠️ **为什么 `resolving` / `round-over` 也不给**：它们是 `END_BUILD` 之后的
@@ -152,7 +152,7 @@ const pickedRight = computed(() => {
  *   而不是靠「反正只有单词卡会走到」这种推断。
  *
  * ⚠️ **`entryId` 与 `optionId` 两个都要对上**：`optionId` **跨题单会重复**
- *   （单词卡的四个选项就是另外四个词的 id）⇒ 只对 `optionId` 会误伤别的题。
+ *   （单词卡的每个选项就是另一个词的 id）⇒ 只对 `optionId` 会误伤别的题。
  */
 function brokenPickableTextFor(optionId: OptionId): string | null {
   const broken = brokenButPickableOption.value

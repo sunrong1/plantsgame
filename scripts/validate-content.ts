@@ -417,18 +417,31 @@ const CARD_KINDS: readonly string[] = (() => {
 export const NEAR_DUPLICATE_MAX_DISTANCE = 2
 
 /**
- * 归一化一个选项文本：小写 → 去标点 → 压空白。
+ * 归一化一个选项文本：Unicode 规范化 → 小写 → 去标点 → 压空白。
  *
  * ⚠️ **去标点必须做**：`Good morning!` 与 `Good morning.` 归一化后只差一个字符，
  * 而不归一化时它们是两个「不同的文本」⇒ 编辑距离算出来是 4（长度差），
  * 阈值 2 抓不到 —— 而孩子看到的是两个**看起来一样**的按钮。
+ *
+ * ⚠️ **Unicode 规范化（NFKC）必须做**（`[CR]` 2026-10-23 修）：
+ *   · **组合重音**：NFD 写法的 `cafe` + U+0301 在去标点那一步会被整段替换成空格
+ *     （U+0301 不属 `\p{L}`）⇒ 归一化成 `cafe`，与 NFC 写法的 `café` 距离 1
+ *     ⇒ **同一个词的两种编码被判成「只差一个字」**（假阳性）。
+ *   · **全角**：`Ｃａｔ` 与 `Cat` 距离 3 ⇒ 阈值 2 抓不到（假阴性）。
+ *   ⇒ NFKC 一次解决两者（组合重音合成、全角折半角）。
  */
 export function normalizeOptionText(text: string): string {
   return text
+    .normalize('NFKC')
     .toLowerCase()
     .replace(/[^\p{L}\p{N}\s]/gu, ' ')
     .replace(/\s+/g, ' ')
     .trim()
+}
+
+/** 码点数（不是 UTF-16 码元数）—— 与 `editDistance` 同一口径。 */
+function codePointLength(text: string): number {
+  return Array.from(text).length
 }
 
 /**
@@ -437,21 +450,28 @@ export function normalizeOptionText(text: string): string {
  * ⚠️ 它是**字符级代理量**，判不了语义：两个语义上很近但字面差很多的选项
  * （例如 `I am fine, thank you.` 与 `Thank you!`）**不会**被它抓出来 ——
  * 那属「生僻词 / 语义可辨性」的人工项（AC-B4 如实登记为人工项）。
+ *
+ * ⚠️ **按码点算，不按 UTF-16 码元算**（`[CR]` 2026-10-23 修）：
+ *   `a.length` / `a[i - 1]` 数的是**码元** ⇒ 一个 emoji（代理对）被算成两个字符
+ *   ⇒ 距离凭空翻倍（实测 `😀😀😀` ~ `😀😀` = 2，而码点数只有 1）。
+ *   ⇒ 这里先把字符串拆成**码点数组**再算。
  */
 export function editDistance(a: string, b: string): number {
   if (a === b) return 0
-  if (a.length === 0) return b.length
-  if (b.length === 0) return a.length
-  let prev = Array.from({ length: b.length + 1 }, (_, i) => i)
-  for (let i = 1; i <= a.length; i += 1) {
+  const ac = Array.from(a)
+  const bc = Array.from(b)
+  if (ac.length === 0) return bc.length
+  if (bc.length === 0) return ac.length
+  let prev = Array.from({ length: bc.length + 1 }, (_, i) => i)
+  for (let i = 1; i <= ac.length; i += 1) {
     const cur = [i]
-    for (let j = 1; j <= b.length; j += 1) {
-      const cost = a[i - 1] === b[j - 1] ? 0 : 1
+    for (let j = 1; j <= bc.length; j += 1) {
+      const cost = ac[i - 1] === bc[j - 1] ? 0 : 1
       cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + cost)
     }
     prev = cur
   }
-  return prev[b.length]
+  return prev[bc.length]
 }
 
 /** 宽松遍历：从**原始** JSON 里取出每张卡（entryId / kind / options）。 */
@@ -486,21 +506,51 @@ function cardsOf(
 function optionCountProblems(raw: unknown): ContentProblem[] {
   const problems: ContentProblem[] = []
   const unitNumber = unitNumberAt(raw)
-  if (unitNumber === null) return problems
+  if (unitNumber === null) {
+    // ⚠️ **不能静默跳过这一维**（`[CR]` 2026-10-23 修）：
+    //   原来这里直接 `return []` ⇒ 单元号缺失 / 不是数字时，**选项数从头到尾没被核对过**，
+    //   而报告里只有 schema 的一条类型错 ⇒ 读报告的人会误以为「选项数这一维没问题」。
+    //   近邻判据不依赖单元号、仍在跑 ⇒ 「两个维度里有一个被静默跳过」这个形态尤其容易误读。
+    //   ⇒ 报一条能定位的问题：这个单元的选项数**没查**。
+    if (raw !== null && typeof raw === 'object' && Array.isArray((raw as { entries?: unknown }).entries)) {
+      problems.push({
+        category: PROBLEM_CATEGORY.optionCount,
+        unitNumber: null,
+        entryId: null,
+        optionId: null,
+        message:
+          '单元号缺失或不是数字 ⇒ 本单元的选项数**无法核对**（这一维没跑）—— ' +
+          '请先把 unitNumber 写成 1..20 的整数，再让选项数规则核对它',
+      })
+    }
+    return problems
+  }
 
   const expected = new Map<string, number>()
   for (const kind of CARD_KINDS) {
     try {
       expected.set(kind, targetOptionCount(unitNumber, kind as Parameters<typeof targetOptionCount>[1]))
     } catch (err) {
+      // ⚠️ **两种失败原因必须分开说**（`[CR]` 2026-10-23 修）：
+      //   ① 规则**不覆盖这个单元**（单元号在 1..20 之外）⇒ 该去扩规则的覆盖范围；
+      //   ② 规则覆盖了这个单元，但**档位表里没有这个卡型** ⇒ 该去补档位表的 `counts` 键。
+      //   原来两种都写成「规则不覆盖单元 N」⇒ ② 会把作者引到错的地方（去改 LAST_UNIT）。
+      const message = err instanceof Error ? err.message : String(err)
+      const tierMissesKind = message.includes('没有卡型')
+      const notAnInteger = message.includes('必须是整数')
       problems.push({
         category: PROBLEM_CATEGORY.optionCount,
         unitNumber,
         entryId: null,
         optionId: null,
-        message:
-          `选项数规则不覆盖单元 ${unitNumber}：${err instanceof Error ? err.message : String(err)} —— ` +
-          '本单元的选项数无法核对，请先扩展规则（src/content/option-count.ts）再录入内容',
+        message: tierMissesKind
+          ? `选项数规则的档位表缺少卡型 ${kind}：${message} —— ` +
+              '本单元的选项数无法核对，请先补档位表的 counts 键（src/content/option-count.ts）'
+          : notAnInteger
+            ? `单元号不是整数（${unitNumber}）：${message} —— ` +
+                '本单元的选项数无法核对，请先把 unitNumber 写成整数'
+            : `选项数规则不覆盖单元 ${unitNumber}：${message} —— ` +
+                '本单元的选项数无法核对，请先扩展规则（src/content/option-count.ts）再录入内容',
       })
       return problems
     }
@@ -536,6 +586,22 @@ function optionCountProblems(raw: unknown): ContentProblem[] {
  * ⚠️ 互为前缀的那一对**在数学上已被编辑距离覆盖**（前缀关系的编辑距离恰好等于
  *   长度差）⇒ 那半个条件是**冗余**的；这里仍按 AC 的原文写出来，是为了让
  *   「AC 写的那一条在代码里有一行对应」可核对，而不是靠读者自己推。
+ *
+ * ⚠️ **完全相同的两个选项不归本判据管**（`[CR]` 2026-10-23 修）：
+ *   schema 的 `duplicateOptionText` 已经报「显示文本都是 X」（键 = `trim().toLowerCase()`）。
+ *   本判据对同一对也会命中（编辑距离 0 ≤ 阈值）⇒ **一个违规报两条**，
+ *   且两条类别不同 ⇒ 录入者会以为是两个错。R-02：一份判定只有一个来源。
+ *   ⇒ 这里显式跳过「schema 那一对已经报过」的组合。
+ *   ⚠️ **注意别跳过太多**：schema 的键**不**去标点 ⇒ `Good morning!` 与 `Good morning.`
+ *   在 schema 眼里是两个不同的文本（不报），但归一化后完全相同（孩子看到两个一样的按钮）
+ *   ⇒ **这一对必须由本判据报出来**。所以跳过条件要**逐字复刻 schema 的键**，
+ *   不能用归一化后的文本。
+ *
+ * ⚠️ **归一化后为空串的选项不能跳过**（`[CR]` 2026-10-23 修）：
+ *   纯标点的选项（`"!!!"` / `"???"`）归一化后是空串 ⇒ 原来那句 `continue` 把它们
+ *   **主动放过** ⇒ 两个「什么都没有」的按钮零条报错，孩子眼里就是两个一样的按钮。
+ *   （schema 的 `blankOptionField` 只挡**纯空白**，`"!!!"` 是合法文本。）
+ *   ⇒ 空串照样参与比较：两个空串的编辑距离 = 0 ⇒ 会被报出来。
  */
 export function optionNearDuplicateProblems(
   raw: unknown,
@@ -555,12 +621,23 @@ export function optionNearDuplicateProblems(
 
     for (let i = 0; i < texts.length; i += 1) {
       for (let j = i + 1; j < texts.length; j += 1) {
+        // ⚠️ schema 的 `duplicateOptionText` 已经报过的那一对 ⇒ 跳过（R-02：一份判定一个来源）。
+        //   键**逐字复刻 schema 的算法**（`trim().toLowerCase()`，不去标点）。
+        if (texts[i].text.trim().toLowerCase() === texts[j].text.trim().toLowerCase()) continue
+
         const a = normalizeOptionText(texts[i].text)
         const b = normalizeOptionText(texts[j].text)
-        if (a.length === 0 || b.length === 0) continue
+        // ⚠️ 长度差超过阈值 ⇒ 编辑距离必然超过阈值 ⇒ 不必再算（**结果完全等价**，
+        //   只是省掉 O(n·m) 的动态规划；选项文本是单词与短语，实测每对都在亚毫秒级）。
+        //   ⚠️ 长度必须**按码点**算（与 `editDistance` 同一口径）—— 用 UTF-16 码元长度
+        //   会把 emoji 算成两个字符 ⇒ 跳过的组合比该跳的多（结果与纯 `editDistance` 不等价）。
+        if (Math.abs(codePointLength(a) - codePointLength(b)) > maxDistance) continue
         const distance = editDistance(a, b)
+        // ⚠️ 长度差也**按码点**算 —— 与上面那条预筛、与 `editDistance` 同一口径。
+        //   （原来这里用 `a.length`（UTF-16 码元）⇒ 与同一函数里的码点口径不一致。）
         const isPrefixPair =
-          (a.startsWith(b) || b.startsWith(a)) && Math.abs(a.length - b.length) <= maxDistance
+          (a.startsWith(b) || b.startsWith(a)) &&
+          Math.abs(codePointLength(a) - codePointLength(b)) <= maxDistance
         if (distance > maxDistance && !isPrefixPair) continue
         problems.push({
           category: PROBLEM_CATEGORY.optionNearDuplicate,

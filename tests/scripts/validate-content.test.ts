@@ -26,6 +26,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import {
   NEAR_DUPLICATE_MAX_DISTANCE,
+  editDistance,
   expectedImageUrl,
   formatProblem,
   loadUnitFiles,
@@ -868,6 +869,139 @@ describe('G269 —— 规则范围外的单元号不崩，只报一条能定位�
       problems.filter((p) => p.category === 'option-count' && p.message.includes('不覆盖')),
       '单元 20 在规则覆盖内却被报成「不覆盖」⇒ 规则的覆盖范围与它自己声明的不一致',
     ).toEqual([])
+  })
+})
+
+// ══════════════════════════════════════════════════════════════════════════════
+// `[CR]` 2026-10-23 —— 三条在 `[CR]` 里被指出的判据缺陷，各配一条守卫
+// （G271 / G272 / G273；变异 M321 / M320 / M322）
+// ══════════════════════════════════════════════════════════════════════════════
+
+describe('G271 —— 纯标点选项（两个「什么都没有」的按钮）必须被报出来', () => {
+  it('两个「什么都没有」的按钮（纯标点选项）必须被报出来', () => {
+    // ⚠️ **归一化后为空串的选项不能被跳过**：`"!!!"` 与 `"???"` 归一化后都是空串，
+    //   而 schema 的 `blankOptionField` 只挡**纯空白**（`"!!!"` 是合法文本）⇒
+    //   修复前这两个按钮**零条报错**，可它们在孩子眼里就是两个一样的按钮。
+    const unit = unitCopy()
+    const card = unit.entries.find((e) => e.entryId === 'u1-s-good-morning')
+    if (card === undefined) throw new Error('单元 1 里没有 u1-s-good-morning 这张卡 —— 夹具失效')
+    card.card.options[0].text = '!!!'
+    card.card.options[1].text = '???'
+
+    const { problems } = run([unit], greenDeps(unit))
+
+    const hit = problems.find((p) => p.category === 'option-near-duplicate')
+    expect(
+      hit,
+      '两个纯标点的选项没有被报出来 ⇒ 归一化后为空串的组合被主动放过了',
+    ).toBeDefined()
+    expect(hit?.message, '报错里没有那两个选项 ⇒ 定位不到是哪一对').toContain('!!!')
+    expect(hit?.message, '报错里没有那两个选项 ⇒ 定位不到是哪一对').toContain('???')
+  })
+})
+
+describe('G272 —— 完全相同的两个选项由 schema 报，近邻判据不重复报同一件事', () => {
+  it('**完全相同**的两个选项由 schema 报（近邻判据不重复报同一件事）', () => {
+    // ⚠️ R-02：一份判定只有一个来源。schema 的 `duplicateOptionText`
+    //   （键 = `trim().toLowerCase()`）已经报「显示文本都是 X」⇒
+    //   近邻判据对同一对**不得**再报一条 ⇒ 否则一个违规出两行、两个类别。
+    const unit = unitCopy()
+    const card = unit.entries.find((e) => e.entryId === 'u1-s-good-morning')
+    if (card === undefined) throw new Error('单元 1 里没有 u1-s-good-morning 这张卡 —— 夹具失效')
+    card.card.options[1].text = card.card.options[0].text
+
+    const { problems } = run([unit], greenDeps(unit))
+
+    expect(
+      problems.filter((p) => p.category === 'duplicate-option-text'),
+      '完全相同的两个选项没有被 schema 报出来 ⇒ 夹具没造出该违规',
+    ).not.toEqual([])
+    expect(
+      problems.filter((p) => p.category === 'option-near-duplicate'),
+      '完全相同的两个选项被近邻判据**又**报了一遍 ⇒ 一个违规两行（R-02）',
+    ).toEqual([])
+  })
+})
+
+describe('G273 —— 单元号非法 ⇒ 报「选项数这一维没跑」，而不是静默跳过', () => {
+  it('单元号不是数字 ⇒ 报「选项数这一维没跑」，而不是静默跳过', () => {
+    // ⚠️ 修复前：`unitNumberAt(raw)` 返回 null ⇒ 这一维**从头到尾没被核对过**，
+    //   报告里只有 schema 的一条类型错 ⇒ 读报告的人会误以为「选项数没问题」。
+    const unit = unitCopy()
+    ;(unit as unknown as { unitNumber: unknown }).unitNumber = '1'
+
+    const { problems } = run([unit], greenDeps(unit))
+
+    const hit = problems.find((p) => p.category === 'option-count')
+    expect(
+      hit,
+      '单元号非法时一条 option-count 问题都没有 ⇒ 这一维被静默跳过了',
+    ).toBeDefined()
+    expect(hit?.message, '报错没说明「这一维没跑」⇒ 读报告的人会以为选项数没问题').toContain('无法核对')
+  })
+})
+
+// ══════════════════════════════════════════════════════════════════════════════
+// `[CR]` 2026-10-23 —— 本轮改的另外三处判据，各配一条守卫
+// （G274 / G275 / G276；变异 M323 / M324 / M325）
+// ⚠️ **每条新守卫都必须能被变异打红** —— 「全绿」在这类补丁上等于「没人守着」。
+// ══════════════════════════════════════════════════════════════════════════════
+
+describe('G274 —— 归一化必须做 Unicode 规范化（NFKC），全角与半角是同一个词', () => {
+  it('全角写法的同一个词（Ｃａｔ）与半角（Cat）必须被报出来', () => {
+    // ⚠️ **不做 NFKC 会漏掉这一对**：`Ｃａｔ` 的全角字母属于 `\p{L}` ⇒ 去标点那步留得住
+    //   ⇒ 归一化后仍是 `ｃａｔ` ⇒ 与 `cat` 的编辑距离 = **3** ⇒ **阈值 2 抓不到**。
+    //   而孩子眼里这两个按钮**一模一样**。
+    //   NFKC 一次解决两件事：全角折半角（这条）、组合重音合成（NFD 的 `café`）。
+    const unit = unitCopy()
+    const card = unit.entries.find((e) => e.entryId === 'u1-s-good-morning')
+    if (card === undefined) throw new Error('单元 1 里没有 u1-s-good-morning 这张卡 —— 夹具失效')
+    card.card.options[0].text = 'Ｃａｔ'
+    card.card.options[1].text = 'Cat'
+
+    const { problems } = run([unit], greenDeps(unit))
+
+    const hit = problems.find((p) => p.category === 'option-near-duplicate')
+    expect(
+      hit,
+      '全角 `Ｃａｔ` 与半角 `Cat` 没有被报出来 ⇒ 归一化漏了 Unicode 规范化（NFKC）',
+    ).toBeDefined()
+    expect(hit?.message, '报错里没有那两个选项 ⇒ 定位不到是哪一对').toContain('Ｃａｔ')
+  })
+})
+
+describe('G275 —— 编辑距离按**码点**算，不按 UTF-16 码元算', () => {
+  it('emoji 代理对算**一个**字符，不是两个', () => {
+    // ⚠️ `a.length` 数的是 UTF-16 **码元** ⇒ 一个 emoji 是 2 个码元
+    //   ⇒ 距离凭空翻倍 ⇒ **该报的漏报**（阈值 2 抓不住）。
+    //   码点口径下：`😀😀` 与 `😀😀😀😀` 相差 **2** 个字符 ⇒ 落在阈值 2 内。
+    expect(
+      editDistance('😀😀', '😀😀😀😀'),
+      '编辑距离把一个 emoji 当成两个字符 ⇒ 距离翻倍（UTF-16 码元口径）',
+    ).toBe(2)
+    expect(
+      editDistance('😀', '😀😀'),
+      '一个 emoji 与两个 emoji 的距离应为 1（码点口径）',
+    ).toBe(1)
+  })
+})
+
+describe('G276 —— 单元号不是整数 ⇒ 报「不是整数」，不是「规则不覆盖这个单元」', () => {
+  it('单元号 1.5 ⇒ 报错必须指向「不是整数」', () => {
+    // ⚠️ 修复前，三种失败原因都写成「规则不覆盖单元 N」⇒ 「不是整数」这条会把作者
+    //   引到错的地方（去改 `LAST_UNIT`）。⇒ 报错文案必须指向真正的原因。
+    const unit = unitCopy()
+    ;(unit as unknown as { unitNumber: unknown }).unitNumber = 1.5
+
+    const { problems } = run([unit], greenDeps(unit))
+
+    const hit = problems.find((p) => p.category === 'option-count')
+    expect(hit, '单元号不是整数时一条 option-count 问题都没有 ⇒ 这一维被静默跳过了').toBeDefined()
+    expect(
+      hit?.message,
+      '报错说的是「规则不覆盖这个单元」⇒ 把作者引到了错的地方（该改的是 unitNumber）',
+    ).not.toContain('不覆盖')
+    expect(hit?.message, '报错没有指向「不是整数」这个真正的原因').toContain('不是整数')
   })
 })
 

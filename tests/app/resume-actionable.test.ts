@@ -97,6 +97,7 @@ import { join } from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { entriesOf } from '../../src/content'
+import { targetOptionCount } from '../../src/content/option-count'
 import { afterEachUninstall, installFakeStorage } from '../fixtures/fake-storage'
 import { stripComments } from '../fixtures/strip-comments'
 import type { FakeStorage } from '../fixtures/fake-storage'
@@ -240,19 +241,26 @@ function remountAfterRealRestore() {
 }
 
 /**
- * 一份 state 里那道题的**选项数** —— **实算，不写死**（Story 2.4 / R-57 留痕）。
+ * 一份 state 里那道题**应当**有几个选项 —— **实算，不写死**（Story 2.4 / R-57 留痕）。
  *
  * ⚠️ **为什么不能写死 4**：Story 2.4 把单元 1 的单词卡从 4 个选项改成 2 个
  *   （GDD 逐字「早期关卡可从 2 个选项起步」）。写死的 4 会当场变红，
  *   而红的原因是「内容按设计变了」—— 该改的是判据的**来源**，不是把内容改回去。
  *   ⚠️ 写死 2 同样是坑：下一个改选项数的 story 会原样再撞一次。
- * ⇒ 判据问的是「DOM 里渲染出的选项数 === 恢复出来那道题声明的选项数」，
- *   来源取**内容层**（题面本来就带着 options）。
+ *
+ * ⚠️⚠️ **来源必须是「规则」，不能是「那张题自己的 options.length」**
+ *   （`[CR]` 2026-10-23 修）：原来这里返回 `phase.question.card.options.length`
+ *   ⇒ 期望值与被渲染的东西**同一个来源** ⇒ 题面若是空的（`options: []`），
+ *   期望值 = 0、DOM 也 = 0 ⇒ 断言**恒真通过**。
+ *   而「恢复出来的题面**没有选项**」正是 G170 要防的那个失败形态
+ *   （用户实测报过「点开始游戏后无卡面」）⇒ 断言正好在最该抓的地方失守。
+ *   ⇒ 现在期望值取**规则**（`targetOptionCount(1, kind)`，即「单元 1 该有几个选项」），
+ *   与渲染来源**相互独立** ⇒ 题面空了就红。
  *   「规则 === 真实内容」由 `tests/content/unit-01.test.ts` 的 G264 守。
  */
 function optionCountOfPhase(phase: Phase): number {
   if (phase.kind === 'awaiting-answer' || phase.kind === 'awaiting-build') {
-    return phase.question.card.options.length
+    return targetOptionCount(1, phase.question.card.kind)
   }
   throw new Error(`前置：相位 ${phase.kind} 不带题面，算不出选项数`)
 }
