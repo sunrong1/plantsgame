@@ -1,0 +1,80 @@
+name: Deploy game to GitHub Pages
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 同一时间只跑一个发布；新的推送取消旧的
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          # plantsgame 的 engines 要求 ^22.13.0 || ^24.0.0 || >=26.0.0
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+        # prebuild = validate:content（37 词条 + 词图存在性/命名校验）
+        # build    = vue-tsc -b --force && vite build
+        # postbuild= verify:deploy（62 项产物自检）
+        #
+        # base 用仓库默认的 '/plantsgame/' —— 与 Pages 的发布路径
+        # sunrong.site/plantsgame/ 一致。
+
+      - name: Verify deploy base
+        run: |
+          set -euo pipefail
+          test -f dist/index.html
+          # 资源引用必须带 /plantsgame/ 前缀
+          grep -q '/plantsgame/assets/index-' dist/index.html
+          # manifest 的 scope/start_url 必须锁在子路径，否则 Service Worker
+          # 会去站点根目录注册
+          node -e "const fs=require('fs');const m=JSON.parse(fs.readFileSync('dist/manifest.webmanifest','utf8'));if(m.scope!=='/plantsgame/'||m.start_url!=='/plantsgame/'){console.error('manifest scope/start_url 不对:',m.scope,m.start_url);process.exit(1)}console.log('  manifest scope =',m.scope,'| start_url =',m.start_url)"
+          # 词图与录音必须真的进了产物 —— 6月17日那次发布就是漏了它们，
+          # 线上词图/录音全是 404，游戏根本没法玩
+          test -d dist/assets/words
+          test -d dist/assets/audio/voice
+          echo "  产物文件数: $(find dist -type f | wc -l)"
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: './dist'
+
+  deploy:
+    name: Deploy
+    needs: build
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
