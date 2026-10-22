@@ -10,7 +10,8 @@
  * · 源码扫描一律**先 `stripComments()`** —— 否则每个文件里那些解释「为什么不许写」
  *   的注释自己就会把守卫判红。
  * · ESLint 相关的断言用 **`Linter.verify` 真跑一遍**（AC-G3），
- *   并配**反向验证**：探针文本真的会被报出来（`deferred-work.md:117-118` 的要求），
+ *   并配**反向验证**：探针文本真的会被报出来（`_bmad-output/archive/deferred/2026-10-12--cr-story-1-2.md`
+ *   里「ESLint「禁 await」守卫只拦 `AwaitExpression`，`.then()` 的等价逃逸放行」那条的要求），
  *   否则「规则配对了却根本没生效」会一路绿灯。
  * · 词边界用 `\bword\b`，**不**用 `\bword\s` —— 后者在中文顿号上失配（R-53）。
  */
@@ -595,7 +596,8 @@ describe('AC-G8 —— effects-runner 禁 await、audio-unlock 禁 await 且禁 
       .map((o) => o.selector)
 
     expect(selectors, 'audio-unlock 的禁列读不到 selector —— 判据自己失明了').toContain('AwaitExpression')
-    // ⚠️ 这条是 AC-G8 的正题：`deferred-work.md:108-124` 记的 `.then()` 逃逸。
+    // ⚠️ 这条是 AC-G8 的正题：`_bmad-output/archive/deferred/2026-10-12--cr-story-1-2.md` 里
+    //   「ESLint「禁 await」守卫只拦 `AwaitExpression`，`.then()` 的等价逃逸放行」那条记的 `.then()` 逃逸。
     //   只钉 AwaitExpression 时，`ctx.resume().then(() => { prewarmBgm() })` 被完全放行。
     expect(
       selectors.some((s) => s?.includes("property.name='then'")),
@@ -603,7 +605,7 @@ describe('AC-G8 —— effects-runner 禁 await、audio-unlock 禁 await 且禁 
     ).toBe(true)
   })
 
-  it('🚨 反向验证：Linter 真的会拦下 .then() 逃逸与 await（AC-G8 / deferred-work.md:117-118）', () => {
+  it('🚨 反向验证：Linter 真的会拦下 .then() 逃逸与 await（AC-G8 / archive/deferred/2026-10-12--cr-story-1-2）', () => {
     const linter = new Linter()
     const thenProbe =
       'export function u(c: { resume(): Promise<void> }) {\n' +

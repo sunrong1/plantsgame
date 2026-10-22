@@ -96,7 +96,9 @@ const emit = defineEmits<{
  *
  *   正面写法在下面：`isImageKind` 只看 `props.kind`。
  *
- *   反面写法的危害是**具体的**（`deferred-work.md:340-356` 登记的「剩下的口子」）：
+ *   反面写法的危害是**具体的**（`_bmad-output/archive/deferred/2026-10-14--cr-story-1-5.md`
+ *   里「✅ **已由 Story 1.6（2026-10-14）闭合** —— **`Card` 扁平化丢掉了架构模式 B 的判别联合保证**」
+ *   那条登记的「剩下的口子」）：
  *   `core/` 内部自造的卡（测试 fixture、`balance-sim` 的合成题单）**不受内容
  *   schema 约束** —— `Card` 被拍平成 `kind + options` 的扁平联合
  *   （`types.ts:256-261`），所以 `{kind:'word', options:[{text:'…'}]}`

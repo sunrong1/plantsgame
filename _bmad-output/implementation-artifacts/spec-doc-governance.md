@@ -290,7 +290,8 @@ spec 任务清单写的是 `testing.md R-40..R-50` / `content.md R-60..R-68`，�
   [`spec-doc-governance.md:161`](./spec-doc-governance.md#L161)
 
 - 移交 Story 1.13 的 5 条 AC/守卫设计问题（首跑很可能 0 红）
-  [`deferred-work.md:703`](./deferred-work.md#L703)
+  [`archive/deferred/2026-10-15--qd-文档治理.md`](../archive/deferred/2026-10-15--qd-文档治理.md)
+  —— 「评审转来：Story 1.13 文档的 AC / 守卫设计问题（5 条，非本次治理对象）」那条
 
 - 移交失效的 Bash 授权路径（**未修，等你定**）
-  [`deferred-work.md:720`](./deferred-work.md#L720)
+  [`deferred-work.md` 的 DF-028](./deferred-details.md#df-028)

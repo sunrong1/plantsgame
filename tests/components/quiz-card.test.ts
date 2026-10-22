@@ -185,8 +185,9 @@ function g23Violation(source: string): string | null {
  *   「按 `card.kind` 分派」与「按选项有没有 `imageSrc` 分派」产生
  *   **逐字节相同的 DOM**，只改分派依据打不红任何东西（变异 M50 的两个动作缺一不可）。
  *   这张非法卡能存在是因为 `Card` 被拍平成 `kind + options` 的扁平联合
- *   （`types.ts:256-261`）—— 也就是 `deferred-work.md:340-356` 登记的
- *   「剩下的口子」：`core/` 内部自造的卡不受内容 schema 约束。
+ *   （`types.ts:256-261`）—— 也就是 `_bmad-output/archive/deferred/2026-10-14--cr-story-1-5.md`
+ *   里「✅ **已由 Story 1.6（2026-10-14）闭合** —— **`Card` 扁平化丢掉了架构模式 B 的判别联合保证**」
+ *   登记的「剩下的口子」：`core/` 内部自造的卡不受内容 schema 约束。
  */
 function g24Violation(imageCount: number, textCount: number): string | null {
   if (imageCount > 0 && textCount > 0) return '图片分支与文字分支同时渲染了 —— 两个分支必须互斥'

@@ -85,7 +85,7 @@ development_status:
   epic-2: in-progress
   2-1-词图产能验证: done
   2-2-难度阶梯规则落地: done
-  2-3-阳光经济档位扩展: done   # [CR] 完成；1 条未裁决见 deferred-work 45，见 story 文档
+  2-3-阳光经济档位扩展: done   # [CR] 完成；1 条未裁决见 deferred-work 的 DF-138，见 story 文档
   2-4-选项数量递进规则: ready-for-dev   # [CS] 完成；裁决与证据见其 story 文档
   2-5-内容批次-1-单元-2-单单元试点: backlog
   2-6-内容批次-2-单元-3-7: backlog

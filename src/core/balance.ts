@@ -56,7 +56,7 @@ export interface BalanceTier {
  *   ⇒ 守卫：`tests/core/balance.test.ts` 的 G226（比例）/ G227（边界），
  *     `tests/scripts/balance-sim.test.ts` 的 G231（门槛曲线）/ G232（首次答对塔数）。
  *   ⇒ 「档位 3 要不要与前两档对齐门槛」是**产品裁决**，本 story 不擅自改数值
- *     （FR63 的值已由用户拍板）⇒ 已登记 `deferred-work.md` 条目 45。
+ *     （FR63 的值已由用户拍板）⇒ 已登记 `deferred-work.md` 的 DF-138。
  *   ⚠️ 这条结论的**旧**证据（出自有 `dict[col]` 覆盖 bug 的 Python 模拟器）已作废，
  *     现以 Story 2.3 的实测为准 —— 见 GDD §Economy Across Levels。
  *

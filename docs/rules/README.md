@@ -12,7 +12,7 @@
 |---|---|
 | 写代码前确认架构边界 | [architecture.md](architecture.md) R-01..R-14 |
 | 碰任何数值 | [range-and-balance.md](range-and-balance.md) R-20..R-24 ⚠️ 改之前先问人 |
-| 记录 / 引用 / 作废一条约定 | [process.md](process.md) R-30..R-42 |
+| 记录 / 引用 / 作废一条约定 | [process.md](process.md) R-30..R-43 |
 | 写测试或守卫 | [testing.md](testing.md) R-50..R-61 |
 | 画词图或写 SVG | [content.md](content.md) R-70..R-78 |
 
@@ -60,7 +60,7 @@
 | R-32 | 重编号后以 `epics.md` 的 AC 正文为准 | ❌ |
 | R-33 | `[DS]` 何时可以直接改 GDD 正文 | ❌ |
 | R-34 | 改仓库文件用 Edit / Write | ❌ 约束 agent 行为 |
-| R-35 | 发现问题要么当场修，要么登记 `deferred-work.md` | ❌ |
+| R-35 | 发现问题要么当场修，要么登记 `deferred-work.md`（六列格式） | ❌ 登记有无无法判定 |
 | R-36 | 守卫 / 变异编号必须接续既有号段 | ❌ |
 | R-37 | **判据单一来源，不得抄多份** | ✅ |
 | R-38 | 装依赖是项目级决定 | ❌ |
@@ -68,6 +68,7 @@
 | R-40 | 已完成的 story 文档归档，默认不读 | ✅ |
 | R-41 | 不做「无人守」的边界 | ❌ |
 | R-42 | `sprint-status.yaml` 只写状态，复盘一律进 story 文档 | ✅ |
+| R-43 | 延后账本只留开放条目（活账本 / 详情 / 归档三层） | ✅ |
 
 ### 测试与守卫 → [testing.md](testing.md)
 
