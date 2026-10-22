@@ -312,6 +312,7 @@ console.log('Σw 1..20 =', s20, '×37 =', (s20 * E).toFixed(2))
 
 | 文档 | 关系 |
 |---|---|
+| `docs/option-count.md` | **选项数**规则 —— 与本规则**并列且独立**（卡型占比不决定选项数，选项数也不反推占比）；正文见那份文件，此处不复制 |
 | `src/content/distribution.ts` | 机器实现（本文的权威来源） |
 | `tests/content/distribution.test.ts` | G187 – G189 |
 | `tests/content/unit-01.test.ts` | G190（规则 ↔ 单元 1 真实内容） |

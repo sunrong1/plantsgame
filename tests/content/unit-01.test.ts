@@ -32,6 +32,7 @@ import { createInitialState } from '../../src/core/reducer'
 import * as contentModule from '../../src/content'
 import { getUnit, parseUnit, UNITS } from '../../src/content'
 import { targetCardDistribution } from '../../src/content/distribution'
+import { targetOptionCount } from '../../src/content/option-count'
 import { UnitSchema } from '../../src/content/schema'
 
 const root = fileURLToPath(new URL('../../', import.meta.url))
@@ -203,6 +204,37 @@ describe('AC-17 —— 三种卡型成规模存在（FR19）', () => {
       `规则说单元 1 的回应份额是 ${dist.response}，而真实内容是 ${kindCounts['response']}/${total} —— ` +
         '理由同上一条',
     ).toBe(kindCounts['response'] / total)
+  })
+
+  // ── G264（Story 2.4 / AC-B4）：选项数规则(档 1) 与真实内容逐卡一致 ──────────
+  //
+  // ⚠️ 与 G190 同款理由，但**粒度更细**：G190 比的是**配比**（份额），
+  //    本条比的是**每一张卡的选项数** —— 逐卡核对，零容差。
+  //    「档内同值」这条性质（规则侧，G263 ②）说「同一档内所有单元同值」，
+  //    但它**只保证规则自洽**，不保证**内容真的按它录**。
+  //    ⇒ 规则改了不碰内容、或内容改了不碰规则，两边都会红 —— 难度阶梯不会落空。
+  it('G264：每张卡的选项数 === 规则算出的档 1 目标值（逐卡核对，零容差）', () => {
+    for (const entry of entries) {
+      const want = targetOptionCount(1, entry.card.kind)
+      expect(
+        entry.card.options.length,
+        `${entry.entryId}（${entry.card.kind} 卡）有 ${entry.card.options.length} 个选项，` +
+          `而规则说单元 1 的 ${entry.card.kind} 卡应当是 ${want} 个 —— ` +
+          '两者必须一致：改内容要同步改 src/content/option-count.ts 的档位表（或反之），' +
+          '否则「档内同值」只是一句没有人核对过的承诺',
+      ).toBe(want)
+    }
+  })
+
+  it('G264 反向自测：把一张卡多塞一个选项 ⇒ 上面那条立刻红（判据真能咬住它）', () => {
+    // ⚠️ R-51 / T6.5：判据必须真能咬住它要防的那个违规。
+    //   这里在**夹具**上多塞一个选项（不动真实内容），证明判据不是恒真的。
+    const first = entries[0]
+    const padded = { ...first, card: { ...first.card, options: [...first.card.options, first.card.options[0]] } }
+    expect(
+      padded.card.options.length,
+      '夹具没造出「多一个选项」⇒ 反向自测本身失效',
+    ).not.toBe(targetOptionCount(1, first.card.kind))
   })
 
   it('每张卡恰有一个正确项（FR16 在真实数据上的复验）', () => {

@@ -49,7 +49,7 @@
 #   epics.md 的销项说明处理。
 
 generated: 2026-10-12
-last_updated: 2026-10-22  # Epic 1 集成层检视：13 条已修（G253–G261 / M292–M307）、41 条已登记 deferred E1–E42；详见 epic-1-integration-review.md
+last_updated: 2026-10-22  # Story 2.4 `[DS]` 完成（2-4 → review）：守卫 G262–G270 / 变异 M308–M318；实测值、守卫重编号留痕与三处更正见其 story 文档
 project: plants-game
 project_key: NOKEY
 tracking_system: file-system
@@ -86,7 +86,7 @@ development_status:
   2-1-词图产能验证: done
   2-2-难度阶梯规则落地: done
   2-3-阳光经济档位扩展: done   # [CR] 完成；1 条未裁决见 deferred-work 的 DF-138，见 story 文档
-  2-4-选项数量递进规则: ready-for-dev   # [CS] 完成；裁决与证据见其 story 文档
+  2-4-选项数量递进规则: review   # [DS] 完成；守卫 G262–G270 / 变异 M308–M318；实测值与三处更正留痕见其 story 文档
   2-5-内容批次-1-单元-2-单单元试点: backlog
   2-6-内容批次-2-单元-3-7: backlog
   2-7-内容批次-3-单元-8-13: backlog

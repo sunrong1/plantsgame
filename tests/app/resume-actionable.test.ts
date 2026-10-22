@@ -64,7 +64,7 @@
  *   ⚠️ M185 是在**只补了写盘点**的那一版上跑的。裁决 B 之后补跑了两次，
  *     证明新建的两层不是「贴上去就绿」的：
  *   · **M186**（把 `shown` 改回组件本地 ref 兜底 —— 即 B 之前的真实现）：
- *     **2 红** —— ① 本文件「渲染层：建造期落盘 → 重挂组件 → 卡面与四个选项都在」
+ *     **2 红** —— ① 本文件「渲染层：建造期落盘 → 重挂组件 → 卡面与那张卡的选项都在」
  *     ② G94 的源码判据（「`shown` 读了 `state.value.phase` 之外的某个 `.value`」）。
  *     ⚠️ 根因层（盘上相位）**照绿是应该的** —— 它只读盘上的字节，
  *       而那一份盘里题面**确实在**，坏的是组件拿不拿得到；这正是分层守的意义。
@@ -78,7 +78,7 @@
  *   · **M188**（`OptionCard` 的 `:disabled` 去掉 `|| locked`）：
  *     **2 红** —— 本文件「可行动层（第二轮）」那条 + G172 的第一条。
  *     （变异在本文件与 `quiz-card.test.ts` 一起跑；两处独立红，不是同一条。）
- *   ⚠️ 「渲染层」那几条**照绿是应该的** —— 它们量的是「卡面与四个选项在不在 DOM 里」，
+ *   ⚠️ 「渲染层」那几条**照绿是应该的** —— 它们量的是「卡面与那张卡的选项在不在 DOM 里」，
  *     而那个 bug 从来没让它们红过（卡一直在，红的是它们**可不可点**）。
  *     ⇒ 这就是为什么同一个 bug 要钉两层。
  *
@@ -239,6 +239,24 @@ function remountAfterRealRestore() {
   return mount(QuestionCard)
 }
 
+/**
+ * 一份 state 里那道题的**选项数** —— **实算，不写死**（Story 2.4 / R-57 留痕）。
+ *
+ * ⚠️ **为什么不能写死 4**：Story 2.4 把单元 1 的单词卡从 4 个选项改成 2 个
+ *   （GDD 逐字「早期关卡可从 2 个选项起步」）。写死的 4 会当场变红，
+ *   而红的原因是「内容按设计变了」—— 该改的是判据的**来源**，不是把内容改回去。
+ *   ⚠️ 写死 2 同样是坑：下一个改选项数的 story 会原样再撞一次。
+ * ⇒ 判据问的是「DOM 里渲染出的选项数 === 恢复出来那道题声明的选项数」，
+ *   来源取**内容层**（题面本来就带着 options）。
+ *   「规则 === 真实内容」由 `tests/content/unit-01.test.ts` 的 G264 守。
+ */
+function optionCountOfPhase(phase: Phase): number {
+  if (phase.kind === 'awaiting-answer' || phase.kind === 'awaiting-build') {
+    return phase.question.card.options.length
+  }
+  throw new Error(`前置：相位 ${phase.kind} 不带题面，算不出选项数`)
+}
+
 describe('🔥 G170 —— 断点续学的落点：读题时离开，重进必须拿得到题面', () => {
   it('G170 根因层：停在 awaiting-answer（孩子正在读题）时，盘上那份也必须是 awaiting-answer', () => {
     startFreshGame()
@@ -255,7 +273,7 @@ describe('🔥 G170 —— 断点续学的落点：读题时离开，重进必�
     ).toBe('awaiting-answer')
   })
 
-  it('G170 渲染层：用盘上那份 state 重挂组件，卡面与四个选项都在', () => {
+  it('G170 渲染层：用盘上那份 state 重挂组件，卡面与那张卡的选项都在', () => {
     startFreshGame()
     playOneRound()
 
@@ -269,7 +287,7 @@ describe('🔥 G170 —— 断点续学的落点：读题时离开，重进必�
     expect(
       wrapper.findAll('.option-card').length,
       '卡面在而选项不在，孩子看到的仍是一张点不动的空面板',
-    ).toBe(4)
+    ).toBe(optionCountOfPhase(currentPhase()))
   })
 
   it('G170 可行动层：恢复出来的相位必须有能推进的入口', () => {
@@ -323,7 +341,9 @@ describe('🔥 G170 —— 断点续学的落点：读题时离开，重进必�
 
     const wrapper = mount(QuestionCard)
     expect(wrapper.find('.question-card').exists(), '重进必须有卡面 —— 这是孩子看到的第一样东西').toBe(true)
-    expect(wrapper.findAll('.option-card').length, '卡面在而选项不在，孩子看到的仍是一张空面板').toBe(4)
+    expect(wrapper.findAll('.option-card').length, '卡面在而选项不在，孩子看到的仍是一张空面板').toBe(
+      optionCountOfPhase(currentPhase()),
+    )
   })
 
   it('G170 对照：建造期离开仍可继续 —— 有手牌与「开战」按钮（沿用 1.15 已有的裁决，不在本次范围）', () => {
@@ -379,7 +399,7 @@ describe('G170-b —— 建造期恢复也要有卡面（裁决 B：题面落进
     ).toBe(answeredEntryId)
   })
 
-  it('渲染层：建造期落盘 → 重挂组件 → 卡面与四个选项都在（🔥 就是复现「点开始后无卡面」那一步）', () => {
+  it('渲染层：建造期落盘 → 重挂组件 → 卡面与那张卡的选项都在（🔥 就是复现「点开始后无卡面」那一步）', () => {
     startFreshGame()
     // ⚠️ 必须在 `answerCorrectly()` **之前**取：它是独立于恢复链路的基准。
     const answeredEntryId = store.state.value.phase.kind === 'awaiting-answer'
@@ -400,7 +420,9 @@ describe('G170-b —— 建造期恢复也要有卡面（裁决 B：题面落进
       '🔴 建造期重进之后卡面不见了 —— 这正是用户实测报的那一步：' +
         '起始页是 awaiting-answer（有卡），点「开始游戏」后变成 awaiting-build（无卡）',
     ).toBe(true)
-    expect(wrapper.findAll('.option-card').length, '卡面在而选项不在，孩子看到的仍是一张空面板').toBe(4)
+    expect(wrapper.findAll('.option-card').length, '卡面在而选项不在，孩子看到的仍是一张空面板').toBe(
+      optionCountOfPhase(currentPhase()),
+    )
     // 🔥📎 **`[CR]` 第六轮补的第三条判据：卡面在**不等于**卡面是「那道题」。**
     //   ⚠️ 上面两条量的是「存在」，判据粒度**粗于它要守的东西**（R-51 第四种形态）：
     //     若恢复时把题面错写成 deck 里的另一道，孩子看到的是一道**长得像但不是自己
@@ -429,7 +451,7 @@ describe('G170-b —— 建造期恢复也要有卡面（裁决 B：题面落进
     ).toBe(answeredPrompt)
   })
 
-  it('G170 可行动层（第二轮）：建造期恢复出来的四个选项**全部点不动** —— 不许是「假可点」', () => {
+  it('G170 可行动层（第二轮）：建造期恢复出来的选项**全部点不动** —— 不许是「假可点」', () => {
     // 🔥📎 **1.19 `[CR]` 第三轮修的正是这一条。** 第一、二轮把卡面救回来了，
     //   真机复验说「图能看见了，但点不动」—— 不是点不动有问题，是
     //   **看起来能点却点不动**有问题（AC-D5 的「假可点」）。
@@ -440,7 +462,7 @@ describe('G170-b —— 建造期恢复也要有卡面（裁决 B：题面落进
 
     const wrapper = remountLevel()
     const cards = wrapper.findAll('.option-card')
-    expect(cards, '前置：卡面必须在').toHaveLength(4)
+    expect(cards, '前置：卡面必须在').toHaveLength(optionCountOfPhase(currentPhase()))
     for (const card of cards) {
       expect(
         card.attributes('disabled'),

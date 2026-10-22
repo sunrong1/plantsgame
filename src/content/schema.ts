@@ -79,6 +79,24 @@ export const PROBLEM_CATEGORY = {
   /** 选项指向本单元不存在的词条。 */
   danglingOption: 'dangling-option',
   /**
+   * Story 2.4：卡面选项数与**选项数规则**给的目标值不符。
+   *
+   * 守的是 `src/content/option-count.ts` 的档位表（AC-B3 / AC-C3）。
+   * ⚠️ 它是**内容侧**的一条 —— 规则改了而内容没跟着改时，这里会逐张卡报出
+   * 「期望几个 / 实际几个」，而不是让难度曲线在没人看的地方偏出去。
+   */
+  optionCount: 'option-count',
+  /**
+   * Story 2.4：同一张卡内两个**文字**选项只差几个字。
+   *
+   * 判据是归一化后的字符级编辑距离（阈值见 `scripts/validate-content.ts` 的
+   * `NEAR_DUPLICATE_MAX_DISTANCE`）—— 「只差一两个字」正是 6 岁半要**逐字辨认**
+   * 才能分辨的量级。⚠️ 单词卡的选项是**图片**，没有文字可算距离 ⇒ 这一类只管
+   * 关键词卡与回应卡；图片选项的「视角是否一致」是 `docs/art-direction.md` §5.4
+   * 的**目视**台账，机器判不了。
+   */
+  optionNearDuplicate: 'option-near-duplicate',
+  /**
    * Story 1.7 / AC-14.1：塔或僵尸的 SVG 缺失。
    *
    * 为什么要单独一类：它与「词图缺失」是两件事 —— 词图按**词条**增减（一个单元 15-30 张，

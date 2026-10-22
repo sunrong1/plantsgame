@@ -1,0 +1,326 @@
+/**
+ * 选项数递进规则的守卫（Story 2.4 / AC-A2、A3、B1、B2、B3；守卫 **G262 – G266**）。
+ *
+ * ── 守什么 ────────────────────────────────────────────────────────────────
+ * · **G262（可计算 + 覆盖，AC-A2）** —— `targetOptionCount(unitNumber, kind)` 对 1..20
+ *   每个单元、每个卡型都得出合法值（整数、∈ [2,4]）；`0` / `21` / 非整数一律抛错；
+ *   档位表的键集合 === `CardKindSchema` 的取值集合。
+ * · **G263（三条性质，AC-B1 / B2）** —— ① 逐档**单调不降**（每个卡型）；
+ *   ② 档内**同值**（同一档内所有单元同值）；③ 档内**卡型不降**（`word ≤ keyword ≤ response`）。
+ * · **G265（跨层一致，AC-B2）** —— 内容层的档位边界 === `BALANCE_TIERS` 的档位边界。
+ *   **在测试层比对**（内容层不得 import `src/core/`，R-10 + `content-boundary.test.ts` 兜底）。
+ * · **G266（档位表结构，AC-A3）** —— 空表 / 区间倒置 / 区间重叠一律抛错；档位表逐层冻结。
+ *
+ * ⚠️ **G264（规则 ↔ 单元 1 真实内容一致）不在本文件** ——
+ *   它在 `tests/content/unit-01.test.ts`（与那份 AC-17 的内容侧断言住在一起）：
+ *   那一侧是**真实内容**，属内容层的账。
+ *
+ * ── 为什么这么写 ──────────────────────────────────────────────────────────
+ * · **不写死期望表**（R-56）：本文件验的是**规则自身的性质**与**跨层一致**，
+ *   具体那 9 个数字是产品裁决 —— 改它要同时改 `src/content/option-count.ts` 与
+ *   `docs/option-count.md`，**不该由测试拦**（拦了就等于把产品决策写死在测试里）。
+ *   「档 1 的三个数与真实内容相等」那条（G264）才是把数字钉住的地方。
+ * · **单调不降必须配一条下界**（R-51 第 1 类失效的预防）：
+ *   「逐档不降」单独写的话，一条**恒定不变**的档位表（3 档全是 2 个选项）照样全绿 ——
+ *   而那意味着「越靠后的单元选项数越多」这句话是假的。
+ *   ⇒ 配一条「至少有一档真的上升」。
+ * · **跨层比对是双向的**（G265）：只比「内容层的档位 ⊆ core 的档位」的话，
+ *   core 加一档而内容层没跟时不会红 —— 那一档的单元会拿到**上一档**的选项数，
+ *   难度静默偏掉。
+ * · **每条守卫都配一条反向自测**（R-51 / T6.5）：把违规形态**真写进合成夹具**，
+ *   证明判据会红 —— 而不是「在脑子里想一遍它会红」。
+ *
+ * ── 编号留痕（R-36）─────────────────────────────────────────────────────────
+ * ⚠️ story 文档写的是「守卫从 **G253** 起」，那是 2026-10-21 的**起号检查**结论。
+ *   2026-10-22 的 Epic 1 集成层检视**已经占用了 G253–G261**（真守卫在
+ *   `tests/core/invariants.test.ts` / `tests/components/hand-build.test.ts` /
+ *   `tests/services/asset-prefetch.test.ts` / `tests/app/` 等处）⇒ 撞号。
+ *   ⇒ 本 story 顺延到 **G262 起**（G262–G266），story 文档已同步更正。
+ *
+ * ── 期望值来源与出处 ──────────────────────────────────────────────────────
+ * · 规则与三条性质：`src/content/option-count.ts` 的文件头 + `docs/option-count.md`
+ * · 「档内所有单元同值」「越靠后的单元选项数越多」：Story 2.4 AC 组 A / B
+ * · 档位边界 1–4 / 5–10 / 11–20 = FR63 的阳光档位划分（`src/core/balance.ts` 的 `BALANCE_TIERS`）
+ */
+
+import { describe, expect, it } from 'vitest'
+
+import {
+  OPTION_COUNT_TIERS,
+  assertOptionCountTiers,
+  optionCountTierForUnit,
+  targetOptionCount,
+  type OptionCountTier,
+} from '../../src/content/option-count'
+import { FIRST_UNIT, LAST_UNIT } from '../../src/content/distribution'
+import { CardKindSchema } from '../../src/content/schema'
+import { BALANCE_TIERS } from '../../src/core/balance'
+
+/** 规则覆盖的全部单元号（1..20）。 */
+const ALL_UNITS: readonly number[] = Array.from(
+  { length: LAST_UNIT - FIRST_UNIT + 1 },
+  (_, i) => FIRST_UNIT + i,
+)
+
+/** 三个卡型（取自 schema 枚举，不另写一份字面量）。 */
+const CARD_KINDS = Object.keys(
+  (CardKindSchema.def as { entries?: Record<string, string> }).entries ?? {},
+) as readonly (keyof OptionCountTier['counts'])[]
+
+/** 选项数的合法区间（档 1 的 2 到末档的 4）—— 越界即内容或规则写坏了。 */
+const MIN_COUNT = 2
+const MAX_COUNT = 4
+
+/** 造一档（夹具用；不冻结 —— 反向自测要的就是「能造出畸形档位表」）。 */
+function tier(from: number, to: number, word: number, keyword: number, response: number): OptionCountTier {
+  return { unitRange: [from, to], counts: { word, keyword, response } }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// G262 —— 可计算 + 覆盖 1..20
+// ══════════════════════════════════════════════════════════════════════════════
+
+describe('G262 —— 规则可计算 + 覆盖 1..20（AC-A2）', () => {
+  it('每个单元、每个卡型都得出合法值（整数且 ∈ [2,4]）', () => {
+    for (const unit of ALL_UNITS) {
+      for (const kind of CARD_KINDS) {
+        const count = targetOptionCount(unit, kind)
+        expect(
+          Number.isInteger(count),
+          `单元 ${unit} 的 ${kind} 选项数是 ${count}，不是整数 —— 选项数落到卡上只能取整，` +
+            '取整会变成第二个事实源',
+        ).toBe(true)
+        expect(
+          count >= MIN_COUNT && count <= MAX_COUNT,
+          `单元 ${unit} 的 ${kind} 选项数是 ${count}，不在 [${MIN_COUNT}, ${MAX_COUNT}] —— ` +
+            '少于 2 个选项孩子无从二选一，多于 4 个选项认读负担超出 4–8 岁的承受范围',
+        ).toBe(true)
+      }
+    }
+  })
+
+  it('档位表的键集合 === CardKindSchema 的取值集合（三型齐全，不多不少）', () => {
+    const def = CardKindSchema.def as { entries?: Record<string, string> }
+    if (def.entries === undefined) {
+      throw new Error('CardKindSchema 不再是枚举 —— 卡型取值集合的读法变了，本断言需要重写')
+    }
+    const kinds = Object.keys(def.entries)
+    for (const t of OPTION_COUNT_TIERS) {
+      expect(
+        Object.keys(t.counts).sort(),
+        `档位 ${t.unitRange[0]}-${t.unitRange[1]} 的卡型键集合与 CardKindSchema 不一致` +
+          `（schema：${kinds.join('/')}）—— schema 增删卡型而档位表没跟上，` +
+          '该族卡的选项数会被静默漏算（`targetOptionCount` 会抛错，但录入端看到的是一句谜语）',
+      ).toEqual([...kinds].sort())
+    }
+  })
+
+  it('越界（0 / 21 / -1）与非整数（2.5 / NaN / Infinity）一律抛错，且消息说清覆盖范围', () => {
+    for (const bad of [0, 21, -1, 2.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(
+        () => targetOptionCount(bad, 'word'),
+        `单元号 ${bad} 没有抛错 —— 静默外推会让「单元结构扩到 20 以上」这件事在这里被吞掉，` +
+          '而难度曲线在没人看的地方偏出去，且没有任何报错指向它',
+      ).toThrowError(/覆盖范围外|单元号必须是整数/)
+    }
+  })
+
+  it('反向自测：把越界检查去掉（改成回退到首档）⇒ 上面那条立刻红', () => {
+    // ⚠️ R-51：判据必须真能咬住它要防的那个违规 —— 这里把**去掉越界检查**的
+    //   假实现**真写出来**，并让判据问它。
+    const withoutRangeCheck = (unitNumber: number, kind: 'word'): number => {
+      if (!Number.isInteger(unitNumber)) throw new Error('单元号必须是整数')
+      return OPTION_COUNT_TIERS[0].counts[kind] // ← 越界时静默回退首档
+    }
+    expect(() => withoutRangeCheck(21, 'word'), '假实现竟然抛错了 ⇒ 反向自测本身失效').not.toThrow()
+    expect(
+      () => targetOptionCount(21, 'word'),
+      '真实现对越界单元号不抛错 ⇒ 越界判据没了',
+    ).toThrowError(/覆盖范围外/)
+  })
+})
+
+// ══════════════════════════════════════════════════════════════════════════════
+// G263 —— 三条性质
+// ══════════════════════════════════════════════════════════════════════════════
+
+describe('G263 —— 三条性质：逐档不降 / 档内同值 / 档内卡型不降（AC-B1、B2）', () => {
+  it('① 逐档单调不降（每个卡型各自不降）', () => {
+    for (const kind of CARD_KINDS) {
+      for (let i = 1; i < OPTION_COUNT_TIERS.length; i += 1) {
+        const prev = OPTION_COUNT_TIERS[i - 1].counts[kind]
+        const cur = OPTION_COUNT_TIERS[i].counts[kind]
+        expect(
+          cur,
+          `${kind} 在第 ${i} 档倒退：${prev} → ${cur} —— ` +
+            '「越靠后的单元选项数越多」是难度阶梯的一条腿，中间出现回退即难度回退',
+        ).toBeGreaterThanOrEqual(prev)
+      }
+    }
+  })
+
+  it('① 的下界：至少有一档真的上升（否则「不降」是一条恒真的废话）', () => {
+    // ⚠️ R-51 第 1 类失效的预防：上面那条是**上界**断言（不降）。
+    //   一条「3 档全都不变」的档位表照样全绿 —— 而那意味着选项数从头到尾不变，
+    //   「越靠后的单元选项数越多」这句话根本没兑现。
+    let rose = false
+    for (const kind of CARD_KINDS) {
+      for (let i = 1; i < OPTION_COUNT_TIERS.length; i += 1) {
+        if (OPTION_COUNT_TIERS[i].counts[kind] > OPTION_COUNT_TIERS[i - 1].counts[kind]) rose = true
+      }
+    }
+    expect(
+      rose,
+      '三个卡型在整张档位表上一次都没有上升 —— 难度阶梯在选项数这一维上完全没动，' +
+        '而「单调不降」全绿（它允许恒定）',
+    ).toBe(true)
+  })
+
+  it('② 档内同值：同一档内所有单元同值', () => {
+    for (const t of OPTION_COUNT_TIERS) {
+      const [from, to] = t.unitRange
+      for (const kind of CARD_KINDS) {
+        for (let unit = from; unit <= to; unit += 1) {
+          expect(
+            targetOptionCount(unit, kind),
+            `单元 ${unit}（第 ${from}-${to} 档）的 ${kind} 选项数与档位表的值不一致 —— ` +
+              '档内必须同值，否则「档」这个概念就没了，内容作者在同档内也没有一致的依据',
+          ).toBe(t.counts[kind])
+        }
+      }
+    }
+  })
+
+  it('③ 档内卡型不降：word ≤ keyword ≤ response', () => {
+    for (const t of OPTION_COUNT_TIERS) {
+      const { word, keyword, response } = t.counts
+      expect(
+        word,
+        `第 ${t.unitRange[0]}-${t.unitRange[1]} 档的单词卡选项数 ${word} 大于关键词卡 ${keyword} —— ` +
+          '单词卡是难度阶梯的起点（FR15），它不该比需要认读整句的卡更费劲',
+      ).toBeLessThanOrEqual(keyword)
+      expect(
+        keyword,
+        `第 ${t.unitRange[0]}-${t.unitRange[1]} 档的关键词卡选项数 ${keyword} 大于回应卡 ${response} —— ` +
+          '回应卡要读整句短语，它的识别负担在关键词卡之上',
+      ).toBeLessThanOrEqual(response)
+    }
+  })
+
+  it('反向自测：造一张「档内卡型倒挂 / 逐档倒退」的假档位表 ⇒ 上面三条都会红', () => {
+    // ⚠️ R-51：三条性质判据必须真能咬住它们各自要防的违规。
+    //   这张假表：第 2 档的 keyword 掉到 2（低于第 1 档的 3 ⇒ 违反 ①），
+    //   同时 keyword 2 < word 3（违反 ③）。
+    const broken = [tier(1, 4, 2, 3, 3), tier(5, 10, 3, 2, 4)]
+    // ① 逐档不降：第 2 档 keyword 2 < 第 1 档 keyword 3 ⇒ 违规。
+    expect(
+      broken[1].counts.keyword,
+      '假表没造出「逐档倒退」⇒ 反向自测本身失效',
+    ).toBeLessThan(broken[0].counts.keyword)
+    // ③ 档内卡型不降：第 2 档 word 3 > keyword 2 ⇒ 违规。
+    expect(
+      broken[1].counts.keyword,
+      '假表没造出「档内卡型倒挂」⇒ 反向自测本身失效',
+    ).toBeLessThan(broken[1].counts.word)
+    // 真表必须满足这两条（否则上面两条性质断言是恒假的）。
+    expect(OPTION_COUNT_TIERS[1].counts.keyword).toBeGreaterThanOrEqual(
+      OPTION_COUNT_TIERS[0].counts.keyword,
+    )
+    expect(OPTION_COUNT_TIERS[1].counts.word).toBeLessThanOrEqual(OPTION_COUNT_TIERS[1].counts.keyword)
+  })
+})
+
+// ══════════════════════════════════════════════════════════════════════════════
+// G265 —— 档位边界跨层一致
+// ══════════════════════════════════════════════════════════════════════════════
+
+describe('G265 —— 内容层的档位边界 === core 的 BALANCE_TIERS（AC-B2）', () => {
+  // ⚠️ **这条必须在测试层做**（R-10：`src/content/` 不得 import `src/core/`，
+  //   `tests/content/content-boundary.test.ts` 的源码兜底会拦）。
+  //   内容层与 core 各写一遍区间边界（不是重复实现，是**两份记录**）⇒
+  //   漂移必须有人比对，那就是这条守卫存在的全部理由。
+
+  it('档数一致（core 加一档而内容层没跟时必须红）', () => {
+    expect(
+      OPTION_COUNT_TIERS.length,
+      `内容层的档位表有 ${OPTION_COUNT_TIERS.length} 档，core 的 BALANCE_TIERS 有 ${BALANCE_TIERS.length} 档 —— ` +
+        '两者的档位边界必须逐档对应：core 加一档（经济档位变了）而内容层没跟时，' +
+        '那一档的单元会拿到上一档的选项数，难度静默偏掉',
+    ).toBe(BALANCE_TIERS.length)
+  })
+
+  it('每一档的单元区间逐字相等（1–4 / 5–10 / 11–20）', () => {
+    for (let i = 0; i < Math.min(OPTION_COUNT_TIERS.length, BALANCE_TIERS.length); i += 1) {
+      expect(
+        [...OPTION_COUNT_TIERS[i].unitRange],
+        `第 ${i} 档的单元区间与 core 的 BALANCE_TIERS 第 ${i} 档不一致 —— ` +
+          '内容层与 core 是同一套「阳光档位划分」的两份记录，分开了就不是同一套',
+      ).toEqual([...BALANCE_TIERS[i].unitRange])
+    }
+  })
+
+  it('反向自测：把内容层某一档的区间改掉 ⇒ 上面两条立刻红', () => {
+    // ⚠️ R-51：跨层比对必须真能咬住「一边改了另一边没跟」。
+    const drifted = OPTION_COUNT_TIERS.map((t, i) =>
+      i === 1 ? { ...t, unitRange: [5, 11] as const } : t,
+    )
+    expect(
+      [...drifted[1].unitRange],
+      '假表没造出区间漂移 ⇒ 反向自测本身失效',
+    ).not.toEqual([...BALANCE_TIERS[1].unitRange])
+    // 真表必须与 core 一致。
+    expect([...OPTION_COUNT_TIERS[1].unitRange]).toEqual([...BALANCE_TIERS[1].unitRange])
+  })
+})
+
+// ══════════════════════════════════════════════════════════════════════════════
+// G266 —— 档位表的结构与冻结
+// ══════════════════════════════════════════════════════════════════════════════
+
+describe('G266 —— 档位表结构：空表 / 倒置 / 重叠一律抛错，逐层冻结（AC-A3）', () => {
+  it('空表抛错（任何单元都将无处取值）', () => {
+    expect(
+      () => assertOptionCountTiers([]),
+      '空档位表没有抛错 ⇒ 线性扫描静默返回 undefined，调用方拿到 undefined 当选项数用',
+    ).toThrowError(/不能为空/)
+  })
+
+  it('区间倒置抛错（from > to）', () => {
+    expect(
+      () => assertOptionCountTiers([tier(7, 3, 2, 3, 3)]),
+      '区间倒置没有抛错 ⇒ 那一档永远不会被命中，而它的数值仍留在表里等着骗人',
+    ).toThrowError(/倒置/)
+  })
+
+  it('区间重叠抛错（线性扫描会静默取先命中的一条）', () => {
+    expect(
+      () => assertOptionCountTiers([tier(1, 4, 2, 3, 3), tier(3, 10, 3, 4, 4)]),
+      '区间重叠没有抛错 ⇒ 第 3、4 单元会拿到第 1 档的数值，而两档的数值都是「合法」的',
+    ).toThrowError(/重叠/)
+  })
+
+  it('反向自测：重叠的那一对**真写进去**时判据会红（不是「想一遍」）', () => {
+    // ⚠️ R-51/T6.5：上面三条已经写了违规形态，但它们断言的是**抛错**。
+    //   这条从**另一头**证明判据不是恒抛：合法表必须**不抛** ——
+    //   否则「无论什么表都抛错」也会让上面三条全绿（一个假守卫）。
+    expect(
+      () => assertOptionCountTiers(OPTION_COUNT_TIERS),
+      '合法的档位表竟然抛错了 ⇒ 上面三条是恒抛的假守卫',
+    ).not.toThrow()
+    // 合法表逐档命中正确：
+    expect(optionCountTierForUnit(1).unitRange).toEqual([1, 4])
+    expect(optionCountTierForUnit(5).unitRange).toEqual([5, 10])
+    expect(optionCountTierForUnit(20).unitRange).toEqual([11, 20])
+  })
+
+  it('档位表逐层冻结（运行期唯一防线就是它）', () => {
+    // ⚠️ 为什么这条非有不可：类型层的 `readonly` 防不住运行期的 `as` 强转，
+    //   而难度曲线被无痕改写时，全部守卫仍然绿（同 `BALANCE_TIERS` 的教训）。
+    expect(Object.isFrozen(OPTION_COUNT_TIERS), '档位表容器必须冻结').toBe(true)
+    for (const t of OPTION_COUNT_TIERS) {
+      expect(Object.isFrozen(t), `档位 ${t.unitRange[0]}-${t.unitRange[1]} 必须冻结`).toBe(true)
+      expect(Object.isFrozen(t.unitRange), `档位 ${t.unitRange[0]}-${t.unitRange[1]} 的 unitRange 必须冻结`).toBe(true)
+      expect(Object.isFrozen(t.counts), `档位 ${t.unitRange[0]}-${t.unitRange[1]} 的 counts 必须冻结`).toBe(true)
+    }
+  })
+})

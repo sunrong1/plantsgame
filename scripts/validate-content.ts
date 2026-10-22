@@ -45,11 +45,13 @@ import { join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import {
+  CardKindSchema,
   ENTRY_ID_PATTERN,
   PROBLEM_CATEGORY,
   UnitSchema,
   type ProblemCategory,
 } from '../src/content/schema'
+import { targetOptionCount } from '../src/content/option-count'
 // ⚠️ 脚本 import `src/core/` 是**允许且已实测可行**的（`tsconfig.test.json` 文件头实测记录：
 //   注入 `const x: number = "s"` 会立刻报 TS2322，既证明被 typecheck 覆盖也证明 import core/
 //   没有把它挤出检查范围）。`scripts/balance-sim.ts:49` 就是这个形态。
@@ -379,6 +381,200 @@ function wordImageProblems(raw: unknown, deps: ValidateDeps): ContentProblem[] {
     })
   }
 
+  return problems
+}
+
+// ── 选项数与选项近邻（Story 2.4 / AC-B3、AC-B4、AC-C3）──────────────────────
+
+/**
+ * 三个卡型（从 schema 的枚举推，**不另写一份字面量**）。
+ *
+ * ⚠️ 与 `tests/content/content-boundary.test.ts` 同一手法：读 zod 枚举的元信息。
+ * 若哪天 zod 升级改了枚举的内部形状，本行会读到空数组 ⇒ 下面每张卡都被跳过 ⇒
+ * 「选项数检查整段没跑」的全绿 —— 所以这里**不静默降级**：读不到就抛错。
+ */
+const CARD_KINDS: readonly string[] = (() => {
+  const def = CardKindSchema.def as { entries?: Record<string, string> }
+  const keys = Object.keys(def.entries ?? {})
+  if (keys.length === 0) {
+    throw new Error('CardKindSchema 不再是枚举 —— 卡型白名单的形状变了，本脚本需要重写')
+  }
+  return keys
+})()
+
+/**
+ * 「只差几个字」的最大编辑距离（Story 2.4 / 裁决 7）。
+ *
+ * ⚠️ 这是**产品裁决**：取 2 是因为「只差一两个字」正是 6 岁半**逐字辨认**才能分辨的
+ * 量级（`pen` / `pet`、`cat` / `car`）。
+ *
+ * ⚠️ **阈值是被数据卡住的**：单元 1 的卡内最小编辑距离实测 = **3**
+ * （关键词卡 `ball` ~ `book`，见 `docs/option-count.md` 的复算方法）⇒
+ * 阈值取 3 就会把一个**语义上完全可分**的合格干扰项判坏（球 vs 书）⇒ 阈值 ≤ 2。
+ * 取 1 则放过「差两个字」的 `ball` / `bail`。
+ * ⇒ 改这个数字要同步改 `docs/option-count.md`，并重跑 G268 与 T6.6 的反向自测。
+ */
+export const NEAR_DUPLICATE_MAX_DISTANCE = 2
+
+/**
+ * 归一化一个选项文本：小写 → 去标点 → 压空白。
+ *
+ * ⚠️ **去标点必须做**：`Good morning!` 与 `Good morning.` 归一化后只差一个字符，
+ * 而不归一化时它们是两个「不同的文本」⇒ 编辑距离算出来是 4（长度差），
+ * 阈值 2 抓不到 —— 而孩子看到的是两个**看起来一样**的按钮。
+ */
+export function normalizeOptionText(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+/**
+ * 字符级编辑距离（Levenshtein）。
+ *
+ * ⚠️ 它是**字符级代理量**，判不了语义：两个语义上很近但字面差很多的选项
+ * （例如 `I am fine, thank you.` 与 `Thank you!`）**不会**被它抓出来 ——
+ * 那属「生僻词 / 语义可辨性」的人工项（AC-B4 如实登记为人工项）。
+ */
+export function editDistance(a: string, b: string): number {
+  if (a === b) return 0
+  if (a.length === 0) return b.length
+  if (b.length === 0) return a.length
+  let prev = Array.from({ length: b.length + 1 }, (_, i) => i)
+  for (let i = 1; i <= a.length; i += 1) {
+    const cur = [i]
+    for (let j = 1; j <= b.length; j += 1) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + cost)
+    }
+    prev = cur
+  }
+  return prev[b.length]
+}
+
+/** 宽松遍历：从**原始** JSON 里取出每张卡（entryId / kind / options）。 */
+function cardsOf(
+  raw: unknown,
+): { entryId: string | null; kind: string | null; options: unknown[] }[] {
+  if (raw === null || typeof raw !== 'object') return []
+  const entries = (raw as { entries?: unknown }).entries
+  if (!Array.isArray(entries)) return []
+  const out: { entryId: string | null; kind: string | null; options: unknown[] }[] = []
+  for (const entry of entries) {
+    if (entry === null || typeof entry !== 'object') continue
+    const { entryId, card } = entry as { entryId?: unknown; card?: { kind?: unknown; options?: unknown } }
+    out.push({
+      entryId: typeof entryId === 'string' ? entryId : null,
+      kind: typeof card?.kind === 'string' ? card.kind : null,
+      options: Array.isArray(card?.options) ? (card.options as unknown[]) : [],
+    })
+  }
+  return out
+}
+
+/**
+ * 检查一：每张卡的选项数必须**等于**规则给该（单元号、卡型）的目标值（AC-B3 / AC-C3）。
+ *
+ * ⚠️ **规则抛错时转成一条能定位的问题，而不是让脚本崩掉**（AC-13 逐条独立成行）：
+ *   `loadUnitFiles` 扫的是**目录** ⇒ 将来 `unit-21.json` 一出现就会走到这里，
+ *   而规则只覆盖 1–20 ⇒ 那时必须报「规则不覆盖单元 21」，不能抛栈。
+ *   ⇒ 规则不覆盖时**整个单元只报一条**（不是每张卡一条）—— 37 张卡报 37 遍
+ *   同一条原因是噪声，而噪声会被当成噪声忽略掉。
+ */
+function optionCountProblems(raw: unknown): ContentProblem[] {
+  const problems: ContentProblem[] = []
+  const unitNumber = unitNumberAt(raw)
+  if (unitNumber === null) return problems
+
+  const expected = new Map<string, number>()
+  for (const kind of CARD_KINDS) {
+    try {
+      expected.set(kind, targetOptionCount(unitNumber, kind as Parameters<typeof targetOptionCount>[1]))
+    } catch (err) {
+      problems.push({
+        category: PROBLEM_CATEGORY.optionCount,
+        unitNumber,
+        entryId: null,
+        optionId: null,
+        message:
+          `选项数规则不覆盖单元 ${unitNumber}：${err instanceof Error ? err.message : String(err)} —— ` +
+          '本单元的选项数无法核对，请先扩展规则（src/content/option-count.ts）再录入内容',
+      })
+      return problems
+    }
+  }
+
+  for (const card of cardsOf(raw)) {
+    // 卡型非法时**跳过**：那一条由 schema 的 `kindOptionMismatch` / `schema` 类别负责，
+    // 这里再报一遍就是同一件事说两遍（R-02：一份判定只有一个来源）。
+    if (card.kind === null || !expected.has(card.kind)) continue
+    const want = expected.get(card.kind) as number
+    if (card.options.length === want) continue
+    problems.push({
+      category: PROBLEM_CATEGORY.optionCount,
+      unitNumber,
+      entryId: card.entryId,
+      optionId: null,
+      message:
+        `选项数不符：单元 ${unitNumber} 的 ${card.entryId}（${card.kind} 卡）` +
+        `期望 ${want} 个选项，实际 ${card.options.length} 个 —— ` +
+        '选项数由 src/content/option-count.ts 的档位表决定，改内容要同步改规则（或反之）',
+    })
+  }
+  return problems
+}
+
+/**
+ * 检查二：同一张卡的**两个文字选项**只差几个字 ⇒ 报 `option-near-duplicate`（AC-B4）。
+ *
+ * ⚠️ **只管文字选项**：单词卡的选项是**图片**，没有文字可算距离。
+ *   图片选项的「视角是否一致」是 `docs/art-direction.md` §5.4 的**目视**台账，
+ *   机器判不了 —— 这里**不假装自己能判**（AC-B4 的另一半如实登记为人工项）。
+ *
+ * ⚠️ 互为前缀的那一对**在数学上已被编辑距离覆盖**（前缀关系的编辑距离恰好等于
+ *   长度差）⇒ 那半个条件是**冗余**的；这里仍按 AC 的原文写出来，是为了让
+ *   「AC 写的那一条在代码里有一行对应」可核对，而不是靠读者自己推。
+ */
+export function optionNearDuplicateProblems(
+  raw: unknown,
+  maxDistance: number = NEAR_DUPLICATE_MAX_DISTANCE,
+): ContentProblem[] {
+  const problems: ContentProblem[] = []
+  const unitNumber = unitNumberAt(raw)
+
+  for (const card of cardsOf(raw)) {
+    const texts: { id: string; text: string }[] = []
+    for (const option of card.options) {
+      if (option === null || typeof option !== 'object') continue
+      const candidate = option as { id?: unknown; text?: unknown }
+      if (typeof candidate.text !== 'string') continue
+      texts.push({ id: typeof candidate.id === 'string' ? candidate.id : '', text: candidate.text })
+    }
+
+    for (let i = 0; i < texts.length; i += 1) {
+      for (let j = i + 1; j < texts.length; j += 1) {
+        const a = normalizeOptionText(texts[i].text)
+        const b = normalizeOptionText(texts[j].text)
+        if (a.length === 0 || b.length === 0) continue
+        const distance = editDistance(a, b)
+        const isPrefixPair =
+          (a.startsWith(b) || b.startsWith(a)) && Math.abs(a.length - b.length) <= maxDistance
+        if (distance > maxDistance && !isPrefixPair) continue
+        problems.push({
+          category: PROBLEM_CATEGORY.optionNearDuplicate,
+          unitNumber,
+          entryId: card.entryId,
+          optionId: texts[j].id,
+          message:
+            `卡内两个选项只差几个字：「${texts[i].text}」与「${texts[j].text}」` +
+            `（归一化后编辑距离 ${distance}，阈值 ${maxDistance}）—— ` +
+            '孩子要逐字辨认才能分辨这两个按钮',
+        })
+      }
+    }
+  }
   return problems
 }
 
@@ -853,6 +1049,9 @@ export function validateContent(
   for (const raw of units) {
     problems.push(...schemaProblems(raw))
     problems.push(...wordImageProblems(raw, deps))
+    // ⚠️ Story 2.4：这两条与上面两条**并列**，不 early return（AC-13 一次列完）。
+    problems.push(...optionCountProblems(raw))
+    problems.push(...optionNearDuplicateProblems(raw))
     const parsed = UnitSchema.safeParse(raw)
     if (!parsed.success) continue
     entryCount += parsed.data.entries.length

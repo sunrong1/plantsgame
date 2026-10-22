@@ -25,10 +25,12 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it, vi } from 'vitest'
 
 import {
+  NEAR_DUPLICATE_MAX_DISTANCE,
   expectedImageUrl,
   formatProblem,
   loadUnitFiles,
   main,
+  optionNearDuplicateProblems,
   parseCli,
   validateContent,
   type ValidateDeps,
@@ -743,5 +745,173 @@ describe('词图检查不会用未校验的 option.id 拼路径', () => {
       '为非法 id 编造了「规范路径」⇒ 录入者会去改一个本来就不该存在的 URL',
     ).toBe(false)
     expect(exitCode).toBe(1)
+  })
+})
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Story 2.4 —— 两类新校验（守卫 G267 – G269）
+// ══════════════════════════════════════════════════════════════════════════════
+
+describe('G267 —— 选项数不符被抓出（Story 2.4 / AC-B3、AC-C3）', () => {
+  it('给一张单词卡多塞一个选项 ⇒ 报 option-count，且说清期望值与实际值', () => {
+    // ⚠️ 注入的是**一张真实单词卡**（多一个合法 id 的合法图片选项），
+    //   所以这一条红的原因只有「选项数」—— 词图、id 形态、卡型都还是合法的。
+    const unit = unitCopy()
+    const target = unit.entries.find((e) => e.card.kind === 'word')
+    if (target === undefined) throw new Error('单元 1 里没有单词卡 —— 夹具失效')
+    const wordIds = new Set(unit.entries.filter((e) => e.card.kind === 'word').map((e) => e.entryId))
+    const spare = [...wordIds].find((id) => !target.card.options.some((o) => o.id === id))
+    if (spare === undefined) throw new Error('没有可用的备用单词 id —— 夹具失效')
+    target.card.options.push({
+      id: spare,
+      imageSrc: `/assets/words/unit-01/${spare}.svg`,
+      correct: false,
+    })
+
+    const { problems, exitCode } = run([unit], greenDeps(unit))
+
+    const problem = problems.find((p) => p.category === 'option-count')
+    expect(
+      problem,
+      '选项数不符没有被报出来 ⇒ 单元 1 的选项数与规则脱钩，难度阶梯在内容这一侧失守',
+    ).toBeDefined()
+    expect(problem?.entryId, '报错没定位到是哪张卡 ⇒ 录入者要自己逐张数').toBe(target.entryId)
+    expect(problem?.message, '报错没说出期望值 ⇒ 录入者不知道该改成几个').toContain('期望')
+    expect(problem?.message, '报错没说出实际值 ⇒ 录入者不知道自己写多了几个').toContain('实际')
+    expect(exitCode, '选项数不符却退 0 ⇒ 「跑过了 validate:content」又变成一句空话').toBe(1)
+  })
+
+  it('反向自测：把那个多出来的选项去掉 ⇒ option-count 问题消失', () => {
+    // ⚠️ R-51：判据必须真能咬住它要防的违规 —— 这一条从另一头证明：
+    //   合法内容下不得报（否则上面那条可能是「无论什么都报」）。
+    const { problems } = run([unitCopy()], greenDeps())
+
+    expect(
+      problems.filter((p) => p.category === 'option-count'),
+      '未改动的真实内容报了选项数问题 ⇒ 判据或规则有一边是错的',
+    ).toEqual([])
+  })
+})
+
+describe('G268 —— 卡内选项近邻被抓出（Story 2.4 / AC-B4）', () => {
+  it('两个文字选项只差一个字母 ⇒ 报 option-near-duplicate', () => {
+    const unit = unitCopy()
+    // ⚠️ **注入的是「加一个几乎一样的选项」**，不是「把某个选项改成另一个的副本」——
+    //   后者会把「要比较的那一对」里的一个换掉，判据就无从比较了
+    //   （第一稿就栽在这里：把「Goodbye」改成「Goodby」之后，卡里已经**没有**「Goodbye」了）。
+    //   近邻判据比的是**同一张卡里两个都在**的选项之间的距离 ⇒ 必须让那一对同时存在。
+    // 「Helo」与「Hello」归一化后编辑距离 = 1 ⇒ 落在阈值 2 内。
+    // ⚠️ 这一对**故意不是前缀关系**（`helo` 不是 `hello` 的前缀）：
+    //   判据里那条「互为前缀」的分支是**冗余**的（前缀对的编辑距离恰好等于长度差），
+    //   若注入的恰好是前缀对，那条分支会替它兜住 ⇒ 判据里那半条坏掉时用例仍然绿。
+    const card = unit.entries.find((e) => e.entryId === 'u1-s-good-morning')
+    if (card === undefined) throw new Error('单元 1 里没有 u1-s-good-morning 这张卡 —— 夹具失效')
+    if (!card.card.options.some((o) => o.text === 'Hello')) throw new Error('夹具失效：该卡上找不到「Hello」选项')
+    // ⚠️ 这个选项的 id 指向本单元真实存在的词条（校验器的「选项必须指向本单元存在的词条」
+    //   那条要绿），而**文本**是「Hello」的手误形态 —— 本条要验的是文本距离。
+    card.card.options.push({ id: 'u1-dog', text: 'Helo', correct: false })
+
+    const { problems, exitCode } = run([unit], greenDeps(unit))
+
+    const problem = problems.find((p) => p.category === 'option-near-duplicate')
+    expect(
+      problem,
+      '只差一个字母的两个选项没有被报出来 ⇒ 孩子要逐字辨认才能分辨两个按钮，' +
+        '而校验器本该在录入那一刻就拦下来',
+    ).toBeDefined()
+    expect(problem?.message, '报错没指出是哪两个选项 ⇒ 录入者无从下手').toContain('Helo')
+    expect(problem?.message, '报错没指出另一个选项 ⇒ 录入者无从下手').toContain('Hello')
+    expect(exitCode, '近邻选项却退 0 ⇒ 这一类错误静默通过').toBe(1)
+  })
+
+  it('反向自测：改回正确拼写 ⇒ 这个问题消失', () => {
+    const { problems } = run([unitCopy()], greenDeps())
+
+    expect(
+      problems.filter((p) => p.category === 'option-near-duplicate'),
+      '未改动的真实内容报了近邻选项 ⇒ 阈值或归一化把合格的干扰项判坏了',
+    ).toEqual([])
+  })
+})
+
+describe('G269 —— 规则范围外的单元号不崩，只报一条能定位的问题（Story 2.4 / AC-C3）', () => {
+  it('unitNumber 21 ⇒ 退出码非 0，报出一条能定位的问题，不是堆栈', () => {
+    const unit = unitCopy()
+    unit.unitNumber = 21
+
+    const { problems, exitCode } = run([unit], greenDeps(unit))
+
+    const optionCountProblems = problems.filter((p) => p.category === 'option-count')
+    expect(
+      optionCountProblems.length,
+      `规则不覆盖的单元没有报 option-count 问题（实际报了 ${optionCountProblems.length} 条）—— ` +
+        '要么静默放过（内容在规则范围外却没人管），要么报了一堆（37 张卡报 37 遍同一条原因是噪声）',
+    ).toBe(1)
+    expect(
+      optionCountProblems[0].message,
+      '报错里没有单元号 ⇒ 录入者不知道是哪个单元越界了',
+    ).toContain('21')
+    expect(
+      optionCountProblems[0].message,
+      '报错没说是「规则不覆盖」⇒ 录入者会以为是自己选项数写错了',
+    ).toContain('不覆盖')
+    expect(exitCode, '越界单元却退 0 ⇒ 规则范围外的单元被静默放行').toBe(1)
+  })
+
+  it('反向自测：单元号 20（仍在覆盖内）⇒ 不报这条', () => {
+    const unit = unitCopy()
+    unit.unitNumber = 20
+
+    const { problems } = run([unit], greenDeps(unit))
+
+    expect(
+      problems.filter((p) => p.category === 'option-count' && p.message.includes('不覆盖')),
+      '单元 20 在规则覆盖内却被报成「不覆盖」⇒ 规则的覆盖范围与它自己声明的不一致',
+    ).toEqual([])
+  })
+})
+
+describe('T6.6 —— 近邻阈值的那条反向自测（阈值真的在起作用，且上界被数据卡住）', () => {
+  it('把阈值临时改成 3 ⇒ 关键词卡那张（ball ~ book）必须被报出来', () => {
+    // ⚠️ **光有「现有内容不报错」那条断言是不够的** ——
+    //   那条在阈值被放宽到 99 时照样绿 ⇒ 它证明不了阈值在起作用。
+    //   这条从另一头证明：阈值一旦真的动到 3，**确定会**报出一对。
+    //   报出来的那一对是关键词卡的 `ball` ~ `book`（归一化后编辑距离 = 3）。
+    const problems = optionNearDuplicateProblems(realUnit, 3)
+
+    const hit = problems.find((p) => p.entryId === 'u1-s-i-have-a-ball-for-my-dog')
+    expect(
+      hit,
+      '阈值改成 3 之后关键词卡没有被报出来 ⇒ 阈值根本没在起作用（' +
+        `实际报出 ${problems.length} 条：${problems.map((p) => p.entryId).join('/')}）`,
+    ).toBeDefined()
+    expect(hit?.message, '报错里没有那两个选项 ⇒ 定位不到是哪一对').toContain('ball')
+    expect(hit?.message, '报错里没有那两个选项 ⇒ 定位不到是哪一对').toContain('book')
+  })
+
+  it('阈值 = 2（当期值）⇒ 那对合格干扰项**不**被报（阈值 ≤ 2 的上界是被数据卡住的）', () => {
+    // ⚠️ 这是「上界被数据卡住」那一半：`ball` ~ `book` 语义上完全可分
+    //   （球 vs 书），阈值取 3 就会把一个**合格**的干扰项判坏 ⇒ 阈值必须 ≤ 2。
+    const problems = optionNearDuplicateProblems(realUnit, NEAR_DUPLICATE_MAX_DISTANCE)
+
+    expect(
+      problems.filter((p) => p.entryId === 'u1-s-i-have-a-ball-for-my-dog'),
+      '阈值 2 下把 `ball` ~ `book` 判坏了 —— 球与书对孩子完全可分，' +
+        '把它们判成近邻会让内容作者删掉一个正确的干扰项',
+    ).toEqual([])
+  })
+
+  it('反向自测：阈值真的接进了计算（阈值 99 报出的条数多于阈值 2）', () => {
+    // ⚠️ 这条从**第三头**证明：判据确实读阈值。
+    //   阈值 99 = 「99 个字以内都算近邻」⇒ 几乎每一对都该被报出来；
+    //   阈值 2 = 只有差一两个字的才算。
+    //   ⇒ 两条的条数必须不同；相同就说明阈值根本没接进计算（恒定阈值）。
+    const loose = optionNearDuplicateProblems(realUnit, 99).length
+    const tight = optionNearDuplicateProblems(realUnit, NEAR_DUPLICATE_MAX_DISTANCE).length
+
+    expect(
+      loose,
+      '阈值 99 与阈值 2 报出的条数相同 ⇒ 阈值没有接进计算（判据里那个参数是摆设）',
+    ).toBeGreaterThan(tight)
   })
 })

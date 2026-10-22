@@ -2,20 +2,31 @@
  * **G22** —— 词图 URL 接 `BASE_URL` 的守卫（Story 1.11 / AC-B1）。
  *
  * ── 这个守卫守什么 ────────────────────────────────────────────────────────
- * 30 张单词卡 × 4 个图片选项 = **120 个 `imageSrc`**，每一个都要能：
+ * 30 张单词卡 × 2 个图片选项 = **60 个 `imageSrc`**，每一个都要能：
  *   (a) 拼出以 `import.meta.env.BASE_URL` 开头的 URL
  *   (b) 去掉 base 后，在磁盘上**真实存在**
  *   (c) 文件名 === 该选项的 `option.id`
  *
- * ⚠️ **必须是 120 而不是 30。** 判据 (c)「文件名 === 选项 id」天然是**逐选项**的：
- *   只查 30 个（每卡一张）会漏掉「某张卡的另外三个选项 URL 拼错」，
+ * ⚠️ **必须是「全部图片选项」而不是「每卡一张」。** 判据 (c)「文件名 === 选项 id」
+ *   天然是**逐选项**的：只查 30 个（每卡一张）会漏掉「某张卡的另一个选项 URL 拼错」，
  *   而那恰恰是最可能出的错（选项多、来源杂，最容易照抄错一个）。
+ *
+ * 📎 **Story 2.4 / R-57 留痕：这张卡从 4 个选项降到 2 个，判据跟着改口径。**
+ *   原判据逐字是「单元 1 恰好有 **120** 个图片选项」—— 现在单元 1 的单词卡是
+ *   **2 个选项**（GDD 逐字「早期关卡可从 2 个选项起步」），实数是 **60**。
+ *   ⇒ 判据**不能写死 60**（下一个改选项数的 story 会原样再撞一次），
+ *     也不能写死 120（内容按设计变了，那是「该改判据」而不是「该把内容改回去」）。
+ *   ⇒ 现在判据**实算**：单词卡张数 × 规则算出的单词卡选项数（`targetOptionCount`）
+ *     ⇒ 覆盖范围仍是显式的（少一个选项就红），又不与选项数绑死。
+ *   ⚠️ **实测值优先**（R-21）：60 是实测值，**不是**推导值 ——
+ *     `targetOptionCount(1, 'word')` 是**规则**（档 1 的 2），
+ *     而 60 = 30 × 2 由内容实测得出（G264 逐卡核对）。
  *
  * ⚠️ **判据 (a) 在本地永远是绿的，别以为它有鉴别力。**
  *   `vite.config.ts` 的 `base` 与 `vitest.config.ts` 的 `test.env.BASE_URL`
  *   **都是 `/plantsgame/`** ⇒ 「以 BASE_URL 开头」在本地恒成立。
  *   ⇒ **G22 的全部鉴别力落在 (b) 与 (c) 上**，这也是 M48 改 `wordImageUrl` 时
- *   本守卫会变红的原因（(a) 从 base 开头变成不以 ⇒ 120 条一起红）。
+ *   本守卫会变红的原因（(a) 从 base 开头变成不以 ⇒ 全部 URL 一起红）。
  *
  * ── 判据纪律（Story 1.9 的 P0）────────────────────────────────────────────
  *   判据**只有一份**：`imageSrc` 一律经**实现自己导出的** `wordImageUrl()` 拼，
@@ -30,6 +41,7 @@ import { describe, expect, it } from 'vitest'
 
 import { assetPathWithinPublic, wordImageUrl } from '../../src/services/asset-url'
 import { entriesOf } from '../../src/content'
+import { targetOptionCount } from '../../src/content/option-count'
 import type { ImageOption } from '../../src/core'
 
 const root = process.cwd()
@@ -39,10 +51,20 @@ const imageOptions: readonly ImageOption[] = entriesOf(1).flatMap((entry) =>
   entry.card.options.filter((option): option is ImageOption => 'imageSrc' in option),
 )
 
-describe('G22 —— 120 个词图 URL 逐个实算', () => {
-  it('单元 1 恰好有 120 个图片选项（判据 (a)(b)(c) 的作用范围本身也是判据）', () => {
+/**
+ * 单元 1 **应当**有的图片选项数 —— 实算（单词卡张数 × 规则算出的单词卡选项数）。
+ *
+ * ⚠️ 这里**不含**关键词卡 / 回应卡：它们的选项全是文字选项（schema 的硬约束），
+ *   所以图片选项数只由单词卡决定。
+ */
+const expectedImageOptions: number =
+  entriesOf(1).filter((entry) => entry.card.kind === 'word').length * targetOptionCount(1, 'word')
+
+describe(`G22 —— ${expectedImageOptions} 个词图 URL 逐个实算`, () => {
+  it(`单元 1 恰好有 ${expectedImageOptions} 个图片选项（判据 (a)(b)(c) 的作用范围本身也是判据）`, () => {
     // 少一个选项，上面三条断言的覆盖面就少一个 —— 覆盖范围必须是显式的。
-    expect(imageOptions).toHaveLength(120)
+    // ⚠️ 期望值是**实算**的（单词卡张数 × 规则选项数），不是字面量 —— 见文件头。
+    expect(imageOptions).toHaveLength(expectedImageOptions)
   })
 
   it.each(imageOptions.map((o) => [o.id, o] as const))(
@@ -64,7 +86,7 @@ describe('G22 —— 120 个词图 URL 逐个实算', () => {
 })
 
 describe('G22 补充 —— 判据本身有鉴别力（防「空守卫全绿」）', () => {
-  it('反向：把 base 去掉（变异 M48）—— 120 个 URL 全部不再以 BASE_URL 开头', () => {
+  it('反向：把 base 去掉（变异 M48）—— 全部 URL 都不再以 BASE_URL 开头', () => {
     // M48 的实算复现：不改实现，只把判据问的输入换成「没接 base 的那条路径」。
     const base = import.meta.env.BASE_URL
     const broken = imageOptions.map((o) => o.imageSrc)

@@ -200,6 +200,9 @@
 | DF-187 | 待触发 | 未指派 | 下次动这两份文档时 | `docs/word-image-throughput.md` 与 `docs/art-direction.md` 有 4 处失效行号引用 | [`df-187`](./deferred-details.md#df-187) |
 | DF-188 | 待触发 | 未指派 | 下次改 `docs/rules/testing.md` 时 | `docs/rules/testing.md` 未写「守卫编号全仓库唯一」纪律，也无唯一性守卫 | [`df-188`](./deferred-details.md#df-188) |
 | DF-189 | 待触发 | 未指派 | 下次补规则守卫时，按这条表逐条销账 | 六条规则（R-14/R-08/R-09/R-05/R-74/R-13 等）今天合规但无机器守卫 | [`df-189`](./deferred-details.md#df-189) |
+| DF-190 | 待触发 | Story 2.9 | Story 2.9 试玩验收时逐条人工过；或另建生僻词表 / 语义距离词典后补机器守卫 | 「语义近但字面远」的选项（如 `Thank you!` ~ `I am fine, thank you.`）字符级编辑距离抓不到 —— 属人工项 | [`df-190`](./deferred-details.md#df-190) |
+| DF-191 | 待触发 | Story 1.19 | Story 1.19 试玩验收时人工复核视角；在出现「机器判视角」的手段前不得结清 | 单词卡**图片**选项的视角一致性机器判不了 —— `docs/art-direction.md` §5.4 台账是目视结论 | [`df-191`](./deferred-details.md#df-191) |
+| DF-192 | 待触发 | 未指派 | 横屏布局单开 story 改 `src/styles/responsive.css` 的 2×2 规则时（该规则被守卫 G169 钉死） | 横屏下选项网格被强制 2 列 ⇒ 3 个选项排成 **2 + 1 两行**；本 story 不动横屏布局 | [`df-192`](./deferred-details.md#df-192) |
 
 ## 新增一条
 

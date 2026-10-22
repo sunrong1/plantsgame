@@ -533,21 +533,28 @@ describe('AC-D5 —— 终态下没有可点的假东西（集成在真 <LevelVi
     // ⚠️ R-51：**只钉「终态下没有」的话，一条把手牌区永远藏起来的实现照样绿**。
     const w = await enterLevelAndBuild()
 
-    expect(w.findAll('.option-card').length, '建造期卡面必须在（AC-C5 的反馈载体）').toBe(4)
+    expect(w.findAll('.option-card').length, '建造期卡面必须在（AC-C5 的反馈载体）').toBe(
+      // ⚠️ **实算，不写死 4**（Story 2.4 / R-57 留痕）：单元 1 的单词卡从
+      //   4 个选项降到 2 个，写死的 4 会当场变红，而红的原因是「内容按设计变了」。
+      //   来源取题面自己的 options（内容层），不与选项数规则绑死。
+      questionOf(state.value).card.options.length,
+    )
     expect(w.find('.hand-deck').exists(), '建造期手牌区必须在').toBe(true)
     expect(w.find('.hand-deck__start').exists(), '建造期「开战」按钮必须在').toBe(true)
   })
 
   it.each(['level-failed', 'level-complete'] as const)('%s：卡面 / 手牌区 / 开战按钮 三者全部不渲染', async (kind) => {
     const w = await enterLevelAndBuild()
-    expect(w.findAll('.option-card').length, '前置：卡面此刻必须在屏幕上').toBe(4)
+    expect(w.findAll('.option-card').length, '前置：卡面此刻必须在屏幕上').toBe(
+      questionOf(state.value).card.options.length,
+    )
 
     pushInto(kind)
     await nextTick()
 
     expect(
       w.findAll('.option-card').length,
-      `${kind} 下留着四个选项 = AC-D5 的第一条「假可点」（上一局的卡面还留在屏幕上）`,
+      `${kind} 下留着选项 = AC-D5 的第一条「假可点」（上一局的卡面还留在屏幕上）`,
     ).toBe(0)
     expect(w.find('.question-card').exists(), `${kind} 下连题面区都不该在`).toBe(false)
     expect(

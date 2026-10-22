@@ -44,6 +44,7 @@ import {
 } from '../../src/core'
 import type { Card, OptionId, Question, State } from '../../src/core'
 import { entriesOf } from '../../src/content'
+import { targetOptionCount } from '../../src/content/option-count'
 
 // ⚠️ **`applyAction` / `speakQuestion` 必须用 `vi.mock` 拦，不能用 `vi.spyOn`** ——
 //   它们是 `src/app/store.ts` 的**具名 ESM 导出**，对真实 ESM 命名空间做
@@ -181,7 +182,7 @@ function g23Violation(source: string): string | null {
  * G24：渲染层按 `card.kind` 分派，两个分支**互斥且穷尽**。
  *
  * ⚠️ **上半必须喂一张真正非法的 fixture 卡**才有鉴别力：在真实内容下
- *   单词卡的四个选项全有 `imageSrc`、关键词/回应卡的四个全没有 ⇒
+ *   单词卡的每个选项都有 `imageSrc`、关键词/回应卡的每个都没有 ⇒
  *   「按 `card.kind` 分派」与「按选项有没有 `imageSrc` 分派」产生
  *   **逐字节相同的 DOM**，只改分派依据打不红任何东西（变异 M50 的两个动作缺一不可）。
  *   这张非法卡能存在是因为 `Card` 被拍平成 `kind + options` 的扁平联合
@@ -246,6 +247,26 @@ function firstQuestionOfKind(kind: Card['kind']): Question {
   const entry = entriesOf(1).find((e) => e.card.kind === kind)
   if (entry === undefined) throw new Error(`单元 1 里没有 ${kind} 卡`)
   return entry
+}
+
+/**
+ * 一张题里的**图片选项**个数 —— **从内容层实算**（Story 2.4 / R-57 留痕）。
+ *
+ * ⚠️ **为什么不能写死 4**：Story 2.4 把单元 1 的单词卡从 4 个选项改成 2 个
+ *   （GDD 逐字「早期关卡可从 2 个选项起步」）。写死的判据会当场变红，
+ *   而红的原因是「内容按设计变了」—— 那时该改的是判据的**来源**
+ *   （字面量 → 实算），不是把内容改回去。
+ *   ⚠️ 写死 2 同样是坑：下一个改选项数的 story 会原样再撞一次。
+ * ⇒ 本文件守的是**渲染层**（渲染出几个 === 卡里声明几个）；
+ *   「规则 === 真实内容」由 `tests/content/unit-01.test.ts` 的 G264 守。
+ */
+function imageOptionCountOf(question: Question): number {
+  return question.card.options.filter((o) => 'imageSrc' in o).length
+}
+
+/** 一张题里的**文字选项**个数 —— 从内容层实算（同上）。 */
+function textOptionCountOf(question: Question): number {
+  return question.card.options.filter((o) => !('imageSrc' in o)).length
 }
 
 /** 组装一份 state，题面挂在 `awaiting-answer` 上。 */
@@ -450,10 +471,11 @@ describe('G24 上半 —— 按 card.kind 分派（非法 fixture 卡，变异�
 })
 
 describe('G24 下半 —— 真实内容里关键词 / 回应卡的选项区无 <img>（M50b 覆盖）', () => {
-  it.each(['keyword', 'response'] as const)('%s 卡渲染出 4 个文字选项、0 张 <img>', (kind) => {
-    const wrapper = mountCard(firstQuestionOfKind(kind))
+  it.each(['keyword', 'response'] as const)('%s 卡渲染出的文字选项数 === 内容层实算数、0 张 <img>', (kind) => {
+    const question = firstQuestionOfKind(kind)
+    const wrapper = mountCard(question)
 
-    expect(wrapper.findAll('.option-card__text')).toHaveLength(4)
+    expect(wrapper.findAll('.option-card__text')).toHaveLength(textOptionCountOf(question))
     expect(wrapper.findAll('img')).toHaveLength(0)
     // 🚨 `[CR]` 2026-10-16 —— 这里原本传的是**字面量** `g24Violation(0, 4)`，
     //   那是在断言一个常量恒等于 null，**与 DOM 无关** ⇒ 换任何渲染结果都绿。
@@ -461,19 +483,23 @@ describe('G24 下半 —— 真实内容里关键词 / 回应卡的选项区无 
     expect(g24Violation(wrapper.findAll('img').length, wrapper.findAll('.option-card__text').length)).toBeNull()
   })
 
-  it('反向：恒走图片分支（不看 kind，一律 <img>）⇒ 关键词卡渲染出 4 张 <img>，M50b 变红', () => {
+  it('反向：恒走图片分支（不看 kind，一律 <img>）⇒ 关键词卡渲染出一批 <img>，M50b 变红', () => {
     // ⚠️ **据实说明本条的鉴别力在哪**：`g24Violation` 在「恒走图片分支」时**不会**报错
     //   —— 两个分支仍然互斥且穷尽，判据 (a)(b) 都满足。
     //   所以 G24 下半的鉴别力**不在 `g24Violation` 里**，而在上面那条
     //   「真实内容里关键词卡的选项区无 <img>」的外部断言上：
     //   恒走图片分支 ⇒ 那条 `toHaveLength(0)` 立刻红。
     //   这正是 G24 拆成两半、分别由 M50（非法卡）与 M50b（真实内容）覆盖的原因。
-    const keywordOptions = firstQuestionOfKind('keyword').card.options
+    const keywordQuestion = firstQuestionOfKind('keyword')
+    const keywordOptions = keywordQuestion.card.options
 
-    // 恒走图片分支的实算后果：这四个选项没有一个带 imageSrc，
-    // 于是渲染出的 4 个 <img> 全部没有 src —— 对应「四张空白卡」。
+    // 恒走图片分支的实算后果：这几个选项没有一个带 imageSrc，
+    // 于是渲染出的 <img> 全部没有 src —— 对应「一批空白卡」。
     expect(keywordOptions.every((o) => !('imageSrc' in o))).toBe(true)
-    expect(keywordOptions).toHaveLength(4)
+    // ⚠️ **判据不是「它等于自己」**：这里问的是「这张关键词卡的选项数 === 规则算出来的数」
+    //   （`targetOptionCount(1, 'keyword')`）—— 规则是选项数的**单一事实源**，
+    //   写死数字会把「内容改了但规则没改」这件事藏起来。
+    expect(keywordOptions).toHaveLength(targetOptionCount(1, 'keyword'))
 
     // 上面那条外部断言在恒走图片分支下的读数。
     const realRender = mountCard(firstQuestionOfKind('keyword'))
@@ -488,28 +514,31 @@ describe('G24 下半 —— 真实内容里关键词 / 回应卡的选项区无 
 // ══════════════════════════════════════════════════════════════════════════════
 
 describe('G26 —— 三型各渲染一张，分派互斥且穷尽', () => {
-  it('单词卡：4 张图片选项、0 个文字选项', () => {
-    const wrapper = mountCard(firstQuestionOfKind('word'))
+  it('单词卡：图片选项数 === 内容层实算数、0 个文字选项', () => {
+    const question = firstQuestionOfKind('word')
+    const wrapper = mountCard(question)
 
-    expect(wrapper.findAll('.option-card__image')).toHaveLength(4)
+    expect(wrapper.findAll('.option-card__image')).toHaveLength(imageOptionCountOf(question))
     expect(wrapper.findAll('.option-card__text')).toHaveLength(0)
     // 同上：喂实测计数，不是字面量（`[CR]` 2026-10-16）
     expect(g24Violation(wrapper.findAll('.option-card__image').length, wrapper.findAll('.option-card__text').length)).toBeNull()
   })
 
-  it('关键词卡：4 个文字选项、0 张 <img>', () => {
-    const wrapper = mountCard(firstQuestionOfKind('keyword'))
+  it('关键词卡：文字选项数 === 内容层实算数、0 张 <img>', () => {
+    const question = firstQuestionOfKind('keyword')
+    const wrapper = mountCard(question)
 
-    expect(wrapper.findAll('.option-card__text')).toHaveLength(4)
+    expect(wrapper.findAll('.option-card__text')).toHaveLength(textOptionCountOf(question))
     expect(wrapper.findAll('.option-card__image')).toHaveLength(0)
     // 同上：喂实测计数，不是字面量（`[CR]` 2026-10-16）
     expect(g24Violation(wrapper.findAll('.option-card__image').length, wrapper.findAll('.option-card__text').length)).toBeNull()
   })
 
-  it('回应卡：4 个文字选项、0 张 <img>', () => {
-    const wrapper = mountCard(firstQuestionOfKind('response'))
+  it('回应卡：文字选项数 === 内容层实算数、0 张 <img>', () => {
+    const question = firstQuestionOfKind('response')
+    const wrapper = mountCard(question)
 
-    expect(wrapper.findAll('.option-card__text')).toHaveLength(4)
+    expect(wrapper.findAll('.option-card__text')).toHaveLength(textOptionCountOf(question))
     expect(wrapper.findAll('.option-card__image')).toHaveLength(0)
     // 同上：喂实测计数，不是字面量（`[CR]` 2026-10-16）
     expect(g24Violation(wrapper.findAll('.option-card__image').length, wrapper.findAll('.option-card__text').length)).toBeNull()
@@ -588,11 +617,14 @@ describe('G28 —— 词图加载失败降级', () => {
   })
 
   it('破了图的 <img> 从 DOM 里消失，换成内联占位图形', async () => {
-    const wrapper = mountCard(firstQuestionOfKind('word'))
+    const question = firstQuestionOfKind('word')
+    const wrapper = mountCard(question)
 
     await wrapper.find('.option-card__image').trigger('error')
 
-    expect(wrapper.findAll('.option-card__image')).toHaveLength(3)
+    // ⚠️ **实算，不写死「剩下 3 张」**：破掉一张 ⇒ 剩下的 `<img>` 数 = 图片选项数 − 1。
+    //   写死 3 的话，下一个改选项数的 story 会原样再撞一次（Story 2.4 / R-57 留痕）。
+    expect(wrapper.findAll('.option-card__image')).toHaveLength(imageOptionCountOf(question) - 1)
     expect(wrapper.find('.option-card__placeholder svg').exists()).toBe(true)
   })
 
@@ -640,9 +672,14 @@ describe('G28 —— 词图加载失败降级', () => {
   it('G152：破图上报给门面，带的是**那个选项自己的 id**', async () => {
     const question = firstQuestionOfKind('word')
     const wrapper = mountCard(question)
-    const target = question.card.options[2]!
+    // ⚠️ **取最后一张图，不写死下标**（Story 2.4 / R-57 留痕）：单词卡从 4 个选项
+    //   降到 2 个之后，写死的下标 2 直接越界 —— 红的会是「越界」而不是被测行为。
+    //   取末位图的意义不变：它**不是**正确项（正确项在下标 0），
+    //   破图不该触发「跳过那道题」。
+    const targetIndex = imageOptionCountOf(question) - 1
+    const target = question.card.options[targetIndex]!
 
-    await wrapper.findAll('.option-card__image')[2]!.trigger('error')
+    await wrapper.findAll('.option-card__image')[targetIndex]!.trigger('error')
 
     expect(
       reportImageFailureMock.mock.calls.map((call) => call[0]),
@@ -657,8 +694,14 @@ describe('G28 —— 词图加载失败降级', () => {
     const question = firstQuestionOfKind('word')
     const wrapper = mountCard(question)
 
-    await wrapper.findAll('.option-card__image')[0]!.trigger('error')
-    await wrapper.findAll('.option-card__image')[1]!.trigger('error')
+    // ⚠️ **先把两个 <img> 元素都抓好再逐个触发**（Story 2.4 / R-57 留痕）：
+    //   破掉第一张之后它自己被占位图形替换，DOM 里剩下的 `<img>` 少了一张
+    //   ⇒ 「触发后再按下标取第二张」在下标 1 处会取到 undefined
+    //   （4 个选项时恰好躲过了，2 个选项时就撞上了）。
+    const images = wrapper.findAll('.option-card__image')
+    expect(images.length, '前置：这张卡上要有至少两张图').toBeGreaterThanOrEqual(2)
+    await images[0]!.trigger('error')
+    await images[1]!.trigger('error')
 
     expect(reportImageFailureMock).toHaveBeenCalledTimes(2)
   })
@@ -742,7 +785,7 @@ describe('G28 —— 词图加载失败降级', () => {
     const textIndex = textQ.card.options.findIndex((o) => o.id === sharedId)
     expect(textIndex).toBeGreaterThanOrEqual(0)
     // 确认真的换题了（否则下面所有断言都在测同一张卡，等于空转）
-    expect(wrapper.findAll('.option-card__text')).toHaveLength(4)
+    expect(wrapper.findAll('.option-card__text')).toHaveLength(textOptionCountOf(textQ))
     expect(wrapper.findAll('.option-card__image')).toHaveLength(0)
 
     const button = wrapper.findAll('.option-card')[textIndex]
@@ -1065,12 +1108,14 @@ describe('G30 —— 题面文字在真浏览器里看得见（jsdom 看不见�
 
 describe('AC-C5 —— 卡面在哪些相位上出现', () => {
   it('🚨 首次挂载就是一道待答题 —— 卡面必须立刻渲染（immediate 的缺失会让整个 story 的交付物是空的）', () => {
-    state.value = stateWith(firstQuestionOfKind('word'))
+    const question = firstQuestionOfKind('word')
+    state.value = stateWith(question)
     const wrapper = mount(QuestionCard)
 
     // 少这一行的话，「watch 默认不在 setup 时触发」会让首次渲染是空的，
     // 而且红得像是「分派写错了」—— G24 / G26 / G28 全红却指错了地方。
-    expect(wrapper.findAll('.option-card')).toHaveLength(4)
+    // ⚠️ 实算选项数，不写死 4（Story 2.4 / R-57 留痕）。
+    expect(wrapper.findAll('.option-card')).toHaveLength(question.card.options.length)
   })
 
   // 📎 **1.19 CR：这一条整条改判**（R-57 留痕）。
@@ -1146,7 +1191,7 @@ describe('AC-C5 —— 卡面在哪些相位上出现', () => {
     }
     await wrapper.vm.$nextTick()
 
-    expect(wrapper.findAll('.option-card')).toHaveLength(4)
+    expect(wrapper.findAll('.option-card')).toHaveLength(question.card.options.length)
     await wrapper.find('.question-card__tappable').trigger('click')
     expect(speakMock).toHaveBeenCalledTimes(0)
   })
@@ -1177,7 +1222,7 @@ describe('AC-C5 —— 卡面在哪些相位上出现', () => {
     applyActionMock.mockReset()
     // AC-C5 的前提正是「卡面还在」，否则这条用例测的是「卡都不在」——
     // 那样守门自然成立，会变成一条永远不会失败的断言。
-    expect(wrapper.findAll('.option-card')).toHaveLength(4)
+    expect(wrapper.findAll('.option-card')).toHaveLength(question.card.options.length)
 
     // 📎 **[R-57] 1.19 `[CR]` 判据改写**：原来逐字断言
     //   「点完 `.answer-feedback` **不存在**」。
@@ -1239,7 +1284,7 @@ describe('AC-C5 —— 卡面在哪些相位上出现', () => {
 
       expect(
         wrapper.findAll('.option-card'),
-        `${kind} 下卡面必须是空的 —— 留着四个选项就是 AC-D5 说的「假可点」`,
+        `${kind} 下卡面必须是空的 —— 留着选项就是 AC-D5 说的「假可点」`,
       ).toHaveLength(0)
       // ⚠️📎 第七轮补：DOM 空**不等于**「组件决定不渲染」——
       //   `shown` 成了 `undefined`（相位没带题面）或组件崩了，DOM 同样是空的。
@@ -1894,7 +1939,7 @@ describe('G94 —— `shown` 的兜底只兜 awaiting-build（Story 1.16 / 裁�
     },
   )
 
-  it('awaiting-build 期仍然渲染四个选项（AC-C5 的 ≤100ms 反馈载体不许被收窄掉）', async () => {
+  it('awaiting-build 期仍然渲染这张卡的全部选项（AC-C5 的 ≤100ms 反馈载体不许被收窄掉）', async () => {
     // ⚠️ **反向的另一半**（R-51 的对称要求）：只钉「什么时候不渲染」的话，
     //   一条把兜底**整个删掉**的实现（于是 `awaiting-build` 也不渲染了）照样绿。
     const question = firstQuestionOfKind('word')
@@ -1911,7 +1956,7 @@ describe('G94 —— `shown` 的兜底只兜 awaiting-build（Story 1.16 / 裁�
     expect(
       wrapper.findAll('.option-card'),
       '裁决 7 只收窄兜底范围，不许把 awaiting-build 的反馈载体一起收掉',
-    ).toHaveLength(4)
+    ).toHaveLength(question.card.options.length)
   })
 
   // ── 裁决 8：新的一局开始时三个本地 ref 全部复位 ──────────────────────────
@@ -1963,7 +2008,7 @@ describe('G94 —— `shown` 的兜底只兜 awaiting-build（Story 1.16 / 裁�
     expect(
       wrapper.findAll('.option-card'),
       '第 1 回合的建造期里 `turn` 仍是 1，但这**不是**新的一局 —— 卡面不许消失',
-    ).toHaveLength(4)
+    ).toHaveLength(question.card.options.length)
   })
 })
 
@@ -1972,7 +2017,7 @@ describe('G94 —— `shown` 的兜底只兜 awaiting-build（Story 1.16 / 裁�
 // ══════════════════════════════════════════════════════════════════════════════
 //
 // ⚠️ **1.19 CR 第一轮（把题面落进 `State`）只修了一半。** 真机复验：
-//   恢复落在建造期 ⇒ 卡面出来了，但**四个选项点不动**。
+//   恢复落在建造期 ⇒ 卡面出来了，但**选项点不动**。
 //
 //   成因不是「点不动」，是**看起来能点却点不动**：
 //   · `QuestionCard.onPick` 的守门 `if (!answering.value) return` 静默丢弃点击；
@@ -2012,13 +2057,13 @@ function mountRestoredBuildPhase(question: Question) {
 }
 
 describe('G172 —— 建造期的卡面只读：选项必须真的点不动、且「已答完」必须看得见', () => {
-  it('四个选项全部 `disabled` 且挂 `is-locked`（不再假装可点）', async () => {
+  it('全部选项 `disabled` 且挂 `is-locked`（不再假装可点）', async () => {
     const question = firstQuestionOfKind('word')
     const wrapper = mountRestoredBuildPhase(question)
     await wrapper.vm.$nextTick()
 
     const cards = wrapper.findAll('.option-card')
-    expect(cards, '前置：卡面必须真的在 —— 下面的判据才有对象').toHaveLength(4)
+    expect(cards, '前置：卡面必须真的在 —— 下面的判据才有对象').toHaveLength(question.card.options.length)
     for (const card of cards) {
       expect(
         card.attributes('disabled'),

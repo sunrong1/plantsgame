@@ -10,9 +10,7 @@
         "promptText": "Hello",
         "options": [
           { "id": "u1-hello", "imageSrc": "/assets/words/unit-01/u1-hello.svg", "correct": true },
-          { "id": "u1-goodbye", "imageSrc": "/assets/words/unit-01/u1-goodbye.svg", "correct": false },
-          { "id": "u1-teacher", "imageSrc": "/assets/words/unit-01/u1-teacher.svg", "correct": false },
-          { "id": "u1-friend", "imageSrc": "/assets/words/unit-01/u1-friend.svg", "correct": false }
+          { "id": "u1-teacher", "imageSrc": "/assets/words/unit-01/u1-teacher.svg", "correct": false }
         ]
       }
     },
@@ -25,9 +23,7 @@
         "promptText": "Goodbye",
         "options": [
           { "id": "u1-goodbye", "imageSrc": "/assets/words/unit-01/u1-goodbye.svg", "correct": true },
-          { "id": "u1-hello", "imageSrc": "/assets/words/unit-01/u1-hello.svg", "correct": false },
-          { "id": "u1-friend", "imageSrc": "/assets/words/unit-01/u1-friend.svg", "correct": false },
-          { "id": "u1-teacher", "imageSrc": "/assets/words/unit-01/u1-teacher.svg", "correct": false }
+          { "id": "u1-friend", "imageSrc": "/assets/words/unit-01/u1-friend.svg", "correct": false }
         ]
       }
     },
@@ -40,9 +36,7 @@
         "promptText": "teacher",
         "options": [
           { "id": "u1-teacher", "imageSrc": "/assets/words/unit-01/u1-teacher.svg", "correct": true },
-          { "id": "u1-student", "imageSrc": "/assets/words/unit-01/u1-student.svg", "correct": false },
-          { "id": "u1-father", "imageSrc": "/assets/words/unit-01/u1-father.svg", "correct": false },
-          { "id": "u1-mother", "imageSrc": "/assets/words/unit-01/u1-mother.svg", "correct": false }
+          { "id": "u1-student", "imageSrc": "/assets/words/unit-01/u1-student.svg", "correct": false }
         ]
       }
     },
@@ -55,9 +49,7 @@
         "promptText": "student",
         "options": [
           { "id": "u1-student", "imageSrc": "/assets/words/unit-01/u1-student.svg", "correct": true },
-          { "id": "u1-teacher", "imageSrc": "/assets/words/unit-01/u1-teacher.svg", "correct": false },
-          { "id": "u1-friend", "imageSrc": "/assets/words/unit-01/u1-friend.svg", "correct": false },
-          { "id": "u1-brother", "imageSrc": "/assets/words/unit-01/u1-brother.svg", "correct": false }
+          { "id": "u1-friend", "imageSrc": "/assets/words/unit-01/u1-friend.svg", "correct": false }
         ]
       }
     },
@@ -70,9 +62,7 @@
         "promptText": "friend",
         "options": [
           { "id": "u1-friend", "imageSrc": "/assets/words/unit-01/u1-friend.svg", "correct": true },
-          { "id": "u1-teacher", "imageSrc": "/assets/words/unit-01/u1-teacher.svg", "correct": false },
-          { "id": "u1-sister", "imageSrc": "/assets/words/unit-01/u1-sister.svg", "correct": false },
-          { "id": "u1-student", "imageSrc": "/assets/words/unit-01/u1-student.svg", "correct": false }
+          { "id": "u1-sister", "imageSrc": "/assets/words/unit-01/u1-sister.svg", "correct": false }
         ]
       }
     },
@@ -85,9 +75,7 @@
         "promptText": "father",
         "options": [
           { "id": "u1-father", "imageSrc": "/assets/words/unit-01/u1-father.svg", "correct": true },
-          { "id": "u1-mother", "imageSrc": "/assets/words/unit-01/u1-mother.svg", "correct": false },
-          { "id": "u1-brother", "imageSrc": "/assets/words/unit-01/u1-brother.svg", "correct": false },
-          { "id": "u1-teacher", "imageSrc": "/assets/words/unit-01/u1-teacher.svg", "correct": false }
+          { "id": "u1-mother", "imageSrc": "/assets/words/unit-01/u1-mother.svg", "correct": false }
         ]
       }
     },
@@ -100,8 +88,6 @@
         "promptText": "mother",
         "options": [
           { "id": "u1-mother", "imageSrc": "/assets/words/unit-01/u1-mother.svg", "correct": true },
-          { "id": "u1-father", "imageSrc": "/assets/words/unit-01/u1-father.svg", "correct": false },
-          { "id": "u1-sister", "imageSrc": "/assets/words/unit-01/u1-sister.svg", "correct": false },
           { "id": "u1-teacher", "imageSrc": "/assets/words/unit-01/u1-teacher.svg", "correct": false }
         ]
       }
@@ -115,9 +101,7 @@
         "promptText": "brother",
         "options": [
           { "id": "u1-brother", "imageSrc": "/assets/words/unit-01/u1-brother.svg", "correct": true },
-          { "id": "u1-sister", "imageSrc": "/assets/words/unit-01/u1-sister.svg", "correct": false },
-          { "id": "u1-father", "imageSrc": "/assets/words/unit-01/u1-father.svg", "correct": false },
-          { "id": "u1-student", "imageSrc": "/assets/words/unit-01/u1-student.svg", "correct": false }
+          { "id": "u1-father", "imageSrc": "/assets/words/unit-01/u1-father.svg", "correct": false }
         ]
       }
     },
@@ -130,8 +114,6 @@
         "promptText": "sister",
         "options": [
           { "id": "u1-sister", "imageSrc": "/assets/words/unit-01/u1-sister.svg", "correct": true },
-          { "id": "u1-brother", "imageSrc": "/assets/words/unit-01/u1-brother.svg", "correct": false },
-          { "id": "u1-mother", "imageSrc": "/assets/words/unit-01/u1-mother.svg", "correct": false },
           { "id": "u1-friend", "imageSrc": "/assets/words/unit-01/u1-friend.svg", "correct": false }
         ]
       }
@@ -145,9 +127,7 @@
         "promptText": "cat",
         "options": [
           { "id": "u1-cat", "imageSrc": "/assets/words/unit-01/u1-cat.svg", "correct": true },
-          { "id": "u1-dog", "imageSrc": "/assets/words/unit-01/u1-dog.svg", "correct": false },
-          { "id": "u1-rabbit", "imageSrc": "/assets/words/unit-01/u1-rabbit.svg", "correct": false },
-          { "id": "u1-bird", "imageSrc": "/assets/words/unit-01/u1-bird.svg", "correct": false }
+          { "id": "u1-rabbit", "imageSrc": "/assets/words/unit-01/u1-rabbit.svg", "correct": false }
         ]
       }
     },
@@ -160,8 +140,6 @@
         "promptText": "dog",
         "options": [
           { "id": "u1-dog", "imageSrc": "/assets/words/unit-01/u1-dog.svg", "correct": true },
-          { "id": "u1-cat", "imageSrc": "/assets/words/unit-01/u1-cat.svg", "correct": false },
-          { "id": "u1-rabbit", "imageSrc": "/assets/words/unit-01/u1-rabbit.svg", "correct": false },
           { "id": "u1-panda", "imageSrc": "/assets/words/unit-01/u1-panda.svg", "correct": false }
         ]
       }
@@ -175,9 +153,7 @@
         "promptText": "rabbit",
         "options": [
           { "id": "u1-rabbit", "imageSrc": "/assets/words/unit-01/u1-rabbit.svg", "correct": true },
-          { "id": "u1-cat", "imageSrc": "/assets/words/unit-01/u1-cat.svg", "correct": false },
-          { "id": "u1-panda", "imageSrc": "/assets/words/unit-01/u1-panda.svg", "correct": false },
-          { "id": "u1-bird", "imageSrc": "/assets/words/unit-01/u1-bird.svg", "correct": false }
+          { "id": "u1-panda", "imageSrc": "/assets/words/unit-01/u1-panda.svg", "correct": false }
         ]
       }
     },
@@ -190,9 +166,7 @@
         "promptText": "panda",
         "options": [
           { "id": "u1-panda", "imageSrc": "/assets/words/unit-01/u1-panda.svg", "correct": true },
-          { "id": "u1-rabbit", "imageSrc": "/assets/words/unit-01/u1-rabbit.svg", "correct": false },
-          { "id": "u1-dog", "imageSrc": "/assets/words/unit-01/u1-dog.svg", "correct": false },
-          { "id": "u1-cat", "imageSrc": "/assets/words/unit-01/u1-cat.svg", "correct": false }
+          { "id": "u1-rabbit", "imageSrc": "/assets/words/unit-01/u1-rabbit.svg", "correct": false }
         ]
       }
     },
@@ -205,9 +179,7 @@
         "promptText": "bird",
         "options": [
           { "id": "u1-bird", "imageSrc": "/assets/words/unit-01/u1-bird.svg", "correct": true },
-          { "id": "u1-fish", "imageSrc": "/assets/words/unit-01/u1-fish.svg", "correct": false },
-          { "id": "u1-cat", "imageSrc": "/assets/words/unit-01/u1-cat.svg", "correct": false },
-          { "id": "u1-rabbit", "imageSrc": "/assets/words/unit-01/u1-rabbit.svg", "correct": false }
+          { "id": "u1-fish", "imageSrc": "/assets/words/unit-01/u1-fish.svg", "correct": false }
         ]
       }
     },
@@ -220,9 +192,7 @@
         "promptText": "fish",
         "options": [
           { "id": "u1-fish", "imageSrc": "/assets/words/unit-01/u1-fish.svg", "correct": true },
-          { "id": "u1-bird", "imageSrc": "/assets/words/unit-01/u1-bird.svg", "correct": false },
-          { "id": "u1-cat", "imageSrc": "/assets/words/unit-01/u1-cat.svg", "correct": false },
-          { "id": "u1-rabbit", "imageSrc": "/assets/words/unit-01/u1-rabbit.svg", "correct": false }
+          { "id": "u1-bird", "imageSrc": "/assets/words/unit-01/u1-bird.svg", "correct": false }
         ]
       }
     },
@@ -235,8 +205,6 @@
         "promptText": "ball",
         "options": [
           { "id": "u1-ball", "imageSrc": "/assets/words/unit-01/u1-ball.svg", "correct": true },
-          { "id": "u1-book", "imageSrc": "/assets/words/unit-01/u1-book.svg", "correct": false },
-          { "id": "u1-pen", "imageSrc": "/assets/words/unit-01/u1-pen.svg", "correct": false },
           { "id": "u1-bag", "imageSrc": "/assets/words/unit-01/u1-bag.svg", "correct": false }
         ]
       }
@@ -250,9 +218,7 @@
         "promptText": "book",
         "options": [
           { "id": "u1-book", "imageSrc": "/assets/words/unit-01/u1-book.svg", "correct": true },
-          { "id": "u1-ball", "imageSrc": "/assets/words/unit-01/u1-ball.svg", "correct": false },
-          { "id": "u1-pen", "imageSrc": "/assets/words/unit-01/u1-pen.svg", "correct": false },
-          { "id": "u1-desk", "imageSrc": "/assets/words/unit-01/u1-desk.svg", "correct": false }
+          { "id": "u1-pen", "imageSrc": "/assets/words/unit-01/u1-pen.svg", "correct": false }
         ]
       }
     },
@@ -265,9 +231,7 @@
         "promptText": "pen",
         "options": [
           { "id": "u1-pen", "imageSrc": "/assets/words/unit-01/u1-pen.svg", "correct": true },
-          { "id": "u1-pencil", "imageSrc": "/assets/words/unit-01/u1-pencil.svg", "correct": false },
-          { "id": "u1-book", "imageSrc": "/assets/words/unit-01/u1-book.svg", "correct": false },
-          { "id": "u1-bag", "imageSrc": "/assets/words/unit-01/u1-bag.svg", "correct": false }
+          { "id": "u1-pencil", "imageSrc": "/assets/words/unit-01/u1-pencil.svg", "correct": false }
         ]
       }
     },
@@ -280,9 +244,7 @@
         "promptText": "pencil",
         "options": [
           { "id": "u1-pencil", "imageSrc": "/assets/words/unit-01/u1-pencil.svg", "correct": true },
-          { "id": "u1-pen", "imageSrc": "/assets/words/unit-01/u1-pen.svg", "correct": false },
-          { "id": "u1-book", "imageSrc": "/assets/words/unit-01/u1-book.svg", "correct": false },
-          { "id": "u1-desk", "imageSrc": "/assets/words/unit-01/u1-desk.svg", "correct": false }
+          { "id": "u1-book", "imageSrc": "/assets/words/unit-01/u1-book.svg", "correct": false }
         ]
       }
     },
@@ -295,9 +257,7 @@
         "promptText": "bag",
         "options": [
           { "id": "u1-bag", "imageSrc": "/assets/words/unit-01/u1-bag.svg", "correct": true },
-          { "id": "u1-ball", "imageSrc": "/assets/words/unit-01/u1-ball.svg", "correct": false },
-          { "id": "u1-desk", "imageSrc": "/assets/words/unit-01/u1-desk.svg", "correct": false },
-          { "id": "u1-chair", "imageSrc": "/assets/words/unit-01/u1-chair.svg", "correct": false }
+          { "id": "u1-ball", "imageSrc": "/assets/words/unit-01/u1-ball.svg", "correct": false }
         ]
       }
     },
@@ -310,9 +270,7 @@
         "promptText": "desk",
         "options": [
           { "id": "u1-desk", "imageSrc": "/assets/words/unit-01/u1-desk.svg", "correct": true },
-          { "id": "u1-chair", "imageSrc": "/assets/words/unit-01/u1-chair.svg", "correct": false },
-          { "id": "u1-book", "imageSrc": "/assets/words/unit-01/u1-book.svg", "correct": false },
-          { "id": "u1-bag", "imageSrc": "/assets/words/unit-01/u1-bag.svg", "correct": false }
+          { "id": "u1-chair", "imageSrc": "/assets/words/unit-01/u1-chair.svg", "correct": false }
         ]
       }
     },
@@ -325,9 +283,7 @@
         "promptText": "chair",
         "options": [
           { "id": "u1-chair", "imageSrc": "/assets/words/unit-01/u1-chair.svg", "correct": true },
-          { "id": "u1-desk", "imageSrc": "/assets/words/unit-01/u1-desk.svg", "correct": false },
-          { "id": "u1-bag", "imageSrc": "/assets/words/unit-01/u1-bag.svg", "correct": false },
-          { "id": "u1-pen", "imageSrc": "/assets/words/unit-01/u1-pen.svg", "correct": false }
+          { "id": "u1-desk", "imageSrc": "/assets/words/unit-01/u1-desk.svg", "correct": false }
         ]
       }
     },
@@ -340,9 +296,7 @@
         "promptText": "red",
         "options": [
           { "id": "u1-red", "imageSrc": "/assets/words/unit-01/u1-red.svg", "correct": true },
-          { "id": "u1-blue", "imageSrc": "/assets/words/unit-01/u1-blue.svg", "correct": false },
-          { "id": "u1-yellow", "imageSrc": "/assets/words/unit-01/u1-yellow.svg", "correct": false },
-          { "id": "u1-beautiful", "imageSrc": "/assets/words/unit-01/u1-beautiful.svg", "correct": false }
+          { "id": "u1-yellow", "imageSrc": "/assets/words/unit-01/u1-yellow.svg", "correct": false }
         ]
       }
     },
@@ -355,8 +309,6 @@
         "promptText": "blue",
         "options": [
           { "id": "u1-blue", "imageSrc": "/assets/words/unit-01/u1-blue.svg", "correct": true },
-          { "id": "u1-red", "imageSrc": "/assets/words/unit-01/u1-red.svg", "correct": false },
-          { "id": "u1-yellow", "imageSrc": "/assets/words/unit-01/u1-yellow.svg", "correct": false },
           { "id": "u1-happy", "imageSrc": "/assets/words/unit-01/u1-happy.svg", "correct": false }
         ]
       }
@@ -370,9 +322,7 @@
         "promptText": "yellow",
         "options": [
           { "id": "u1-yellow", "imageSrc": "/assets/words/unit-01/u1-yellow.svg", "correct": true },
-          { "id": "u1-red", "imageSrc": "/assets/words/unit-01/u1-red.svg", "correct": false },
-          { "id": "u1-blue", "imageSrc": "/assets/words/unit-01/u1-blue.svg", "correct": false },
-          { "id": "u1-beautiful", "imageSrc": "/assets/words/unit-01/u1-beautiful.svg", "correct": false }
+          { "id": "u1-red", "imageSrc": "/assets/words/unit-01/u1-red.svg", "correct": false }
         ]
       }
     },
@@ -385,9 +335,7 @@
         "promptText": "one",
         "options": [
           { "id": "u1-one", "imageSrc": "/assets/words/unit-01/u1-one.svg", "correct": true },
-          { "id": "u1-two", "imageSrc": "/assets/words/unit-01/u1-two.svg", "correct": false },
-          { "id": "u1-three", "imageSrc": "/assets/words/unit-01/u1-three.svg", "correct": false },
-          { "id": "u1-pen", "imageSrc": "/assets/words/unit-01/u1-pen.svg", "correct": false }
+          { "id": "u1-two", "imageSrc": "/assets/words/unit-01/u1-two.svg", "correct": false }
         ]
       }
     },
@@ -400,9 +348,7 @@
         "promptText": "two",
         "options": [
           { "id": "u1-two", "imageSrc": "/assets/words/unit-01/u1-two.svg", "correct": true },
-          { "id": "u1-one", "imageSrc": "/assets/words/unit-01/u1-one.svg", "correct": false },
-          { "id": "u1-three", "imageSrc": "/assets/words/unit-01/u1-three.svg", "correct": false },
-          { "id": "u1-pencil", "imageSrc": "/assets/words/unit-01/u1-pencil.svg", "correct": false }
+          { "id": "u1-one", "imageSrc": "/assets/words/unit-01/u1-one.svg", "correct": false }
         ]
       }
     },
@@ -415,9 +361,7 @@
         "promptText": "three",
         "options": [
           { "id": "u1-three", "imageSrc": "/assets/words/unit-01/u1-three.svg", "correct": true },
-          { "id": "u1-one", "imageSrc": "/assets/words/unit-01/u1-one.svg", "correct": false },
-          { "id": "u1-two", "imageSrc": "/assets/words/unit-01/u1-two.svg", "correct": false },
-          { "id": "u1-book", "imageSrc": "/assets/words/unit-01/u1-book.svg", "correct": false }
+          { "id": "u1-one", "imageSrc": "/assets/words/unit-01/u1-one.svg", "correct": false }
         ]
       }
     },
@@ -430,9 +374,7 @@
         "promptText": "beautiful",
         "options": [
           { "id": "u1-beautiful", "imageSrc": "/assets/words/unit-01/u1-beautiful.svg", "correct": true },
-          { "id": "u1-panda", "imageSrc": "/assets/words/unit-01/u1-panda.svg", "correct": false },
-          { "id": "u1-red", "imageSrc": "/assets/words/unit-01/u1-red.svg", "correct": false },
-          { "id": "u1-blue", "imageSrc": "/assets/words/unit-01/u1-blue.svg", "correct": false }
+          { "id": "u1-panda", "imageSrc": "/assets/words/unit-01/u1-panda.svg", "correct": false }
         ]
       }
     },
@@ -445,9 +387,7 @@
         "promptText": "happy",
         "options": [
           { "id": "u1-happy", "imageSrc": "/assets/words/unit-01/u1-happy.svg", "correct": true },
-          { "id": "u1-beautiful", "imageSrc": "/assets/words/unit-01/u1-beautiful.svg", "correct": false },
-          { "id": "u1-yellow", "imageSrc": "/assets/words/unit-01/u1-yellow.svg", "correct": false },
-          { "id": "u1-blue", "imageSrc": "/assets/words/unit-01/u1-blue.svg", "correct": false }
+          { "id": "u1-beautiful", "imageSrc": "/assets/words/unit-01/u1-beautiful.svg", "correct": false }
         ]
       }
     },
@@ -461,8 +401,7 @@
         "options": [
           { "id": "u1-ball", "text": "ball", "correct": true },
           { "id": "u1-pen", "text": "pen", "correct": false },
-          { "id": "u1-book", "text": "book", "correct": false },
-          { "id": "u1-chair", "text": "chair", "correct": false }
+          { "id": "u1-book", "text": "book", "correct": false }
         ]
       }
     },
@@ -476,7 +415,6 @@
         "options": [
           { "id": "u1-s-i-am-fine", "text": "I am fine, thank you.", "correct": true },
           { "id": "u1-s-good-morning", "text": "Good morning!", "correct": false },
-          { "id": "u1-s-good-afternoon", "text": "Good afternoon!", "correct": false },
           { "id": "u1-s-thank-you", "text": "Thank you!", "correct": false }
         ]
       }
@@ -491,8 +429,7 @@
         "options": [
           { "id": "u1-s-thank-you", "text": "Thank you!", "correct": true },
           { "id": "u1-goodbye", "text": "Goodbye", "correct": false },
-          { "id": "u1-hello", "text": "Hello", "correct": false },
-          { "id": "u1-s-good-morning", "text": "Good morning!", "correct": false }
+          { "id": "u1-hello", "text": "Hello", "correct": false }
         ]
       }
     },
@@ -506,7 +443,6 @@
         "options": [
           { "id": "u1-hello", "text": "Hello", "correct": true },
           { "id": "u1-goodbye", "text": "Goodbye", "correct": false },
-          { "id": "u1-s-good-afternoon", "text": "Good afternoon!", "correct": false },
           { "id": "u1-s-nice-to-meet-you", "text": "Nice to meet you.", "correct": false }
         ]
       }
@@ -520,7 +456,6 @@
         "promptText": "Good afternoon!",
         "options": [
           { "id": "u1-hello", "text": "Hello", "correct": true },
-          { "id": "u1-goodbye", "text": "Goodbye", "correct": false },
           { "id": "u1-s-good-morning", "text": "Good morning!", "correct": false },
           { "id": "u1-s-nice-to-meet-you", "text": "Nice to meet you.", "correct": false }
         ]
@@ -536,8 +471,7 @@
         "options": [
           { "id": "u1-goodbye", "text": "Goodbye", "correct": true },
           { "id": "u1-s-good-morning", "text": "Good morning!", "correct": false },
-          { "id": "u1-s-good-afternoon", "text": "Good afternoon!", "correct": false },
-          { "id": "u1-hello", "text": "Hello", "correct": false }
+          { "id": "u1-s-good-afternoon", "text": "Good afternoon!", "correct": false }
         ]
       }
     },
@@ -551,8 +485,7 @@
         "options": [
           { "id": "u1-goodbye", "text": "Goodbye", "correct": true },
           { "id": "u1-hello", "text": "Hello", "correct": false },
-          { "id": "u1-s-i-am-fine", "text": "I am fine, thank you.", "correct": false },
-          { "id": "u1-s-good-morning", "text": "Good morning!", "correct": false }
+          { "id": "u1-s-i-am-fine", "text": "I am fine, thank you.", "correct": false }
         ]
       }
     }
