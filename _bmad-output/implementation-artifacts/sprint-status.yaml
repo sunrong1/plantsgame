@@ -49,7 +49,7 @@
 #   epics.md 的销项说明处理。
 
 generated: 2026-10-12
-last_updated: 2026-10-21  # 2.4 [CS] 完成；本次变更清单见 git log，见其 story 文档
+last_updated: 2026-10-22  # Epic 1 集成层检视：13 条已修（G253–G261 / M292–M307）、41 条已登记 deferred E1–E42；详见 epic-1-integration-review.md
 project: plants-game
 project_key: NOKEY
 tracking_system: file-system
