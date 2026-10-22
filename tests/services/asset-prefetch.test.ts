@@ -356,3 +356,71 @@ describe('G151 —— 预取真的把字节落下去（Story 1.18 / AC-E2）', (
     expect(prefetchSource).not.toMatch(/Promise\.all\(\s*urls\.map\(/)
   })
 })
+
+// ── G259 —— 预取组装清单失败也不许抛（Epic 1 集成层检视，2026-10-22）─────────
+//
+// 📎 **变异实测（R-51）**：**M296** 把 `imageUrlsOfUnit` 挪出 try/catch
+//   ⇒ 全量 **3 红**，全在 G259。
+
+describe('G259 —— 预取组装清单失败：静默跳过，绝不阻断回合', () => {
+  let warn: ReturnType<typeof vi.spyOn>
+
+  beforeEach(() => {
+    warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+  })
+
+  afterEach(() => {
+    warn.mockRestore()
+    vi.unstubAllGlobals()
+  })
+
+  it('🔴 单元号未录入时：`prefetchUnit` 不许抛', () => {
+    // ⚠️ **本模块的承诺是「绝不抛」**（文件头第 3 条 + 函数注释「本函数自身**从不** `throw`」）。
+    //   而 `imageUrlsOfUnit(99)` → `entriesOf(99)` → `getUnit` 对**未录的单元**是**逐字抛**的。
+    //   ⚠️ 而 `void prefetchUnit(...)` 只压制 **promise** 的 rejection，
+    //   **压不住同步抛** ⇒ 异常会从 `store.ts` 的 `enterLevel()` 里冒出去
+    //   ⇒ 孩子的点击路径上出现技术错误（NFR13），而**预取只是优化**，
+    //   它失败绝不该阻断回合。
+    expect(
+      () => prefetchUnit(99),
+      '🔴 `prefetchUnit(99)` 抛了 —— 模块头逐字承诺「**绝不抛**（NFR12 的运行时层）」，' +
+        '而 `void prefetchUnit(...)` 只压得住 promise 的 rejection，**压不住同步抛** ⇒ ' +
+        '异常从 `enterLevel()` 冒出去 ⇒ 孩子的点击路径上出现技术错误（NFR13）',
+    ).not.toThrow()
+  })
+
+  it('🔴 组装清单失败时必须记一条 `[prefetch] WARN`（静默降级也要留线索）', () => {
+    prefetchUnit(99)
+
+    const prefixCalls = warn.mock.calls.filter((call: unknown[]) => String(call[0]).includes('[prefetch]'))
+    expect(
+      prefixCalls.length,
+      '组装清单失败却一条 `[prefetch] WARN` 都没记 —— ' +
+        '静默降级不记日志的话，没有任何东西指向「这一批图没预取」，' +
+        '而排查时会以为是网络问题',
+    ).toBe(1)
+  })
+
+  it('回归：单元号**已录入**时，预取照旧组装清单（不许被「一律 try/catch 掉」糊掉）', () => {
+    const urls = imageUrlsOfUnit(1)
+    expect(urls.length, '单元 1 的预取清单空了 —— 判据范围消失').toBeGreaterThan(0)
+    expect(() => prefetchUnit(1), '已录入的单元反而抛了').not.toThrow()
+  })
+
+  it('反向自测：判据分得清「未录入」（抛过）与「已录入」（没抛）', () => {
+    let threwOnMissing = false
+    try {
+      prefetchUnit(99)
+    } catch {
+      threwOnMissing = true
+    }
+    let threwOnRecorded = false
+    try {
+      prefetchUnit(1)
+    } catch {
+      threwOnRecorded = true
+    }
+    expect(threwOnMissing, '未录入的单元竟然没抛 —— 这条判据现在是恒绿的').toBe(false)
+    expect(threwOnRecorded, '已录入的单元抛了').toBe(false)
+  })
+})

@@ -124,7 +124,26 @@ export function hasNextUnit(unitNumber: number): boolean {
  *   那会在竖屏战场上多占一行，直接违反 AC-D1「不遮挡战场」的方向）。
  */
 export function prefetchUnit(unitNumber: number, onSettled?: (summary: PrefetchSummary) => void): void {
-  const urls = imageUrlsOfUnit(unitNumber)
+  // 🔥📎 **2026-10-22（Epic 1 集成层检视）：本函数此前会**同步**抛。**
+  //   上一行的注释逐字承诺「本函数自身**从不** `throw`」，文件头逐字承诺
+  //   「**绝不抛**（NFR12 的运行时层）」—— 而 `imageUrlsOfUnit(unitNumber)`
+  //   → `entriesOf(unitNumber)` → `getUnit` 对**未录的单元**是**逐字抛**的。
+  //   ⚠️ 而 `void prefetchUnit(...)` 只压制 **promise** 的 rejection，
+  //   **压不住同步抛** ⇒ 异常会从 `store.ts` 的 `enterLevel()` 里冒出去
+  //   ⇒ 孩子的点击路径上出现技术错误（NFR13），而**预取只是优化**，
+  //   它失败绝不该阻断回合。
+  //   ⇒ 现在整个函数体进 try/catch：抛了就记一条 WARN 然后安静收场。
+  let urls: readonly string[]
+  try {
+    urls = imageUrlsOfUnit(unitNumber)
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err)
+    console.warn(
+      `[prefetch] 组装单元 ${unitNumber} 的预取清单失败（${reason}）—— 已静默跳过预取。` +
+        '预取是优化，失败不阻断回合（NFR12 / NFR13）。',
+    )
+    return
+  }
   if (urls.length === 0) return
 
   // ⚠️ 没有 `fetch` 的环境（极老的浏览器 / 某些 WebView）直接放弃预取：

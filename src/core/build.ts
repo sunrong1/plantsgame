@@ -225,6 +225,18 @@ export function coverCellsAt(row: number, col: number, towerType: TowerType): re
  *   与 `level-driver.ts` 的「造价最低的已解锁卡」同一口径。抛错会让一张脏卡
  *   挡住整个手牌区 —— 孩子看到的是空白，而不是「这一张没了」。
  *
+ * 🔥📎 **2026-10-22（Epic 1 集成层检视）：造价算不出来时也跳过，而不是抛。**
+ *   `costOf` 有**两条**会抛的路径：
+ *   ① `assertTowerType` —— 题单条目的 `towerType` 是脏值；
+ *   ② `tierForUnit` —— `state.unitNumber` 落在未填档位上。
+ *   ⚠️ 此前本文件只守了「查不到条目」那一条，**造价那条是裸的** ⇒
+ *   一份脏存档会让 `handCards` **抛错**，而它是 `HandDeck.vue` 的 `computed` 里
+ *   唯一的数据源 ⇒ computed 在渲染中抛 ⇒ **整个战场白屏**（不是「少一张卡」）。
+ *   ⇒ 现在两条脏数据路径**口径一致**：跳过这一张，其余照常渲染。
+ *   ⚠️ 真正的防线在**不变量**那一层（`assertDeckRelations` 现在校验
+ *   `deck[].towerType`，`assertInvariants` 现在校验 `unitNumber`）——
+ *   存档坏在读档那一刻就被抓住并降级，而不是等到孩子点开手牌区才炸。
+ *
  * ⚠️ **`cost` 与 `affordable` 一律由本函数算出**：组件不许 import `costOf`
  *   （ESLint `no-restricted-imports`，`eslint.config.js:172-190`），
  *   也不许写死 50 / 75 —— 那会随档位扩展（Epic 2 的 2-3）静默过期。
@@ -238,7 +250,15 @@ export function handCards(state: State): readonly HandCard[] {
     if (entry === undefined) {
       continue
     }
-    const cost = costOf(entry.towerType, state.unitNumber)
+    // ⚠️ 造价算不出来（脏塔型 / 未填档位的单元号）时**跳过这一张**，
+    //   理由与上面那条一致：手牌区少一张卡，孩子还能玩；
+    //   而抛错会让整个战场白屏 —— 见上方注释。
+    let cost: number
+    try {
+      cost = costOf(entry.towerType, state.unitNumber)
+    } catch {
+      continue
+    }
     cards.push({
       entryId,
       towerType: entry.towerType,

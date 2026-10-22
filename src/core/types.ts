@@ -181,17 +181,33 @@ export function zombieHpRatio(zombie: Zombie): number {
 }
 
 /**
- * 僵尸列号必须是整数。
+ * 僵尸列号必须是整数，且**不得越过入场列**。
  *
  * ⚠️ **刻意不设下界**：僵尸必须能走到房子**之外**（col < 0），
- * `hasPassedHouse` 判的就是负列号。上界（`col <= ZOMBIE_SPAWN_COL`）由
- * `createZombie()` 工厂强制（[CR] P7）—— 工厂是数据入口的唯一强制点，
- * 本校验器只负责「是整数」这一条，不重复那个口径。
+ * `hasPassedHouse` 判的就是负列号。
+ *
+ * 🔥📎 **2026-10-22（Epic 1 集成层检视）：上界搬到这里来了。**
+ *   原文逐字写着「上界（`col <= ZOMBIE_SPAWN_COL`）由 `createZombie()` 工厂强制
+ *   —— **工厂是数据入口的唯一强制点**，本校验器只负责「是整数」这一条」。
+ *   ⚠️ **那句「唯一」当场不成立**：读档**不走工厂** —— 存档里的僵尸直接进
+ *   `assertInvariants`，而本函数当时只查整数 ⇒ 一份 `col: 1000` 的僵尸存档
+ *   能过全部不变量并被装进 `state.value`；僵尸列号只减不增 ⇒ 它永远走不进
+ *   任何塔的窗口，却每回合继续刷出僵尸 ⇒ **这一局既不通关也不失败**。
+ *   ⇒ 现在上界**在本函数里也强制**（工厂那条不变，两处口径一致）。
+ *   ⚠️ 「唯一强制点」那句话已删 —— 它是本仓库反复出现的那类错误：
+ *   **注释里的前提被真机推翻，而代码还按那个前提少做了一半。**
  *
  * 整数校验委托给 grid.ts 的 `assertGridIndex`（[CR] P17 收口：全层唯一实现）。
  */
 export function assertZombieCol(col: number): void {
   assertGridIndex(col, '僵尸列号')
+  if (col > ZOMBIE_SPAWN_COL) {
+    throw new Error(
+      `僵尸列号 ${col} 越过了入场列 ${ZOMBIE_SPAWN_COL} —— ` +
+        '僵尸只从入场列入场，且列号只减不增；越界的僵尸永远走不进任何塔的窗口，' +
+        '却每回合继续刷出僵尸，这一局既不通关也不失败。',
+    )
+  }
 }
 
 /** 减速剩余回合数：必须是 `[0, SLOW_TURNS]` 区间内的整数。恒等式由 applySlow 负责建立。 */

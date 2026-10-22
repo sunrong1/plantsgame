@@ -650,6 +650,7 @@ function requireEntry(deck: readonly DeckEntry[], entryId: string): DeckEntry {
  * 运行期断言守不住一个根本没有的字段。
  */
 export function assertInvariants(state: State): State {
+  assertUnitNumber(state.unitNumber)
   assertGridAndTowers(state)
   assertDeckRelations(state)
   assertPhaseMirror(state)
@@ -705,6 +706,18 @@ function assertGridAndTowers(state: State): void {
 
 /** `unlocked` / `masteredEntryIds` 都必须是题单的子集，且 unlocked ⊆ mastered。 */
 function assertDeckRelations(state: State): void {
+  // 🔥📎 **2026-10-22（Epic 1 集成层检视）：题单条目的 `towerType` 也要守。**
+  //   此前 `assertInvariants` 校验了**塔**的 `towerType`（`tower.towerType`），
+  //   却**从不校验题单条目**的 ⇒ 一份 `deck[].towerType` 是脏值（`'driect'`）的存档
+  //   能过**全部**不变量并被装进 `state.value`。
+  //   ⇒ 而 `core/build.ts` 的 `handCards` 会走 `costOf(entry.towerType, …)`
+  //   → `assertTowerType` **抛错** ⇒ 抛在 `HandDeck.vue` 的 `computed` 里
+  //   ⇒ **整个战场白屏**（组件层的 computed 抛错 ⇒ 整棵子树渲染不出来）。
+  //   ⇒ 守在**不变量**这一层，存档坏在读档那一刻就被抓住（降级），
+  //   而不是等到孩子点开手牌区才炸。
+  for (const entry of state.deck) {
+    assertTowerType(entry.towerType)
+  }
   const entryIds = new Set(state.deck.map((entry) => entry.entryId))
   // ⚠️ 题单自身的 entryId 必须唯一（`[CR]` 2026-10-14 补）。两条 entry 共用一个 id 时，
   //   `nextQuestion` 按 id 过滤 ⇒ 那个词**永远不会被考、永远解锁不了**，
@@ -840,6 +853,32 @@ function assertPhaseMirror(state: State): void {
 }
 
 /** 心数 / 阳光 / 回合号的取值域。 */
+/**
+ * 单元号必须是 **1 基的正整数**。
+ *
+ * 🔥📎 **2026-10-22（Epic 1 集成层检视）：这条此前根本不存在。**
+ *   `State.unitNumber` **从来没有被任何不变量校验过** ——
+ *   `assertCounters` 只查心数 / 阳光 / 回合号，`assertDeckRelations` 只查 id 关系。
+ *   ⇒ 一份 `unitNumber: 999` 的存档能过**全部**不变量并被装进 `state.value`；
+ *   而孩子**答第一题**时 `sunPerCorrectFor(state.unitNumber)` → `tierForUnit` →
+ *   抛「单元 999 落在未填档位上」⇒ 异常逃出 `applyAction` 逃进点击处理器
+ *   ⇒ **每一次答题都同样失败**，界面上只有 console 报错、没有孩子能懂的话。
+ *
+ * ⚠️ **本函数只能守「形状」，守不了「录了没有」** ——
+ *   「单元 999 是不是真录了」是**内容层**的知识（`core/` 不 import `content/`），
+ *   由 app 层在读档路径上按 `restoreNextUnit` 的现成先例
+ *   （先问「录了没有」再组装）负责。两条合起来才封死这条路。
+ */
+function assertUnitNumber(unitNumber: number): void {
+  if (!Number.isInteger(unitNumber) || unitNumber < 1) {
+    throw new Error(
+      `单元号必须是 1 基的正整数，收到 ${unitNumber} —— ` +
+        '单元号决定档位（初始阳光 / 答对增量 / 三塔型造价），它不合法时每一次答题都会抛，' +
+        '而存档能在不变量这一层混过去。',
+    )
+  }
+}
+
 function assertCounters(state: State): void {
   if (!Number.isInteger(state.hearts) || state.hearts < 0 || state.hearts > HEARTS) {
     throw new Error(`心数必须落在 [0, ${HEARTS}]，收到 ${state.hearts} —— 心数越界会让「耗尽即失败」永远不触发或立刻触发`)
