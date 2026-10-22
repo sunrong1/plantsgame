@@ -209,6 +209,8 @@
 | DF-196 | 待排期 | 未指派 | 下次给 `scripts/validate-content.ts` 补「文件名 ↔ `unitNumber` 交叉核对」时（单元 2 起录入时更值钱） | `scripts/validate-content.ts` 的 `loadUnitFiles` 不核对文件名与 `unitNumber` ⇒ `unit-05.json` 写 `unitNumber: 1` 也能过校验 | [`df-196`](./deferred-details.md#df-196) |
 | DF-197 | 待裁决 | Story 1.19 | 走 `[CC]` 更正 Story 1.19 的 AC-H1 / H3 / H4 字面（「四个选项」「2×2」「选项仍 4 列」→「卡型无关的表述」）；**2026-10-23 那轮只加了口径提示，未改判据正文**（R-33：改已交付 story 的 AC 正文属 `[CC]`） | Story 2.4 把选项数改成 2/3/3 ⇒ 1.19 组 H 的 AC 字面与 2026-10-18 的布局实测表全部过期 | [`df-197`](./deferred-details.md#df-197) |
 | DF-198 | 待排期 | Story 1.19 | Story 1.19 的 Task 7.3 —— 需要一次 **14 视口（竖屏 7 + 横屏 7）的真浏览器布局重测**；三条恢复路径任选其一：① 用户显式授权 Chromium 的 `--no-sandbox`；② 换一台能起**沙箱** Chromium 的机器；③ 在真机平板上量 | 本机 Chromium 以 root 跑**必须**带 `--no-sandbox`（未获授权），四条沙箱替代路径逐条试过全部不可用 ⇒ AC-H4 的「竖屏七个尺寸逐字相同」在 800×1280 之外**没有当天的实测值** | [`df-198`](./deferred-details.md#df-198) |
+| DF-199 | 待触发 | Story 2.6 | Story 2.6 开工前，先枚举该单元在 `docs/card-distribution.md` §5.1.1 下的可行 N（可行集可能为空），再定词条数 | `docs/card-distribution.md` §5.1.1 的可行性对 N 敏感：实测单元 2 的 N=37 与 N=41 可行集为空、单元 3 的 N=36/37 也为空 | [`df-199`](./deferred-details.md#df-199) |
+| DF-200 | 待裁决 | Story 2.9 | Story 2.9 试玩验收时决定「跳过的词（词图加载失败）在单元推进后怎么办」：是否允许带缺口推进、要不要补一轮小测 | 推进判据改成「本单元全部已掌握」后，一张持续加载失败的词图会让该单元永远学不完（孩子卡在 N-1/N） | [`df-200`](./deferred-details.md#df-200) |
 
 ## 新增一条
 

@@ -49,7 +49,7 @@
 #   epics.md 的销项说明处理。
 
 generated: 2026-10-12
-last_updated: 2026-10-23  # Story 2.4 `[CR]` 完成（2-4 → done）：守卫 G262–G276 / 变异 M308–M325；对抗评审的分诊、实测值与四处更正见其 story 文档
+last_updated: 2026-10-23  # Story 2.5 `[CS]` 完成（2-5 → ready-for-dev）：单元 2 的形状（N=38）与 11 条裁决见其 story 文档
 project: plants-game
 project_key: NOKEY
 tracking_system: file-system
@@ -87,7 +87,7 @@ development_status:
   2-2-难度阶梯规则落地: done
   2-3-阳光经济档位扩展: done   # [CR] 完成；1 条未裁决见 deferred-work 的 DF-138，见 story 文档
   2-4-选项数量递进规则: done   # [CR] 完成；守卫 G262–G276 / 变异 M308–M325；对抗评审分诊与四处更正留痕见其 story 文档
-  2-5-内容批次-1-单元-2-单单元试点: backlog
+  2-5-内容批次-1-单元-2-单单元试点: ready-for-dev   # [CS] 完成；词条数 N=38（30/1/7）与 11 条无人值守裁决见其 story 文档
   2-6-内容批次-2-单元-3-7: backlog
   2-7-内容批次-3-单元-8-13: backlog
   2-8-内容批次-4-单元-14-至末单元: backlog
