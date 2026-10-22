@@ -38,7 +38,7 @@ import { computed, ref, watch } from 'vue'
 
 import { answer } from '../../core'
 import type { OptionId, Question } from '../../core'
-import { applyAction, reportImageFailure, speakQuestion, state } from '../../app/store'
+import { applyAction, brokenButPickableOption, reportImageFailure, speakQuestion, state } from '../../app/store'
 
 import AnswerFeedback from './AnswerFeedback.vue'
 import OptionCard from './OptionCard.vue'
@@ -134,6 +134,36 @@ const pickedRight = computed(() => {
   if (question === null) return false
   return state.value.masteredEntryIds.includes(question.entryId)
 })
+
+/**
+ * 🔥📎 **2026-10-22（Epic 1 集成层检视 / 裁决）：破图却仍必须可点的那张卡，
+ *   用**什么文字**顶上那张破掉的图。**
+ *
+ * ⚠️ **为什么是 `promptText`**：图片选项（`ImageOption`）**本身没有文本字段**
+ *   （`core/types.ts`：`ImageOption` 只有 `id` + `imageSrc`）⇒ 词文本只能从
+ *   **卡面**这一层拿。而 `content/schema.ts` 逐字写「word ⇒ 全部 ImageOption；
+ *   keyword / response ⇒ 全部 TextOption」⇒ **只有单词卡会有图片选项**，
+ *   而单词卡的 `promptText` 就是**那个词本身**（单元 1 的 30 张单词卡逐条核过：
+ *   `promptText` 恒等于去掉单元前缀后的 `option.id`）。
+ *
+ * ⚠️ **为什么 `kind !== 'word'` 时返回 `null`**：那两种卡的选项是**文字选项**，
+ *   压根没有图 ⇒ **永远不会破** ⇒ 这一支走不到。
+ *   写出来是为了让「这条路径只对单词卡成立」在源码里一眼可查，
+ *   而不是靠「反正只有单词卡会走到」这种推断。
+ *
+ * ⚠️ **`entryId` 与 `optionId` 两个都要对上**：`optionId` **跨题单会重复**
+ *   （单词卡的四个选项就是另外四个词的 id）⇒ 只对 `optionId` 会误伤别的题。
+ */
+function brokenPickableTextFor(optionId: OptionId): string | null {
+  const broken = brokenButPickableOption.value
+  if (broken === null) return null
+  const question = shown.value
+  if (question === null) return null
+  if (question.entryId !== broken.entryId) return null
+  if (optionId !== broken.optionId) return null
+  if (question.card.kind !== 'word') return null
+  return question.card.promptText
+}
 
 /**
  * 🔥 **📎 Story 1.16 裁决 8：新的一局开始时复位 `spokenEntryId`。**
@@ -347,6 +377,7 @@ function onReplay(): void {
           :right="pickedOptionId === option.id && pickedRight"
           :wrong="pickedOptionId === option.id && !pickedRight"
           :locked="locked"
+          :broken-pickable-text="brokenPickableTextFor(option.id)"
           @pick="onPick"
           @image-failed="onOptionImageFailed"
         />

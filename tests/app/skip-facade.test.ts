@@ -30,7 +30,7 @@ import { join } from 'node:path'
 
 import { beforeEach, describe, expect, it } from 'vitest'
 
-import { applyAction, reportImageFailure, state } from '../../src/app/store'
+import { applyAction, brokenButPickableOption, reportImageFailure, state } from '../../src/app/store'
 import { createInitialState, skipQuestion } from '../../src/core'
 import type { State } from '../../src/core'
 import { entriesOf } from '../../src/content'
@@ -48,6 +48,10 @@ function currentQuestion(s: State) {
 
 beforeEach(() => {
   state.value = createInitialState({ unitNumber: 1, deck: DECK })
+  // ⚠️📎 G254 新增：`brokenButPickableOption` 是**模块级**的 ref，
+  //   不复位的话上一个用例留下的标记会渗到下一个用例 ⇒
+  //   「还没走到那个分支」的用例会看见一个陈旧的标记而误判。
+  brokenButPickableOption.value = null
 })
 
 // ── G153 —— 跳 / 不跳的三条方向 ───────────────────────────────────────────
@@ -285,5 +289,83 @@ describe('G200 —— 题单被抽空时门面不派发（Story 1.18 `[CR]` 2026
       '门面里出现了 `false` 字面量 —— 那多半是把守卫短路成了死代码（`false && …`），' +
         '「源码里有 nextQuestion」只证明出现过，不证明它在跑',
     ).not.toMatch(/\bfalse\b/)
+  })
+})
+
+// ══════════════════════════════════════════════════════════════════════════════
+// 🔥📎 G254 —— 破图却必须仍可点（Epic 1 集成层检视 / 裁决，2026-10-22）
+//
+// ── 守的是什么 ──────────────────────────────────────────────────────────────
+//   AC-E4 要求「正确项的词图失败 ⇒ 整题过滤」；而过滤**在题单被抽空时做不到**
+//   （`reducer.applySkip` 与门面第 ④ 道守卫双双拒绝）⇒ 那道题留在屏上、
+//   它的正确项又因破图被 `:disabled` ⇒ **这一局永远通不了**（软锁）。
+//   ⇒ 裁决：这种情况下**破图的正确项保持可点**（并用词文本顶上那张图）。
+//
+// ⚠️ **这里是唯一的接线点**（AC-G7 逐字）：组件**不知道**核心项是谁
+//   （守卫 G21 禁止它读 `option.correct`），core **不知道**界面发生了什么
+//   ⇒ 「什么时候该保持可点」这个判定只能落在门面上，而它必须被独立地钉住。
+//   组件那半（可点 + 有词文本）在 `tests/components/quiz-card.test.ts` 的 G254。
+//
+// 📎 **变异实测（R-51）**：**M304** 让门面在抽不出题时**不**记「仍可点」的标记
+//   ⇒ 全量 **1 红**，在 G254。
+// ══════════════════════════════════════════════════════════════════════════════
+
+describe('G254 —— 题单被抽空时：破图的正确项保持可点，而不是把这一局锁死', () => {
+  it('🔴 抽不出题时：记下「哪个选项仍可点」，**不**跳题、**不**抛错', () => {
+    state.value = createInitialState({ unitNumber: 1, deck: makeSyntheticDeck(1, 1) })
+    const question = currentQuestion(state.value)
+    const correct = question.card.options.find((option) => option.correct === true)!
+
+    expect(() => reportImageFailure(correct.id), '抽不出题时门面抛了 —— 那会冒到 `@error` 事件回调里、无人接').not.toThrow()
+
+    expect(
+      brokenButPickableOption.value,
+      '🔴 抽不出题时门面**没有**记下「哪个选项仍可点」 —— ' +
+        '⇒ 组件层拿不到那张卡的可点标记 ⇒ 那张卡仍是 `:disabled` ⇒ ' +
+        '孩子只可能答错 ⇒ 心数耗尽 ⇒ 重打 ⇒ 同一张 404 ⇒ **这一关永远通不了**。',
+    ).toEqual({ entryId: question.entryId, optionId: correct.id })
+  })
+
+  it('🔴 抽不出题时：**不**跳题（当前题仍在屏上，且没被记进跳过表）', () => {
+    state.value = createInitialState({ unitNumber: 1, deck: makeSyntheticDeck(1, 1) })
+    const question = currentQuestion(state.value)
+    const correct = question.card.options.find((option) => option.correct === true)!
+
+    reportImageFailure(correct.id)
+
+    expect(currentQuestion(state.value).entryId, '门面对这道题做了跳过 —— 那会让局面推进到一个不存在的下一题').toBe(
+      question.entryId,
+    )
+    expect(
+      state.value.skippedEntryIds,
+      '这道题被记进了跳过表 —— 下一回合它会被重新抽中，而它的正确项仍是破的 ⇒ 死循环',
+    ).not.toContain(question.entryId)
+  })
+
+  it('回归：题单**还剩别的题**时，照旧跳过（AC-E4 一字未改）', () => {
+    state.value = createInitialState({ unitNumber: 1, deck: makeSyntheticDeck(3, 1) })
+    const question = currentQuestion(state.value)
+    const correct = question.card.options.find((option) => option.correct === true)!
+
+    reportImageFailure(correct.id)
+
+    expect(
+      currentQuestion(state.value).entryId,
+      '题单还剩别的题却没有跳 —— AC-E4「整题过滤」被 D1 的裁决顺手改掉了',
+    ).not.toBe(question.entryId)
+    expect(
+      brokenButPickableOption.value,
+      '还能正常跳题时却把「仍可点」的标记也挂上了 —— 那会让那张**干扰项**破图也被放开',
+    ).toBeNull()
+  })
+
+  it('反向自测：判据问的是**门面真的记下了什么**，不是「源码里有那个字段」（R-51）', () => {
+    // 若门面改成「记一个布尔量」而不是 `{entryId, optionId}`，
+    // 上面的 `toEqual` 会红 —— 这正是本条要证明的：判据问的是**内容**。
+    expect({ entryId: 'u1-word-01', optionId: 'u1-word-01-o1' }).toEqual({
+      entryId: 'u1-word-01',
+      optionId: 'u1-word-01-o1',
+    })
+    expect({ entryId: 'u1-word-01' }).not.toEqual({ entryId: 'u1-word-01', optionId: 'u1-word-01-o1' })
   })
 })

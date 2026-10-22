@@ -33,7 +33,7 @@ import { enableAutoUnmount, mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { applyAction, reportImageFailure, speakQuestion, state } from '../../src/app/store'
+import { applyAction, brokenButPickableOption, reportImageFailure, speakQuestion, state } from '../../src/app/store'
 import QuestionCard from '../../src/components/quiz/QuestionCard.vue'
 import {
   answer,
@@ -94,6 +94,12 @@ import { contrastRatio, cssDecl, resolveColor, stripComments as sharedStripComme
 //   不是上面那份三处 replace 的朴素版 —— 后者的 docblock 自己记着
 //   「把 ① 和 ② 之间的真代码整段删掉」，曾让 G105/G106 双双假红（R-37：单一出处）。
 import { stripComments as stripCommentsForG177 } from '../fixtures/strip-comments'
+import {
+  specificity,
+  styleBlockOf,
+  winningDeclaration,
+  winningOpacity,
+} from '../helpers/css-cascade'
 
 /**
  * 剥掉块注释、行注释与 HTML 注释，只留代码。
@@ -2104,98 +2110,12 @@ describe('G177 —— 建造期锁定：词图不被透明度洗掉 + 触摸设�
   const optionCard = stripCommentsForG177(optionCardSource)
   const questionCard = stripCommentsForG177(questionCardSource)
 
-  /** 一条候选规则：选择器 + 声明体 + 在源码里的序号（用来决同特异度的胜负）。 */
-  interface CssRule {
-    selector: string
-    decls: Map<string, string>
-    order: number
-  }
-
-  /**
-   * 算一条**简单复合选择器**的特异度 `[a, b, c]`。
-   *
-   * ⚠️ 只处理本文件真正用到的东西：类型选择器 / `.class` / `#id` /
-   *   `:not(<复合选择器>)`。遇到后代选择器（空格）或逗号会**如实抛错**而不是
-   *   悄悄返回错值 —— 判据算错却绿比判据直接崩掉危险得多（R-51）。
-   */
-  function specificity(selector: string): [number, number, number] {
-    const sel = selector.trim()
-    if (sel.includes(',')) {
-      throw new Error(`判据不会算逗号选择器组：${selector}`)
-    }
-    if (/\s/.test(sel.replace(/:not\([^)]*\)/g, ''))) {
-      throw new Error(`判据不会算带后代组合符的选择器：${selector}`)
-    }
-    const withoutNot = sel.replace(/:not\([^)]*\)/g, '')
-    // `:not(...)` 按**其参数**计权（Selectors L3/L4）⇒ 参数与自身等价。
-    const notArgs = [...sel.matchAll(/:not\(([^)]*)\)/g)].map((m) => m[1])
-    const ids = (withoutNot.match(/#[\w-]+/g) ?? []).length
-    const classes =
-      (withoutNot.match(/\.[\w-]+/g) ?? []).length +
-      (withoutNot.match(/\[[^\]]+\]/g) ?? []).length +
-      notArgs.filter((a) => a.trim().startsWith('.') || a.trim().startsWith('#')).length
-    const types = (withoutNot.match(/(^|[\s>+~])[a-z][\w-]*/gi) ?? []).length
-    return [ids, classes, types]
-  }
-
-  /** 特异度字典序比较：a 先比，再 b，再 c。 */
-  function cmpSpecificity(
-    x: [number, number, number],
-    y: [number, number, number],
-  ): number {
-    for (let i = 0; i < 3; i += 1) {
-      if (x[i] !== y[i]) return x[i] - y[i]
-    }
-    return 0
-  }
-
-  /**
-   * 判据本体：**对一个挂着 `option-card is-degraded is-locked`（且**没有** `is-picked`）
-   * 的元素解一遍层叠，返回胜者给的 `opacity`。**
-   *
-   * @param elementClasses 元素身上真实有的类
-   * @returns 胜者的 `opacity` 声明值；一条都没匹配上则返回 `null`
-   */
-  function winningOpacity(src: string, elementClasses: string[]): string | null {
-    const has = (cls: string): boolean => elementClasses.includes(cls)
-    // ⚠️ 匹配器只认**纯类选择器**（本文件的状态类全是这一种）。
-    //   含后代/标签/伪类的选择器一律跳过而不是误判 —— 判据覆盖不到的地方
-    //   如实留白，比给一个假的「没匹配上」要好。
-    const rules: CssRule[] = []
-    let order = 0
-    for (const m of src.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
-      const selector = m[1].trim()
-      // 只认「若干个 `.class` 与 `:not(.class)` 任意次序」的纯类选择器。
-      if (!/^(?:\.[\w-]+|:not\(\.[\w-]+\))+$/.test(selector)) continue
-      // 🔥 `:not(.x)` 是**否定**要求：元素**没有** `.x` 时才算满足。
-      //   ⚠️ 首版把它当成普通要求 ⇒ 测试元素（没有 `is-picked`）会把整条
-      //   `.is-degraded:not(.is-picked)` 规则跳过 ⇒ **假形态被判成合规**。
-      //   这个洞方向最恶劣，被下面那条自测当场抓住。
-      const negated = [...selector.matchAll(/:not\(\.([\w-]+)\)/g)].map((c) => c[1])
-      // 正类必须从**剥掉 `:not(...)` 之后**的剩余部分取，否则 `is-picked`
-      // 会被当成必需项（`:not(` 后面那个点，lookbehind 也拦不住）。
-      const positive = [
-        ...selector.replace(/:not\(\.[\w-]+\)/g, '').matchAll(/\.([\w-]+)/g),
-      ].map((c) => c[1])
-      if (!positive.every(has)) continue
-      if (negated.some((c) => has(c))) continue
-      const decls = new Map<string, string>()
-      for (const d of m[2].split(';')) {
-        const idx = d.indexOf(':')
-        if (idx === -1) continue
-        decls.set(d.slice(0, idx).trim(), d.slice(idx + 1).trim())
-      }
-      rules.push({ selector, decls, order: order++ })
-    }
-    if (rules.length === 0) return null
-    // 特异度高者胜；**相等才看源码顺序**（后写的赢）—— 这正是第六轮搞错的地方。
-    rules.sort((a, b) => {
-      const s = cmpSpecificity(specificity(a.selector), specificity(b.selector))
-      return s !== 0 ? s : a.order - b.order
-    })
-    const winner = rules[rules.length - 1]
-    return winner.decls.get('opacity') ?? null
-  }
+  // ⚠️📎 **2026-10-22（Epic 1 集成层检视）：判据本体搬去了共享件。**
+  //   G253 要用**同一把尺子**去问 `background`（层叠绿底那条），
+  //   而抄一份会让两把尺子随时间跑偏（R-37 说的那条复制链）。
+  //   ⇒ 现在 `specificity` / `cmpSpecificity` / `winningOpacity` 三者
+  //     都住在 `tests/helpers/css-cascade.ts`，G177 与 G253 共用。
+  //   ⚠️ 语义**逐字未变** —— 只是搬了家；自测三条（下面）证明搬完仍咬得住。
 
   it('🔴 `locked + degraded + 未点` 时，生效的 opacity 必须是 1（**解层叠**，不判源码顺序）', () => {
     const effective = winningOpacity(optionCard, ['option-card', 'is-degraded', 'is-locked'])
@@ -2285,3 +2205,229 @@ describe('G177 —— 建造期锁定：词图不被透明度洗掉 + 触摸设�
   })
 })
 
+
+// ══════════════════════════════════════════════════════════════════════════════
+// 🔥📎 G253 —— 层叠绿底（Epic 1 集成层检视，2026-10-22）
+//
+// ── 守的是什么 ──────────────────────────────────────────────────────────────
+//   孩子**每答一次题**，被点的那张卡同时挂上 `is-picked` + `is-right`/`is-wrong`
+//   + `is-locked`（`QuestionCard.onPick` 同步把相位翻成 `awaiting-build`
+//   ⇒ `locked` 当场变 true；而 `pickedOptionId` 的 watch 逐字写着
+//   `if (phase.kind !== 'awaiting-answer') return` ⇒ 它**不被清**）。
+//
+//   ⚠️ 三条状态类的选择器特异度**完全相同**（`.option-card` + 一个类 = (0,2,0)，
+//     加 scoped 属性后同为 (0,3,0)）⇒ **源码顺序决定胜负**。
+//   ⇒ 而 1.19 的第六轮为了修 `.is-degraded` 那一侧，把 `.is-locked` 整条
+//     **挪到了文件末尾** ⇒ **顺带挪过了 `.is-right` / `.is-wrong`**
+//     ⇒ 灰底 `#eceff1` 赢下 `background` ⇒ **每一次正常答题，孩子看到的
+//       都是四张一模一样的灰卡**，而反馈条仍写着「答对了 ✓」。
+//   ⇒ AC-D2 的主反馈载体**一次都没画出来过**。
+//
+// ⚠️ **G177 覆盖不到这一条**：它只解 `opacity`、只针对 `is-degraded` + `is-locked`
+//   这一对类组合 ⇒ `background` 这一列、`right`/`wrong` 这一对**此前完全无守卫**。
+//
+// 📎 **变异实测（R-51）**：**M300** 把 `.is-locked:not(.is-right):not(.is-wrong)`
+//   改回 `.is-locked` ⇒ 全量 **2 红**，全在 G253。
+//
+// ── 为什么用**层叠求解**而不是判源码顺序 ────────────────────────────────────
+//   第六轮栽在这里：判「`.is-locked` 排在 `.is-right` 之后」⇒ 恰好是**错的那一半**
+//   （排在后面 = 它赢 = 绿底被吃掉）。判据必须问「哪条声明胜出」。
+// ══════════════════════════════════════════════════════════════════════════════
+
+describe('G253 —— 建造期锁定不许吃掉 AC-D2 的绿底 / 红底（解层叠，不判源码顺序）', () => {
+  // ⚠️ 只解 `<style>` 块：整份 .vue 源码里 `<script>` / `<template>` 也含大量
+  //   `{ … }`，会被求解器扫成「规则」（详见 `styleBlockOf` 的注释）。
+  const optionCardStyle = stripCommentsForG177(styleBlockOf(optionCardSource))
+
+  it('🔴 `is-picked + is-right + is-locked` 时，生效的 background 必须是 var(--color-correct)', () => {
+    const effective = winningDeclaration(
+      optionCardStyle,
+      ['option-card', 'is-picked', 'is-right', 'is-locked'],
+      'background',
+    )
+    expect(
+      effective,
+      '判据范围消失：`.option-card` 上没有任何规则匹配「option-card + is-picked + is-right + is-locked」这个类组合',
+    ).not.toBeNull()
+    expect(
+      effective,
+      '🔴 孩子答对之后，那张卡**真正生效**的底色不是绿的 —— ' +
+        'AC-D2 的主反馈载体被建造期的灰底整个吃掉了，' +
+        '而反馈条还在写「答对了 ✓」⇒ 界面陈述了一件没发生的事。\n' +
+        '⚠️ 这不是「样式不好看」：三条状态类特异度完全相同 ⇒ **源码顺序决定胜负**，' +
+        '而 `.is-locked` 被 1.19 第六轮挪到了 `.is-right` **之后** ⇒ 灰底赢。\n' +
+        '✅ 修法：让 `.is-locked` 在 `is-right` / `is-wrong` 时**根本不匹配**（`:not()`），' +
+        '而不是去挪它的位置 —— 挪位置只是把「绿底被吃」换成「`.is-degraded` 被吃」。',
+    ).toBe('var(--color-correct)')
+  })
+
+  it('🔴 `is-picked + is-wrong + is-locked` 时，生效的 background 必须是 var(--color-wrong)', () => {
+    const effective = winningDeclaration(
+      optionCardStyle,
+      ['option-card', 'is-picked', 'is-wrong', 'is-locked'],
+      'background',
+    )
+    expect(effective, '判据范围消失：`is-picked + is-wrong + is-locked` 这个类组合匹配不到任何规则').not.toBeNull()
+    expect(
+      effective,
+      '🔴 孩子答错之后，那张卡**真正生效**的底色不是红的 —— ' +
+        '孩子不知道自己答错了，只看到一个暧昧的灰卡 ⇒ 下一次只会乱点。',
+    ).toBe('var(--color-wrong)')
+  })
+
+  it('判据自测：这把尺子分得清「灰底赢」与「绿底赢」（R-53 —— 不自测就不知道它咬不咬得住）', () => {
+    // 🔴 形态一：**坏形态**（第六轮留下的那个）—— `.is-locked` 与 `.is-right`
+    //   特异度相同、且排在**后面** ⇒ 灰底赢。
+    const bad =
+      '.option-card.is-right {\n  background: var(--color-correct);\n}\n' +
+      '.option-card.is-locked {\n  background: #eceff1;\n}\n'
+    expect(
+      winningDeclaration(bad, ['option-card', 'is-picked', 'is-right', 'is-locked'], 'background'),
+      '判据自测自己红了：第六轮那个坏形态（is-locked 排在 is-right 之后）竟被判成合规 ⇒ ' +
+        '这把尺子分不出同特异度时的胜负',
+    ).toBe('#eceff1')
+
+    // ✅ 形态二：**修好后** —— `.is-locked` 用 `:not()` 让开 ⇒ 绿底赢。
+    const good =
+      '.option-card.is-right {\n  background: var(--color-correct);\n}\n' +
+      '.option-card.is-locked:not(.is-right):not(.is-wrong) {\n  background: #eceff1;\n}\n'
+    expect(
+      winningDeclaration(good, ['option-card', 'is-picked', 'is-right', 'is-locked'], 'background'),
+      '判据自测自己红了：加 `:not(.is-right):not(.is-wrong)` 的好形态竟被判成违规',
+    ).toBe('var(--color-correct)')
+  })
+
+  it('`.is-locked` 那条规则必须**同时**让开 `.is-right` 与 `.is-wrong`（少一个就漏一半）', () => {
+    // ⚠️ 只写 `:not(.is-right)` 的话，答错那张卡仍会被灰底吃掉 ⇒ 只修了一半。
+    const onlyRight =
+      '.option-card.is-right {\n  background: var(--color-correct);\n}\n' +
+      '.option-card.is-wrong {\n  background: var(--color-wrong);\n}\n' +
+      '.option-card.is-locked:not(.is-right) {\n  background: #eceff1;\n}\n'
+    // 这一半：让开了 `.is-right` ⇒ 答对那张绿底赢（半修在这一半上是对的）。
+    expect(
+      winningDeclaration(onlyRight, ['option-card', 'is-picked', 'is-right', 'is-locked'], 'background'),
+      '判据自测自己红了：只让开 `.is-right` 时，答对那张竟不是绿的',
+    ).toBe('var(--color-correct)')
+    // 另一半：**没**让开 `.is-wrong` ⇒ 答错那张灰底赢（半修漏的就是这一半）。
+    expect(
+      winningDeclaration(onlyRight, ['option-card', 'is-picked', 'is-wrong', 'is-locked'], 'background'),
+      '判据自测自己红了：只让开 `.is-right` 的半修形态，答错那张竟被判成红底',
+    ).toBe('#eceff1')
+  })
+})
+
+// ══════════════════════════════════════════════════════════════════════════════
+// 🔥📎 G254 —— 破图却必须仍可点的那个选项（Epic 1 集成层检视 / 裁决，2026-10-22）
+//
+// ── 守的是什么 ──────────────────────────────────────────────────────────────
+//   AC-E4 要求「正确项的词图失败 ⇒ 整题过滤」；而过滤**在题单被抽空时做不到**
+//   （`applySkip` 与门面第 ④ 道守卫双双拒绝）⇒ 那道题留在屏上、
+//   它的正确项又因破图被 `:disabled` ⇒ **这一局永远通不了**（软锁）。
+//   ⇒ 裁决：这种情况下**破图的正确项保持可点**，并用**词文本**顶上那张图。
+//
+// ⚠️ **组件层只守「渲染与可点」**；「什么时候该保持可点」由门面守
+//   （`tests/app/skip-facade.test.ts` 的 G254 —— 跨模块接线点，AC-G7）。
+//
+// 📎 **变异实测（R-51）**：
+//   · **M301** 把 `:disabled` 改回 `failed || locked` ⇒ 全量 **1 红**，在 G254
+//   · **M302** 去掉那张卡上的词文本 ⇒ 全量 **1 红**，在 G254
+//   · **M303** 让它也挂上 `is-degraded` ⇒ 全量 **1 红**，在 G254
+// ══════════════════════════════════════════════════════════════════════════════
+
+describe('G254 —— 破图却必须仍可点的那个选项：可点 + 有词文本', () => {
+  /** 挂一张题面，并把「破图却必须仍可点」指到某个选项上。 */
+  function mountBrokenPickable(question: Question, optionId: OptionId) {
+    state.value = stateWith(question)
+    brokenButPickableOption.value = { entryId: question.entryId, optionId }
+    const wrapper = mount(QuestionCard)
+    return wrapper
+  }
+
+  it('🔴 破图的正确项**不得**带 disabled（带了就还是软锁：孩子永远点不动它）', async () => {
+    const question = firstQuestionOfKind('word')
+    const target = question.card.options[0]!
+    const wrapper = mountBrokenPickable(question, target.id)
+
+    await wrapper.findAll('.option-card__image')[0]!.trigger('error')
+
+    const button = wrapper.findAll('.option-card')[0]!
+    expect(
+      button.attributes('disabled'),
+      '🔴 破图却必须仍可点的那个选项被 `:disabled` 了 —— ' +
+        '孩子**只可能答错** ⇒ 心数耗尽 ⇒ 重打 ⇒ 同一张 404 ⇒ 这一关永远通不了。',
+    ).toBeUndefined()
+  })
+
+  it('🔴 破图却必须仍可点的那个选项必须**显示词文本**（占位块不告诉孩子这是哪个词）', async () => {
+    const question = firstQuestionOfKind('word')
+    const target = question.card.options[0]!
+    const wrapper = mountBrokenPickable(question, target.id)
+
+    await wrapper.findAll('.option-card__image')[0]!.trigger('error')
+
+    const text = wrapper.findAll('.option-card__text')[0]
+    expect(
+      text.exists(),
+      '🔴 破图却必须仍可点的那个选项**没有词文本** —— ' +
+        '孩子面对四张卡（其中一张只有一块灰色占位块）只能瞎猜 ⇒ 软锁照旧。',
+    ).toBe(true)
+    expect(text.text()).toBe(question.card.promptText)
+  })
+
+  it('🔴 破图却必须仍可点的那个选项**不带** `is-degraded`（否则词文本被压到 55%，读不清）', async () => {
+    const question = firstQuestionOfKind('word')
+    const target = question.card.options[0]!
+    const wrapper = mountBrokenPickable(question, target.id)
+
+    await wrapper.findAll('.option-card__image')[0]!.trigger('error')
+
+    const button = wrapper.findAll('.option-card')[0]!
+    expect(
+      button.classes(),
+      '🔴 破图却必须仍可点的那个选项仍挂着 `is-degraded` —— ' +
+        '`.is-degraded` 的 `opacity: 0.55` 会把**词文本**一起压虚 ⇒ 孩子读不清它 ⇒ 答不了。',
+    ).not.toContain('is-degraded')
+  })
+
+  it('回归：**普通**破图（不是那个「最后一题」）仍然带 disabled（AC-B2 一字未改）', async () => {
+    // ⚠️ 这条是「别把 D1 的修法扩大成全局放开」的守卫 ——
+    //   破图的可点性**只在**题单被抽空那一种情况下放开。
+    const question = firstQuestionOfKind('word')
+    state.value = stateWith(question)
+    brokenButPickableOption.value = null
+    const wrapper = mount(QuestionCard)
+
+    await wrapper.findAll('.option-card__image')[0]!.trigger('error')
+
+    const button = wrapper.findAll('.option-card')[0]!
+    expect(
+      button.attributes('disabled'),
+      '普通破图的选项被放开了 —— AC-B2 逐字要求「破图的选项不可点」，这条不能被 D1 顺手改掉',
+    ).toBeDefined()
+  })
+
+  it('回归：别在**别的**选项上放开可点性（指错一张卡 = 四张里放错一张）', async () => {
+    const question = firstQuestionOfKind('word')
+    const target = question.card.options[1]!
+    const wrapper = mountBrokenPickable(question, target.id)
+
+    await wrapper.findAll('.option-card__image')[0]!.trigger('error')
+
+    const button = wrapper.findAll('.option-card')[0]!
+    expect(
+      button.attributes('disabled'),
+      '被判成「破图却必须仍可点」的是**别的**那张卡 —— ' +
+        '⇒ 指错了一张，而真正要放开的那张（' + target.id + '）仍然点不动',
+    ).toBeDefined()
+  })
+
+  it('反向自测：判据问的是**按钮属性**而不是「有没有点得动」（R-51）', () => {
+    // 这一条把「组件渲染出了词文本」与「孩子真的点得到它」分开：
+    //   前者是 DOM 断言，后者要 `disabled` 也在。
+    // ⇒ 下面的断言证明：一个**带 disabled** 的按钮同样能渲染出词文本 ——
+    //   所以只断言「有词文本」的判据是**恒真**的，必须同时问 `disabled`。
+    const html = '<button class="option-card" disabled><span class="option-card__text">cat</span></button>'
+    expect(html).toContain('option-card__text')
+    expect(html).toContain('disabled')
+  })
+})

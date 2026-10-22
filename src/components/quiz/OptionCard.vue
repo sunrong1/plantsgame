@@ -56,6 +56,23 @@ const props = defineProps<{
    *   两者成因完全不同 —— 一个是「这张图坏了」，一个是「这道题已经答完了」。
    */
   readonly locked: boolean
+  /**
+   * 🔥📎 **2026-10-22（Epic 1 集成层检视 / 裁决）：破图却**必须仍可点**的那个选项。**
+   *
+   * ⚠️ **为什么会有这种选项**：AC-E4 要求「正确项的词图失败 ⇒ **整题过滤**」，
+   *   而过滤**在题单被抽空时做不到**（`applySkip` 与门面第 ④ 道守卫双双拒绝）
+   *   ⇒ 那道题留在屏上、它的正确项又因破图被禁用 ⇒ **这一局永远通不了**。
+   *   ⇒ 裁决：这种情况下**破图的正确项保持可点**，并用**词文本**顶上那张图
+   *   （没有文本的话，孩子看到的只是一块灰色占位块，压根不知道这一张是哪个词）。
+   *
+   * ⚠️ **它是 `string | null` 而不是布尔**：值 =「拿什么文字顶上这张图」。
+   *   `null` = 这张卡破归破、照旧禁用（普通降级，AC-B2 不变）。
+   *
+   * ⚠️ **只有单词卡会走到这里**：`content/schema.ts` 逐字写「word ⇒ 全部 ImageOption；
+   *   keyword / response ⇒ 全部 TextOption」⇒ **只有单词卡的选项有图**，
+   *   而单词卡的 `promptText` 就是那个词本身。
+   */
+  readonly brokenPickableText: string | null
 }>()
 
 /**
@@ -89,6 +106,16 @@ const emit = defineEmits<{
  *   真实内容下两种分派产生逐字节相同的 DOM）。
  */
 const isImageKind = computed(() => props.kind === 'word')
+
+/**
+ * 🔥📎 2026-10-22：这张图破了、但**必须仍可点**（裁决）。
+ *
+ * ⚠️ **两个条件都要**：上层给了文字（说明它就是那个「最后一题」的破图正确项）
+ *   **且**本组件这张图**确实坏了**。只有上层给了文字而图没坏，
+ *   说明状态对不上 —— 那时按普通卡处理（照旧可点、照旧显示图），
+ *   **不**把一个 `null` 顶到卡面上。
+ */
+const isBrokenButPickable = computed(() => props.brokenPickableText !== null && failed.value)
 
 /**
  * 字段读取用**类型守卫**（`'x' in option`）而不是 `as`。
@@ -140,7 +167,10 @@ function onImageError(): void {
 }
 
 function onPick(): void {
-  if (failed.value) return
+  // ⚠️ **破图照旧不可点**（AC-B2）—— **除非**它是那个「破图却必须仍可点」的选项
+  //   （裁决，见 `brokenPickableText` 的注释）：那种情况下孩子必须能答完这道题，
+  //   否则这一局永远通不了（软锁）。
+  if (failed.value && !isBrokenButPickable.value) return
   emit('pick', props.option.id)
 }
 </script>
@@ -153,11 +183,16 @@ function onPick(): void {
       'is-picked': picked,
       'is-right': right,
       'is-wrong': wrong,
-      'is-degraded': failed,
+      // ⚠️ **破图却仍必须可点的那张卡不进 `is-degraded`**（2026-10-22 裁决）：
+      //   `.is-degraded` 会把 `opacity` 压到 0.55 ⇒ 那张卡上的**词文本**也跟着发虚
+      //   ⇒ 孩子读不清它 ⇒ 答不了 ⇒ 软锁照旧。
+      //   ⇒ 它仍然「一眼可分」：**内联占位图形**就是那个信号（AC-B2 要的是占位块换掉破图）。
+      'is-degraded': failed && !isBrokenButPickable,
       'is-locked': locked,
+      'is-broken-pickable': isBrokenButPickable,
     }"
     :data-option="option.id"
-    :disabled="failed || locked"
+    :disabled="(failed && !isBrokenButPickable) || locked"
     @click.stop="onPick"
   >
     <!--
@@ -180,6 +215,18 @@ function onPick(): void {
         :data-option="option.id"
         v-html="WORD_IMAGE_PLACEHOLDER_SVG"
       />
+      <!--
+        🔥📎 2026-10-22：破图却仍必须可点时，把**词文本**补上来。
+        ⚠️ **为什么必须有它**：占位图形只说明「这张图没了」，
+        它**不告诉孩子这是哪个词** ⇒ 孩子面对四张卡（其中一张灰的）只能瞎猜。
+        ⇒ 补上词文本，降级才真的可用。
+        ⚠️ **只在 `isBrokenButPickable` 时渲染** —— 普通破图（干扰项）照旧只有占位块。
+      -->
+      <span
+        v-if="isBrokenButPickable"
+        class="option-card__text"
+        :data-option="option.id"
+      >{{ brokenPickableText }}</span>
     </template>
     <span
       v-else
@@ -309,14 +356,41 @@ function onPick(): void {
  *   ⇒ 因此下面这个 `opacity: 1` **不是**「靠顺序赢回来的」，而是**让判据读得懂意图**
  *     的显式声明 —— 它在修复后确实生效，但生效的原因是 `.is-degraded` 让开了。
  *
- * ⚠️ **仍排在 `.is-picked` 之后**：孩子刚答完那 ≤100ms 里，`is-right` / `is-wrong`
- *   的绿底/红底才是 AC-D2 的主反馈载体，置灰不该把它洗掉
- *   （这与 `.is-degraded:not(.is-picked)` 用 `:not(.is-picked)` 是同一个理由）。
+ * ⚠️ ~~**仍排在 `.is-picked` 之后**：孩子刚答完那 ≤100ms 里，`is-right` / `is-wrong`
+ *   的绿底/红底才是 AC-D2 的主反馈载体，置灰不该把它洗掉~~ ——
+ *   **这段推理是错的**（2026-10-22 更正，见下方加粗段）：
+ *   「排在后面」恰恰意味着**它赢**，而赢的后果正是**把绿底洗掉**。
+ *   ⇒ 正确的做法不是挪位置，是**让它在该让开的时候让开**（`:not()`）。
  *
  * ⚠️ **`opacity: 1` 现在是无条件生效的**：`.is-degraded` 带了 `:not(.is-locked)`
  *   ⇒ `locked` 时它根本不匹配 ⇒ 这里没有任何竞争者。
+ *
+ * 🔥📎📎 **2026-10-22（Epic 1 集成层检视）：上面那段「仍排在 `.is-picked` 之后」**
+ *   **是错的，而错误的后果是「AC-D2 的主反馈载体一次都没画出来过」。**
+ *
+ * ⚠️ **那三态为什么会同时挂**：孩子点一个选项 ⇒ `QuestionCard.onPick` 里
+ *   `applyAction(answer(...))` **同步**把相位翻成 `awaiting-build`
+ *   ⇒ `locked = !answering` **当场**变 true；
+ *   而 `pickedOptionId` 的 watch 逐字写着 `if (phase.kind !== 'awaiting-answer') return`
+ *   ⇒ 答题后它**不被清** ⇒ 被点的那张卡同时挂 `is-picked` + `is-right`/`is-wrong` + `is-locked`。
+ * ⚠️ **层叠**：`.option-card` + 一个状态类 = `(0,2,0)`，加 scoped 属性后同为 `(0,3,0)`
+ *   ⇒ **特异度完全相同 ⇒ 源码顺序决定** ⇒ 本规则在 `.is-right`(249) / `.is-wrong`(253) **之后**
+ *   ⇒ **本规则赢下 `background` 与 `border-color`** ⇒ 绿底 `var(--color-correct)` /
+ *   红底 `var(--color-wrong)` 被灰底 `#eceff1` 整个吃掉。
+ *   ⇒ **每一次正常答题**，孩子看到的都是四张一模一样的灰卡。
+ * ⚠️ **1.19 的 CR 裁决记录**逐字写着「`.is-locked` 的源码位置排在 `.is-picked`
+ *   **之前**，免得洗掉 AC-D2 的主反馈」—— 而第六轮为了修 `.is-degraded` 那一侧
+ *   把本规则**整条挪到了文件末尾**，**顺带挪过了 `.is-right` / `.is-wrong`**。
+ *   ⇒ 与其把规则挪回前面（那会让 `locked` 与 `degraded` 的相对顺序再翻一次），
+ *     **本规则改用 `:not()` 让开** —— 与本文件对 `.is-degraded` 的修法**同一形状**：
+ *     **让不该参与竞争的那条根本不匹配**，而不是靠顺序去赢。
+ *   ⇒ 于是：`is-right` / `is-wrong` 时本规则不匹配 ⇒ 绿底/红底**赢**；
+ *     `is-picked` 的深色描边也赢得回来（`:disabled` 那条只设 `cursor`）。
+ * ⚠️ **守卫**：G177 只解 `opacity`、只针对 `is-degraded` + `is-locked` 这一对
+ *   ⇒ **`background` 这一列、`right`/`wrong` 这一对此前完全无守卫**。
+ *   ⇒ 已补一条同形状的层叠守卫（解 `background` 的胜者）。
  */
-.option-card.is-locked {
+.option-card.is-locked:not(.is-right):not(.is-wrong) {
   background: #eceff1;
   border-color: var(--color-overlay-blocked);
   cursor: default;
@@ -348,6 +422,26 @@ function onPick(): void {
   width: 100%;
   height: 100%;
   aspect-ratio: 1 / 1;
+}
+
+/*
+ * 🔥📎 **2026-10-22：破图却仍必须可点时的排版。**
+ *
+ * ⚠️ **为什么要改成列向**：`.option-card__placeholder` 逐字是 `width: 100%; height: 100%`
+ *   ⇒ 在默认的**行**向 flex 里它会占满整张卡 ⇒ 再塞一个词文本就把卡撑爆。
+ *   ⇒ 这一态改成**列**向（占位块在上、词文本在下）。
+ * ⚠️ **占位块为什么用定尺寸而不是百分比**：它的高度由内容推出，
+ *   百分比在「高度由内容推出」的容器里会形成循环依赖
+ *   （与 1.10 那个 `width: auto` / `height: auto` 双 auto 的坑同型）。
+ */
+.option-card.is-broken-pickable {
+  flex-direction: column;
+  gap: 6px;
+}
+
+.option-card.is-broken-pickable .option-card__placeholder {
+  width: 56px;
+  height: 56px;
 }
 
 /*

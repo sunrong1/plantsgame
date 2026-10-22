@@ -70,6 +70,7 @@ import handDeckSource from '../../src/components/hand/HandDeck.vue?raw'
 import handCardSource from '../../src/components/hand/HandCard.vue?raw'
 import typesSource from '../../src/core/types.ts?raw'
 import { contrastMsg, contrastRatio, cssDecl, declValue, extractColor, overBlack, resolveColor, rgbaAlpha, stripComments as sharedStripComments, tokenValue } from '../helpers/contrast'
+import { styleBlockOf } from '../helpers/css-cascade'
 
 enableAutoUnmount(afterEach)
 
@@ -1501,4 +1502,183 @@ function g39Violation(sources: readonly { readonly name: string; readonly source
     }
   }
   return defects
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// 🔥📎 G255 —— 触摸三件事（Epic 1 集成层检视，2026-10-22）
+//
+// ── 守的是什么 ──────────────────────────────────────────────────────────────
+// ① **`.battle-cell` 必须有 `touch-action: none`**
+//    全仓的触摸基线只给了 `button, .touch-target`（`src/styles/base.css` 的
+//    `touch-action: manipulation`），而 45 个战场格是**裸 `<div>`**
+//    ⇒ 整个游戏里唯一的主触摸目标没有 `touch-action`。
+//    ⇒ 页面可滚时浏览器把手势判成滚动起点 ⇒ 派发 **`pointercancel` 而不是 `pointerup`**
+//    ⇒ `onCellPointerCancel` 清掉候选格 ⇒ **点按什么都没发生**：
+//    预览的绿光消失、没种塔、没有拒绝提示 ⇒ 对 4–8 岁孩子读起来就是「游戏坏了」。
+//    ⚠️ `none` 而不是 `manipulation`：后者**允许**平移 ⇒ 也就允许浏览器判成滚动。
+//
+// ② **`pointerdown` 必须解除触摸指针的隐式捕获**
+//    Pointer Events 规范对**触摸指针**规定「隐式指针捕获」（`pointerdown` 的目标
+//    自动成为捕获目标），Chromium / Safari / WebKit 都实现
+//    ⇒ 触摸时 `pointerup` **永远回到按下的那一格**
+//    ⇒ `onCellPointerUp` 里的 `sameCell` **恒为 true**
+//    ⇒ **AC-D1 / AC-E1 的「落在别处 ⇒ 只移预览，不种」在目标机型（平板）上整条不可达**。
+//
+// ③ **窗口级 `pointerup` 必须收束「松手处不是任何一格」**
+//    孩子按住一格、原地不动、却在别处松手 ⇒ 指针**从未离开棋盘**
+//    ⇒ `pointerleave` 不冒 ⇒ 候选格留在原地 ⇒ **射程覆盖层一直亮着**。
+//    ⚠️ 而窗口处理器**不能**无条件清：格子自己的处理器先跑（它把候选格移到新格，
+//      那正是 AC-E1 的「只移预览，不种」）⇒ 无条件清会让**预览永远不跟随手指**。
+//    ⇒ 它必须**先问「这一下是不是格子自己处理的」**。
+//
+// 📎 **变异实测（R-51）**：
+//   · **M305** 把 `.battle-cell` 的 `touch-action: none` 改成 `manipulation` ⇒ 全量 **1 红**，在 G255
+//   · **M306** 去掉 `onCellPointerDown` 里的 `releaseImplicitCapture(event)` ⇒ 全量 **1 红**，在 G255
+//   · **M307** 不再注册窗口级 `pointerup` 监听 ⇒ 全量 **1 红**，在 G255
+// ══════════════════════════════════════════════════════════════════════════════
+
+describe('G255 —— 触摸三件事：touch-action / 解除隐式捕获 / 窗口级 pointerup 收束', () => {
+  it('① `.battle-cell` 必须写 `touch-action: none`（否则浏览器把手势判成滚动 → pointercancel）', () => {
+    const style = stripComments(styleBlockOf(battleFieldSource))
+    const at = style.indexOf('.battle-cell {')
+    expect(at, '判据范围消失：找不到 `.battle-cell` 那条 CSS 规则').toBeGreaterThan(-1)
+    const close = style.indexOf('}', at)
+    expect(close, '`.battle-cell` 的规则块没有闭合的 `}` —— 判据切不出声明体').toBeGreaterThan(at)
+    const body = style.slice(at, close)
+    expect(
+      body,
+      '🔴 `.battle-cell` 没有 `touch-action: none` —— ' +
+        '页面可滚时浏览器把手势判成滚动起点 ⇒ 派发 `pointercancel` 而不是 `pointerup` ⇒ ' +
+        '候选格被清掉 ⇒ **点按什么都没发生**（预览的绿光消失、没种塔、没有拒绝提示）。\n' +
+        '⚠️ 必须是 `none` 而不是 `manipulation`：后者**允许**平移 ⇒ 也就允许判成滚动。',
+    ).toMatch(/touch-action:\s*none\s*[;}]/)
+  })
+
+  it('② `pointerdown` 必须解除该指针的隐式捕获（否则触摸时 `pointerup` 永远回按下的那一格）', async () => {
+    const released: number[] = []
+    await withPointerCaptureStubs({ released, releaseThrows: false }, async () => {
+      reset({ sun: 1000, unlocked: [ENTRY_OF.direct] })
+      const field = mountField()
+      selectTowerCard(ENTRY_OF.direct)
+
+      await cellAt(field, ZOMBIE_ROW, 3).trigger('pointerdown', { pointerId: 42 })
+
+      expect(
+        released,
+        '🔴 `pointerdown` 没有解除隐式捕获 —— ' +
+          'Pointer Events 规范对**触摸指针**规定「`pointerdown` 的目标自动成为捕获目标」' +
+          '（Chromium / Safari / WebKit 都实现）⇒ 触摸时 `pointerup` **永远回到按下的那一格** ⇒ ' +
+          '`sameCell` 恒为 true ⇒ **AC-D1 / AC-E1 的「落在别处 ⇒ 只移预览，不种」在平板上整条不可达**：' +
+          '孩子从 A 滑到 B 松手 ⇒ 塔**种在 A**，而且没有任何拒绝反馈。',
+      ).toContain(42)
+    })
+  })
+
+  it('② 拿不到捕获时**不许阻断**（解除失败就让它继续隐式捕获，行为退回今天的样子）', async () => {
+    await withPointerCaptureStubs({ released: [], releaseThrows: true }, async () => {
+      reset({ sun: 1000, unlocked: [ENTRY_OF.direct] })
+      const field = mountField()
+      selectTowerCard(ENTRY_OF.direct)
+
+      await expect(
+        cellAt(field, ZOMBIE_ROW, 3).trigger('pointerdown', { pointerId: 7 }),
+        '解除捕获抛出的异常冒到了界面上 —— 孩子的点击路径上出现技术错误（NFR13）',
+      ).resolves.not.toThrow()
+      expect(
+        field.findAll('.battle-cell.is-candidate').length,
+        '解除捕获失败之后连候选格都没记下 —— 兜底过头了：解除失败只该「继续隐式捕获」，' +
+          '其余分支照旧',
+      ).toBe(1)
+    })
+  })
+
+  it('③ 松手处**不是任何一格**时：候选格与覆盖层都得收掉（覆盖层不许一直亮着）', async () => {
+    reset({ sun: 1000, unlocked: [ENTRY_OF.direct] })
+    const field = mountField()
+    selectTowerCard(ENTRY_OF.direct)
+
+    // 先按在**不能放**的格上 ⇒ 候选格不记、拒绝闪记下。
+    await cellAt(field, 0, 3).trigger('pointerdown')
+    expect(
+      field.findAll('.range-overlay.is-refused').length,
+      '按在不能放的格上却没有拒绝闪 —— 夹具前提不成立（这条判据是空的）',
+    ).toBe(1)
+
+    // 再按在**能放**的格上 ⇒ 候选格记下、覆盖层亮起。
+    await cellAt(field, ZOMBIE_ROW, 3).trigger('pointerdown')
+    expect(field.findAll('.range-overlay.is-in-range').length, '夹具前提不成立：候选格没记下').toBeGreaterThan(0)
+
+    // 孩子**原地不动、却在别处松手** ⇒ 指针从未离开棋盘 ⇒ `pointerleave` 不冒。
+    window.dispatchEvent(new MouseEvent('pointerup'))
+    // ⚠️ 必须等一拍：DOM 是响应式更新的，`dispatchEvent` 是**同步**的 ——
+    //   不等 nextTick 的话读到的仍是清之前的 DOM ⇒ 这条判据会**恒红**。
+    await nextTick()
+
+    expect(
+      field.findAll('.battle-cell.is-candidate').length,
+      '🔴 松手处不是任何一格时，候选格没收掉 —— ' +
+        '**射程覆盖层一直亮着**（一片「这里能放」的绿光），而什么也没种、卡也还选着 ⇒ ' +
+        '孩子面对一块「看起来已经武装好了」的盘 + 一个不响应的点击。',
+    ).toBe(0)
+    expect(
+      field.findAll('.range-overlay.is-in-range').length,
+      '🔴 覆盖层没收掉 —— 屏幕上仍是一片「这里能放」的绿光',
+    ).toBe(0)
+  })
+
+  it('③ 回归：松手处**就是某一格**时，预览必须跟着手指走（窗口处理器不许无条件清）', async () => {
+    // ⚠️ 这一条防的是「③ 的修法过头」：窗口处理器若无条件清，
+    //   格子自己的处理器刚把候选格移到 B，紧接着就被清掉 ⇒ 预览永远不跟随手指
+    //   ⇒ **AC-E1 又废一次**（AC-E1 逐字：「落在别处 ⇒ 只移预览，不种」）。
+    reset({ sun: 1000, unlocked: [ENTRY_OF.direct] })
+    const field = mountField()
+    selectTowerCard(ENTRY_OF.direct)
+
+    await cellAt(field, ZOMBIE_ROW, 3).trigger('pointerdown')
+    await cellAt(field, ZOMBIE_ROW, 5).trigger('pointerup')
+
+    expect(
+      field.findAll('.battle-cell.is-candidate').length,
+      '🔴 松手在另一格上时，候选格被清掉了 —— 预览不跟随手指 ⇒ AC-E1「只移预览，不种」不可达',
+    ).toBe(1)
+    expect(
+      inRangeKeys(field),
+      '🔴 预览跟到了错误的格子上（AC-E1 要求预览跟着手指走）',
+    ).toEqual([...coverCellsAt(ZOMBIE_ROW, 5, 'direct')].sort())
+  })
+})
+
+/**
+ * 临时给 `Element.prototype` 打上 `hasPointerCapture` / `releasePointerCapture` 的桩。
+ *
+ * ⚠️ **为什么需要打桩**：jsdom **不实现** Pointer Events ⇒ 这两个方法**根本不存在**
+ *   ⇒ 组件里那句 `typeof target.releasePointerCapture !== 'function'` 会直接早退
+ *   ⇒ 守卫会测到「一条永远早退的分支」而全绿（假绿）。
+ * ⇒ 桩让组件走**真实分支**；桩本身的行为由用例给（`releaseThrows` / `released`）。
+ *
+ * ⚠️ **用完必须还原**：这两个方法挂在 `Element.prototype` 上 ⇒ 泄漏到别的用例
+ *   会让别的守卫在「有桩的世界」里跑。
+ */
+async function withPointerCaptureStubs(
+  options: { readonly released: number[]; readonly releaseThrows: boolean },
+  run: () => Promise<void>,
+): Promise<void> {
+  const proto = Element.prototype as unknown as Record<string, unknown>
+  const originalHas = proto.hasPointerCapture
+  const originalRelease = proto.releasePointerCapture
+  proto.hasPointerCapture = function hasPointerCapture(): boolean {
+    return true
+  }
+  proto.releasePointerCapture = function releasePointerCapture(pointerId: number): void {
+    options.released.push(pointerId)
+    if (options.releaseThrows) throw new Error('NotFoundError: 该指针没有捕获')
+  }
+  try {
+    await run()
+  } finally {
+    if (originalHas === undefined) delete proto.hasPointerCapture
+    else proto.hasPointerCapture = originalHas
+    if (originalRelease === undefined) delete proto.releasePointerCapture
+    else proto.releasePointerCapture = originalRelease
+  }
 }

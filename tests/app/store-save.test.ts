@@ -310,6 +310,81 @@ describe('AC-D4 —— 恢复失败安全降级：不抛、不弹窗、照常开
   })
 })
 
+// ══════════════════════════════════════════════════════════════════════════════
+// 🔥📎 G260 —— 读档路径不许把异常抛给孩子（Epic 1 集成层检视，2026-10-22）
+//
+// ── 守的是什么 ──────────────────────────────────────────────────────────────
+// **读档不走工厂**：存档里的 `currentGame` 是**外部数据**，
+// 而 `parseSaveFile` 逐字声明「只校验『是对象或 null』，**不深校验**对局」
+// ⇒ 一份 `currentGame: {}` 能通过它 ⇒ 随后的 `restored.deck.map` 抛 TypeError。
+//
+// ⚠️ **此前那两步规范化算在 `try` 之外** ⇒ 那个 TypeError
+//   **逃出 `restoreFromSave` → 逃出 `enterLevel()` → 逃出 `StartView.onStart()`**
+//   ⇒ **孩子的点击路径上出现技术错误**（NFR13），
+//   而且存档**永远不会被重写** ⇒ 每次「开始游戏」重复同样的失败。
+//
+// ⚠️ 第二条：**「这个单元录了没有」**。
+//   `assertInvariants` 现在校验 `unitNumber` 是 1 基正整数，
+//   但**守不了「999 这个单元录了没有」** —— 那是**内容层**的知识
+//   （`core/` 不 import `content/`）⇒ 由 app 层在读档路径上问一次。
+//   ⇒ 否则孩子**答第一题**时 `sunPerCorrectFor(999)` 抛
+//   「单元 999 落在未填档位上」⇒ 那时异常会逃出点击处理器，
+//   **每一次答题都同样失败**，界面上只有 console 报错、没有孩子能懂的话。
+//
+// 📎 **变异实测（R-51）**：
+//   · **M297** 把那两步规范化搬回 `try` 之外 ⇒ 全量 **1 红**，在 G260
+//   · **M298** 去掉「这个单元录了没有」那一问 ⇒ 全量 **1 红**，在 G260
+// ══════════════════════════════════════════════════════════════════════════════
+
+describe('G260 —— 读档路径上的异常一律降级，不许冒到孩子的点击路径上', () => {
+  it('🔴 `currentGame: {}`（结构合法但内容是空对象）⇒ 不抛，且降级为从头开始', () => {
+    // ⚠️ `{}` 能通过 `parseSaveFile`（它只校验「是对象或 null」）——
+    //   这正是它能一路走到 `restored.deck.map` 的原因。
+    storage.data.set(
+      saveApi.SAVE_KEY,
+      JSON.stringify({
+        schemaVersion: saveApi.SAVE_SCHEMA_VERSION,
+        savedAt: 1_700_000_000_000,
+        progress: busyProgress,
+        currentGame: {},
+      }),
+    )
+
+    expect(
+      () => store.enterLevel(),
+      '🔴 `currentGame: {}` 的存档把异常抛到了「开始游戏」的点击路径上 —— ' +
+        '架构逐字：孩子面前永不出现技术错误（NFR13）；' +
+        '而且存档**永远不会被重写** ⇒ 每次「开始游戏」重复同样的失败',
+    ).not.toThrow()
+    expect(store.view.value, '降级也必须照常进关（不能停在开始界面）').toBe('level')
+    expect(store.state.value.hearts, '降级后的对局必须是初始那一局').toBe(3)
+    expect(store.state.value.turn).toBe(1)
+  })
+
+  it('🔴 `currentGame` 属于**未录入的单元** ⇒ 不抛，且在读档那一刻就降级', () => {
+    const bogus: State = { ...freshState(), unitNumber: 99 }
+    seedSave(busyProgress, bogus)
+
+    expect(
+      () => store.enterLevel(),
+      '🔴 未录入单元的存档把异常抛给了孩子 —— ' +
+        '而且这条异常**不会**在读档时抛（`assertInvariants` 只守形状，不守「录了没有」）⇒ ' +
+        '它会等到孩子**答第一题**时才从 `sunPerCorrectFor(999)` 抛出来 ⇒ ' +
+        '**每一次答题都同样失败**，界面上只有 console 报错、没有孩子能懂的话',
+    ).not.toThrow()
+    expect(store.state.value.unitNumber, '降级后的战场必须是已录入的单元').toBe(1)
+  })
+
+  it('回归：合法的在途对局**照旧恢复**（不许被这两道新守卫顺手降级掉）', () => {
+    const game = advancedState()
+    seedSave(busyProgress, game)
+
+    expect(() => store.enterLevel()).not.toThrow()
+    expect(store.state.value.turn, '合法对局被降级了 —— 孩子的进度白丢了').toBe(game.turn)
+    expect(store.state.value.hearts).toBe(game.hearts)
+  })
+})
+
 /**
  * 🚨📎 **`[CR]` 2026-10-21 第二轮新增：G245 —— AC-C5 的**第二半句**此前**没有任何守卫**。**
  *

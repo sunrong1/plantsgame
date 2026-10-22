@@ -52,7 +52,7 @@
  *   键入 `dict[col]` **静默吞僵尸**的坑，得出过错的失败门槛。
  */
 
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 
 import {
   COLS,
@@ -258,13 +258,49 @@ function blockedAt(cell: Cell): boolean {
  *    「点了个这里不能放」已经是一个信号，再把卡也取消就是两个信号叠一起，更难懂）
  * ③ 能放 ⇒ 记指向格，画覆盖
  */
-function onCellPointerDown(cell: Cell): void {
+function onCellPointerDown(cell: Cell, event: PointerEvent): void {
+  // 🔥📎 **2026-10-22（Epic 1 集成层检视）：解除触摸指针的**隐式捕获**。**
+  //   ⚠️ **为什么必须解除**：Pointer Events 规范对**触摸指针**规定「隐式指针捕获」
+  //   （`pointerdown` 的目标自动成为捕获目标），Chromium / Safari / WebKit 都实现
+  //   ⇒ 触摸时 `pointerup` **永远回到按下的那一格**
+  //   ⇒ `onCellPointerUp` 里的 `sameCell` **恒为 true**
+  //   ⇒ **AC-D1 / AC-E1 的「落在别处 ⇒ 只移预览，不种」在目标机型（平板）上整条不可达**：
+  //     孩子从 A 滑到 B 松手 ⇒ 塔**种在 A**，而且没有任何拒绝反馈。
+  //   ⚠️ 另有一条：预览也**不跟随手指**（全仓无 `pointermove` —— 守卫 G39 明令
+  //   「无拖拽 / 无 `pointermove`」，而目标设备没有 hover）。
+  //   ⇒ 显式解除隐式捕获，`pointerup` 才会派发到**松手处**的那一格，
+  //     AC-E1 那条分支才在平板上真的可达。
+  //   ⚠️ **解除失败不许阻断**（本函数其余部分照旧）—— 拿不到捕获就退回隐式捕获，
+  //   行为退回到今天的样子，不会更糟。
+  releaseImplicitCapture(event)
   if (selectedEntryId.value === null) return
   if (blockedAt(cell)) {
     refusedKey.value = cell.key
     return
   }
   candidate.value = { row: cell.row, col: cell.col }
+}
+
+/**
+ * 解除该元素对这一指针的**隐式捕获**。
+ *
+ * ⚠️ **为什么单独一个函数**：它要在两个 `pointerdown` 处理器里用
+ *   （战场格 + 手牌区？—— 目前只有战场格），而它自己的失败处理有三四行，
+ *   混在业务逻辑里会淹没主线。
+ *
+ * ⚠️ **`releasePointerCapture` 会抛**（指针已释放 / 元素没有该指针的捕获）⇒ 必须兜。
+ *   ⚠️ **`hasPointerCapture` 对隐式捕获返回 true**，所以它是「有没有」的可靠判据；
+ *   而某些实现对**隐式**捕获的 `releasePointerCapture` 支持不一 ⇒ 兜住。
+ */
+function releaseImplicitCapture(event: PointerEvent): void {
+  const target = event.target
+  if (target === null || typeof (target as Element).releasePointerCapture !== 'function') return
+  try {
+    if (!(target as Element).hasPointerCapture(event.pointerId)) return
+    ;(target as Element).releasePointerCapture(event.pointerId)
+  } catch {
+    // 解除失败就让它继续隐式捕获 —— 行为退回到今天的样子，不阻断交互。
+  }
 }
 
 /**
@@ -319,6 +355,58 @@ function onCellPointerCancel(cell: Cell): void {
 }
 
 /**
+ * 🔥📎 **2026-10-22（Epic 1 集成层检视）：指针**离开棋盘**时收束候选格。**
+ *
+ * ⚠️ **为什么需要**：`.battle-grid` 上只有 `@click.self`（点空白才清），
+ *   而 `candidate` 只被 `onCellPointerCancel` 与 `selectedEntryId` 的 watch 清。
+ *   ⇒ 孩子按住一格、把指针**拖出棋盘**（到 HUD / 题面卡 / 手牌区）再松手
+ *   ⇒ 事件一个都到不了格子处理器 ⇒ `candidate` 留在原地
+ *   ⇒ **射程覆盖层一直亮着**（一片「这里能放」的绿光），
+ *   而什么也没种、卡也还选着 ⇒ 孩子面对一块「看起来已经武装好了」的盘 + 一个不响应的点击。
+ *   ⚠️ 而 `onCellPointerCancel` 的注释**逐字把「浏览器判定为滚动」列为成因之一**
+ *   —— 成因已知，但没在触发源上设防。
+ *
+ * ⚠️ **为什么用 `pointerleave` 而不是 `pointerleave` 挂在格子上**：
+ *   指针从格子 A 滑到格子 B 时，A 上会冒 `pointerleave` —— 那时**不能**清
+ *   （AC-E1 的预览要跟着手指走）。挂在**棋盘**上就不会：只有**离开整片棋盘**才冒。
+ */
+function onGridPointerLeave(): void {
+  if (candidate.value === null) return
+  candidate.value = null
+  refusedKey.value = null
+}
+
+/**
+ * 🔥📎 **2026-10-22：窗口级 `pointerup` —— 收束「松手处不是任何一格」的情况。**
+ *
+ * ⚠️ **为什么 `pointerleave` 不够**：孩子**按住一格、原地不动、却在别处松手**
+ *   （手指压着格子、直接把手指移到 HUD 上松手 —— 位移事件仍会冒，
+ *   但**按下与抬起之间完全没动**的那一种不会）⇒ 指针**从未离开棋盘**
+ *   ⇒ `pointerleave` 不冒 ⇒ `candidate` 留在原地 ⇒ 覆盖层一直亮着。
+ *
+ * ⚠️ **为什么不能用「窗口级 pointerup 无条件清」**：
+ *   指针从格子 A 滑到格子 B 松手时，**格子 B 的处理器先跑**
+ *   （它把 `candidate` 移到 B —— 那正是 AC-E1 的「只移预览，不种」）
+ *   ⇒ 窗口处理器随后无条件清 ⇒ **预览永远不跟随手指**，AC-E1 又废一次。
+ *   ⇒ 所以窗口处理器要**先问「这一下是不是格子自己处理的」**：
+ *   事件的落点仍在格子里（`closest('.battle-cell')`）⇒ 交给格子，不插手。
+ */
+function onWindowPointerUp(event: PointerEvent): void {
+  if (candidate.value === null) return
+  const target = event.target
+  if (target instanceof Element && target.closest('.battle-cell') !== null) return
+  candidate.value = null
+  refusedKey.value = null
+}
+
+onMounted(() => {
+  window.addEventListener('pointerup', onWindowPointerUp)
+})
+onUnmounted(() => {
+  window.removeEventListener('pointerup', onWindowPointerUp)
+})
+
+/**
  * AC-D2②：点**网格之外**的空白取消选中。
  *
  * ⚠️ `.self` 修饰符：事件目标必须**就是** `.battle-grid` 容器本身。
@@ -363,6 +451,7 @@ watch(selectedEntryId, () => {
   <div
     class="battle-grid"
     @click.self="onGridBlank"
+    @pointerleave="onGridPointerLeave"
   >
     <div
       v-for="cell in cells"
@@ -376,7 +465,7 @@ watch(selectedEntryId, () => {
       }"
       :data-row="cell.row"
       :data-col="cell.col"
-      @pointerdown="onCellPointerDown(cell)"
+      @pointerdown="onCellPointerDown(cell, $event)"
       @pointerup="onCellPointerUp(cell)"
       @pointercancel="onCellPointerCancel(cell)"
       @animationend="onCellAnimationEnd"
@@ -519,6 +608,26 @@ watch(selectedEntryId, () => {
      分隔靠 gap 而不是靠色块 —— 45 个色块会把画面切碎。 */
   background-color: var(--color-bg);
   border-radius: 2px;
+  /*
+   * 🔥📎 **2026-10-22（Epic 1 集成层检视）：`touch-action: none`。**
+   *
+   * ⚠️ **为什么战场格需要它**：全仓的触摸基线只给了 `button, .touch-target`
+   *   （`src/styles/base.css` 的 `touch-action: manipulation`），
+   *   而 45 个战场格是**裸 `<div>`** ⇒ **整个游戏里唯一的主触摸目标没有 `touch-action`**。
+   *   ⇒ 页面可滚（竖屏 `.level-view` 有 `overflow-y: auto`；横屏矮视口也溢出）时，
+   *   浏览器把手势判成滚动起点 ⇒ 派发 **`pointercancel` 而不是 `pointerup`**
+   *   ⇒ `onCellPointerCancel` 清掉 `candidate` 与 `refusedKey`
+   *   ⇒ **点按什么都没发生**：预览的绿光消失、没种塔、没有拒绝提示。
+   *   ⇒ 对 4–8 岁孩子（手指精度有限）这读起来就是「游戏坏了」——
+   *     与 1.19 CR 那条「假可点」同类。
+   *
+   * ⚠️ **`none` 而不是 `manipulation`**：`manipulation` **允许**平移（滚动），
+   *   也就**允许**浏览器把手势判成滚动 ⇒ `pointercancel` 照旧会发生。
+   *   只有 `none` 才保证「按在格子上 ⇒ 这一下就是点格子，不会变成滚动」。
+   *   ⚠️ 代价：从格子上起手**拖不动页面** ⇒ 竖屏下滑要**从格子以外**起手
+   *     （HUD / 题面卡 / 手牌区 / 网格间隙），那些地方仍可正常滚动。
+   */
+  touch-action: none;
 }
 
 /*

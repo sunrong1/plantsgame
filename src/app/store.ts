@@ -250,6 +250,31 @@ function initialState(): State {
  */
 export const state: Ref<State> = ref(initialState())
 
+/**
+ * 🔥📎 **2026-10-22（Epic 1 集成层检视 / 裁决）：破图却必须仍可点的那个选项。**
+ *
+ * ⚠️ **它为什么存在**：AC-E4（1.18）要求「正确项的词图加载失败 ⇒ **整题过滤**，
+ *   该词不计入本局题单（否则孩子会遇到一题永远答不对的题）」。
+ *   实现照做了 —— 但**题单被抽空时跳不动**：
+ *   `reducer.applySkip` 与门面的第 ④ 道守卫**双双**拒绝
+ *   （前者逐字：「题单里已经没有别的题可考了 …… 而孩子一个词都没答」）。
+ *   ⇒ 于是那道题**留在屏上**，而它的正确项**因破图被 `:disabled`** ⇒
+ *   **孩子只可能答错** ⇒ 心数耗尽 `level-failed` ⇒ 重打 ⇒ 同一张 404 ⇒
+ *   **这一关永远通不了**（软锁）。
+ *
+ * ⚠️ **为什么是 `entryId` + `optionId` 两个字段**：
+ *   `optionId` **跨题单会重复** —— 单词卡的四个选项就是**另外四个词**的 id
+ *   （`u1-hello` 那道题的选项里有 `u1-goodbye`）⇒ 只记 `optionId` 会让
+ *   **另一道题的某个选项**被误判成「破图仍可点」。
+ *   ⇒ 两个字段都要对上。
+ *
+ * ⚠️ **它是 app 层的瞬时态，不进 `State`**：
+ *   `State` 会被序列化进存档，而这条的语义是「**这一局这一张图**坏了」——
+ *   重新载入时那张图**还会再坏一次**，图片的 `error` 事件会重新触发本门面。
+ *   ⇒ 不存档，少一个 `SCHEMA_VERSION` 的迁移面。
+ */
+export const brokenButPickableOption: Ref<{ entryId: string; optionId: string } | null> = ref(null)
+
 // ── 视图状态（Story 1.10 / 裁决 1）────────────────────────────────────────
 //
 // ⚠️ **`view` 是 UI 态，不是战斗态。** 它：
@@ -390,13 +415,23 @@ function restoreFromSave(): void {
   //   ⚠️ **两条补齐的先后无所谓，但都必须在 `assertInvariants` 之前** ——
   //     缺字段的旧存档一旦落进下面那个 try，catch 会把**进度一起清空**（AC-D4），
   //     而「升级回来发现要从头再学」是本作最不可接受的失败形态。
-  const normalised: State = backfillLegacyBuildPhase(
-    dropOutOfDeckSkipped(
-      Array.isArray(restored.skippedEntryIds) ? restored : { ...restored, skippedEntryIds: [] },
-    ),
-  )
-
   try {
+    // 🔥📎 **2026-10-22（Epic 1 集成层检视）：这两步规范化搬进 `try` 之内。**
+    //   此前 `dropOutOfDeckSkipped`（`restored.deck.map`）与
+    //   `backfillLegacyBuildPhase`（读 `state.phase.kind`）都算在 **try 之外**
+    //   ⇒ 一份 `currentGame: {}` 的存档能通过 `parseSaveFile`
+    //   （它逐字声明**不深校验** `currentGame`，只校验「是对象或 null」）
+    //   → `restored.deck.map` 抛 TypeError → **逃出 `restoreFromSave`**
+    //   → 逃出 `enterLevel()` → 逃出 `StartView.onStart()`
+    //   ⇒ **孩子的点击路径上出现技术错误**（NFR13），
+    //   而且存档**永远不会被重写** ⇒ 每次「开始游戏」重复同样的失败。
+    //   ⚠️ 1.19 `[CR]` 第四轮已经把 `advanceLegacyRoundOver` 搬进 try
+    //   （同一族问题的先例）—— 这一轮把剩下两步也搬进来，口径统一。
+    const normalised: State = backfillLegacyBuildPhase(
+      dropOutOfDeckSkipped(
+        Array.isArray(restored.skippedEntryIds) ? restored : { ...restored, skippedEntryIds: [] },
+      ),
+    )
     // ⚠️ **不变量违反时让 `core/` 照抛**（NFR12 第一层：「逻辑层必须 `throw`，禁止 catch」）。
     //   是**这一层**去接住它并降级 —— 不是让 `core/` 学会不抛。
     //   存档是外部数据，而 `assertInvariants` 是为「合法状态空间」写的；
@@ -408,6 +443,19 @@ function restoreFromSave(): void {
     //   放在外面的话，一份**结构不合法**的 round-over 存档会当场抛穿
     //   `restoreFromSave`，而这一层存在的全部意义就是「孩子看到一局新开局，
     //   不是一个技术错误」（AC-D4 / NFR13）。
+    //
+    // 🔥📎 **2026-10-22：补「这个单元**录了没有**」这一问。**
+    //   `assertInvariants` 现在校验 `unitNumber` 是 1 基正整数，
+    //   但**守不了「999 这个单元录了没有」** —— 那是**内容层**的知识
+    //   （`core/` 不 import `content/`）⇒ 由本层按 `restoreNextUnit`
+    //   的现成先例（`unitIsRecorded`）问一次。
+    //   ⇒ 一份 `unitNumber: 999` 的存档在**读档那一刻**就被降级，
+    //   而不是等孩子答第一题时 `sunPerCorrectFor(999)` 抛
+    //   「单元 999 落在未填档位上」—— 那时异常会逃出点击处理器，
+    //   **每一次答题都同样失败**，界面上只有 console 报错、没有孩子能懂的话。
+    if (!UNITS.some((unit) => unit.unitNumber === normalised.unitNumber)) {
+      throw new Error(`存档里的对局属于未录入的单元 ${normalised.unitNumber}`)
+    }
     state.value = assertInvariants(advanceLegacyRoundOver(normalised))
   } catch (err) {
     // AC-D4：安全降级为「从头开始」，**不弹窗、不 alert、不抛**。
@@ -440,8 +488,33 @@ function restoreFromSave(): void {
     //     而这也正是 AC-D4 要的「**一局新开局**」——旧那局非法，本来就该丢掉。
     //   ⚠️ `buildStateFor` 自己会抛（内容数据坏了）——那时**不能**用一个技术错误
     //   换另一个技术错误（NFR13）⇒ 保留降级前那份 state，并在日志里说清楚。
+    // 🔥📎 **2026-10-22：单元号改从**存档的 progress**取，不再取 `state.value.unitNumber`。**
+    //   此前逐字是 `buildStateFor(state.value.unitNumber)` —— 而抛错发生在
+    //   `state.value = assertInvariants(...)` **之前** ⇒ 此刻 `state.value`
+    //   还是 `store.ts:241` 的 `ref(initialState())`，**恒为单元 1**。
+    //   ⇒ 重建出来的对局永远是**单元 1 的题单**，而 `progress.value` 保留的是
+    //   存档里的 `currentUnitIndex`（可能指向单元 2）
+    //   ⇒ **跨局进度与战场单元号分家**：进度条写着「21/37」，
+    //   战场却是从头开始的单元 1。
+    //   ⇒ 现在按**存档的 progress** 取单元号，与 `restoreNextUnit` 同一口径
+    //   （`currentUnitIndex` 是 0 基，`State.unitNumber` 是 1 基 ⇒ `+1`）。
+    //
+    // ⚠️ **progress 指向的单元没录时，回落到「重切首个单元」而不是「保持当前战场」**：
+    //   「保持当前战场」那份是**开机时按空 progress 切的**切片
+    //   ⇒ 孩子会被喂一整局**自己已经掌握**的题（AC-B8「第 2 局的题单与第 1 局零交集」
+    //   在这条路径上恒不成立）⇒ 重切才修得了。
+    const progressUnitNumber = saveFile.progress.currentUnitIndex + 1
+    const progressUnitRecorded = UNITS.some((unit) => unit.unitNumber === progressUnitNumber)
+    const targetUnitNumber = progressUnitRecorded ? progressUnitNumber : FIRST_UNIT_NUMBER
+    // ⚠️ 回落这件事**并进下面那条 WARN**（不单独再记一条）——
+    //   「降级」是**一次**事件，单元号的选择是它的**一部分**，不是第二件事。
+    let rebuildNote = ''
     try {
-      state.value = buildStateFor(state.value.unitNumber)
+      state.value = buildStateFor(targetUnitNumber)
+      if (!progressUnitRecorded) {
+        rebuildNote =
+          `（progress 指向单元 ${progressUnitNumber}，该单元未录入，已回落单元 ${targetUnitNumber}）`
+      }
     } catch (rebuildError) {
       const reason = rebuildError instanceof Error ? rebuildError.message : String(rebuildError)
       console.warn(
@@ -450,7 +523,8 @@ function restoreFromSave(): void {
       )
     }
     console.warn(
-      `[save] 存档里的对局不合法，已退回从头开始（**跨局进度保留**）：${describeRestore(err)}`,
+      `[save] 存档里的对局不合法，已退回从头开始（**跨局进度保留**）` +
+        `${rebuildNote}：${describeRestore(err)}`,
     )
     // 📎 `[CR]` 2026-10-21（Story 1.15 评审）：把这件事登记进降级表。
     //
@@ -831,7 +905,11 @@ export function applyAction(action: Action): void {
  *        先问一遍，所以正常路径不会有异常冒到界面上（NFR13）」——
  *        **那句话是假的**：门面没问。这是本条守卫存在的全部理由。
  *      ⇒ 现在门面**自己先问一遍**（用与 `applySkip` **同一个** `nextQuestion`），
- *        抽不出题就**什么都不做**（那道题留在屏幕上，图片破着）。
+ *        抽不出题就**不走跳过那条路**。
+ *        🔥📎 **2026-10-22 变更**：此前逐字是「抽不出题就**什么都不做**（那道题留在屏幕上，
+ *        图片破着）」—— 而那道题的**正确项已因破图被禁用** ⇒ 孩子只可能答错
+ *        ⇒ 心数耗尽 `level-failed` ⇒ 重打 ⇒ 同一张 404 ⇒ **这一关永远通不了**（软锁）。
+ *        现在改为「**破图的正确项保持可点**」（裁决，见 {@link brokenButPickableOption}）。
  *
  * ⚠️ **幂等**：一道题只跳一次。跳完之后后续上报带着的是已被换掉的题的 id，
  *   由 ② 丢掉。
@@ -850,7 +928,19 @@ export function reportImageFailure(optionId: OptionId): void {
   //     顺序反了的话这里会取到「当前这道题」（它此刻还不在 skipped 里）⇒
   //     永远抽不出 `null` ⇒ 这道守卫**恒绿**（R-51 第 1 类失效）。
   const skippedEntryIds = [...state.value.skippedEntryIds, question.entryId]
-  if (nextQuestion(state.value.deck, state.value.masteredEntryIds, skippedEntryIds) === null) return
+  if (nextQuestion(state.value.deck, state.value.masteredEntryIds, skippedEntryIds) === null) {
+    // 🔥📎 **2026-10-22（Epic 1 集成层检视 / 裁决）：这里原本是 `return` —— 而它是软锁的成因。**
+    //   此前逐字是「抽不出题就**什么都不做**（那道题留在屏幕上，图片破着）」。
+    //   ⚠️ 但那道题的**正确项已经因为破图被 `:disabled`**（`OptionCard.vue` 的
+    //   `:disabled="failed || locked"`）⇒ 孩子**只可能答错**
+    //   ⇒ 心数耗尽 `level-failed` ⇒ 重打 ⇒ 同一张 404 ⇒ **这一关永远通不了**。
+    //   ⇒ 裁决：**破图的正确项保持可点**（并用词文本呈现），
+    //   孩子照常答完这一题，本局照常结束 —— **不谎报通关**（那道题确实没答对过，
+    //   但它也不会再挡住孩子）。
+    //   ⚠️ AC-E4「整题过滤」在这**一种**情况下不再成立 ⇒ 已记 deviation（见本文件末尾）。
+    brokenButPickableOption.value = { entryId: question.entryId, optionId }
+    return
+  }
   applyAction(skipQuestion(question.entryId, optionId))
 }
 

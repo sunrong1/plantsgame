@@ -23,8 +23,10 @@
  * 那句对**新建**的对局成立，对**读档**不成立：
  * · 1.15 让 `restoreFromSave()` 把盘上的 `State` 整份喂回 `state.value`，
  *   `unitNumber` 因此**来自磁盘**（孩子换设备 / 内容回滚 / 别人手改 localStorage 都会遇到）。
- * · `assertInvariants()` **不检查 `unitNumber`** —— 实测：它只查 grid/towers/deck/
- *   phase/计数器/塔型/僵尸/实体 id，一处都没提单元号。
+ * · `assertInvariants()` **查不出「单元没录」** —— 实测（2026-10-22 复核）：
+ *   它**会**查 `unitNumber` 的**形状**（`assertUnitNumber` 要求 1 基正整数，
+ *   见 `src/core/reducer.ts`），但 `unitNumber: 99` 是**合法形状** ⇒ 照样放过；
+ *   而「单元 99 是不是真录了」是**内容层**的知识（`core/` 不 import `content/`）。
  *   ⇒ 一份 `unitNumber: 99` 但题单合法的存档**能通过不变量检查**，
  *   随后在**渲染期**撞上 `entriesOf(99)`。
  * · 而 computed 在渲染期抛 ⇒ Vue 整个 `LevelView` 渲染失败 ⇒ **整页白屏**，
@@ -81,8 +83,10 @@ describe('G221 —— unitTotal 取不到单元时退回 0（AC-D3 / deferred 1.
     const bogus: State = { ...freshState(), unitNumber: MISSING_UNIT }
     expect(
       () => assertInvariants(bogus),
-      '🔴 `assertInvariants` 开始查 unitNumber 了 —— 那么读档就拦得住，' +
-        '本文件守的「渲染期兜底」不再承重。前置塌了就该重新评估这条 try/catch 的去留。',
+      '🔴 `assertInvariants` 开始查「这个单元录了没有」了 —— 那么读档就拦得住，' +
+        '本文件守的「渲染期兜底」不再承重。前置塌了就该重新评估这条 try/catch 的去留。' +
+        '（注意：`assertUnitNumber` 只查**形状**，99 是合法正整数 ⇒ 它查不出「没录」，' +
+        '这条断言的判据是「不变量层拦不住未录单元」，不是「不变量层不碰 unitNumber」。）',
     ).not.toThrow()
   })
 
