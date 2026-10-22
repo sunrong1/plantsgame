@@ -23,6 +23,14 @@
  *   判据只来自产物的字面内容与浏览器量到的盒子，**不 import 任何游戏代码**
  *   （与 `verify-deploy.ts` 同款纪律）。
  *
+ * ── 📎 多视口量测矩阵（Story 1.19 第二轮）───────────────────────────────────
+ *   `scripts/measure-viewports.txt` 里逐个列出的视口会在那 5 条判据跑完之后
+ *   **各量一遍**，并打成一张表（选项数 / 列数 / 行数 / 题卡 / 战场 / 格子 /
+ *   可建格 / 横向溢出 / 内部滚动 / 文字溢出）。
+ *   ⚠️ **矩阵里的视口只量不判** —— 退出码只由 800×1280 那 5 条决定。
+ *   ⚠️ 量到的**选项数**随内容变（Story 2.4 之后单词卡是 2 个选项）⇒
+ *     「选项仍 4 列」这类旧基线必须重量，别拿旧文档的字面量当现状。
+ *
  * 用法：`npm run build && npm run verify:portrait [-- dist]`
  */
 
@@ -57,6 +65,7 @@ const MEASURE_SCRIPT = `
              w: Math.round(r.width), h: Math.round(r.height) }
   }
   function q(sel) { return document.querySelector(sel) }
+  function qa(sel) { return Array.prototype.slice.call(document.querySelectorAll(sel)) }
 
   function finish() {
     out.viewport = { w: window.innerWidth, h: window.innerHeight }
@@ -111,6 +120,8 @@ const MEASURE_SCRIPT = `
     out.level_view = view
       ? { rect: box(view), scrollHeight: view.scrollHeight, clientHeight: view.clientHeight }
       : null
+    // \`display\` 是竖屏/横屏两套布局的分水岭（竖屏 flex / 横屏 grid）⇒ 必须量。
+    out.level_view_display = view ? window.getComputedStyle(view).display : null
     out.battle_grid = box(grid)
     // 战场盒的宽高比 —— 「格子是不是被压扁了」的唯一判据（AC-D4）
     if (grid) {
@@ -125,6 +136,62 @@ const MEASURE_SCRIPT = `
       card.getBoundingClientRect().top >= 0)
     out.hud = box(hud)
     out.update_notice = box(notice)
+
+    // ⚠️ **选项区**（Story 1.19 第二轮量测）：选项数 / 列数 / 行数 / 是否全可见。
+    //   「选项仍 4 列」这类判据**只对旧形状成立**（Story 2.4 之后单词卡是 2 个选项），
+    //   ⇒ 必须量，不能靠旧文档里的字面量。
+    var optsEl = q('.question-card__options')
+    var opts = qa('.question-card__options .option-card')
+    var colsCss = optsEl ? window.getComputedStyle(optsEl).gridTemplateColumns : null
+    var optTops = [], optLefts = []
+    for (var oi = 0; oi < opts.length; oi++) {
+      var obr = opts[oi].getBoundingClientRect()
+      optTops.push(Math.round(obr.top))
+      optLefts.push(Math.round(obr.left))
+    }
+    function uniq(arr) {
+      var seen = [], res = []
+      for (var ui = 0; ui < arr.length; ui++) {
+        if (seen.indexOf(arr[ui]) < 0) { seen.push(arr[ui]); res.push(arr[ui]) }
+      }
+      return res
+    }
+    out.options = {
+      count: opts.length,
+      // ⚠️ computed 的 \`gridTemplateColumns\` 给的是**用掉的**轨道值（如 \`"384px 384px"\`）
+      //   ⇒ 拆成空格分隔的段数就是列数（比数 DOM 子元素更可靠：它数的是布局结果）。
+      grid_columns: colsCss,
+      column_count: colsCss ? colsCss.split(' ').filter(Boolean).length : 0,
+      row_count: uniq(optTops).length,
+      distinct_lefts: uniq(optLefts),
+      box: box(optsEl),
+      cards: opts.map(box),
+      // 「全在视口内」＝ 每一张都在视口矩形内（横屏 AC-H1 的口径）
+      all_visible: opts.every(function (el) {
+        var r = el.getBoundingClientRect()
+        return r.top >= 0 && r.bottom <= window.innerHeight &&
+               r.left >= 0 && r.right <= window.innerWidth
+      }),
+      // 文字溢出：\`scrollWidth > clientWidth\` ⇒ 词被裁掉（认读质量问题）
+      text_overflow: qa('.question-card__options .option-card__text').map(function (t) {
+        return {
+          text: (t.textContent || '').slice(0, 40),
+          scrollWidth: t.scrollWidth,
+          clientWidth: t.clientWidth,
+          overflow: t.scrollWidth > t.clientWidth
+        }
+      }).filter(function (x) { return x.overflow })
+    }
+
+    // 战场格子：单格尺寸 + 可建格数量（AC-H2 的「格子边长 ≥ --touch-min」靠前者）
+    var cellsAll = qa('.battle-cell')
+    out.battle_cell = cellsAll.length ? box(cellsAll[0]) : null
+    out.cells_total = cellsAll.length
+    out.plantable_cells = qa('.battle-cell:not(.is-house):not(.is-spawn)').length
+
+    // 横向溢出：文档级 + \`.level-view\` 自身级（后者是横屏那块 \`overflow-y: auto\` 的容器）
+    out.page_h_overflow = document.documentElement.scrollWidth > window.innerWidth
+    out.level_view_h_overflow = view ? view.scrollWidth > view.clientWidth : null
 
     // 提示条与 HUD 是否重叠（AC-C3 的「不得遮挡」口径）
     out.notice_overlap_px = (notice && hud)
@@ -181,6 +248,7 @@ type Measured = {
     notice_scope_attr?: string | null
   }
   level_view: { rect: Box | null; scrollHeight: number; clientHeight: number } | null
+  level_view_display: string | null
   battle_grid: Box | null
   battle_ratio: number | null
   question_card: Box | null
@@ -194,6 +262,22 @@ type Measured = {
     probe_left: number
     on_padding_box: boolean
   } | null
+  options: {
+    count: number
+    grid_columns: string | null
+    column_count: number
+    row_count: number
+    distinct_lefts: number[]
+    box: Box | null
+    cards: (Box | null)[]
+    all_visible: boolean
+    text_overflow: { text: string; scrollWidth: number; clientWidth: number; overflow: boolean }[]
+  }
+  battle_cell: Box | null
+  cells_total: number
+  plantable_cells: number
+  page_h_overflow: boolean
+  level_view_h_overflow: boolean | null
 }
 
 /* ── 判据清单 ────────────────────────────────────────────────────────────────
@@ -222,7 +306,9 @@ const CHECKS: Check[] = [
   },
   {
     name: 'question-card-完整落在视口内',
-    proves: '孩子看得见题（本脚本只量 800×1280 这一个视口）；证明不了小屏与横屏',
+    proves:
+      '孩子看得见题（**这 5 条判据只判 800×1280**；矩阵里的其余视口只量不判）；' +
+      '证明不了小屏与横屏',
     run: (m) => ({
       ok: m.question_card_fully_visible,
       why: m.question_card
@@ -440,6 +526,57 @@ function parseMeasured(dump: string): Measured {
   return JSON.parse(text) as Measured
 }
 
+/* ── 多视口量测模式（Story 1.19 第二轮 / Story 2.4 之后重测布局）────────────
+ * ⚠️ **这是「量测」，不是「判据」** —— 那 5 条判据逐字写着「本脚本只量 800×1280
+ *   这一个视口」，它们的语义与竖屏绑死。
+ *   ⇒ 额外视口**只产出数字**，供人抄进 story 文档的实测表；**不参与退出码**。
+ *
+ *   视口清单来自**仓库里的矩阵文件** `scripts/measure-viewports.txt`
+ *   （Story 1.19 的竖屏 7 个 + 横屏 7 个）⇒ 清单与代码分离，改设备只改文件。
+ *   文件不存在 ⇒ 只跑那 5 条判据（旧的快路径，语义不变）。
+ */
+const VIEWPORT_PATTERN = /^(\d{2,5})x(\d{2,5})$/i
+
+const MATRIX_FILE = resolve(REPO_ROOT, 'scripts/measure-viewports.txt')
+
+function parseViewportLine(s: string, where: string): { w: number; h: number } {
+  const m = VIEWPORT_PATTERN.exec(s)
+  if (m === null) {
+    throw new Error(`视口写法看不懂：「${s}」（${where}）。用 WxH，例如 1280x800`)
+  }
+  return { w: Number(m[1]), h: Number(m[2]) }
+}
+
+/** 读矩阵文件：一行一个 `WxH`，`#` 开头是注释，空行忽略。 */
+function readViewportMatrix(file: string): { w: number; h: number }[] {
+  if (!existsSync(file)) return []
+  return readFileSync(file, 'utf8')
+    .split('\n')
+    .map((raw, i) => ({ raw: raw.trim(), line: i + 1 }))
+    .filter((x) => x.raw !== '' && !x.raw.startsWith('#'))
+    .map((x) => parseViewportLine(x.raw, `${file} 第 ${x.line} 行`))
+}
+
+/** 把一次量测压成一行摘要（表格用）。⚠️ 字段名与 story 文档的实测表逐字对齐。 */
+function summaryOf(m: Measured): Record<string, unknown> {
+  return {
+    viewport: `${m.viewport.w}×${m.viewport.h}`,
+    display: m.level_view_display,
+    选项数: m.options.count,
+    列数: m.options.column_count,
+    行数: m.options.row_count,
+    选项全可见: m.options.all_visible,
+    题卡: m.question_card === null ? null : `${m.question_card.top}~${m.question_card.bottom}`,
+    题卡全可见: m.question_card_fully_visible,
+    战场: m.battle_grid === null ? null : `${m.battle_grid.w}×${m.battle_grid.h}`,
+    格子: m.battle_cell === null ? null : `${m.battle_cell.w}`,
+    可建格: `${m.plantable_cells}/${m.cells_total}`,
+    页面横溢出: m.page_h_overflow,
+    内部滚动: m.level_view === null ? null : m.level_view.scrollHeight > m.level_view.clientHeight,
+    文字溢出: m.options.text_overflow.length,
+  }
+}
+
 async function main(): Promise<void> {
   const distDir = resolve(REPO_ROOT, process.argv[2] ?? 'dist')
   if (!existsSync(distDir)) {
@@ -482,6 +619,19 @@ async function main(): Promise<void> {
 
   console.log(`\n[portrait] 实测值：${JSON.stringify(measured, null, 2)}`)
   console.log(`\n[portrait] ${CHECKS.length - failed}/${CHECKS.length} 项通过`)
+
+  // ── 多视口量测（**纯量测，不参与上面那 5 条判据**）──────────────────────
+  const extra = readViewportMatrix(MATRIX_FILE)
+  if (extra.length > 0) {
+    const rows: Record<string, unknown>[] = []
+    for (const vp of extra) {
+      const m = parseMeasured(await runBrowser(distDir, chromium, vp.w, vp.h))
+      rows.push(summaryOf(m))
+    }
+    console.log(`\n[portrait] 多视口实测（${extra.length} 个视口，纯量测，不参与通过判定）：`)
+    console.log(JSON.stringify(rows, null, 2))
+  }
+
   if (failed > 0) {
     console.error(
       '[portrait] 有项目不通过 —— 这不是「本机环境问题」，是竖屏布局真的坏了。\n' +

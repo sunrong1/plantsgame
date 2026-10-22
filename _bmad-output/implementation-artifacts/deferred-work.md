@@ -205,8 +205,10 @@
 | DF-192 | 待触发 | 未指派 | 横屏布局单开 story 改 `src/styles/responsive.css` 的 2×2 规则时（该规则被守卫 G169 钉死） | 横屏下选项网格被强制 2 列 ⇒ 3 个选项排成 **2 + 1 两行**；本 story 不动横屏布局 | [`df-192`](./deferred-details.md#df-192) |
 | DF-193 | 待裁决 | Story 2.9 | Story 2.9 试玩验收时决定 `NEAR_DUPLICATE_MAX_DISTANCE` 是否从 2 调高，或为 3–4 字母短词另立一条判据 | `scripts/validate-content.ts` 的 `NEAR_DUPLICATE_MAX_DISTANCE = 2` 会误杀「字面近、语义远」的 3–4 字母短词（如 `red` ~ `bed`） | [`df-193`](./deferred-details.md#df-193) |
 | DF-194 | 待排期 | 未指派 | 下次改 `src/styles/tokens.css` / `src/app/store.ts` / `src/core/types.ts` / `src/core/reducer.ts` / `src/styles/responsive.css` 的注释时一并更正 | `src/styles/tokens.css` 等 5 处注释仍逐字写「四个选项」，与单元 1 现在的 2 / 3 个选项不符 | [`df-194`](./deferred-details.md#df-194) |
-| DF-195 | 待裁决 | Story 1.19 / Story 2.9 | Story 1.19 或 2.9 试玩验收时决定是否打乱选项顺序（以及是否把「正确项位置」纳入内容校验） | `src/content/units/unit-01.json` 全部 37 张卡的正确项都在第 0 位 ⇒「永远点最左边」100% 命中 | [`df-195`](./deferred-details.md#df-195) |
+| DF-195 | 待裁决 | Story 1.19 / Story 2.9 | Story 1.19 或 2.9 试玩验收时决定是否打乱选项顺序（以及是否把「正确项位置」纳入内容校验）｜📎 **2026-10-23**：Story 1.19 的试玩模板已加「作答位置分布」前置栏 ⇒ 真机试玩会带回位置分布，届时据此裁决 | `src/content/units/unit-01.json` 全部 37 张卡的正确项都在第 0 位 ⇒「永远点最左边」100% 命中 | [`df-195`](./deferred-details.md#df-195) |
 | DF-196 | 待排期 | 未指派 | 下次给 `scripts/validate-content.ts` 补「文件名 ↔ `unitNumber` 交叉核对」时（单元 2 起录入时更值钱） | `scripts/validate-content.ts` 的 `loadUnitFiles` 不核对文件名与 `unitNumber` ⇒ `unit-05.json` 写 `unitNumber: 1` 也能过校验 | [`df-196`](./deferred-details.md#df-196) |
+| DF-197 | 待裁决 | Story 1.19 | 走 `[CC]` 更正 Story 1.19 的 AC-H1 / H3 / H4 字面（「四个选项」「2×2」「选项仍 4 列」→「卡型无关的表述」）；**2026-10-23 那轮只加了口径提示，未改判据正文**（R-33：改已交付 story 的 AC 正文属 `[CC]`） | Story 2.4 把选项数改成 2/3/3 ⇒ 1.19 组 H 的 AC 字面与 2026-10-18 的布局实测表全部过期 | [`df-197`](./deferred-details.md#df-197) |
+| DF-198 | 待排期 | Story 1.19 | Story 1.19 的 Task 7.3 —— 需要一次 **14 视口（竖屏 7 + 横屏 7）的真浏览器布局重测**；三条恢复路径任选其一：① 用户显式授权 Chromium 的 `--no-sandbox`；② 换一台能起**沙箱** Chromium 的机器；③ 在真机平板上量 | 本机 Chromium 以 root 跑**必须**带 `--no-sandbox`（未获授权），四条沙箱替代路径逐条试过全部不可用 ⇒ AC-H4 的「竖屏七个尺寸逐字相同」在 800×1280 之外**没有当天的实测值** | [`df-198`](./deferred-details.md#df-198) |
 
 ## 新增一条
 
