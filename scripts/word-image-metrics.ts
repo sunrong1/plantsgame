@@ -818,16 +818,34 @@ function collect(
 
 // ── 构图档位（AC-6）───────────────────────────────────────────────────────────
 
-export type CompositionTier = 'geometric' | 'abstract' | 'organic' | 'figure'
+export type CompositionTier = 'geometric' | 'abstract' | 'organic' | 'figure' | 'food' | 'scene'
 
-export const COMPOSITION_TIERS: readonly CompositionTier[] = ['geometric', 'abstract', 'organic', 'figure']
+export const COMPOSITION_TIERS: readonly CompositionTier[] = [
+  'geometric',
+  'abstract',
+  'organic',
+  'figure',
+  'food',
+  'scene',
+]
 
-/** §5.1 的两条区间。出处：`art-direction.md` §5.1（`[CR]` 按第一批 5 张实测分档）。 */
+/**
+ * §5.1 的三条区间。出处：`art-direction.md` §5.1
+ * （`[CR]` 按第一批 5 张实测分档；`[DS]` Story 2.5 按 DF-105 补 `food` / `scene` 两档）。
+ *
+ * ⚠️ **这张表是 `art-direction.md` §5.1 分档表的复制品** —— 两边分家时
+ *   G11 会拿「代码里的区间」去判「文档里承诺的图」，而守卫仍然全绿。
+ *   ⇒ 守卫 **G277** 逐字比对两张表（`tests/assets/word-image-composition.test.ts`）。
+ */
 export const TIER_EDGE_RANGES: Record<CompositionTier, readonly [number, number]> = {
   geometric: [60, 75],
   abstract: [60, 75],
   organic: [70, 85],
   figure: [70, 85],
+  // ⚠️ `food` 的带是 **20 个百分点**（几何/抽象只有 15）⇒ 判别力弱于其他档。
+  //   这不是笔误 —— §5.1 的代价列逐字写着为什么。
+  food: [60, 80],
+  scene: [70, 85],
 }
 
 /** §5.2：四边最小留白的下限，6% 边长。 */
@@ -844,12 +862,12 @@ export const CENTER_TOLERANCE_PERCENT = 6
  *
  * ⚠️ `[CR]` 2026-10-15：**只在根 `<svg>` 之前找**。
  *   旧实现扫的是整个文件，于是写在正文中段、甚至 `<desc>` 里的一行「构图档位：figure」
- *   都能满足 AC-6。档位决定 G11 取哪一组区间（60–75 还是 70–85），位置必须钉死。
+ *   都能满足 AC-6。档位决定 G11 取哪一组区间（60–75 / 70–85 / 60–80），位置必须钉死。
  */
 export function readCompositionTier(source: string): CompositionTier | null {
   const svgAt = source.search(/<svg\b/i)
   const head = svgAt === -1 ? source : source.slice(0, svgAt)
-  const match = /构图档位[：:]\s*(geometric|abstract|organic|figure)\b/.exec(head)
+  const match = /构图档位[：:]\s*(geometric|abstract|organic|figure|food|scene)\b/.exec(head)
   return match === null ? null : (match[1] as CompositionTier)
 }
 

@@ -373,15 +373,20 @@ describe('AC-6 —— 构图档位声明：读不到就报错，不许静默跳�
     ).toEqual([])
   })
 
-  it('档位取值域是四档，且每档的区间就是 art-direction §5.1 分档表上的那两组数字', () => {
+  it('档位取值域是六档，且每档的区间就是 art-direction §5.1 分档表上的那三组数字', () => {
     expect(
       [...COMPOSITION_TIERS].sort(),
-      '构图档位的取值域必须正好是 §5.1 分档表上的四档 —— 增删一档都会让 G11 取错区间。',
-    ).toEqual(['abstract', 'figure', 'geometric', 'organic'])
+      '构图档位的取值域必须正好是 §5.1 分档表上的六档 —— 增删一档都会让 G11 取错区间。',
+    ).toEqual(['abstract', 'figure', 'food', 'geometric', 'organic', 'scene'])
     expect(TIER_EDGE_RANGES.geometric, '几何档区间被改动 —— 与 art-direction §5.1 不一致').toEqual([60, 75])
     expect(TIER_EDGE_RANGES.abstract, '抽象档区间被改动 —— 与 art-direction §5.1 不一致').toEqual([60, 75])
     expect(TIER_EDGE_RANGES.organic, '有机曲线档区间被改动 —— 与 art-direction §5.1 不一致').toEqual([70, 85])
     expect(TIER_EDGE_RANGES.figure, '人物档区间被改动 —— 与 art-direction §5.1 不一致').toEqual([70, 85])
+    // ⚠️ `food` / `scene` 是 `[DS]` Story 2.5 补的两档（DF-105）。
+    //   `food` 的带是 **20 个百分点**（几何/抽象只有 15）⇒ 判别力弱于其他档，
+    //   **这不是笔误，是「一个类别塞进两种形状（圆润 / 方正）」的必然代价**（见 §5.1 代价列）。
+    expect(TIER_EDGE_RANGES.food, '食物档区间被改动 —— 与 art-direction §5.1 不一致').toEqual([60, 80])
+    expect(TIER_EDGE_RANGES.scene, '场景档区间被改动 —— 与 art-direction §5.1 不一致').toEqual([70, 85])
     // 两条区间是**有重叠的**（70–75 两条都占）—— 这是 §5.1 分档后的原样，
     // 不是笔误。若有人把它们改成互斥区间，就是单方面收紧了守卫。
     expect(
@@ -426,6 +431,153 @@ describe('AC-6 —— 构图档位声明：读不到就报错，不许静默跳�
   })
 })
 
+// ── G277 —— §5.1 的分档表与代码里的档位表必须逐字一致 ──────────────────────────
+
+/**
+ * §5.1 的分档表是**判据的出处**，代码里的 `TIER_EDGE_RANGES` 只是它的复制品。
+ *
+ * ⚠️ 为什么这条要单独建守卫：G11 按 `TIER_EDGE_RANGES` 取区间判图，
+ *   而**没人守着那张区间表与 §5.1 是否还一致** —— 两份一旦分家，
+ *   G11 就会拿「代码里的区间」去判「文档里承诺的图」，**守卫仍然全绿**，
+ *   但它守的已经不是文档写的东西了（这正是 Story 1.8 / 1.9 反复吃过的亏）。
+ *
+ * ⚠️ 判据**不许另抄一份**：`docs/art-direction.md` §5.1 的表格是唯一的源，
+ *   这里只**解析**它，不在测试里重写一遍区间数字。
+ */
+function g277Problems(): string[] {
+  const doc = readFileSync(join(root, 'docs/art-direction.md'), 'utf8')
+  const lines = doc.split('\n')
+  // §5.1 的小节标题必须逐字含「构图档位」—— 只认 §5.1 分档表那一节，
+  // 别把 §5.1/5.2/5.3 那节讨论文字或 §5 的分档汇总表误当成出处。
+  const headingAt = lines.findIndex((line) => /^###\s+5\.1\b.*构图档位/.test(line))
+  if (headingAt === -1) {
+    return ['docs/art-direction.md 里找不到 §5.1 的构图档位小节 —— G277 无从取区间']
+  }
+  let headerAt = -1
+  for (let i = headingAt + 1; i < lines.length; i += 1) {
+    if (lines[i].startsWith('|')) {
+      headerAt = i
+      break
+    }
+  }
+  if (headerAt === -1) return ['§5.1 的构图档位小节里没有找到分档表']
+  if (!/^\|[\s|:-]+\|/.test(lines[headerAt + 1] ?? '')) {
+    return ['§5.1 的分档表没有表头分隔行 —— 表格结构变了，G277 无从解析']
+  }
+  const docTiers = new Map<string, [number, number]>()
+  for (let i = headerAt + 2; i < lines.length; i += 1) {
+    if (!lines[i].startsWith('|')) break
+    const cells = lines[i].split('|').map((cell) => cell.trim())
+    const name = /`([a-z]+)`/.exec(cells[1] ?? '')?.[1]
+    const range = /(\d+(?:\.\d+)?)%\s*[–—-]\s*(\d+(?:\.\d+)?)%/.exec(cells[2] ?? '')
+    if (name === undefined || range === null) continue
+    docTiers.set(name, [Number(range[1]), Number(range[2])])
+  }
+  if (docTiers.size === 0) {
+    return ['§5.1 的分档表里一档都没解析出来 —— 表格结构变了，G277 会在空集上恒绿']
+  }
+  const problems: string[] = []
+  for (const tier of COMPOSITION_TIERS) {
+    const fromDoc = docTiers.get(tier)
+    if (fromDoc === undefined) {
+      problems.push(`§5.1 的分档表里没有 ${tier} 档`)
+      continue
+    }
+    const fromCode = TIER_EDGE_RANGES[tier]
+    if (fromDoc[0] !== fromCode[0] || fromDoc[1] !== fromCode[1]) {
+      problems.push(
+        `${tier} 档：§5.1 写 ${fromDoc[0]}%–${fromDoc[1]}%，代码里是 ${fromCode[0]}–${fromCode[1]}`,
+      )
+    }
+  }
+  for (const tier of docTiers.keys()) {
+    if (!(COMPOSITION_TIERS as readonly string[]).includes(tier)) {
+      problems.push(`§5.1 的分档表里有 ${tier} 档，代码的取值域里没有`)
+    }
+  }
+  return problems
+}
+
+describe('G277 —— §5.1 的分档表与代码里的档位表逐字一致', () => {
+  it('档位取值域、区间表与 docs/art-direction.md §5.1 的分档表三者一致', () => {
+    expect(g277Problems()).toEqual([])
+  })
+
+  it('M326：把 food 档的区间改掉，G277 必须红', () => {
+    const before = TIER_EDGE_RANGES.food
+    try {
+      TIER_EDGE_RANGES.food = [60, 75]
+      expect(
+        g277Problems().length,
+        '把 food 档的区间改成 60–75% 之后 G277 仍然判一致 —— 它没在读 §5.1 的那张表，' +
+          '于是文档与代码可以分家而守卫全绿。',
+      ).toBeGreaterThan(0)
+    } finally {
+      TIER_EDGE_RANGES.food = before
+    }
+  })
+})
+
+// ── scene 档的夹具 —— 新档位必须有真实守卫，不能「声明了但没人用」 ──────────────
+
+/**
+ * `scene` 档在 `[DS]` Story 2.5 建好，但**本 story 不引入场景词**
+ * （`playground` 实测 4 版 / 261.9 s 且到 session 结束仍未通过 48px 可读性）。
+ * ⇒ 这一档在磁盘上没有真实成员 ⇒ 用**夹具**证明 G11 真的会取 `scene` 的区间。
+ *
+ * ⚠️ 夹具落在 `mkdtempSync` 的临时目录里，**不进仓库的 `public/assets/words/`** ——
+ *   放进去了就会被「两套独立枚举求差集」那条覆盖面断言当成一张没人用的词图。
+ */
+function sceneFixtureSvg(): string {
+  return [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<!--',
+    '  词图夹具：scene 档（docs/art-direction.md §5.1）。',
+    '  ⚠️ 本图不是内容 —— 它只存在于测试的临时目录里。',
+    '  `scene` 档在 Story 2.5 建好但还没有真实成员（Story 2.6 才第一次有），',
+    '  所以用这张夹具证明 G11 真的会取 scene 的区间，而不是「声明了但没人用」。',
+    '  构图档位：scene    ← 场景档（§5.1：70%–85%）；G11 按这一行取区间读，不写死',
+    '-->',
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512"',
+    '     role="img" aria-label="场景夹具">',
+    '  <!-- 天空块：外接盒由它定，主体占画布 410/512 = 80.1%。 -->',
+    '  <rect x="51" y="51" width="410" height="410" fill="#8ecae6" />',
+    '  <!-- 地面与两件道具：都在外接盒内，不改变占比。 -->',
+    '  <rect x="51" y="330" width="410" height="131" fill="#90be6d" />',
+    '  <rect x="120" y="240" width="70" height="90" fill="#f4a261" />',
+    '  <circle cx="360" cy="170" r="46" fill="#ffd166" />',
+    '</svg>',
+    '',
+  ].join('\n')
+}
+
+describe('scene 档的夹具 —— G11 取的是 scene 的区间，不是别的档的', () => {
+  it('一张 scene 档的图：占比落在 scene 的 70%–85% 内，且落在几何档的 60%–75% 之外', () => {
+    const source = sceneFixtureSvg()
+    const scratch = mkdtempSync(join(tmpdir(), 'word-image-scene-'))
+    try {
+      const path = join(scratch, 'u2-fixture-scene.svg')
+      writeFileSync(path, source, 'utf8')
+      expect(readCompositionTier(source), '夹具的档位行没被读成 scene').toBe('scene')
+      const m = measureWordImage('u2-fixture-scene', source)
+      expect(m.tier, '实算脚本读到的档位与 readCompositionTier 不一致').toBe('scene')
+      expect(g12Violation(m), '夹具没守住 §5.2 的四边留白').toBeNull()
+      expect(g13Violation(m), '夹具没守住 §5.3 的重心').toBeNull()
+      // ⚠️ 这一条是本用例的**判别力来源**：占比必须落在几何档上限之外，
+      //   否则「G11 判它合规」可能只是因为它碰巧也落在几何档的带里 ——
+      //   那就证明不了 G11 读的是 scene 的区间。
+      expect(
+        m.edgePercent,
+        '夹具的主体占比必须落在 scene 档的 70%–85% 内，且要落在几何档的 60%–75% 之外 —— ' +
+          '否则这条用例证明不了 G11 真的取了 scene 的区间。',
+      ).toBeGreaterThan(TIER_EDGE_RANGES.geometric[1])
+      expect(g11Violation(m), 'scene 档的夹具被判违规 —— G11 没取 scene 的区间').toBeNull()
+    } finally {
+      rmSync(scratch, { recursive: true, force: true })
+    }
+  })
+})
+
 // ── 实算脚本与守卫用的是同一套代码 ────────────────────────────────────────────
 
 describe('脚本与守卫同源 —— 守卫不得自带第二份几何算法', () => {
@@ -458,7 +610,7 @@ describe('词图目录与命名', () => {
     expect(existsSync(unitDir), `${unitDir} 不存在`).toBe(true)
   })
 
-  it('每张图的档位都能落进四档取值域，且一张都读了（空输入不得恒绿）', () => {
+  it('每张图的档位都能落进六档取值域，且一张都读了（空输入不得恒绿）', () => {
     // ⚠️ 元素类型是 `CompositionTier | null`（真·空值），不是 `'null'`（字符串）。
     //    写成字符串时 vitest 照样跑（esbuild 不做类型检查），但 `npm run typecheck`
     //    会红 —— 2026-10-15 AC-18 实测抓到。
@@ -469,7 +621,7 @@ describe('词图目录与命名', () => {
     for (const path of paths) tiers.add(metricsOf(path).tier)
     expect(tiers.size, '一张图都没量到 —— 下面的 toContain 会在空集合上恒绿').toBeGreaterThan(0)
     for (const tier of tiers) {
-      expect(COMPOSITION_TIERS, `${String(tier)} 不在 §5.1 的四档取值域里`).toContain(tier)
+      expect(COMPOSITION_TIERS, `${String(tier)} 不在 §5.1 的六档取值域里`).toContain(tier)
     }
   })
 })
