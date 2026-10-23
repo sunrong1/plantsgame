@@ -205,7 +205,7 @@
 | DF-198 | 待排期 | Story 1.19 | Story 1.19 的 Task 7.3 —— 需要一次 **14 视口（竖屏 7 + 横屏 7）的真浏览器布局重测**；三条恢复路径任选其一：① 用户显式授权 Chromium 的 `--no-sandbox`；② 换一台能起**沙箱** Chromium 的机器；③ 在真机平板上量 | 本机 Chromium 以 root 跑**必须**带 `--no-sandbox`（未获授权），四条沙箱替代路径逐条试过全部不可用 ⇒ AC-H4 的「竖屏七个尺寸逐字相同」在 800×1280 之外**没有当天的实测值** | [`df-198`](./deferred-details.md#df-198) |
 | DF-199 | 待触发 | Story 2.6 | Story 2.6 开工前，先枚举该单元在 `docs/card-distribution.md` §5.1.1 下的可行 N（可行集可能为空），再定词条数 | `docs/card-distribution.md` §5.1.1 的可行性对 N 敏感：实测单元 2 的 N=37 与 N=41 可行集为空、单元 3 的 N=36/37 也为空 | [`df-199`](./deferred-details.md#df-199) |
 | DF-200 | 待裁决 | Story 2.9 | Story 2.9 试玩验收时决定「跳过的词（词图加载失败）在单元推进后怎么办」：是否允许带缺口推进、要不要补一轮小测 | 推进判据改成「本单元全部已掌握」后，一张持续加载失败的词图会让该单元永远学不完（孩子卡在 N-1/N） | [`df-200`](./deferred-details.md#df-200) |
-| DF-201 | 待触发 | Story 2.5 – 2.8 | 用户提供**牛津上海版**教材扫描件（目录页 + 每单元 `Look and learn` 词表 + 句子页）后，按教材逐单元重录 `src/content/units/unit-XX.json`，并重画词图 / 重录 TTS | 现有 68 个词条（单元 1 的 30 + 单元 2 的 38）是 Story 1.3 / 2.5 **自建**的，从未抄教材；GDD 的「单元即教材单元」尚未兑现 | [`df-201`](./deferred-details.md#df-201) |
+| DF-201 | 待触发 | Story 2.5 – 2.8 | 用户确认课本版本（一起版 / 旧本地版）+ 裁决「游戏一关 ↔ 教材 Unit」映射后，按 `docs/textbook-oxford-shanghai/` 的词表逐单元重录 `src/content/units/unit-XX.json` | 现有 68 个词条是 Story 1.3 / 2.5 **自建**的；教材词表已于 2026-10-23 从网络抓取入库（24 单元 / 97 词），但**版本未确认**，不能直接当事实用 | [`df-201`](./deferred-details.md#df-201) |
 
 ## 新增一条
 
