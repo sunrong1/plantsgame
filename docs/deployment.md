@@ -327,7 +327,7 @@ location /plantsgame/ {
 | `src/services/sw-registration.ts` | 注册 SW、检查安全上下文、`prompt` 语义 |
 | `src/services/asset-prefetch.ts` | 进关时预热本单元图片 |
 | `scripts/verify-deploy.ts` | 上线前产物自检（**64 项**，⚠️ 随单元数增长），`postbuild` 自动跑 |
-| `scripts/verify-portrait-layout.ts` | 竖屏布局的**真浏览器**量测（`npm run verify:portrait`，**不**在 `test` / `postbuild` 里）；📎 判据仍**只判 800×1280**，另按 `scripts/measure-viewports.txt`（竖屏 7 + 横屏 7）**逐视口量一遍并打成一张表**（矩阵里的视口**只量不判**） |
+| `scripts/verify-portrait-layout.ts` | 竖屏布局的**真浏览器**量测（`npm run verify:portrait`，**不**在 `test` / `postbuild` 里）；📎 判据仍**只判 800×1280**，另按 `scripts/measure-viewports.txt`（竖屏 7 + 横屏 7）**逐视口量一遍并打成一张表**（矩阵里的视口**只量不判**）；📎 **2026-10-24**：脚本现在**补偿浏览器外壳**（`--window-size` 含工具栏 ⇒ 量到的内视口比请求值矮 87px）⇒ 表里「请求视口」与「内视口」**逐行相等**才算量到了设备真实尺寸；守卫见 `tests/scripts/verify-portrait-layout.test.ts`（G290–G292） |
 | `tests/scaffold/pwa-manifest.test.ts` | G120/G121/G122：manifest 与 token 同源 |
 | `tests/scaffold/pwa-sw-guard.test.ts` | G123（零强制刷新）、G124、G125/G126（SW 源码级边界）、**G127（注册调用点）**、G128/G129、**G159（`activate` 真的调 `staleCacheNames`）** |
 | `tests/scaffold/pwa-offline-shell.test.ts` | G195/G196/G197：app shell 真的进了 precache |

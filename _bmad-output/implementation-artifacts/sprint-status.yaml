@@ -49,7 +49,7 @@
 #   epics.md 的销项说明处理。
 
 generated: 2026-10-12
-last_updated: 2026-10-23  # Story 2.5 `[CR]` 完成（2-5 → done）：三层评审 36 条分诊（16 改 / 4 延后 / 16 噪声）+ G286–G289 + 变异整轮重放，见其 story 文档
+last_updated: 2026-10-24  # Story 1.19 `[DS]` 第四轮：14 视口真浏览器重测跑完（AC-H4 的实质实测成立）+ 量测工具两处修正 + 守卫 G290–G292；1.19 仍 in-progress（真机试玩待做），见其 story 文档
 project: plants-game
 project_key: NOKEY
 tracking_system: file-system
@@ -78,7 +78,7 @@ development_status:
   1-16-关卡流程-通关-失败与推进: done
   1-17-调试工具与会话回放: done
   1-18-目标平板落地-竖屏布局-离线与部署: review   # [CR] 31 条 patch 全修完；AC-B8 真机未验，状态不动
-  1-19-单元-1-首次试玩验证-epic-1-的生死线: in-progress   # [DS] 第三轮：Story 2.4 改了选项数 ⇒ 组 H 的 AC 字面与布局基线过期；量测工具已就位，真机重测待授权，见其 story 文档
+  1-19-单元-1-首次试玩验证-epic-1-的生死线: in-progress   # [DS] 第四轮：14 视口真浏览器重测已跑完（AC-H4 的实质实测成立）+ 量测工具两处修正 + G290–G292；Task 3 真机试玩仍待，见其 story 文档
   # 1-20 由 [CC] 2026-10-19 注入；理由与取证见 1-19 的 Change Log 与 planning-artifacts/sprint-change-proposal-2026-10-19.md
   1-20-相邻不同型-把植物不重复从巧合变成代码保证: done
   1-retrospective: optional

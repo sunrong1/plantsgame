@@ -39,7 +39,7 @@ import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeF
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { extname, join, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
 // 🔥 **部署前缀从 `vite.config.ts` 导入**，不手抄 ——
 //   同一份字面量抄两遍就是 AC-B3 那个事故的配方（手抄的那份没人守）。
@@ -158,10 +158,16 @@ const MEASURE_SCRIPT = `
     }
     out.options = {
       count: opts.length,
-      // ⚠️ computed 的 \`gridTemplateColumns\` 给的是**用掉的**轨道值（如 \`"384px 384px"\`）
-      //   ⇒ 拆成空格分隔的段数就是列数（比数 DOM 子元素更可靠：它数的是布局结果）。
+      // ⚠️ computed 的 \`gridTemplateColumns\` 给的是**用掉的**轨道值（如 \`"384px 384px"\`）。
+      //   ⚠️⚠️ **但轨道数 ≠ 渲染出的列数** —— \`repeat(auto-fit, minmax(0, 1fr))\`
+      //   会按容器宽度算出**几十条**轨道，auto-fit 把空轨道折叠成 0px，
+      //   而 computed 值里**那些 0px 轨道仍然列着**
+      //   （实测：800px 宽的容器 ⇒ 57 条轨道，只有 2 条是 362px，其余 55 条是 0px）。
+      //   ⇒ **按轨道数报列数会报出「57 列」这种假数**（2026-10-24 实测踩到）。
+      //   ⇒ 这里只报**原始事实**（轨道数 + 每张卡的左边位置），
+      //     **列数由 TS 侧推导**（renderedColumnCount）—— 推导放在 TS 侧才能被守卫测到。
       grid_columns: colsCss,
-      column_count: colsCss ? colsCss.split(' ').filter(Boolean).length : 0,
+      grid_track_count: colsCss ? colsCss.split(' ').filter(Boolean).length : 0,
       row_count: uniq(optTops).length,
       distinct_lefts: uniq(optLefts),
       box: box(optsEl),
@@ -236,7 +242,7 @@ const MEASURE_SCRIPT = `
 
 type Box = { top: number; bottom: number; left: number; right: number; w: number; h: number }
 
-type Measured = {
+export type Measured = {
   viewport: { w: number; h: number }
   diag: {
     start_button: boolean
@@ -265,7 +271,8 @@ type Measured = {
   options: {
     count: number
     grid_columns: string | null
-    column_count: number
+    /** ⚠️ CSS 轨道数（**不是**列数 —— auto-fit 的空轨道折叠成 0px 但仍在 computed 值里） */
+    grid_track_count: number
     row_count: number
     distinct_lefts: number[]
     box: Box | null
@@ -507,7 +514,7 @@ async function runBrowser(
   }
 }
 
-function parseMeasured(dump: string): Measured {
+export function parseMeasured(dump: string): Measured {
   const at = /<pre id="__measure">([\s\S]*?)<\/pre>/.exec(dump)
   if (at === null) {
     throw new Error(
@@ -524,6 +531,80 @@ function parseMeasured(dump: string): Measured {
     .replace(/&#39;/g, "'")
     .replace(/&amp;/g, '&')
   return JSON.parse(text) as Measured
+}
+
+/* ── 视口补偿：让**内视口**等于请求的尺寸 ────────────────────────────────────
+ * 🔥 **为什么必须补偿**：`--window-size` 设的是**窗口**尺寸，而 `--headless=new`
+ *   的窗口含工具栏/边框 ⇒ **内视口比请求值矮**（2026-10-24 实测：14 个视口
+ *   **一律差 87px**，请求 800×1280 ⇒ 内视口 800×1193）。
+ *   ⇒ 不补偿的话，矩阵里写着「768×1024」的那一行**实际量的是 768×937**
+ *   —— 而 768×1024 是**真实平板的分辨率**（PWA 全屏时内视口就是 768×1024）。
+ *   ⇒ 把差值加回 `--window-size`，量到的才是设备真实视口。
+ *
+ * ⚠️ **口径变更（必须与旧基线对照着读）**：2026-10-18 的旧基线是**未补偿**时量的
+ *   （「800×1280」那行实际是 800×1193）。战场盒子由**宽度**推出
+ *   （`aspect-ratio: 9/5`）⇒ 补偿只改高度 ⇒ **战场尺寸逐字不变**
+ *   ⇒ 旧基线与新数据在「战场 / 格子」两列仍可直接对照；
+ *   而「题卡 / 选项是否全在视口内」两列**必须按新口径重读**。
+ */
+let chromeDelta = { dw: 0, dh: 0 }
+
+/**
+ * **渲染出的列数** = 选项卡左边位置的去重个数。
+ *
+ * 🔥 **为什么不能按 CSS 轨道数算**（2026-10-24 实测踩到）：
+ *   `repeat(auto-fit, minmax(0, 1fr))` 会按容器宽度算出**几十条**轨道
+ *   （800px 宽 ⇒ **57 条**），auto-fit 把空轨道折叠成 0px，
+ *   **而 computed 的 `gridTemplateColumns` 里那些 0px 轨道仍然列着**
+ *   ⇒ 按轨道数报列数会报出「**57 列**」这种假数（真实渲染是 2 列）。
+ *   ⇒ 列数只能按**渲染位置**算。
+ */
+export function renderedColumnCount(distinctLefts: number[]): number {
+  return new Set(distinctLefts).size
+}
+
+/** 量到的内视口是不是就是请求的那个视口。 */
+export function viewportMatches(
+  requested: { w: number; h: number },
+  actual: { w: number; h: number },
+): boolean {
+  return requested.w === actual.w && requested.h === actual.h
+}
+
+/**
+ * 算下一次该把多少像素加回 `--window-size`。
+ *
+ * 差值 = 「请求的」减「量到的」⇒ 浏览器外壳（工具栏 / 边框）有多厚就加多少。
+ */
+export function nextChromeDelta(
+  delta: { dw: number; dh: number },
+  requested: { w: number; h: number },
+  actual: { w: number; h: number },
+): { dw: number; dh: number } {
+  return {
+    dw: delta.dw + (requested.w - actual.w),
+    dh: delta.dh + (requested.h - actual.h),
+  }
+}
+
+/** 量一个视口，并保证量到的**内视口**就是 `w × h`（不满足就补偿后重量一次）。 */
+async function measureAt(
+  distDir: string,
+  chromium: string,
+  w: number,
+  h: number,
+): Promise<Measured> {
+  let m = parseMeasured(
+    await runBrowser(distDir, chromium, w + chromeDelta.dw, h + chromeDelta.dh),
+  )
+  if (!viewportMatches({ w, h }, m.viewport)) {
+    // 量到的差值就是浏览器外壳的大小 ⇒ 加回去再量一次
+    chromeDelta = nextChromeDelta(chromeDelta, { w, h }, m.viewport)
+    m = parseMeasured(
+      await runBrowser(distDir, chromium, w + chromeDelta.dw, h + chromeDelta.dh),
+    )
+  }
+  return m
 }
 
 /* ── 多视口量测模式（Story 1.19 第二轮 / Story 2.4 之后重测布局）────────────
@@ -558,12 +639,12 @@ function readViewportMatrix(file: string): { w: number; h: number }[] {
 }
 
 /** 把一次量测压成一行摘要（表格用）。⚠️ 字段名与 story 文档的实测表逐字对齐。 */
-function summaryOf(m: Measured): Record<string, unknown> {
+export function summaryOf(m: Measured): Record<string, unknown> {
   return {
     viewport: `${m.viewport.w}×${m.viewport.h}`,
     display: m.level_view_display,
     选项数: m.options.count,
-    列数: m.options.column_count,
+    列数: renderedColumnCount(m.options.distinct_lefts),
     行数: m.options.row_count,
     选项全可见: m.options.all_visible,
     题卡: m.question_card === null ? null : `${m.question_card.top}~${m.question_card.bottom}`,
@@ -601,8 +682,12 @@ async function main(): Promise<void> {
   console.log(`[portrait] 浏览器：${chromium}；产物：${distDir}；视口：${width}×${height}`)
   console.log('[portrait] 视口是真浏览器量出来的（jsdom 不做布局，AC-D7）\n')
 
-  const run = await runBrowser(distDir, chromium, width, height)
-  const measured = parseMeasured(run)
+  const run = await measureAt(distDir, chromium, width, height)
+  const measured = run
+  console.log(
+    `[portrait] 浏览器外壳补偿：${chromeDelta.dw}×${chromeDelta.dh}px ` +
+      '（`--window-size` 设的是窗口，含工具栏 ⇒ 不补偿量到的视口会比请求值矮）',
+  )
 
   let failed = 0
   for (const check of CHECKS) {
@@ -625,8 +710,11 @@ async function main(): Promise<void> {
   if (extra.length > 0) {
     const rows: Record<string, unknown>[] = []
     for (const vp of extra) {
-      const m = parseMeasured(await runBrowser(distDir, chromium, vp.w, vp.h))
-      rows.push(summaryOf(m))
+      const m = await measureAt(distDir, chromium, vp.w, vp.h)
+      const row = summaryOf(m)
+      // ⚠️ 「请求视口」与「内视口」并排 ⇒ 补偿有没有生效，一眼看得见
+      //   （两者不等 ⇒ 这个视口没量到设备真实尺寸，别拿它的数当设备数）。
+      rows.push({ 请求视口: `${vp.w}×${vp.h}`, ...row })
     }
     console.log(`\n[portrait] 多视口实测（${extra.length} 个视口，纯量测，不参与通过判定）：`)
     console.log(JSON.stringify(rows, null, 2))
@@ -641,7 +729,16 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((err: unknown) => {
-  console.error('[portrait] 跑不起来（这不是通过）：', err instanceof Error ? err.message : err)
-  process.exit(1)
-})
+/**
+ * 只在被直接执行时才跑 `main()`。
+ *
+ * 测试要 import 本模块的纯函数（`renderedColumnCount` / `nextChromeDelta` /
+ * `summaryOf` / `parseMeasured`），而顶层就跑 `main()` 会把测试进程一起收走 ——
+ * 这就是「顶层副作用必须留到 main() 里」的具体理由（与 `scripts/generate-voice.ts` 同款）。
+ */
+if (process.argv[1] !== undefined && pathToFileURL(process.argv[1]).href === import.meta.url) {
+  main().catch((err: unknown) => {
+    console.error('[portrait] 跑不起来（这不是通过）：', err instanceof Error ? err.message : err)
+    process.exit(1)
+  })
+}
