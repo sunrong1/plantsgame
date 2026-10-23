@@ -113,14 +113,14 @@
 | DF-100 | 待触发 | Story 1.19 | 平板真机试玩时若家长/孩子实际表现困惑（AC-D5 的观察项），再走 `[CC]` 改文案 | `AnswerFeedback` 文案仍是「再想想」，与 `locked` 置灰不可点观感打架 | [`df-100`](./deferred-details.md#df-100) |
 | DF-101 | 待排期 | Story 1.20 | 将来动 A2 或给 `G174③` 换夹具时一并处理；那时需要一条能区分「重排改了归属」与「本来就不该按原序拼」的判据 | `tests/app/store-deck-slice.test.ts` 的 G174③「四局=整个词表」前提随 1.20 重排收窄 | [`df-101`](./deferred-details.md#df-101) |
 | DF-102 | 待触发 | 未指派 | 下次起新号、或要动 `quiz-card.test.ts` / `hand-build.test.ts` 时，一并 (a) 给 `G30` 重编号，(b) 在 `docs/rules/testing.md` 补一条「守卫编号全仓库唯一；起号前 grep `^describe\('G\d+`」 | `G30` 被 1.11 `quiz-card.test.ts` 与 1.12 `hand-build.test.ts` 同时占用 | [`df-102`](./deferred-details.md#df-102) |
-| DF-103 | 待触发 | 未指派 | 拿到教材词表或单元 2 的词表 —— 任一即可解开「每单元词条数」这个未知量 | `epics.md` AR44 的「200-400 张」估算基数与实测 480–600 张冲突，需 `[CC]` 改规划产物 | [`df-103`](./deferred-details.md#df-103) |
-| DF-104 | 待触发 | 未指派 | 拿到真实教材词表后重算各档占比；若「数词 + 公认符号」占比远高于单元 1，这个结论要重写 | `epics.md` §7.2「程序化生成⇒工时减半」被实测打掉 4/5，待真实词表重算 | [`df-104`](./deferred-details.md#df-104) |
+| DF-103 | 待触发 | 未指派 | 拿到**牛津上海版**教材的单元词表（= DF-201 的扫描件）⇒ 按真实词表重算每单元词条数，解开 AR44 的估算基数冲突 | `epics.md` AR44 的「200-400 张」估算基数与实测 480–600 张冲突，需 `[CC]` 改规划产物 | [`df-103`](./deferred-details.md#df-103) |
+| DF-104 | 待触发 | 未指派 | 拿到**牛津上海版**教材词表（DF-201）后重算各档占比；若「数词 + 公认符号」占比远高于单元 1，这个结论要重写 | `epics.md` §7.2「程序化生成⇒工时减半」被实测打掉 4/5，待真实词表重算 | [`df-104`](./deferred-details.md#df-104) |
 | DF-105 | 待触发 | 未指派 | 下一批词图开工前必须先加「食物」「场景」两档，否则每张场景/食物词图都要写一遍「这是拉伸」的声明 | `docs/art-direction.md` §5.1 缺「食物」「场景」两档，`ice-cream`/`playground` 只能借 `figure` | [`df-105`](./deferred-details.md#df-105) |
 | DF-106 | 待触发 | 未指派 | 若要支持场景类词图，§5.5 需写清「场景类允许且应当使用实心块画法」；同样要补一条「无描边词图的合法性」 | `docs/art-direction.md` §5.5 未规定无描边词图（`playground` v3 靠实心色块守住 48px） | [`df-106`](./deferred-details.md#df-106) |
 | DF-107 | 待触发 | 未指派 | 若要把这个脚本当长期产能仪表，需加「开工时刻」的显式记录（开工时先写一条 `kind: "start"` 的记录） | `scripts/word-image-throughput.ts` 只量写盘跨度，缺「开工时刻」记录（`u2-sun` 报 0.0 秒） | [`df-107`](./deferred-details.md#df-107) |
 | DF-108 | 待排期 | 未指派 | 永不复用 | 「9.7 小时 ÷ 25 张」算法不成立，保留在 `docs/word-image-throughput.md` 作反面教材 | [`df-108`](./deferred-details.md#df-108) |
 | DF-109 | 待排期 | 未指派 | 需要一个能替代目视的判据（人工抽检协议、或可接受度测试） | `docs/art-direction.md` §5.5/5.5b/5.6 永久目视，「画得像不像」仍无机器判据 | [`df-109`](./deferred-details.md#df-109) |
-| DF-110 | 待触发 | 未指派 | 拿到教材目录；在此之前不要把「上册 = 前 8 个单元」当事实引用 | GDD 只有「全年两册」无单元表，「上册 = 前 8 单元」的推断不可当事实引用 | [`df-110`](./deferred-details.md#df-110) |
+| DF-110 | 待触发 | 未指派 | 拿到**牛津上海版**教材的目录页（DF-201 的扫描件）后定「游戏单元 ↔ 教材 Unit」的映射；在此之前不要把「上册 = 前 8 个单元」当事实引用 | GDD 只有「全年两册」无单元表，「上册 = 前 8 单元」的推断不可当事实引用 | [`df-110`](./deferred-details.md#df-110) |
 | DF-111 | 待触发 | 未指派 | 一旦作出收窄决定，走 `[CC]` 改 `epics.md` 的编号与档位表 | 若改选「收窄到上册」，`Story 2.7`/`2.8`/`2.9` 编号与阳光第三档要重算 | [`df-111`](./deferred-details.md#df-111) |
 | DF-112 | 待触发 | 未指派 | 若工具将来被多写者/CI 并发使用，改为「先 stat 再 read，或 read 后复 stat 校验 mtime 未变」 | `scripts/word-image-throughput.ts` 的 `buildRecord` 先 read 后 stat，有旧内容+新 mtime 竞态 | [`df-112`](./deferred-details.md#df-112) |
 | DF-113 | 待触发 | 未指派 | 一旦支持多目录，去重键需改成「目录 + entryId」复合键 | `scripts/word-image-throughput.ts` 去重键仍是裸 `entryId`，跨目录会静默合并 | [`df-113`](./deferred-details.md#df-113) |
@@ -211,6 +211,7 @@
 | DF-198 | 待排期 | Story 1.19 | Story 1.19 的 Task 7.3 —— 需要一次 **14 视口（竖屏 7 + 横屏 7）的真浏览器布局重测**；三条恢复路径任选其一：① 用户显式授权 Chromium 的 `--no-sandbox`；② 换一台能起**沙箱** Chromium 的机器；③ 在真机平板上量 | 本机 Chromium 以 root 跑**必须**带 `--no-sandbox`（未获授权），四条沙箱替代路径逐条试过全部不可用 ⇒ AC-H4 的「竖屏七个尺寸逐字相同」在 800×1280 之外**没有当天的实测值** | [`df-198`](./deferred-details.md#df-198) |
 | DF-199 | 待触发 | Story 2.6 | Story 2.6 开工前，先枚举该单元在 `docs/card-distribution.md` §5.1.1 下的可行 N（可行集可能为空），再定词条数 | `docs/card-distribution.md` §5.1.1 的可行性对 N 敏感：实测单元 2 的 N=37 与 N=41 可行集为空、单元 3 的 N=36/37 也为空 | [`df-199`](./deferred-details.md#df-199) |
 | DF-200 | 待裁决 | Story 2.9 | Story 2.9 试玩验收时决定「跳过的词（词图加载失败）在单元推进后怎么办」：是否允许带缺口推进、要不要补一轮小测 | 推进判据改成「本单元全部已掌握」后，一张持续加载失败的词图会让该单元永远学不完（孩子卡在 N-1/N） | [`df-200`](./deferred-details.md#df-200) |
+| DF-201 | 待触发 | Story 2.5 – 2.8 | 用户提供**牛津上海版**教材扫描件（目录页 + 每单元 `Look and learn` 词表 + 句子页）后，按教材逐单元重录 `src/content/units/unit-XX.json`，并重画词图 / 重录 TTS | 现有 68 个词条（单元 1 的 30 + 单元 2 的 38）是 Story 1.3 / 2.5 **自建**的，从未抄教材；GDD 的「单元即教材单元」尚未兑现 | [`df-201`](./deferred-details.md#df-201) |
 
 ## 新增一条
 
