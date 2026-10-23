@@ -49,7 +49,7 @@
 #   epics.md 的销项说明处理。
 
 generated: 2026-10-12
-last_updated: 2026-10-24  # `[CC]` 执行「决定 4」：GDD 关卡数改 24 关 + 全书词图改 97 张 + 决定 4 的 9 处延后条目引用号更正；DF-206 已结、DF-210 新登记，见 planning-artifacts/sprint-change-proposal-2026-10-24.md
+last_updated: 2026-10-24  # 两轮 `[CC]`：① 关卡数 24 关 + 词图 97 张（DF-206 结、DF-210 登）；② DF-197 结：1.19 组 H 三条 AC 字面更正 ⇒ 见 planning-artifacts/sprint-change-proposal-2026-10-24{,-2}.md
 project: plants-game
 project_key: NOKEY
 tracking_system: file-system
@@ -78,7 +78,7 @@ development_status:
   1-16-关卡流程-通关-失败与推进: done
   1-17-调试工具与会话回放: done
   1-18-目标平板落地-竖屏布局-离线与部署: review   # [CR] 31 条 patch 全修完；AC-B8 真机未验，状态不动
-  1-19-单元-1-首次试玩验证-epic-1-的生死线: in-progress   # [DS] 第四轮：14 视口真浏览器重测已跑完（AC-H4 的实质实测成立）+ 量测工具两处修正 + G290–G292；Task 3 真机试玩仍待，见其 story 文档
+  1-19-单元-1-首次试玩验证-epic-1-的生死线: in-progress   # [DS] 第四轮（14 视口真浏览器重测已跑完 + G290–G292）+ [CC] 2026-10-24-2（组 H 三条 AC 字面更正，DF-197 已结）；Task 3 真机试玩仍待，见其 story 文档
   # 1-20 由 [CC] 2026-10-19 注入；理由与取证见 1-19 的 Change Log 与 planning-artifacts/sprint-change-proposal-2026-10-19.md
   1-20-相邻不同型-把植物不重复从巧合变成代码保证: done
   1-retrospective: optional

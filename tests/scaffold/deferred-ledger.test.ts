@@ -7,7 +7,7 @@
  * - **详情层** `deferred-details.md` 每个 DF-ID 一个 `## DF-NNN` 小节，
  *   且状态 / 归属 / 恢复条件 / 一句话与账本**逐字一致**；
  * - **归档层** `_bmad-output/archive/deferred/` 每个来源段都有「分诊结论」四元组，
- *   README 的全量对照表与之一一对应。
+ *   README 的全量对照表与之一一对应，且 README 里写的**分诊计数**等于实测值（**G296**）。
  *
  * 为什么：2026-10-22 之前，`deferred-work.md` **一个文件同时是活账本、历史存档与结清日志**，
  * 涨到 3517 行 / 270KB / 41 个来源段 —— 「早就结清了的历史」和「还开着的待办」混在一起，
@@ -297,9 +297,14 @@ function checkDetailsMatch(rows: LedgerRow[], sections: Map<string, DetailsSecti
   return problems
 }
 
-/** 取一个 markdown 小节里的表格数据行（去掉表头与分隔行）。 */
+/**
+ * 取一个 markdown 小节里的表格数据行（去掉表头与分隔行）。
+ *
+ * ⚠️ **标题按前缀匹配**：有些小节标题带着括号说明（`## 分诊统计（2026-10-22 这次治理…）`），
+ *   逐字相等就切不到 ⇒ 那一节的表格会被当成「不存在」⇒ 判据静默失效。
+ */
 function tableRows(lines: string[], heading: string): string[] | null {
-  const start = lines.findIndex((l) => l.trim() === heading)
+  const start = lines.findIndex((l) => l.trim().startsWith(heading))
   if (start < 0) return null
   const rows: string[] = []
   for (let i = start + 1; i < lines.length; i++) {
@@ -391,6 +396,67 @@ function checkCrossReferenceTable(readmeText: string, files: { name: string; tex
   return problems
 }
 
+/**
+ * G296：归档 README「分诊统计」表里写的计数必须等于**实测值**。
+ *
+ * ── 为什么需要这条 ────────────────────────────────────────────────────────
+ *   2026-10-24 给 DF-197 加归档行时**实测**了归档层，发现 README 里三处计数
+ *   与实测对不上（写 53/49/244，实测 55/51/245）⇒ 这类数字**没有任何守卫能靠肉眼长期守住**，
+ *   而它一旦漂了，「归档了多少条」就变成一个传说。
+ *
+ * ── 口径（写在这里，判据与文档共用同一个口径）────────────────────────────
+ *   · **合计** = 「全量对照表」的行数 = 各归档文件「分诊结论」小节的行数（两侧必须相等）；
+ *   · **开放 / 已结 / 作废** = 「全量对照表」里「结论」列的分布。
+ *   ⚠️ 2026-10-22 那版另有一套「容器块」口径（`243 行 = 242 单元 + 1 容器行`），
+ *   它与「全量对照表」**对不上**（实测 245 行）⇒ 已作废。
+ */
+export function checkArchiveCounts(
+  readmeText: string,
+  files: { name: string; text: string }[],
+): string[] {
+  const problems: string[] = []
+  const cmpRows = tableRows(readmeText.split('\n'), '## 全量对照表') ?? []
+  if (cmpRows.length === 0) {
+    problems.push('归档 README 里没有「全量对照表」小节 —— 计数无从实测')
+    return problems
+  }
+  const dist: Record<string, number> = {}
+  for (const r of cmpRows) {
+    const verdict = splitCells(r)[5] ?? ''
+    dist[verdict] = (dist[verdict] ?? 0) + 1
+  }
+  let archiveRows = 0
+  for (const f of files) {
+    const rows = tableRows(f.text.split('\n'), '## 分诊结论')
+    if (!rows) continue
+    archiveRows += rows.length
+  }
+  if (archiveRows !== cmpRows.length) {
+    problems.push(
+      `各归档文件「分诊结论」小节合计 ${archiveRows} 行，README 全量对照表是 ${cmpRows.length} 行`,
+    )
+  }
+  const stat: Record<string, number> = {}
+  for (const r of tableRows(readmeText.split('\n'), '## 分诊统计') ?? []) {
+    const c = splitCells(r)
+    const label = (c[0] ?? '').replace(/\*/g, '').trim()
+    const n = Number((c[1] ?? '').replace(/\*/g, '').trim())
+    if (label !== '' && Number.isFinite(n)) stat[label] = n
+  }
+  const pairs: [string, number, number][] = [
+    ['开放', stat['开放'] ?? -1, dist['开放'] ?? 0],
+    ['已结', stat['已结'] ?? -1, dist['已结'] ?? 0],
+    ['作废', stat['作废'] ?? -1, dist['作废'] ?? 0],
+    ['合计（分诊单元）', stat['合计（分诊单元）'] ?? -1, cmpRows.length],
+  ]
+  for (const [label, got, want] of pairs) {
+    if (got !== want) {
+      problems.push(`「分诊统计」表的「${label}」写的是 ${got}，实测是 ${want}`)
+    }
+  }
+  return problems
+}
+
 // ── 被守卫的真实文件 ───────────────────────────────────────────────────────
 
 const ledgerText = readFileSync(LEDGER_PATH, 'utf8')
@@ -470,6 +536,11 @@ describe('R-43 延后账本三层形态 —— 详情层与归档层', () => {
       ...checkCrossReferenceTable(readmeText, archiveFiles),
     ]
     expect(problems, `归档的分诊结论不齐：\n${problems.join('\n')}`).toEqual([])
+  })
+
+  it('G296 归档 README「分诊统计」表的计数必须等于实测值', () => {
+    const problems = checkArchiveCounts(readmeText, archiveFiles)
+    expect(problems, `归档 README 的分诊计数与实测对不上：\n${problems.join('\n')}`).toEqual([])
   })
 })
 
@@ -601,6 +672,16 @@ describe('R-43 反向自检（改坏即红）', () => {
     expect(
       checkArchiveQuadruples([mutated2]).some((p) => p.includes('开放')),
       '构造失效：开放条目没有 DF-ID 竟没被判出来 —— 「—」的豁免是无条件的',
+    ).toBe(true)
+  })
+
+  it('G296 自检：把「分诊统计」表的已结条数 +1，判据必须报出来', () => {
+    // ⚠️ 变异打在**表里的那个数**上 —— 打在别处（改个标题）不会触发计数判据。
+    const mutated = readmeText.replace(/^\| 已结 \| (\d+) \|$/m, (_m, n) => `| 已结 | ${Number(n) + 1} |`)
+    expect(mutated, '构造失效：没能在「分诊统计」表里找到「已结」那一行').not.toBe(readmeText)
+    expect(
+      checkArchiveCounts(mutated, archiveFiles).some((p) => p.includes('已结')),
+      '构造失效：把「已结」条数 +1 竟没被判出来 —— 计数判据没在数对照表',
     ).toBe(true)
   })
 
