@@ -1304,6 +1304,100 @@ export function loadUnitFiles(unitsDir: string = UNITS_DIR): readonly { file: st
     })
 }
 
+/**
+ * 从单元文件名里取单元号：`unit-01.json` ⇒ **1**。
+ *
+ * ⚠️ **文件名是唯一的带外信息** —— `validateContent` 拿到的只有 JSON 本身，
+ *   而 JSON 里的 `unitNumber` 是**自述**的：把它写成 1，`unit-05.json` 的内容
+ *   就会按单元 1 去校验（DF-196）。
+ */
+export function unitNumberFromFileName(file: string): number | null {
+  const m = /^unit-(\d+)\.json$/.exec(file)
+  return m ? Number(m[1]) : null
+}
+
+/**
+ * 单元文件名的**规范形态**：`unit-<至少两位数字>.json`（`unit-01.json`）。
+ *
+ * ⚠️ **为什么要连补零一起钉**：解析若宽松（`unit-1.json` 也认），那它会与
+ *   `unit-01.json` **同时**被当成单元 1 ⇒ 一个单元号挂两个文件 ⇒
+ *   「文件名 ↔ unitNumber」这条交叉核对反而会**放行**两份都写着 1 的文件。
+ */
+export function canonicalUnitFileName(unitNumber: number): string {
+  return `unit-${String(unitNumber).padStart(2, '0')}.json`
+}
+
+/**
+ * 单元文件名 ↔ JSON 里 `unitNumber` 的**交叉核对**（DF-196）。
+ *
+ * ⚠️ **为什么这条不能省**：其余所有判据用的都是 JSON **自述**的 `unitNumber`
+ *   （选项数、词图目录、词图 URL、entryId 前缀）⇒ 文件名与它不一致时，
+ *   **一处都不会红** —— 而内容与资产会悄悄错位
+ *   （`unit-05.json` 写 `unitNumber: 1` ⇒ 它的词图会被期待在 `unit-01/` 下）。
+ *
+ * ⚠️ **`unitNumber` 缺失时也要报**：schema 那条会说「unitNumber 类型不对」，
+ *   但**这一维**（文件名 ↔ unitNumber）就整段没跑了 —— 不报的话，
+ *   读报告的人会以为「交叉核对过了，结论是没问题」。
+ */
+export function unitFileNameProblems(
+  units: readonly { file: string; raw: unknown }[],
+): ContentProblem[] {
+  const problems: ContentProblem[] = []
+  for (const u of units) {
+    const fromName = unitNumberFromFileName(u.file)
+    if (fromName === null) {
+      problems.push({
+        category: PROBLEM_CATEGORY.unitFileName,
+        unitNumber: unitNumberAt(u.raw),
+        entryId: null,
+        optionId: null,
+        message:
+          `单元文件名「${u.file}」不是 unit-NN.json 的形态 —— 文件名必须逐字写成 ` +
+          'unit-<单元号>.json，否则「文件名 ↔ unitNumber」这条交叉核对无从下手',
+      })
+      continue
+    }
+    const canonical = canonicalUnitFileName(fromName)
+    if (u.file !== canonical) {
+      problems.push({
+        category: PROBLEM_CATEGORY.unitFileName,
+        unitNumber: unitNumberAt(u.raw),
+        entryId: null,
+        optionId: null,
+        message:
+          `单元文件名「${u.file}」不是规范形态 —— 同一个单元号只能有一个文件名，` +
+          `规范写法是「${canonical}」（补零到两位）`,
+      })
+      continue
+    }
+    const declared = unitNumberAt(u.raw)
+    if (declared === null) {
+      problems.push({
+        category: PROBLEM_CATEGORY.unitFileName,
+        unitNumber: null,
+        entryId: null,
+        optionId: null,
+        message:
+          `单元文件「${u.file}」里没有可用的 unitNumber ⇒ 文件名 ↔ unitNumber 的交叉核对**没跑**` +
+          `（文件名指向单元 ${fromName}）`,
+      })
+      continue
+    }
+    if (declared !== fromName) {
+      problems.push({
+        category: PROBLEM_CATEGORY.unitFileName,
+        unitNumber: declared,
+        entryId: null,
+        optionId: null,
+        message:
+          `单元文件「${u.file}」的文件名指向单元 ${fromName}，而 JSON 里的 unitNumber 是 ${declared} —— ` +
+          '两者必须一致，否则词图目录、词图 URL 与 entryId 前缀会按错的单元号去对',
+      })
+    }
+  }
+  return problems
+}
+
 // ── 入口（顶层副作用集中在这里）─────────────────────────────────────────────
 
 /**
@@ -1415,19 +1509,25 @@ export function main(
     },
   )
 
-  if (!result.ok) {
-    for (const problem of result.problems) {
+  // ⚠️📎 DF-196：**文件名 ↔ `unitNumber` 的交叉核对**。
+  //   它必须在 `validateContent` **之外** —— 那里的判据用的全是 JSON **自述**的
+  //   `unitNumber`，文件名根本没进过它的视野 ⇒ 这一维只能在这里补。
+  const fileNameProblems = unitFileNameProblems(units)
+  const allProblems = [...fileNameProblems, ...result.problems]
+
+  if (!result.ok || fileNameProblems.length > 0) {
+    for (const problem of allProblems) {
       console.error(formatProblem(problem))
     }
     // ⚠️ 括号里是**内容统计**，不是问题分布。资产类问题（塔/僵尸）一个单元都不属于，
     //   混在「N 处问题（单元 x 个 / 词条 y 条）」里会让人以为是那 37 条词条坏了 ——
     //   而实际上一条词条都没坏，坏的只是磁盘上缺几张图。分开报。
-    const assetCount = result.problems.filter(
+    const assetCount = allProblems.filter(
       (p) => p.category === PROBLEM_CATEGORY.assetMissing || p.category === PROBLEM_CATEGORY.assetUnexpected,
     ).length
     const assetNote = assetCount > 0 ? `，其中资产 ${assetCount} 处（与单元内容无关）` : ''
     console.error(
-      `[content] 校验失败：${result.problems.length} 处问题（单元 ${result.stats.unitCount} 个 / ` +
+      `[content] 校验失败：${allProblems.length} 处问题（单元 ${result.stats.unitCount} 个 / ` +
         `词条 ${result.stats.entryCount} 条${assetNote}）。修复后重跑 —— 「跑过了 validate:content」` +
         '只有退出码 0 才算证据。',
     )

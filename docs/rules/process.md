@@ -143,8 +143,8 @@ grep -rhoE '\bM[0-9]+：' tests/ src/ | sort -uV | tail   # ⚠️ 必须带全�
 
 | 过时表述 | 实际 |
 |---|---|
-| 「12 个 `--color-*`」（1-10） | 15 个 |
-| 「14 个 `--color-*`」（1-11 / 1-12 / 1-13） | 15 个 |
+| 「12 个 `--color-*`」（1-10） | 以 `src/styles/tokens.css` 当期为准（**18 个**，守卫 **G301** 逐字核对） |
+| 「14 个 `--color-*`」（1-11 / 1-12 / 1-13） | 同上 |
 | `jsdom` 与 `happy-dom` 都没装（`deferred-work.md`） | `jsdom ^30.1.2` 早已装好，连 `vitest.config.ts` 的注释都已更正 |
 | `effects-runner` 属 1.13 | 属 1.14 |
 | 改 GDD 一律走 `[CC]`（5 篇） | 见 R-33 |

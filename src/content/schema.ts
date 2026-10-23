@@ -114,6 +114,15 @@ export const PROBLEM_CATEGORY = {
   assetUnexpected: 'asset-unexpected',
   /** Story 1.7 / AC-14.2：SVG 几何规格不合规（`viewBox` / 尺寸 / 透明底）。 */
   svgGeometry: 'svg-geometry',
+  /**
+   * DF-196：**单元文件名 ↔ JSON 里 `unitNumber` 不一致**（或文件名形态不对）。
+   *
+   * 为什么单独一类：其它所有判据用的都是 JSON **自述**的 `unitNumber`
+   * （选项数、词图目录、词图 URL、entryId 前缀）⇒ 两者不一致时**一处都不会红**，
+   * 而内容与资产会悄悄错位（`unit-05.json` 写 `unitNumber: 1`
+   * ⇒ 它的词图会被期待在 `unit-01/` 下）。
+   */
+  unitFileName: 'unit-file-name',
   /** 其余结构性错误（类型不对、多余字段等）。 */
   schema: 'schema',
 } as const

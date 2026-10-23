@@ -3423,33 +3423,6 @@ jsdom 没有布局引擎 ⇒ 测不出来。本轮给可源码化的那一半补
 
 > 来源：`## Deferred from: code review of story-1-10-战场渲染与网格 `[CR]` 复审 (2026-10-21)` ｜ 旧编号 `D1` ｜ 详见 `archive/deferred/2026-10-21--cr-story-1-10-复审.md` 的「分诊结论」
 
-## DF-143
-
-**状态**：待排期 · **归属**：未指派 · **恢复条件**：把两个 15 改成 18，并按 R-37 把「数量的唯一出处」指到 `tokens.css`；加一条守卫断言文档里写的个数与 `tokens.css` 一致
-
-**一句话**：`src/styles/tokens.css` 实测 18 个 `--color-*`，两处文档仍写 15
-
-### 原始论证
-
-### D2. `--color-*` 的个数在本 story 的治理表与 `docs/rules/process.md` 的 R-37 漂移表里都写着 **15**，真实是 **18**
-
-- 本 story 文档顶部的「过时表述」治理表写「『12 个 `--color-*`』（出现 4 处）→ **15 个**」，
-  而 `src/styles/tokens.css` 里逐字定义的 `--color-*` 实测 **18 个**
-  （Story 1.12 又新增了 `--color-overlay-inert` 之后的若干个）。
-- `docs/rules/process.md` 的 R-37 漂移表里也写着同一个 **15**。
-- ⚠️ **两个文档的同一个数都错了** —— 这正是 R-37「复制链」的典型形态：
-  一个数被抄进两处，两处一起过期。
-- **为什么现在不做**：改这两个数字要**同时**改两处，其中一处是 `docs/rules/` ——
-  按 R-33，改 `docs/rules/` 的正文需要记录理由，且它是**裁决产物**不是 story 产物。
-- **归属**：下一次触碰 `docs/rules/process.md` 的 story（**或**一次专门的文档治理）。
-- **恢复条件**：把两个 **15** 改成 **18**，并按 R-37 把「数量的唯一出处」指到
-  `tokens.css`（而不是在两处各写一个数）；**加一条守卫**：
-  「`tokens.css` 里 `--color-*` 的个数 === 两份文档里写的个数」
-  —— 今天的缺口是**这个数根本没有机器可查的载体**。
-
-
-> 来源：`## Deferred from: code review of story-1-10-战场渲染与网格 `[CR]` 复审 (2026-10-21)` ｜ 旧编号 `D2` ｜ 详见 `archive/deferred/2026-10-21--cr-story-1-10-复审.md` 的「分诊结论」
-
 ## DF-144
 
 **状态**：待触发 · **归属**：Story 1.12 · **恢复条件**：词表定稿后把 `alt` / `aria-label` 换成孩子侧的说法，并加一条守卫：不得直接包含英文枚举字面量
@@ -4118,25 +4091,6 @@ jsdom 没有布局引擎 ⇒ 测不出来。本轮给可源码化的那一半补
 
 > 来源：`## Deferred from: code review of epic-1-集成层检视 (2026-10-22)` ｜ 旧编号 `E28` ｜ 详见 `archive/deferred/2026-10-22--cr-epic-1-集成层检视.md` 的「分诊结论」
 
-## DF-176
-
-**状态**：待触发 · **归属**：未指派 · **恢复条件**：下次改 `tokens.css` 的色板时
-
-**一句话**：`docs/rules/process.md` R-37 漂移表写 15 个 `--color-*`，`tokens.css` 真实 18 个
-
-### 原始论证
-
-### E29. `docs/rules/process.md` 的 R-37 漂移表把 `--color-*` 个数写成 15，真实是 18
-
-- **事实**：`docs/rules/process.md` 的漂移表写 15 个 `--color-*`，`src/styles/tokens.css` 里真实有 18 个。
-- **修法**：改规则文档里的那个数字（**规则文档本身是 R-37 漂移表的一部分，
-  改它要按 R-30..R-41 的记录约定来**）。
-- **归属**：规则文档维护。
-- **恢复条件**：下次改 `tokens.css` 的色板时。
-
-
-> 来源：`## Deferred from: code review of epic-1-集成层检视 (2026-10-22)` ｜ 旧编号 `E29` ｜ 详见 `archive/deferred/2026-10-22--cr-epic-1-集成层检视.md` 的「分诊结论」
-
 ## DF-177
 
 **状态**：待触发 · **归属**：未指派 · **恢复条件**：下次改架构文档时
@@ -4528,28 +4482,6 @@ jsdom 没有布局引擎 ⇒ 测不出来。本轮给可源码化的那一半补
 - **归属**：难度设计（也许还需要一条「正确项位置不得恒定」的机器判据）。
 - **恢复条件**：Story 1.19（试玩验收）或 2.9 决定：是否打乱顺序；
   若打乱，是否补一条内容校验（注意：`scripts/validate-content.ts` 现在**不**查正确项位置）。
-
-> 来源：`## Deferred from: code review of 2-4 选项数量递进规则 (2026-10-23)` ｜ 旧编号 `—`
-
-## DF-196
-
-**状态**：待排期 · **归属**：未指派 · **恢复条件**：下次给 `scripts/validate-content.ts` 补「文件名 ↔ `unitNumber` 交叉核对」时（单元 2 起录入时更值钱）
-
-**一句话**：`scripts/validate-content.ts` 的 `loadUnitFiles` 不核对文件名与 `unitNumber` ⇒ `unit-05.json` 写 `unitNumber: 1` 也能过校验
-
-### 原始论证
-
-### DF-196. 单元文件名与 `unitNumber` 没有交叉核对
-
-- **事实**：`scripts/validate-content.ts` 的 `loadUnitFiles` 读出 `{ file, raw }`，
-  `file` **只用于报错文案**；所有判据（选项数、词图目录、词图 URL、entryId 唯一性）
-  用的都是 **JSON 里的 `unitNumber`**，**没有一个拿文件名去比对**。
-- **后果**：把 `unit-05.json` 里的 `unitNumber` 写成 `1` ⇒ 校验**全部通过**，
-  而它的词图会被期待在 `public/assets/words/unit-01/` 下 ⇒ 内容与资产**悄悄错位**。
-- **为什么本 story 不动**：本 story 只新增两条校验（裁决 7），这一条**不在 AC 里**；
-  且它属于**校验器的地基**，改它要连带看 `loadUnitFiles` 的调用方。
-- **归属**：校验器完整性。
-- **恢复条件**：下次给校验器补这条交叉核对时（单元 2 起录入时价值更高 —— 那时会有多个单元文件）。
 
 > 来源：`## Deferred from: code review of 2-4 选项数量递进规则 (2026-10-23)` ｜ 旧编号 `—`
 

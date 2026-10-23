@@ -147,7 +147,6 @@
 | DF-140 | 待触发 | 未指派 | 下一次改 GDD §Economy 段战斗机制表述时一并把三处数字统一，并按 R-21 在同一 story 内同步 `decision-log.md` 与 `epics-draft.md` | `gdd.md` 把「3 座塔」造价 50/50/75 写成伤害，与 `decision-log.md` 的 135 不一致 | [`df-140`](./deferred-details.md#df-140) |
 | DF-141 | 待触发 | Story 3.2 / 3.6 | Story 3.2 / 3.6 拿到该产品裁决后，回填条目 45 并关闭本条；在此之前「门槛在档位 3 上宽一问」只应被当作实测事实引用 | Story 2.3 的 AC-D3「停手问人」出口至今没以「问」的形式完成，挂在条目 45 | [`df-141`](./deferred-details.md#df-141) |
 | DF-142 | 待裁决 | Story 1.19（或一次架构裁决） | 二选一 —— ① 把 `asset-degradations` 的读写搬进 `app/` 门面；② 或在架构文档里把例外范围写死成「组件只可直连无状态的 `services/` 模块」并加一条守卫 | 6 个组件直连 `services/`，其中 `asset-degradations.ts` 带模块级可变状态 | [`df-142`](./deferred-details.md#df-142) |
-| DF-143 | 待排期 | 未指派 | 把两个 15 改成 18，并按 R-37 把「数量的唯一出处」指到 `tokens.css`；加一条守卫断言文档里写的个数与 `tokens.css` 一致 | `src/styles/tokens.css` 实测 18 个 `--color-*`，两处文档仍写 15 | [`df-143`](./deferred-details.md#df-143) |
 | DF-144 | 待触发 | Story 1.12 | 词表定稿后把 `alt` / `aria-label` 换成孩子侧的说法，并加一条守卫：不得直接包含英文枚举字面量 | `src/components/battle/Tower.vue` 的 `alt` 用英文枚举 direct/sniper/area | [`df-144`](./deferred-details.md#df-144) |
 | DF-145 | 待触发 | Story 1.12 | 1.12 定下「可建 / 不可建 / 已选中 / 候选格」四态的视觉分工后，把 `is-buildable` 用上（或删掉这个类），并加一条守卫：模板里挂的每个状态类都必须有 CSS 规则 | `src/components/battle/BattleField.vue` 挂了 `is-buildable` 类但 CSS 无对应规则 | [`df-145`](./deferred-details.md#df-145) |
 | DF-146 | 待排期 | 未指派 | 把机制写进架构的「网格布局与坐标映射」一节，并明确「G14 管 N 与 COLS 同源 / G133 管轨道形态是 minmax」这条分工 | `minmax(0, 1fr)` 的 18px 机制只写在 `BattleField.vue` 样式注释里 | [`df-146`](./deferred-details.md#df-146) |
@@ -180,7 +179,6 @@
 | DF-173 | 待触发 | 未指派 | 下次改架构文档时 | `core/types.ts` 数据形状与 `game-architecture.md` 的模式 A / 模式 C 不符 | [`df-173`](./deferred-details.md#df-173) |
 | DF-174 | 待触发 | 未指派 | 下次改 `epics.md` 的 AC 组时 | `SKIP_QUESTION` 整条机制在 core 里，`epics.md` 无任何一条 AC 授权 | [`df-174`](./deferred-details.md#df-174) |
 | DF-175 | 待触发 | Story 1.4 / 2.3 | 下次改 1.4 的 AC 措辞时 | `epics.md` Story 1.4 的「档位 5-10 与 11-20 留空待 Epic 2」已过期（`core/balance.ts` 已填） | [`df-175`](./deferred-details.md#df-175) |
-| DF-176 | 待触发 | 未指派 | 下次改 `tokens.css` 的色板时 | `docs/rules/process.md` R-37 漂移表写 15 个 `--color-*`，`tokens.css` 真实 18 个 | [`df-176`](./deferred-details.md#df-176) |
 | DF-177 | 待触发 | 未指派 | 下次改架构文档时 | `game-architecture.md` 的 System Location Mapping 表漏了至少 16 个已交付模块 | [`df-177`](./deferred-details.md#df-177) |
 | DF-178 | 待触发 | 未指派 | 下次动这 6 条时（不必专门跑一遍） | `deferred-work.md` 约 50 条行号指针有 6 条已漂移指不到内容 | [`df-178`](./deferred-details.md#df-178) |
 | DF-179 | 待触发 | 未指派 | 下次同步 sprint 状态时 | story 文档头与 `sprint-status.yaml` 不一致（如 `1-11`/`1-12` 写 review、yaml 写 done） | [`df-179`](./deferred-details.md#df-179) |
@@ -199,7 +197,6 @@
 | DF-192 | 待触发 | 未指派 | 横屏布局单开 story 改 `src/styles/responsive.css` 的 2×2 规则时（该规则被守卫 G169 钉死） | 横屏下选项网格被强制 2 列 ⇒ 3 个选项排成 **2 + 1 两行**；本 story 不动横屏布局 | [`df-192`](./deferred-details.md#df-192) |
 | DF-193 | 待裁决 | Story 2.9 | Story 2.9 试玩验收时决定 `NEAR_DUPLICATE_MAX_DISTANCE` 是否从 2 调高，或为 3–4 字母短词另立一条判据 | `scripts/validate-content.ts` 的 `NEAR_DUPLICATE_MAX_DISTANCE = 2` 会误杀「字面近、语义远」的 3–4 字母短词（如 `red` ~ `bed`） | [`df-193`](./deferred-details.md#df-193) |
 | DF-195 | 待裁决 | Story 1.19 / Story 2.9 | Story 1.19 或 2.9 试玩验收时决定是否打乱选项顺序（以及是否把「正确项位置」纳入内容校验）｜📎 **2026-10-23**：Story 1.19 的试玩模板已加「作答位置分布」前置栏 ⇒ 真机试玩会带回位置分布，届时据此裁决 | `src/content/units/unit-01.json` 全部 37 张卡的正确项都在第 0 位 ⇒「永远点最左边」100% 命中 | [`df-195`](./deferred-details.md#df-195) |
-| DF-196 | 待排期 | 未指派 | 下次给 `scripts/validate-content.ts` 补「文件名 ↔ `unitNumber` 交叉核对」时（单元 2 起录入时更值钱） | `scripts/validate-content.ts` 的 `loadUnitFiles` 不核对文件名与 `unitNumber` ⇒ `unit-05.json` 写 `unitNumber: 1` 也能过校验 | [`df-196`](./deferred-details.md#df-196) |
 | DF-199 | 待触发 | Story 2.6 | Story 2.6 开工前，先枚举该单元在 `docs/card-distribution.md` §5.1.1 下的可行 N（可行集可能为空），再定词条数 | `docs/card-distribution.md` §5.1.1 的可行性对 N 敏感：实测单元 2 的 N=37 与 N=41 可行集为空、单元 3 的 N=36/37 也为空 | [`df-199`](./deferred-details.md#df-199) |
 | DF-200 | 待裁决 | Story 2.9 | Story 2.9 试玩验收时决定「跳过的词（词图加载失败）在单元推进后怎么办」：是否允许带缺口推进、要不要补一轮小测 | 推进判据改成「本单元全部已掌握」后，一张持续加载失败的词图会让该单元永远学不完（孩子卡在 N-1/N） | [`df-200`](./deferred-details.md#df-200) |
 | DF-201 | 待触发 | Story 2.5 – 2.8 | 用户确认课本版本（一起版 / 旧本地版）+ 裁决「游戏一关 ↔ 教材 Unit」映射后，按 `docs/textbook-oxford-shanghai/` 的词表逐单元重录 `src/content/units/unit-XX.json` | 现有 68 个词条是 Story 1.3 / 2.5 **自建**的；教材词表已于 2026-10-23 从网络抓取入库（24 单元 / 97 词），但**版本未确认**，不能直接当事实用 | [`df-201`](./deferred-details.md#df-201) |

@@ -35,6 +35,8 @@ import {
   parseCli,
   printUnitDistributions,
   unitDistributionOf,
+  unitFileNameProblems,
+  unitNumberFromFileName,
   validateContent,
   type ValidateDeps,
 } from '../../scripts/validate-content'
@@ -1246,5 +1248,91 @@ describe('G288 —— 规则未覆盖的单元在输出里被逐个点名', () =
       lines.some((line) => line.includes('逐族误差')),
       '打印函数没有输出逐族误差那一行 ⇒ DF-118 的恢复条件没达成',
     ).toBe(true)
+  })
+})
+
+// ── G300：单元文件名 ↔ JSON 里 `unitNumber` 的交叉核对（DF-196）────────────
+
+describe('G300 —— 单元文件名 ↔ `unitNumber` 必须一致（DF-196）', () => {
+  it('G300.1 真实单元文件逐个自洽（文件名指向的单元号 == JSON 里的 unitNumber）', () => {
+    const files = loadUnitFiles()
+    expect(files.length, '一个单元文件都没读到 ⇒ 这条判据会真空成立').toBeGreaterThan(0)
+
+    const problems = unitFileNameProblems(files)
+    expect(
+      problems.map((p) => p.message),
+      `真实单元文件与自身的 unitNumber 不一致：\n${problems.map((p) => p.message).join('\n')}`,
+    ).toEqual([])
+  })
+
+  it('G300.2 文件名与 unitNumber 不一致 ⇒ 报出来，且 CLI 退出码非 0', () => {
+    // ⚠️ 夹具刻意**只**坏这一处：内容本身是单元 1 的合法内容（`unitNumber: 1`），
+    //   只是文件名写着 `unit-05.json` ⇒ 除这条交叉核对外**没有任何别的判据会红**
+    //   —— 这正是 DF-196 说的那个洞（「一处都不会红」）。
+    const raw = { ...realUnit, unitNumber: 1 }
+    const problems = unitFileNameProblems([{ file: 'unit-05.json', raw }])
+
+    expect(
+      problems.length,
+      '文件名 `unit-05.json` 与 JSON 里的 unitNumber 1 不一致，却一条都没报 —— 判据没生效',
+    ).toBe(1)
+    expect(
+      problems[0]?.message,
+      '报错消息没有同时点名文件名与两个单元号 ⇒ 读的人不知道该改哪一处',
+    ).toContain('unit-05.json')
+    expect(problems[0]?.message).toContain('5')
+    expect(problems[0]?.message).toContain('1')
+
+    // CLI 那一层也要真的非 0 —— 判据跑了但没接进退出码，等于没跑。
+    const lines: string[] = []
+    const spy = vi.spyOn(console, 'error').mockImplementation((msg?: unknown) => {
+      lines.push(String(msg))
+    })
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    let exitCode: number
+    try {
+      exitCode = main([], {
+        load: () => [{ file: 'unit-05.json', raw }],
+        wordImageRoot: '/fake/words',
+        assetRoot: '/fake/assets',
+        fileExists: () => true,
+        readFile: () => null,
+        listFiles: () => [],
+      })
+    } finally {
+      spy.mockRestore()
+      logSpy.mockRestore()
+    }
+    expect(exitCode, '文件名与 unitNumber 不一致却退出 0 ⇒ 这条判据没接进 CLI').toBe(1)
+    expect(
+      lines.some((line) => line.includes('unit-05.json')),
+      '报错输出里没有文件名 ⇒ 读的人定位不到是哪个文件',
+    ).toBe(true)
+  })
+
+  it('G300.3 反向自测：一致时零命中，不一致时必须命中（判据本体真的被调用）', () => {
+    const raw = { ...realUnit, unitNumber: 1 }
+    const clean = unitFileNameProblems([{ file: 'unit-01.json', raw }])
+    expect(
+      clean,
+      '构造失效：文件名与 unitNumber 一致却被判成有问题 ⇒ 判据要么恒红要么恒绿',
+    ).toEqual([])
+
+    const broken = unitFileNameProblems([{ file: 'unit-02.json', raw }])
+    expect(
+      broken.length,
+      '构造失效：把文件名改成 unit-02.json 却没被判出来 —— 判据没在比对文件名',
+    ).toBe(1)
+
+    // 顺带把「文件名形态不对」这一支也钉住 —— `unit-1.json`（没有补零）同样该报。
+    expect(
+      unitNumberFromFileName('unit-01.json'),
+      '构造失效：`unit-01.json` 竟取不到单元号',
+    ).toBe(1)
+    expect(unitNumberFromFileName('unit-1.json'), '补零与否不该影响解析').toBe(1)
+    expect(
+      unitFileNameProblems([{ file: 'unit-1.json', raw }]).length,
+      '构造失效：文件名形态不对（没有补零）却没报出来',
+    ).toBe(1)
   })
 })
