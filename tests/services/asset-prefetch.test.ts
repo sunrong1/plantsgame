@@ -32,7 +32,7 @@ import { join } from 'node:path'
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { entriesOf } from '../../src/content'
+import { UNITS, entriesOf } from '../../src/content'
 import { imageUrlsOfUnit, prefetchNextUnit, prefetchUnit } from '../../src/services/asset-prefetch'
 import { ZOMBIE_ASSET_URL, expectedTowerAssetUrl, wordImageUrl } from '../../src/services/asset-url'
 
@@ -257,7 +257,13 @@ describe('G149 —— 预取零 dispatch、零 core import（Story 1.18 / AC-E3�
     //   ⇒ 「之后不再发请求」成立。2.5 录入单元 2 之后，单元 1 **后面有单元 2**
     //   ⇒ 这一条会真的去预取单元 2 的 30 张图 ⇒ 断言红了，而**判据本身没错**。
     //   ⚠️ 判据不变，**换被测单元**（末位单元变了 ⇒ 换谁当末位）。
-    prefetchNextUnit(2)
+    // 🔥📎 `[CR]` 2026-10-23（Story 2.5）**把「末位」也改成推导出来的**：
+    //   Task 6.6 当时写死 `prefetchNextUnit(2)` ⇒ 单元 3 一录进来，
+    //   这一条又会**因为无关的原因**变红（它会去预取单元 3）⇒
+    //   「一个会误红的守卫」比没有守卫更坏（真回归会被当成噪音）。
+    //   ⇒ 末位单元**从内容层推导**（`UNITS` 的最后一项）⇒ 录新单元不用改这条。
+    const lastUnit = UNITS[UNITS.length - 1]!.unitNumber
+    prefetchNextUnit(lastUnit)
     await new Promise((done) => setTimeout(done, 0))
 
     expect(spy.mock.calls, '单元 2 之后还在发请求 —— 那是往一个不存在的单元号要图，全是 404').toEqual([])

@@ -21,8 +21,7 @@
  * · **不断言具体条数以外的顺序**。条数本身要断言（37），顺序是录入的自由。
  */
 
-import { createHash } from 'node:crypto'
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -34,98 +33,37 @@ import { getUnit, parseUnit, UNITS } from '../../src/content'
 import { targetCardDistribution } from '../../src/content/distribution'
 import { UnitSchema } from '../../src/content/schema'
 import { assertOptionCountsMatchRule } from '../helpers/option-counts'
+import { assertVoiceAssetsMatchEntries, readVoiceAssets } from '../helpers/voice-assets'
 
 const root = fileURLToPath(new URL('../../', import.meta.url))
-const voiceDir = join(root, 'public/assets/audio/voice')
-
-interface Manifest {
-  entries: Record<string, { text: string; sha256: string; bytes: number }>
-}
-const manifest = JSON.parse(readFileSync(join(voiceDir, 'manifest.json'), 'utf8')) as Manifest
 
 const unit = getUnit(1)
 const entries = unit.entries
 
-/**
- * 磁盘上录音文件的 id（去扩展名）；**给了前缀就只取那一组**。
- *
- * 🔥📎 **Story 2.5 / Task 6.2：前缀参数是这一轮加的。**
- *   原先逐字是 `mp3Ids()` —— 扫**整个** voice 目录 ⇒ 单元 2 的 38 条录音一落地，
- *   单元 1 的三条判据（数量 / 集合相等 / 「每条都有被朗读的地方」）**当场变红**，
- *   而它们守的东西（单元 1 的词条与单元 1 的录音一致）**一个字都没变**。
- *   ⇒ 改成**按单元前缀分组**：单元 1 的判据只看 `u1-`，单元 2 的看 `u2-`。
- */
-const mp3Ids = (prefix = ''): string[] =>
-  readdirSync(voiceDir)
-    .filter((name) => name.endsWith('.mp3'))
-    .map((name) => name.slice(0, -'.mp3'.length))
-    .filter((id) => id.startsWith(prefix))
-    .sort()
-
 describe('AC-15 —— entryId 与本单元的 mp3 完全一致', () => {
-  it('本单元的 mp3 数量 === 本单元词条数（少一条会静默降级到设备 TTS）', () => {
-    // ⚠️ 原来逐字写死 37 —— 那是 1.16 时代的做法（Epic 1 只有一个单元）。
-    //   现在改成**数据驱动**：录音条数必须**跟着词条走**，
+  it('本单元的词条与本单元的录音一一对应（六条轴，共用判据）', () => {
+    // ⚠️ [CR] 2026-10-23（Story 2.5，守卫 **G289**）：这一整块原先是**本文件私有**的
+    //   四条断言（条数 / id 集合 / 非 0 字节 / manifest 哈希），
+    //   而单元 2 的测试文件**一条都没写** ⇒ 单元 2 的录音与词条脱节时没有任何报错。
+    //   ⇒ 判据抽到 `tests/helpers/voice-assets.ts`，两个单元**共用同一份**（R-37）。
+    //   ⚠️ 原来逐字写死 37 —— 那是 1.16 时代的做法（Epic 1 只有一个单元）。
+    //   现在是**数据驱动**：录音条数必须**跟着词条走**，
     //   而「单元 1 有 37 条」这件事由下方 AC-16 那条单独钉住。
-    expect(
-      mp3Ids('u1-').length,
-      '单元 1 的录音条数与词条数不一致 —— 少一条会静默降级到设备 TTS，多一条说明词表被改过',
-    ).toBe(entries.length)
-  })
-
-  it('entryId 集合 === 本单元的 mp3 文件名集合（两个方向都为空）', () => {
-    expect([...entries.map((e) => e.entryId)].sort(), '内容与录音不一致，见上方说明').toEqual(
-      mp3Ids('u1-'),
-    )
-  })
-
-  it('每个 mp3 都非空（0 字节的录音会永久 skip，运行时静默降级）', () => {
-    for (const id of mp3Ids()) {
-      const size = statSync(join(voiceDir, `${id}.mp3`)).size
-      expect(size, `${id}.mp3 是 0 字节 ⇒ 运行时 new Audio() 收 error 事件，静默降级到设备 TTS`).toBeGreaterThan(
-        0,
-      )
-    }
-  })
-
-  it('每个 mp3 的内容与 manifest 记录一致（跳过判据是哈希，不是「文件存在」）', () => {
-    for (const [id, recorded] of Object.entries(manifest.entries)) {
-      const actual = createHash('sha256').update(readFileSync(join(voiceDir, `${id}.mp3`))).digest('hex')
-      expect(actual, `${id}.mp3 的内容与 manifest 不符（半截文件 / 被手工改过 / 换了语速重生成）`).toBe(
-        recorded.sha256,
-      )
-    }
+    const { files, manifest: voiceManifest } = readVoiceAssets('u1-')
+    assertVoiceAssetsMatchEntries('u1-', entries, files, voiceManifest)
   })
 })
 
 describe('卡面文本与录音内容一致（录音不可重生成，这是不变量）', () => {
-  it('每条 promptText 等于该词条录音里的文本', () => {
-    for (const entry of entries) {
-      const recorded = manifest.entries[entry.entryId]
-      expect(
-        recorded?.text,
-        `${entry.entryId} 没有录音溯源记录（manifest 里查不到）⇒ 读取时会静默降级到设备 TTS`,
-      ).toBeDefined()
-      expect(
-        entry.card.promptText,
-        `${entry.entryId} 的卡面文字与录音内容不一致 ⇒ 孩子看到的字与听到的声音对不上`,
-      ).toBe(recorded?.text)
-    }
-  })
-
-  it('每条录音都有被朗读的地方（没有「只当选项、不当题面」的孤儿录音）', () => {
-    const prompts = new Set(entries.map((e) => e.card.promptText))
-    // 🔥📎 **Story 2.5 / Task 6.2：`mp3Ids('u1-')` 而不是 `mp3Ids()`。**
-    //   原来扫的是**整个** voice 目录 ⇒ 单元 2 的录音会拿单元 1 的卡面去比
-    //   ⇒ 「u2-apple 的录音在任何一张卡的卡面上都不出现」—— 一条**跨单元**的假红。
-    for (const id of mp3Ids('u1-')) {
-      const recorded = manifest.entries[id]
-      expect(
-        prompts.has(recorded?.text ?? ''),
-        `${id} 的录音「${recorded?.text}」在任何一张卡的卡面上都不出现 —— ` +
-          '要么它该当题面却只当选项，要么词表与内容层已经脱节',
-      ).toBe(true)
-    }
+  it('每条 promptText 等于该词条录音里的文本；每条录音都有被朗读的地方', () => {
+    // ⚠️ [CR] 2026-10-23（Story 2.5，守卫 **G289**）：这两条原先是本文件里的
+    //   **两份私有循环**（第 ⑤ 轴「录音出现在某张卡面上」、第 ⑥ 轴「卡面文字 === 录音文本」）。
+    //   判据抽到共用 helper 后，这里**不再保留副本** ——
+    //   留副本就是复制链（R-37）：两份会漂移，改了规则只改一份 ⇒ 单元 2 那份恒绿。
+    //   ⇒ 两条轴改由上方 AC-15 那次 `assertVoiceAssetsMatchEntries` 调用把关，
+    //     单元 1 与单元 2 **共用同一份判据**。
+    const { files, manifest: voiceManifest } = readVoiceAssets('u1-')
+    assertVoiceAssetsMatchEntries('u1-', entries, files, voiceManifest)
   })
 })
 
@@ -248,7 +186,12 @@ describe('AC-17 —— 三种卡型成规模存在（FR19）', () => {
     expect(
       () => assertOptionCountsMatchRule([padded]),
       '判据在「多一个选项」的违规夹具上没红 ⇒ 判据本身失效（它可能恒真）',
-    ).toThrow()
+      // ⚠️ `[CR]` 2026-10-23（Story 2.5）**收紧到具体消息**：
+      //   裸 `toThrow()` 只说「抛了错」，**不说是哪一条断言抛的** ⇒
+      //   判据被改坏时它可能因为**别的**断言先炸而照样绿 ——
+      //   那正是 Story 2.5 的 M330 抓到的假绿形态（单元 2 的 G280 当时就是这种）。
+      //   ⇒ 消息片段逼它必须**在「选项数不符」这条上**炸。
+    ).toThrow('而规则说单元 1 的')
   })
 
   it('每张卡恰有一个正确项（FR16 在真实数据上的复验）', () => {

@@ -37,13 +37,25 @@ npm run build
 ### 实测产物形态（2026-10-23，Story 2.5 收尾时构建）
 
 ```
-dist/  3.3 MB  166 个文件
+dist/  3.3 MB  165 个文件
 dist/index.html                        3.44 kB │ gzip:   2.08 kB
-dist/assets/index-B6zhMCMw.js        242.14 kB │ gzip:  77.92 kB
-dist/assets/index-DR2TTpuc.css        15.43 kB │ gzip:   3.71 kB
-dist/manifest.webmanifest               0.75 kB
-dist/sw.js                              1.60 kB │ gzip:   0.79 kB
+dist/assets/index-DFmTZkY5.js        242.45 kB │ gzip:  77.37 kB
+dist/assets/index-DR2TTpuc.css        15.44 kB │ gzip:   3.71 kB
+dist/manifest.webmanifest               0.76 kB
+dist/sw.js                              1.91 kB │ gzip:   0.95 kB
 ```
+
+⚠️📎 **`[CR]` 2026-10-23（Story 2.5）整块重测** —— 原文写的
+`sw.js 1.60 kB │ gzip 0.79 kB` 与**实测**不符：当天 `npm run build` 的产物是
+`sw.js` **1912 B（1.91 kB）│ gzip 952 B（0.95 kB）**。
+⚠️ 其余几行一并更新（JS 的内容哈希变了：旧 `index-B6zhMCMw.js` → 新 `index-DFmTZkY5.js`；
+CSS 与 manifest 的字节数也差了一两个字节）。
+⚠️ **gzip 口径**：本表的 gzip 列是 **`node -e` 的 `zlib.gzipSync`（默认 level 6）**，
+不是 `gzip -c`（后者对同样的文件会小几十字节）⇒ 两套数不可混用。
+⚠️ 「165 个文件」是**不含** `public/_voices-probe.html` 的数（那个本地调试探针被 Vite 复制进了 `dist/`，
+**不入库**，所以真部署是 165）。
+⚠️ **教训**：`sw.js` 的字节数**不是稳定值** —— 它是**手工维护**的（清单 + token），
+改动会变 ⇒ 引用它时必须写「**某一天实测**」并带上日期，否则就是一条会漂的记录。
 
 ⚠️ **`sw.js` 每次构建的字节数几乎不变**（内容里只有清单与 token 变），
    所以**内容哈希在它身上没有诊断价值** —— 托管侧必须靠缓存头而不是文件名。

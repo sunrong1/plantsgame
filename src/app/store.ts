@@ -1190,8 +1190,27 @@ export function backToStart(): void {
  * ⚠️ **清会话录制**：新单元是**新的一局**，
  *   而录制是从 `initialState` 起算的 ⇒ 不清的话导出的是「单元 1 的开局 + 单元 2 的输入」，
  *   回放必然对不上（`core/session-replay.ts` 逐字声明「非法 action 会照 `reduce` 的抛错抛出去」）。
+ *
+ * 🔥📎 **`[CR]` 2026-10-23（Story 2.5）补一道相位守卫**：
+ *   本函数**无条件**换战场 ⇒ 任何误调用（从「答题中」直接调、
+ *   或一份指向未来的存档让 `currentUnitIndex` 超前）都会**把孩子这一局静默换掉** ——
+ *   进度还在、掌握记录还在，但屏幕上的战场被替换了 ⇒ 孩子的体感是「游戏把我的答案吃了」。
+ *   ⇒ 现在**只在终态**才换战场；非终态调用 = 记一条 WARN 并**原地不动**。
+ *   ⚠️ **判据用 `levelOutcomeKind()` 而不是重写一遍**：那三件事
+ *     （本局结束 / 本单元学完 / 下一个单元录了）的**唯一**出处就是它（R-02），
+ *     这里重抄一份就会分家（R-37）。
  */
 export function goToNextUnit(): void {
+  // ⚠️ **相位与种类都要查**：只查 `levelOutcomeKind()` 不够 ——
+  //   那个函数的「非终态 ⇒ continue」是**它自己文档里的约定**，
+  //   而守卫不许建立在「另一个函数的文档」上 ⇒ 相位在这里**独立**判一次。
+  if (state.value.phase.kind !== 'level-complete' || levelOutcomeKind() !== 'next-unit') {
+    console.warn(
+      `[app] goToNextUnit 只在「通关 ∧ 本单元学完 ∧ 下一个单元录了」时可调 —— ` +
+        `当前是「${state.value.phase.kind} / ${levelOutcomeKind()}」，已留在当前战场`,
+    )
+    return
+  }
   const targetUnitNumber = progress.value.currentUnitIndex + 1
   if (!UNITS.some((unit) => unit.unitNumber === targetUnitNumber)) {
     console.warn(
@@ -1243,9 +1262,23 @@ export type LevelOutcomeKind = 'next-unit' | 'continue' | 'retry' | 'finished'
  * 终态浮层那个按钮的**种类**（Story 2.5 / Task 5.2）。
  *
  * ⚠️ **只在终态下有意义**：非终态时返回 `continue`（组件此时根本不渲染浮层）。
+ *
+ * 🔥📎 **`[CR]` 2026-10-23（Story 2.5）把「非终态 ⇒ `continue`」写进代码**：
+ *   这句话原先**只在注释里** —— 而实现是「失败 → `retry`；否则查学完没有；
+ *   查完了再看下一个单元录了没有」⇒ 一个**非终态**的相位（`awaiting-answer` 等）
+ *   只要恰好「本单元已学完 ∧ 下一个单元录了」，就会算出 **`next-unit`**，
+ *   **与它自己的文档相反**。
+ *   ⚠️ 今天**够不着**（浮层只在终态渲染，组件根本不会问），
+ *   但它是**「判据与文档分家」**那一类 —— `goToNextUnit()` 的相位守卫
+ *   （Task 5.2 的 `[CR]` 补丁）正要拿这个函数的结论 ⇒ 分家就会**直接放行误调用**。
+ *   ⇒ 现在显式判：非终态一律 `continue`。
  */
 export function levelOutcomeKind(): LevelOutcomeKind {
-  if (state.value.phase.kind === 'level-failed') return 'retry'
+  const phaseKind = state.value.phase.kind
+  if (phaseKind === 'level-failed') return 'retry'
+  // ⚠️ **非终态一律 `continue`** —— 浮层此时根本不渲染（AC-5.7），
+  //   而这个函数是 {@link goToNextUnit} 的相位守卫的依据 ⇒ 判据必须与文档一致。
+  if (phaseKind !== 'level-complete') return 'continue'
   const unitNumber = state.value.unitNumber
   if (!unitFullyLearned(unitNumber, progress.value.masteredWordIds)) return 'continue'
   if (nextUnitIsRecorded(unitNumber)) return 'next-unit'

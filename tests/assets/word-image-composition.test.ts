@@ -597,6 +597,189 @@ describe('脚本与守卫同源 —— 守卫不得自带第二份几何算法',
   })
 })
 
+// ── G286 —— 词图文件头里的「外沿实算」必须等于工具实算 ───────────────────────
+
+/**
+ * **G286 的判据本体** —— 抽成函数，正向用例与反向自测**都调它**（R-51）。
+ *
+ * ⚠️ **守的是什么**：每张词图的文件头里都写着「主体占比 / 最小留白 / 重心偏移 /
+ *   重心」这组**实算值** —— 那是这张图**合规的唯一人类可读证据**
+ *   （§5.1 / §5.2 / §5.3 的判据数就是这三个数）。
+ *   ⚠️ **它此前一条守卫都没有** —— 于是它**可以随便写**：
+ *   `[CR]` 2026-10-23（Story 2.5）实测抓到 `u2-doctor` 的文件头写着
+ *   **75.6% / 62.0px / 13.5px**，而工具实算是 **78.1% / 49.0px / 7.0px**
+ *   （留白差了 13px、偏移差了 6.5px）⇒ **文件头在说谎，而全仓守卫全绿**。
+ *
+ * ⚠️ **为什么这不是「文档洁癖」**：这组数是**判据本身**，
+ *   不是对判据的描述 —— 有人照着文件头判断「这张图离 §5.2 的下限还有多远」
+ *   （§5.2 的下限是 30.72px，49.0 与 62.0 差着一倍）⇒ 照着假数做判断会做错。
+ *   R-21「实测值优先于文档值」的前提是**实测值真的在那儿**；这条守的就是它。
+ *
+ * ⚠️ **判据不许重抄一份几何算法** —— 实算一律走 {@link measureWordImage}。
+ */
+interface HeaderMeasurement {
+  edgePercent: number
+  minPaddingPx: number
+  centerOffsetPx: number
+  centerX: number
+  centerY: number
+}
+
+/**
+ * 从文件头里解析那组实算值 —— **只认规范写法**。
+ *
+ * ⚠️ **为什么只认一种写法**：判据要能被机器逐字核对 ⇒ 写法必须唯一。
+ *   `[CR]` 实测：`u2-egg` / `u2-kite` / `u2-sun` 当时用的是**手算推导**的散文体，
+ *   `u2-ice-cream` 用的是**另一种措辞**（「外沿实测值」）⇒ 四张图**核对不到**
+ *   ⇒ 规范化写法已在本 story 内把它们改成同一句式。
+ */
+function parseHeaderMeasurement(source: string): HeaderMeasurement | null {
+  const match =
+    /主体占比\s*\*\*([\d.]+)%\*\*[，,]\s*最小留白\s*\*\*([\d.]+)px\*\*[，,]\s*重心偏移\s*\*\*([\d.]+)px\*\*[，,]\s*重心\s*\((-?[\d.]+),\s*(-?[\d.]+)\)/.exec(
+      source,
+    )
+  if (match === null) return null
+  return {
+    edgePercent: Number(match[1]),
+    minPaddingPx: Number(match[2]),
+    centerOffsetPx: Number(match[3]),
+    centerX: Number(match[4]),
+    centerY: Number(match[5]),
+  }
+}
+
+/**
+ * 三个实算量的容差 —— **0.06**。
+ *
+ * ⚠️ **为什么是 0.06 而不是 0**：文件头里的数是**一位小数**（工具的 `toFixed(1)`），
+ *   而真值是浮点 ⇒ 四舍五入的最大误差是 **0.05** ⇒ 0.06 是「刚好装得下四舍五入、
+ *   又装不下任何一次真正的改动」的最小值。⚠️ **不许放宽**：放宽到 0.1 时
+ *   `75.6` 与 `78.1` 那种改动仍会被放过吗？—— 不会，但 `0.1` 也能放过
+ *   「四舍五入写错一位」以外的漂移 ⇒ 0.06 是**故意贴着 0.05 选的**。
+ */
+const HEADER_EPSILON = 0.06
+
+/**
+ * 重心坐标的容差 —— **0.6**。
+ *
+ * ⚠️ **为什么比另外三个宽**：重心坐标在文件头里是**整数**（工具的 `toFixed(0)`），
+ *   而真值是浮点（如 `u2-cow` 的 249.547 ⇒ 写 250）⇒ 四舍五入误差最大 **0.5**。
+ *   而重心的**意义**由「重心偏移」那个数承担（它才是 §5.3 的判据）⇒
+ *   这一对坐标只作**辅助核对**，宽一点是合理的。
+ */
+const HEADER_CENTER_EPSILON = 0.6
+
+/**
+ * **G286 的判据本体** —— 核对一张图的文件头与它的实算值。
+ *
+ * @param entryId 图的 id（用于报错信息）
+ * @param source  SVG 原文
+ * @param measured 工具实算的结果
+ * @returns 问题清单；空数组 = 一致
+ */
+function g286ProblemsIn(
+  entryId: string,
+  source: string,
+  measured: WordImageMetrics,
+): string[] {
+  const header = parseHeaderMeasurement(source)
+  if (header === null) {
+    return [
+      `${entryId}：文件头里没有「外沿实算」的规范记录（主体占比 / 最小留白 / 重心偏移 / 重心）` +
+        '—— 这一组数是 §5.1 / §5.2 / §5.3 的判据本身，缺了它就没人能核对这张图',
+    ]
+  }
+  const problems: string[] = []
+  const check = (label: string, claimed: number, actual: number, epsilon: number): void => {
+    if (Math.abs(claimed - actual) < epsilon) return
+    problems.push(
+      `${entryId}：文件头写的${label}是 ${claimed}，工具实算是 ${actual} ` +
+        `（差 ${Math.abs(claimed - actual).toFixed(3)}）—— 文件头在说谎，判据以实算为准（R-21）`,
+    )
+  }
+  check('主体占比', header.edgePercent, measured.edgePercent, HEADER_EPSILON)
+  check('最小留白', header.minPaddingPx, measured.minPaddingPx, HEADER_EPSILON)
+  check('重心偏移', header.centerOffsetPx, measured.centerOffsetPx, HEADER_EPSILON)
+  check('重心 x', header.centerX, measured.centerX, HEADER_CENTER_EPSILON)
+  check('重心 y', header.centerY, measured.centerY, HEADER_CENTER_EPSILON)
+  return problems
+}
+
+/** 本批（单元 2）的每一张词图 —— 文件头必须有那组实算记录。 */
+const UNIT2_DIR = join(wordsDir, 'unit-02')
+
+/** 单元 2 的全部词图文件路径（按名排序）。 */
+function unit2WordImages(): string[] {
+  return readdirSync(UNIT2_DIR)
+    .filter((name) => name.endsWith('.svg'))
+    .sort()
+    .map((name) => join(UNIT2_DIR, name))
+}
+
+describe('G286 —— 词图文件头里的「外沿实算」逐张等于工具实算', () => {
+  it('单元 2 的每一张词图：文件头的三个实算量都与工具实算一致', () => {
+    const problems: string[] = []
+    for (const path of unit2WordImages()) {
+      const entryId = basename(path, '.svg')
+      const source = readFileSync(path, 'utf8')
+      problems.push(...g286ProblemsIn(entryId, source, measureWordImage(entryId, source)))
+    }
+    expect(problems, '词图文件头里的实算值与工具实算不一致（详见每一条）').toEqual([])
+  })
+
+  it('单元 2 的每一张词图都有那组实算记录（一张都不许漏 —— 「没有」也是一种不一致）', () => {
+    // ⚠️ 这一条守的是**上一条的前提**：上一条会跳过「解析不出记录」的图吗？—— 不会，
+    //   `g286ProblemsIn` 在解析不出时**返回一条问题** ⇒ 上一条已经覆盖「缺记录」。
+    //   这一条单独再钉一遍，是为了让**失败信息**直接指向「缺记录」而不是「值对不上」。
+    const missing = unit2WordImages().filter((path) => {
+      const source = readFileSync(path, 'utf8')
+      return parseHeaderMeasurement(source) === null
+    })
+    expect(
+      missing.map((path) => basename(path)),
+      '这些词图的文件头里没有「外沿实算」的规范记录 ⇒ 它们的合规性没有人类可读的证据',
+    ).toEqual([])
+  })
+
+  it('🚨 反向自测：把文件头的实算值改错 ⇒ 判据本体必须报出问题', () => {
+    // ⚠️ R-51：反向自测**真的调用判据本体** ⇒ 判据被掏空时它照样红。
+    //   夹具用 `u2-doctor` 的**真实**文件与**真实**实算值，只把文件头里的
+    //   三个数换成一组「看起来很合理但不是实算」的数 —— 那正是
+    //   `[CR]` 实测在 `u2-doctor` 上抓到的原样。
+    const entryId = 'u2-doctor'
+    const source = readFileSync(join(UNIT2_DIR, `${entryId}.svg`), 'utf8')
+    const measured = measureWordImage(entryId, source)
+    const violated = source.replace(
+      /主体占比\s*\*\*[\d.]+%\*\*[，,]\s*最小留白\s*\*\*[\d.]+px\*\*[，,]\s*重心偏移\s*\*\*[\d.]+px\*\*/,
+      '主体占比 **75.6%**，最小留白 **62.0px**，重心偏移 **13.5px**',
+    )
+    expect(violated, '夹具没改成 —— 说明正则没匹配上，这条例外自测等于空转').not.toBe(source)
+
+    const problems = g286ProblemsIn(entryId, violated, measured)
+    expect(
+      problems.length,
+      '判据在「文件头写着假实算值」的夹具上没报出问题 ⇒ 判据本身失效（它可能恒真）',
+    ).toBeGreaterThan(0)
+  })
+
+  it('🚨 反向自测：文件头里没有实算记录 ⇒ 判据本体必须报出问题', () => {
+    const entryId = 'u2-doctor'
+    const source = readFileSync(join(UNIT2_DIR, `${entryId}.svg`), 'utf8')
+    const measured = measureWordImage(entryId, source)
+    const stripped = source.replace(
+      /主体占比\s*\*\*[\d.]+%\*\*[，,]\s*最小留白\s*\*\*[\d.]+px\*\*[，,]\s*重心偏移\s*\*\*[\d.]+px\*\*[，,]\s*重心\s*\(-?[\d.]+,\s*-?[\d.]+\)/,
+      '（这段实算记录不见了）',
+    )
+    expect(stripped, '夹具没改成 —— 说明正则没匹配上，这条例外自测等于空转').not.toBe(source)
+
+    const problems = g286ProblemsIn(entryId, stripped, measured)
+    expect(
+      problems.length,
+      '判据在「文件头没有实算记录」的夹具上没报出问题 ⇒ 判据本身失效（它可能恒真）',
+    ).toBeGreaterThan(0)
+  })
+})
+
 // ── 词图目录本身 ──────────────────────────────────────────────────────────────
 
 describe('词图目录与命名', () => {

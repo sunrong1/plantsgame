@@ -392,19 +392,26 @@ export function verifyDeploy(fs: DeployFs): DeployReport {
   const voiceMp3s = fs
     .listDir('assets/audio/voice')
     .filter((name) => name.endsWith('.mp3') && !name.includes('/'))
+  // ⚠️📎 `[CR]` 2026-10-23（Story 2.5）**按数字排序，不按字符串排序**：
+  //   单元号是**数字**，`['2','10','11']` 按字符串排会得到 `['10','11','2']`
+  //   ⇒ 单元 10 一进来，检查项的顺序就变成 `unit-01, unit-10, unit-11, …, unit-02`
+  //   ⇒ 构建日志与 `docs/deployment.md` 里那份「逐项清单」对不上，
+  //   而**扫一眼构建日志的人**恰恰最容易漏掉那条被打乱的项。
+  //   ⇒ 先转成数字排序，再补零成目录名。
   const unitsWithVoice = [
     ...new Set(
       voiceMp3s
         .map((name) => /^u(\d+)-/.exec(name)?.[1])
-        .filter((digits): digits is string => digits !== undefined),
+        .filter((digits): digits is string => digits !== undefined)
+        .map((digits) => Number(digits)),
     ),
-  ].sort()
+  ].sort((a, b) => a - b)
   const unitDirs = [
     ...new Set([
-      ...unitsWithVoice.map((digits) => `unit-${digits.padStart(2, '0')}`),
+      ...unitsWithVoice.map((n) => `unit-${String(n).padStart(2, '0')}`),
       ...fs.listDir('assets/words').filter((name) => /^unit-\d+$/.test(name)),
     ]),
-  ].sort()
+  ].sort((a, b) => Number(a.slice(5)) - Number(b.slice(5)))
   let unitsWithWordImages = 0
   for (const dir of unitDirs) {
     const svgs = fs

@@ -49,7 +49,7 @@
 #   epics.md 的销项说明处理。
 
 generated: 2026-10-12
-last_updated: 2026-10-23  # Story 2.5 `[DS]` 完成（2-5 → review）：词图档位 + 单元 2 内容 + 30 张词图 + 38 条录音 + 推进语义 + 账本结清
+last_updated: 2026-10-23  # Story 2.5 `[CR]` 完成（2-5 → done）：三层评审 36 条分诊（16 改 / 4 延后 / 16 噪声）+ G286–G289 + 变异整轮重放，见其 story 文档
 project: plants-game
 project_key: NOKEY
 tracking_system: file-system
@@ -87,10 +87,11 @@ development_status:
   2-2-难度阶梯规则落地: done
   2-3-阳光经济档位扩展: done   # [CR] 完成；1 条未裁决见 deferred-work 的 DF-138，见 story 文档
   2-4-选项数量递进规则: done   # [CR] 完成；守卫 G262–G276 / 变异 M308–M325；对抗评审分诊与四处更正留痕见其 story 文档
-  2-5-内容批次-1-单元-2-单单元试点: review   # [DS] 完成（2-5 → review）：Task 1–9 全做完；实测值、变异矩阵与账本结清留痕见其 story 文档
-  2-6-内容批次-2-单元-3-7: backlog
-  2-7-内容批次-3-单元-8-13: backlog
-  2-8-内容批次-4-单元-14-至末单元: backlog
+  2-5-内容批次-1-单元-2-单单元试点: done   # [CR] 完成：三层评审 36 条分诊（16 改 / 4 延后 / 16 噪声）+ 新守卫 G286–G289 + 变异整轮重放 M326–M341，见其 story 文档
+  # 2-6 / 2-7 / 2-8 被 DF-201 挡住（教材版本未确认 ⇒ 不再自建新单元的词表），见 deferred-work
+  2-6-内容批次-2-单元-3-7: backlog   # DF-201
+  2-7-内容批次-3-单元-8-13: backlog   # DF-201
+  2-8-内容批次-4-单元-14-至末单元: backlog   # DF-201
   2-9-全书通关与难度曲线试玩验收: backlog
   2-retrospective: optional
   epic-3: backlog

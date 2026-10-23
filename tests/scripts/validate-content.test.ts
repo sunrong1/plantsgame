@@ -33,6 +33,7 @@ import {
   main,
   optionNearDuplicateProblems,
   parseCli,
+  printUnitDistributions,
   unitDistributionOf,
   validateContent,
   type ValidateDeps,
@@ -1150,6 +1151,100 @@ describe('G284 —— `validate:content` 逐单元打印卡型配比与逐族余
     expect(
       lines.some((line) => line.includes('逐族误差')),
       'CLI 输出里没有「逐族误差」这一行 ⇒ DF-118 的恢复条件没达成（录入时看不见余量）',
+    ).toBe(true)
+  })
+})
+
+// ── G288 —— 「规则未覆盖」的单元必须被**点名**（不许悄悄消失）───────────────
+
+/**
+ * **G288 守的是什么** —— `validate:content` 的逐单元配比统计**跳过**了
+ * 规则未覆盖的单元号（`targetCardDistribution` 不外推）⇒
+ * 那些单元**不在**输出里 ⇒ 光看输出会以为「每个单元都查过了」。
+ *
+ * ⚠️ **为什么这条不是吹毛求疵**：`[CR]` 2026-10-23 实测发现，
+ *   脚本里那句注释逐字写着「**并让输出里明说「规则未覆盖」**」，
+ *   而**实现里没有任何地方打印它** ⇒ 注释承诺的与代码做的**分家**了。
+ *   这正是本仓反复吃过的「输出看起来没事，其实有一项没被检查」。
+ */
+describe('G288 —— 规则未覆盖的单元在输出里被逐个点名', () => {
+  /**
+   * 一份**落在规则覆盖范围外**的单元（单元 21）——
+   * ⚠️ **必须整体改写 id**（`entryId` / `wordId` / 选项 `id` / `imageSrc`），
+   *   否则 schema 的 superRefine 会因「选项指向别的单元的词条」而失败
+   *   ⇒ `safeParse` 不通过 ⇒ 那个单元**在统计之前就被 continue 掉了**，
+   *   根本走不到 `unitDistributionOf` ⇒ 本守卫会变成恒绿。
+   */
+  function unitOutsideRule(): RawUnit {
+    const unit = unitCopy() as RawUnit
+    unit.unitNumber = 21
+    const rename = (id: string): string => `u21-${id.slice(id.indexOf('-') + 1)}`
+    for (const entry of unit.entries) {
+      entry.entryId = rename(entry.entryId)
+      entry.wordId = entry.entryId
+      for (const option of entry.card.options) {
+        option.id = rename(option.id)
+        if (option.imageSrc !== undefined) {
+          option.imageSrc = expectedImageUrl(21, option.id)
+        }
+      }
+    }
+    return unit
+  }
+
+  it('统计里被跳过的单元号被记下来（不是一个被吞掉的空缺）', () => {
+    const outside = unitOutsideRule()
+    // ⚠️ **词图要放在单元 21 自己的目录里** —— `greenDeps` 把图放在 `unit-01`，
+    //   而单元 21 的图按规范路径查的是 `unit-21` ⇒ 不改的话这份夹具会**顺带**
+    //   报一堆「词图缺失」，让「单元 21 只因规则越界而被跳过」这件事被噪音盖住。
+    const deps = greenAssetDeps(
+      fakeImages(allReferencedImages(outside).map((name) => `/fake/words/unit-21/${name}`)),
+    )
+    const { stats } = validateContent([realUnit, outside], deps)
+
+    expect(
+      stats.unitsWithoutRule,
+      '规则未覆盖的单元 21 没有被记进 unitsWithoutRule ⇒ 它从统计里彻底消失了',
+    ).toContain(21)
+    expect(
+      stats.unitDistributions.map((unit) => unit.unitNumber),
+      '单元 21 不该出现在逐单元统计里（规则不外推）',
+    ).not.toContain(21)
+  })
+
+  it('打印函数把「规则未覆盖」的单元**逐个点名**', () => {
+    // ⚠️ **为什么直接测打印函数而不是 CLI**：`main()` 只在 `result.ok` 时才打印统计，
+    //   而一个越界单元**自己就让校验不通过**（选项数规则也不覆盖它）
+    //   ⇒ 「打印成功 + 有越界单元」这个组合在真实内容上**永远走不到**
+    //   ⇒ 只能直接喂一份统计给打印函数。
+    const lines: string[] = []
+    printUnitDistributions(
+      {
+        unitDistributions: [
+          {
+            unitNumber: 2,
+            entryCount: 38,
+            kindCounts: { word: 30, keyword: 1, response: 7 },
+            targetShares: { word: 0.79, keyword: 0.03, response: 0.18 },
+            familyErrors: { word: 0.089, keyword: 0.373, response: 0.462 },
+          },
+        ],
+        unitsWithoutRule: [21],
+      },
+      (line) => lines.push(line),
+    )
+
+    expect(
+      lines.some((line) => line.includes('规则未覆盖')),
+      '打印函数没有输出「规则未覆盖」这一行 ⇒ 被跳过的单元从输出里消失了（没人知道它没被查）',
+    ).toBe(true)
+    expect(
+      lines.some((line) => line.includes('单元 21')),
+      '「规则未覆盖」那一行没有点名是哪个单元 ⇒ 读的人不知道该去查什么',
+    ).toBe(true)
+    expect(
+      lines.some((line) => line.includes('逐族误差')),
+      '打印函数没有输出逐族误差那一行 ⇒ DF-118 的恢复条件没达成',
     ).toBe(true)
   })
 })

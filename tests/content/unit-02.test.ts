@@ -45,6 +45,7 @@ import { targetCardDistribution } from '../../src/content/distribution'
 import { UnitSchema } from '../../src/content/schema'
 import type { CardKind, DeckEntry } from '../../src/content/schema'
 import { assertOptionCountsMatchRule } from '../helpers/option-counts'
+import { assertVoiceAssetsMatchEntries, readVoiceAssets } from '../helpers/voice-assets'
 
 const unit = getUnit(2)
 const entries = unit.entries
@@ -110,7 +111,7 @@ describe('G278 —— 卡型配比符合 §5.1.1 的两条判据（单元 2 = 38
     expect(
       () => assertDistributionMatchesShare(violated, 2, 38),
       '判据在「逐族误差 > 0.5 张」的违规夹具上没红 ⇒ 判据本身失效（它可能恒真）',
-    ).toThrow()
+    ).toThrow('逐族误差超过 0.5 张')
   })
 
   it('🚨 反向自测：少录一条 ⇒ 总量守恒那条必须红', () => {
@@ -119,7 +120,7 @@ describe('G278 —— 卡型配比符合 §5.1.1 的两条判据（单元 2 = 38
     expect(
       () => assertDistributionMatchesShare(violated, 2, 38),
       '判据在「总量不守恒」的违规夹具上没红 ⇒ 总量那条判据失效',
-    ).toThrow()
+    ).toThrow('总量不守恒')
   })
 })
 
@@ -151,7 +152,7 @@ describe('G279 —— id 前缀与 entryId === wordId', () => {
     expect(
       () => assertIdsAreWellFormed(violated, 2),
       '判据在「wordId ≠ entryId」的违规夹具上没红 ⇒ 判据本身失效',
-    ).toThrow()
+    ).toThrow('wordId 与 entryId 不一致')
   })
 })
 
@@ -295,7 +296,7 @@ describe('G281 —— 每个选项都指向本单元真实存在的词条', () =
     expect(
       () => assertOptionPointersResolve(violated, 2),
       '判据在「选项指向不存在的词条」的违规夹具上没红 ⇒ 判据本身失效',
-    ).toThrow()
+    ).toThrow('指向不存在的词条')
   })
 })
 
@@ -318,7 +319,101 @@ describe('G282 —— 逐卡选项数 === 档位规则（G264 的单元 2 版）
     expect(
       () => assertOptionCountsMatchRule([padded], 2),
       '判据在「多一个选项」的违规夹具上没红 ⇒ 判据本身失效（它可能恒真）',
-    ).toThrow()
+    ).toThrow('而规则说单元 2 的')
+  })
+})
+
+// ══════════════════════════════════════════════════════════════════════════════
+// G289 —— 本单元的词条与本单元的录音一一对应
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * **G289 的判据本体**在 `tests/helpers/voice-assets.ts`
+ * （`assertVoiceAssetsMatchEntries`）—— 单元 1 与单元 2 **共用同一份**（R-37）。
+ *
+ * ⚠️ 为什么单元 2 需要它：[CR] 2026-10-23 的评审发现，单元 1 的 AC-15 那组断言
+ *   （录音条数 / id 集合相等 / 非 0 字节 / manifest 哈希 / 「每条录音都有被朗读的地方」）
+ *   原先是 `tests/content/unit-01.test.ts` 的**模块私有代码**，
+ *   而单元 2 的测试文件**一条都没写**
+ *   ⇒ 单元 2 的录音与词条脱节（少录一条 ⇒ 运行时静默降级到设备 TTS）时**没有任何报错**。
+ *   ⇒ 判据抽到共用 helper，两边各调一次。
+ *
+ * ⚠️ 反向自测喂**假数据**而不是动磁盘：判据本体是纯函数（吃「磁盘事实」作为参数），
+ *   所以每一轴都能被单独喂坏，且真能证明它有牙齿（R-51）。
+ */
+describe('G289 —— 本单元的词条与本单元的录音一一对应', () => {
+  const { files, manifest } = readVoiceAssets('u2-')
+
+  it('正向：单元 2 的词条与 u2- 前缀的录音六轴全过', () => {
+    assertVoiceAssetsMatchEntries('u2-', entries, files, manifest)
+  })
+
+  it('🚨 反向自测：少一条录音 ⇒ 条数那条必须红', () => {
+    expect(
+      () => assertVoiceAssetsMatchEntries('u2-', entries, files.slice(1), manifest),
+      '判据在「少一条录音」的违规夹具上没红 ⇒ 判据本身失效',
+    ).toThrow('录音条数与词条数不一致')
+  })
+
+  it('🚨 反向自测：录音 id 与词条 id 对不上 ⇒ 集合那条必须红', () => {
+    const renamed = files.map((file, index) => (index === 0 ? { ...file, id: 'u2-renamed' } : file))
+
+    expect(
+      () => assertVoiceAssetsMatchEntries('u2-', entries, renamed, manifest),
+      '判据在「录音 id 与词条 id 不一致」的违规夹具上没红 ⇒ 判据本身失效',
+    ).toThrow('内容与录音不一致')
+  })
+
+  it('🚨 反向自测：0 字节的录音 ⇒ 非空那条必须红', () => {
+    const zeroed = files.map((file, index) => (index === 0 ? { ...file, bytes: 0 } : file))
+
+    expect(
+      () => assertVoiceAssetsMatchEntries('u2-', entries, zeroed, manifest),
+      '判据在「0 字节录音」的违规夹具上没红 ⇒ 判据本身失效',
+    ).toThrow('是 0 字节')
+  })
+
+  it('🚨 反向自测：录音内容与 manifest 不符 ⇒ 哈希那条必须红', () => {
+    const tampered = files.map((file, index) =>
+      index === 0 ? { ...file, sha256: '0000000000000000000000000000000000000000000000000000000000000000' } : file,
+    )
+
+    expect(
+      () => assertVoiceAssetsMatchEntries('u2-', entries, tampered, manifest),
+      '判据在「内容与 manifest 不符」的违规夹具上没红 ⇒ 判据本身失效',
+    ).toThrow('内容与 manifest 不符')
+  })
+
+  it('🚨 反向自测：录音文本在任何卡面上都不出现 ⇒ 孤儿录音那条必须红', () => {
+    const first = files[0]!
+    const original = manifest.entries[first.id]!
+    const tamperedManifest = {
+      entries: { ...manifest.entries, [first.id]: { ...original, text: 'ZZZ-not-on-any-card' } },
+    }
+
+    expect(
+      () => assertVoiceAssetsMatchEntries('u2-', entries, files, tamperedManifest),
+      '判据在「孤儿录音」的违规夹具上没红 ⇒ 判据本身失效',
+    ).toThrow('在任何一张卡的卡面上都不出现')
+  })
+
+  it('🚨 反向自测：卡面文字与录音文本不一致 ⇒ 第 ⑥ 轴必须红', () => {
+    // ⚠️ 夹具要**交换**两张卡的卡面文字，而不是改掉一张 ——
+    //   改掉一张会让「tiger」这个词从卡面上消失 ⇒ 第 ⑤ 轴（孤儿录音）**先**炸，
+    //   断言就变成「被别的断言撑起来的假通过」（R-51）。
+    //   ⇒ 交换 ⇒ 卡面文字的**集合**不变 ⇒ 第 ⑤ 轴照过，第 ⑥ 轴才炸。
+    const i = entries.findIndex((entry) => entry.card.promptText !== entries[1]!.card.promptText)
+    const j = i === 0 ? 1 : 0
+    const swapped = entries.map((entry, index) => {
+      if (index === i) return { ...entry, card: { ...entry.card, promptText: entries[j]!.card.promptText } }
+      if (index === j) return { ...entry, card: { ...entry.card, promptText: entries[i]!.card.promptText } }
+      return entry
+    })
+
+    expect(
+      () => assertVoiceAssetsMatchEntries('u2-', swapped, files, manifest),
+      '判据在「卡面文字与录音不一致」的违规夹具上没红 ⇒ 判据本身失效',
+    ).toThrow('卡面文字与录音内容不一致')
   })
 })
 

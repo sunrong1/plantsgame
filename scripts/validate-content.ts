@@ -168,6 +168,14 @@ export interface ContentStats {
    *   的守卫（§5.1.1 的两条判据）负责。脚本这一侧只负责**让人看见**。
    */
   unitDistributions: readonly UnitDistribution[]
+  /**
+   * **规则未覆盖**的单元号（`targetCardDistribution` 对它们不外推）。
+   *
+   * ⚠️ **为什么要有这一栏**：它们**不在** `unitDistributions` 里
+   *   ⇒ 光看配比输出会以为「每个单元都查过了」⇒
+   *   这一栏让 `main()` **逐个点名**，输出里就不会有「悄悄少查一个单元」这回事。
+   */
+  unitsWithoutRule: readonly number[]
 }
 
 /** 一个单元的卡型配比统计。 */
@@ -1149,6 +1157,13 @@ export function validateContent(
   const problems: ContentProblem[] = []
   const kindCounts: ContentStats['kindCounts'] = { word: 0, keyword: 0, response: 0 }
   const unitDistributions: UnitDistribution[] = []
+  // 🔥📎 `[CR]` 2026-10-23（Story 2.5）：**规则未覆盖的单元要被点名**。
+  //   原来这里只 `if (distribution !== null) unitDistributions.push(distribution)`
+  //   —— 被跳过的单元**从输出里彻底消失** ⇒ 「脚本说 2 个单元」而输出里只有 1 行配比，
+  //   **没有任何地方说「另一个单元没查」** ⇒ 那正是本仓反复吃过的
+  //   「输出看起来没事，其实有一项没被检查」。
+  //   ⇒ 这里把它们的单元号**记下来**，由 `main()` 逐个打印。
+  const unitsWithoutRule: number[] = []
   let entryCount = 0
 
   for (const raw of units) {
@@ -1170,6 +1185,7 @@ export function validateContent(
     //   只是**跳过该单元的统计**，并让输出里明说「规则未覆盖」。
     const distribution = unitDistributionOf(parsed.data.unitNumber, unitKindCounts)
     if (distribution !== null) unitDistributions.push(distribution)
+    else unitsWithoutRule.push(parsed.data.unitNumber)
   }
 
   problems.push(...globalEntryIdProblems(units))
@@ -1185,6 +1201,7 @@ export function validateContent(
       cardCount: entryCount,
       kindCounts,
       unitDistributions,
+      unitsWithoutRule,
     },
   }
 }
@@ -1203,6 +1220,44 @@ export function validateContent(
  * @param kindCounts 三型卡各多少（`c_k`）
  * @returns 统计；规则未覆盖该单元号时 `null`
  */
+/**
+ * **逐单元配比统计的打印**（DF-118 的恢复条件的落点；`[CR]` 2026-10-23 抽出成函数）。
+ *
+ * ⚠️ **为什么抽成函数**：`main()` 里直接写循环的话，守卫就**够不着**它 ——
+ *   而「规则未覆盖的单元被点名」这一条**只在这条路径上可观察**
+ *   （`main()` 只在 `result.ok` 时才打印统计 ⇒ 一个越界单元本身会让校验失败
+ *   ⇒ **在真实内容上永远走不到「打印成功 + 有越界单元」这个组合**）。
+ *   ⇒ 抽成导出函数，守卫就能**直接喂一份统计**断言它打印了什么。
+ *   ⚠️ **`main()` 仍然调它**（不是复制一份）：`main()` 里那行
+ *   `printUnitDistributions(result.stats, console.log)` 就是唯一的调用点。
+ *
+ * @param stats 统计结果
+ * @param log 输出函数（`main()` 传 `console.log`；测试传一个收集器）
+ */
+export function printUnitDistributions(
+  stats: Pick<ContentStats, 'unitDistributions' | 'unitsWithoutRule'>,
+  log: (line: string) => void,
+): void {
+  for (const unit of stats.unitDistributions) {
+    log(
+      `[content] 单元 ${unit.unitNumber} 配比：单词 ${unit.kindCounts.word} / ` +
+        `关键词 ${unit.kindCounts.keyword} / 回应 ${unit.kindCounts.response}（N=${unit.entryCount}）` +
+        `—— 逐族误差 ${unit.familyErrors.word.toFixed(3)} / ${unit.familyErrors.keyword.toFixed(3)} / ` +
+        `${unit.familyErrors.response.toFixed(3)}（§5.1.1 的阈值 0.5）`,
+    )
+  }
+  // 🔥📎 `[CR]` 2026-10-23（Story 2.5）**把「规则未覆盖」的单元点名** ——
+  //   这段注释原先挂在 `validateContent` 的循环上，承诺「让输出里明说『规则未覆盖』」，
+  //   而**实现里没有任何地方打印它** ⇒ 被跳过的单元**从输出里彻底消失** ⇒
+  //   「脚本说 2 个单元」而输出里只有 1 行配比，**没有任何地方说「另一个单元没查」**。
+  for (const unitNumber of stats.unitsWithoutRule) {
+    log(
+      `[content] 单元 ${unitNumber} 配比：**规则未覆盖该单元号**（§5.1.1 的份额规则不外推）` +
+        '—— 已跳过统计，本单元**没有**逐族余量可看',
+    )
+  }
+}
+
 export function unitDistributionOf(
   unitNumber: number,
   kindCounts: Record<'word' | 'keyword' | 'response', number>,
@@ -1390,14 +1445,7 @@ export function main(
   //   ⇒ 这里**逐单元**打印 `c_k` 与逐族误差 `|c_k − s_k × N|`。
   //   ⚠️ **这是统计，不是判据** —— 越界的判定在 `tests/content/unit-0N.test.ts`
   //   （§5.1.1 的两条判据）；脚本这一侧**不新增失败模式**（Story 2.2 裁决 3）。
-  for (const unit of result.stats.unitDistributions) {
-    console.log(
-      `[content] 单元 ${unit.unitNumber} 配比：单词 ${unit.kindCounts.word} / ` +
-        `关键词 ${unit.kindCounts.keyword} / 回应 ${unit.kindCounts.response}（N=${unit.entryCount}）` +
-        `—— 逐族误差 ${unit.familyErrors.word.toFixed(3)} / ${unit.familyErrors.keyword.toFixed(3)} / ` +
-        `${unit.familyErrors.response.toFixed(3)}（§5.1.1 的阈值 0.5）`,
-    )
-  }
+  printUnitDistributions(result.stats, console.log)
   console.log(
     `[content] 词图目录：${deps.wordImageRoot ?? cli.wordImageRoot} —— 全部被引用的词图均存在且命名合规`,
   )

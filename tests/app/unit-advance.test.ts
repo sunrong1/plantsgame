@@ -31,7 +31,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createInitialState, progressDisplay, sliceDeckForLevel } from '../../src/core'
 import { entriesOf } from '../../src/content'
-import { backToStart, enterLevel, progress, state, view } from '../../src/app/store'
+import { backToStart, enterLevel, goToNextUnit, levelOutcomeKind, progress, state, view } from '../../src/app/store'
 import { afterEachUninstall, installFakeStorage } from '../fixtures/fake-storage'
 import { driveStoreLevel } from '../fixtures/store-level-driver'
 
@@ -189,5 +189,91 @@ describe('AC-5.5 —— 单元 2 通关后**不**推进（单元 3 不存在）'
     const display = progressDisplay(progress.value, 2, entriesOf(2).length)
     expect(display.mastered, '单元 2 的 38 条都学完了').toBe(38)
     expect(display.total).toBe(38)
+  })
+})
+
+// ══════════════════════════════════════════════════════════════════════════════
+// G287 —— `[CR]` 2026-10-23（Story 2.5）：`goToNextUnit` 的相位守卫
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * **G287 守的是什么** —— `goToNextUnit()` 换战场**只该发生在终态**。
+ *
+ * ⚠️ **为什么这条要建**：`[CR]` 实测，`goToNextUnit()` 原先**无条件**换战场 ⇒
+ *   任何误调用（从「答题中」直接调）都会**把孩子这一局静默换掉** ——
+ *   进度还在、掌握记录还在，但屏幕上的战场被替换了 ⇒ 孩子的体感是「游戏把我的答案吃了」。
+ *   而**判据的分家让它更危险**：`levelOutcomeKind()` 的文档写着
+ *   「非终态时返回 `continue`」，而实现**没有这条** ⇒
+ *   一个「非终态 + 本单元已学完 + 下一个单元录了」的战场会算出 **`next-unit`**
+ *   ⇒ 用它当相位守卫就**形同虚设**。
+ *
+ * ⚠️ **判据全部走真 store 门面**（`goToNextUnit` / `levelOutcomeKind`）——
+ *   被测的判据住在 `src/app/store.ts` 里 ⇒ 绕开 store 就绕开了被测对象。
+ */
+describe('G287 —— goToNextUnit 只在终态换战场（误调用必须原地不动）', () => {
+  it('正向：读完单元 1（终态 ∧ 本单元学完 ∧ 单元 2 录了）⇒ 按钮种类是 next-unit，换战场成功', () => {
+    startUnit(1)
+    for (let level = 1; level <= 4; level += 1) {
+      driveStoreLevel()
+      if (level < 4) nextLevel()
+    }
+
+    expect(state.value.phase.kind, '前置：此刻是终态').toBe('level-complete')
+    expect(levelOutcomeKind(), '读完单元 1 ⇒ 按钮的种类是「下一单元」').toBe('next-unit')
+
+    goToNextUnit()
+
+    expect(state.value.unitNumber, 'goToNextUnit 应当把战场换到单元 2').toBe(2)
+    expect(state.value.deck.every((entry) => entry.entryId.startsWith('u2-')), '题单必须来自单元 2').toBe(
+      true,
+    )
+  })
+
+  it('🚨 反向自测：非终态调用 goToNextUnit ⇒ 战场必须**原地不动**', () => {
+    // ⚠️ **夹具必须是「非终态」**：`startUnit` 摆出来的是 `awaiting-answer`。
+    //   误调用的后果是**静默换掉孩子这一局** ⇒ 判据要能接住它。
+    //
+    // 🔥📎 `[CR]` 2026-10-23：**这一条原来抓不到变异**（整轮 0 红）。
+    //   原因：原来的夹具 `startUnit(1)` 让 `progress.currentUnitIndex = 0`
+    //   ⇒ `goToNextUnit()` 的目标单元 = `0 + 1` = **单元 1** = 战场本身
+    //   ⇒ 「换战场」在观测上**与「原地不动」完全一样** ⇒ 把相位守卫整条删掉也照样全绿。
+    //   ⇒ 现在把进度**指到「单元 1 已学完、下一站是单元 2」**（`currentUnitIndex = 1`），
+    //     这正是误调用会发生的那种形态 ⇒ 删掉守卫 ⇒ 战场真的会被换成单元 2 ⇒ 断言立刻红。
+    startUnit(1)
+    progress.value = { currentUnitIndex: 1, masteredWordIds: [...progress.value.masteredWordIds] }
+    const unitBefore = state.value.unitNumber
+    const deckBefore = state.value.deck.map((entry) => entry.entryId)
+
+    goToNextUnit()
+
+    expect(state.value.unitNumber, '非终态调用 goToNextUnit 把战场换掉了 —— 守卫失效').toBe(unitBefore)
+    expect(
+      state.value.deck.map((entry) => entry.entryId),
+      '非终态调用 goToNextUnit 把题单换掉了 —— 孩子这一局被静默吃掉',
+    ).toEqual(deckBefore)
+  })
+
+  it('🚨 反向自测：非终态 + 本单元已学完 + 下一个单元录了 ⇒ 按钮种类仍必须是 continue', () => {
+    // ⚠️ **这一条是「判据与文档分家」那半边**：`levelOutcomeKind()` 的注释逐字写着
+    //   「非终态时返回 `continue`」，而实现原先**没有这条** ⇒
+    //   一个「非终态 + 本单元已学完 + 下一个单元录了」的战场会算出 `next-unit`。
+    //   ⇒ 用它当相位守卫就**形同虚设**（守卫查的是一个恒真的东西）。
+    //
+    // ⚠️ **夹具怎么摆**：题单**不按已掌握切**（否则切片是空的，
+    //   `createInitialState` 会抛「题单不能为空」）⇒ 战场是**真的一局**，
+    //   而 `progress.masteredWordIds` 里**已经包含了整个单元** ——
+    //   这正是「读档回来的存档里，题单与掌握记录对不上」那种形态。
+    const unit1WordIds = entriesOf(1).map((entry) => entry.entryId)
+    progress.value = { currentUnitIndex: 0, masteredWordIds: [...unit1WordIds] }
+    state.value = createInitialState({
+      unitNumber: 1,
+      deck: sliceDeckForLevel(entriesOf(1), []),
+    })
+
+    expect(state.value.phase.kind, '前置：此刻不是终态').toBe('awaiting-answer')
+    expect(
+      levelOutcomeKind(),
+      '非终态时按钮种类必须是 continue —— 浮层此时根本不渲染（AC-5.7）',
+    ).toBe('continue')
   })
 })
