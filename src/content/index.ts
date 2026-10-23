@@ -26,6 +26,7 @@ import { z } from 'zod'
 
 import { UnitSchema, type Unit } from './schema'
 import unit01Raw from './units/unit-01.json'
+import unit02Raw from './units/unit-02.json'
 
 /**
  * 单元原始数据清单。**新增单元在这里加一行 import** ——
@@ -34,7 +35,10 @@ import unit01Raw from './units/unit-01.json'
  * 启动校验也就失去了意义（`npm run validate:content` 是另一条独立通路，
  * 它扫的是目录，**新增单元无需改脚本** —— AC-12）。
  */
-const RAW_UNITS: readonly { file: string; raw: unknown }[] = [{ file: 'unit-01.json', raw: unit01Raw }]
+const RAW_UNITS: readonly { file: string; raw: unknown }[] = [
+  { file: 'unit-01.json', raw: unit01Raw },
+  { file: 'unit-02.json', raw: unit02Raw },
+]
 
 /**
  * 启动时校验。
