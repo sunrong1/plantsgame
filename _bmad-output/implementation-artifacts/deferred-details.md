@@ -4504,36 +4504,6 @@ jsdom 没有布局引擎 ⇒ 测不出来。本轮给可源码化的那一半补
 
 > 来源：`## Deferred from: code review of 2-4 选项数量递进规则 (2026-10-23)` ｜ 旧编号 `—` ｜ 与 DF-190 成对（DF-190 是「语义近但字面远」，本条是「字面近但语义远」）
 
-## DF-194
-
-**状态**：待排期 · **归属**：未指派 · **恢复条件**：下次改 `src/styles/tokens.css` / `src/app/store.ts` / `src/core/types.ts` / `src/core/reducer.ts` / `src/styles/responsive.css` 的注释时一并更正
-
-**一句话**：`src/styles/tokens.css` 等 5 处注释仍逐字写「四个选项」，与单元 1 现在的 2 / 3 个选项不符
-
-### 原始论证
-
-### DF-194. 源码里五处「四个选项」的陈旧注释
-
-- **事实**：Story 2.4 把单元 1 的选项数改成了 **2 / 3 / 3**（词图选项 4 → 2），
-  但**源码注释**里仍有一批逐字写「四个选项」的地方。它们**不在本 story 的允许改动边界内**
-  （`src/core/` 与 `src/app/` 本 story 零改动、`src/styles/` 本 story 只动 `QuestionCard.vue` 的 CSS），
-  ⇒ 登记而不是顺手改（R-35）。
-- **逐处原文（R-31：引原句，不引行号）**：
-  - `src/styles/tokens.css`：「四个选项并排、档间留 12px ⇒ 768 − 3×12 = **732px** ⇒ 单卡 **183px**」
-    —— ⚠️ 里面的 `768 / 183px` **本 story 已实测推翻**（今天的容器是 736px ⇒ 单卡 175px，见
-    `docs/option-count.md` 与 story 文档的 T4.3 表）；
-  - `src/styles/tokens.css`：「必须明显大于四个选项」；
-  - `src/app/store.ts`：「单词卡的四个选项就是**另外四个词**的 id」（⇒ 现在是「另外**一个**词」）；
-  - `src/core/types.ts`：「一条词条含 4 个选项与词图路径」；
-  - `src/core/reducer.ts`：「孩子会一直对着四个选项点不动的那张图」；
-  - `src/styles/responsive.css`：「题面里的四个选项在横屏改成 **2×2**」。
-- **为什么不能在本 story 改**：`src/core/` 与 `src/app/` 是本 story 明写的**零改动**边界
-  （裁决 4 / T7.6）；改了会破坏「本 story 没碰战斗层与 app 层」这条**可被 `git diff --stat` 核对**的保证。
-- **归属**：文档 / 注释卫生。
-- **恢复条件**：下次动这五个文件时一并更正（不必专门跑一遍）。
-
-> 来源：`## Deferred from: code review of 2-4 选项数量递进规则 (2026-10-23)` ｜ 旧编号 `—`
-
 ## DF-195
 
 **状态**：待裁决 · **归属**：Story 1.19 / Story 2.9 · **恢复条件**：Story 1.19 或 2.9 试玩验收时决定是否打乱选项顺序（以及是否把「正确项位置」纳入内容校验）｜📎 **2026-10-23**：Story 1.19 的试玩模板已加「作答位置分布」前置栏 ⇒ 真机试玩会带回位置分布，届时据此裁决
@@ -4952,37 +4922,36 @@ jsdom 没有布局引擎 ⇒ 测不出来。本轮给可源码化的那一半补
 
 ---
 
-## DF-211
+## DF-212
 
-**状态**：待排期 · **归属**：未指派 · **恢复条件**：把「2×2」一律改成「2 列」，**判据一个字不改**（它钉的是 `repeat(2, minmax(0, 1fr))`，与选项数无关）：`src/styles/responsive.css`、`src/components/quiz/QuestionCard.vue`、`docs/option-count.md`、`tests/components/portrait-layout.test.ts`、`tests/components/option-grid-layout.test.ts`
+**状态**：待触发 · **归属**：Story 1.18 · **恢复条件**：Story 1.18 真机字号校准时，把 `src/styles/tokens.css` 字体阶梯的推导数按今天的实测容器宽 **736px** 重算（4 个选项 ⇒ 单卡 175px、内容盒 151px ⇒ 硬上限 28.8px、余量 23.6%）
 
-**一句话**：横屏选项是 **2 列**，不是「2×2」—— 选项数是 2 或 3 ⇒ 「2×2」这个形状压根不存在
+**一句话**：字体阶梯仍按 Story 1.11 的旧基线 768 / 183 / 159 推导；`--text-option: 22px` 取值**仍成立**，过期的是**推导数**与「余量 27.7%」
 
 ### 原始论证
 
-### DF-211. 横屏 2 列布局被写成「2×2」—— 这个形状压根不存在
+### DF-212. 字体阶梯的推导数停在 Story 1.11 的旧基线（768 / 183 / 159）
 
-- **来源**：Story 1.19 `[DS]` 第三轮（2026-10-23）把它登记在 DF-197 名下的「同源的措辞债」；
-  2026-10-24 DF-197 结清时**只更正了 1.19 的 AC 正文**，这条措辞债**没随它一起改**
-  （DF-197 的恢复条件逐字只管 AC-H1 / H3 / H4 的字面）⇒ 本条是它的独立后续。
-- **DF-197 的原话**（逐字）：
-  「`tests/components/portrait-layout.test.ts` 里那条守卫的**标题与失败消息**仍写「**2×2**」「**四张并排…每张只剩 ~88px**」——
-  而竖屏的规则其实是 `repeat(auto-fit, minmax(0, 1fr))`（不是它注释里写的 `repeat(4, 1fr)`），
-  且选项数现在是 2 或 3 ⇒ 那两个数字**都已过期**。」
-- **事实**：横屏的选项布局是 `src/styles/responsive.css` 里 `@media (min-aspect-ratio: 1/1)` 的
-  `grid-template-columns: repeat(2, minmax(0, 1fr))` ⇒ **2 列**。选项数按 Story 2.4 的档 1 是
-  **2 或 3**（`src/content/option-count.ts` 的 `OPTION_COUNT_TIERS`）⇒ 「2×2」（2 行 × 2 列）
-  这个形状**任何时候都不存在**：3 个选项时是 **2 + 1 两行**（那件事已单独登记为 DF-192）。
-- **现在还活着的落点**（实测 `grep -rn "2×2" src docs tests scripts`）：
-  `src/styles/responsive.css`（两处注释）、`src/components/quiz/QuestionCard.vue`（两处注释）、
-  `docs/option-count.md`（一处）、`tests/components/portrait-layout.test.ts`（守卫标题 + 失败消息）、
-  `tests/components/option-grid-layout.test.ts`（守卫标题 + 失败消息）。
-- **判据本身一个字不用改**：`tests/components/option-grid-layout.test.ts` 的 G169 钉的是
-  `repeat(2, minmax(0, 1fr))`（**列数**），与选项数无关 ⇒ **过期的只是措辞**，不是判据。
-- **与 DF-194 的关系**：DF-194 管的是源码注释里「四个选项」那 5 处，本条管「2×2」与相关测试文案。
-  `src/styles/responsive.css` 那一行**两处都有** ⇒ 两批**必须一起改** ——
-  DF-197 的原话：「半改一半不改比不改更糟」。
-- **归属**：未指派（纯文案，不改行为、不改判据 ⇒ 哪一版改都可以）。
-- **恢复条件**：把「2×2」一律改成「2 列」，**判据一个字不改**（它钉的是 `repeat(2, minmax(0, 1fr))`，与选项数无关）：`src/styles/responsive.css`、`src/components/quiz/QuestionCard.vue`、`docs/option-count.md`、`tests/components/portrait-layout.test.ts`、`tests/components/option-grid-layout.test.ts`
+- **触发**：2026-10-24 夜执行 DF-194（「四个选项」措辞债）时撞见的**另一条债** ——
+  `src/styles/tokens.css` 字体阶梯推导里的那三个数（容器 768px / 单卡 183px / 内容盒 159px）
+  **今天已经复现不出来**。DF-194 的原始论证里其实已经写着这件事：
+  「⚠️ 里面的 `768 / 183px` **本 story 已实测推翻**（今天的容器是 736px ⇒ 单卡 175px）」——
+  但它管的是「四个选项」那个**措辞**，**没有管这三个数**。
+- **实测事实**（2026-10-22 真浏览器，Chromium 1223，800×1280 ——
+  `src/components/quiz/QuestionCard.vue` 的选项行注释逐字记着）：选项容器实测 **736px**
+  （800 − 左右各 32px 内边距）⇒ 2 个选项 (736−12)/2 = **362px**；3 个 (736−24)/3 = **237px**；
+  4 个 (736−36)/4 = **175px** ⇒ 4 个选项时内容盒 = 175 − 24 = **151px**（不是 159px）。
+- **后果（算术，不是设计决定）**：Story 1.11 的硬上限是 `159 / 5.24 ≈ 30.3px`，
+  按今天的内容盒算是 `151 / 5.24 ≈ 28.8px` ⇒ `--text-option: 22px` 的**取值不变**
+  （实测最长词 `afternoon!` = 115px @22px，在 151px 里仍放得下），
+  但**余量从 27.7% 变成 23.6%**。
+- **为什么这一轮不一起改**：Story 1.11 的字号阶梯是**真机校准的归属项**
+  （GDD `:557`「型号确定后本表数值随之校准」）⇒ 真机字号校准是 Story 1.18 的活；
+  无人值守批次改推导数，会把「桌面 Chromium 的实测」与「真机的实测」混在一起。
+  ⇒ 这一轮只在 `tokens.css` 里**留了指针**（那一段现在逐字写着
+  「768 / 183 / 159 这三个数本身已经是旧基线」并指向本条），
+  **推导数与余量一个字没动**。
+- **归属**：Story 1.18（真机字号校准）。
+- **恢复条件**：Story 1.18 真机字号校准时，把 `src/styles/tokens.css` 字体阶梯的推导数按今天的实测容器宽 **736px** 重算（4 个选项 ⇒ 单卡 175px、内容盒 151px ⇒ 硬上限 28.8px、余量 23.6%）
 
-> 来源：`## Deferred from: dev story 1-19 单元 1 首次试玩验证 · 第三轮（2026-10-23）` ｜ 旧编号 `—`
+> 来源：`## Deferred from: code review of 2-4 选项数量递进规则 (2026-10-23)` ｜ 旧编号 `—`

@@ -1634,7 +1634,7 @@ describe('G169 —— 竖屏基准没有被宽屏改动污染（Story 1.19 / AC-
     ).toMatch(/min-height:\s*100dvh/)
   })
 
-  it('🔴 横屏下选项必须是 **2×2**（AC-H3 —— 第七轮补，此前零守卫）', () => {
+  it('🔴 横屏下选项必须是 **2 列**（AC-H3 —— 第七轮补，此前零守卫）', () => {
     const wideBlock = landscapeBlock(sourceOf('src/styles/responsive.css'))
     const rule = ruleBodyFor(wideBlock, '.level-view .question-card .question-card__options')
     expect(
@@ -1644,14 +1644,15 @@ describe('G169 —— 竖屏基准没有被宽屏改动污染（Story 1.19 / AC-
         '直接写 `.question-card__options`（0,1,0）压不过 QuestionCard 自己的 scoped (0,2,0)。',
     ).not.toBe('')
     // ⚠️🔥 **`[CR]` 第七轮补的洞**：G166–G168 全部**没有**碰过这条。
-    //   实测变异（子代理跑过）：删掉整条规则 ⇒ 选项退回竖屏的 `repeat(4, 1fr)`，
+    //   实测变异（子代理跑过）：删掉整条规则 ⇒ 选项退回竖屏的 `repeat(4, 1fr)`
+    //   （**当时**的竖屏是 `repeat(4, 1fr)`，现在是 `repeat(auto-fit, minmax(0, 1fr))`），
     //   在 400px 的右栏里每张只剩 ~88px —— 而 `.option-card__image` 是
     //   `aspect-ratio: 1/1` 的词图，**88px 的图对 4–8 岁孩子认不出词**。
     //   M176–M181 六条变异没有一条打在这儿 ⇒ AC-H3 在守卫上是**空的**。
     expect(
       effectiveDecl(rule, 'grid-template-columns'),
-      '🔴 横屏下选项不是 2×2 —— 四张并排挤在 400px 的右栏里，每张只剩 ~88px，' +
-        '而词图是 1:1 的，88px 对 4–8 岁孩子认不出词（AC-H3 / 该规则自己的注释逐字这么写）。',
+      '🔴 横屏下选项不是 2 列 —— 选项并排挤在 400px 的右栏里，每张被摊薄到百来像素，' +
+        '而词图是 1:1 的，这个尺寸对 4–8 岁孩子偏小（AC-H3 / 该规则自己的注释逐字这么写）。',
     ).toBe('repeat(2, minmax(0, 1fr))')
   })
 

@@ -778,7 +778,7 @@ function assertDeckRelations(state: State): void {
   }
   // 同理：正在问的题不能是**被跳过**的那一道。
   // ⚠️ 这条不是「重复考已会的词」那么温和：它意味着跳过压根没生效，
-  //   孩子会一直对着四个选项点不动的那张图。
+  //   孩子会一直对着选项点不动的那张图。
   if (state.phase.kind === 'awaiting-answer' && state.skippedEntryIds.includes(state.phase.question.entryId)) {
     throw new Error(
       `正在考 ${state.phase.question.entryId}，而它在 skippedEntryIds 里 —— ` +

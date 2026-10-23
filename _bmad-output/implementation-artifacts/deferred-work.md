@@ -198,7 +198,6 @@
 | DF-191 | 待触发 | Story 1.19 | Story 1.19 试玩验收时人工复核视角；在出现「机器判视角」的手段前不得结清 | 单词卡**图片**选项的视角一致性机器判不了 —— `docs/art-direction.md` §5.4 台账是目视结论 | [`df-191`](./deferred-details.md#df-191) |
 | DF-192 | 待触发 | 未指派 | 横屏布局单开 story 改 `src/styles/responsive.css` 的 2×2 规则时（该规则被守卫 G169 钉死） | 横屏下选项网格被强制 2 列 ⇒ 3 个选项排成 **2 + 1 两行**；本 story 不动横屏布局 | [`df-192`](./deferred-details.md#df-192) |
 | DF-193 | 待裁决 | Story 2.9 | Story 2.9 试玩验收时决定 `NEAR_DUPLICATE_MAX_DISTANCE` 是否从 2 调高，或为 3–4 字母短词另立一条判据 | `scripts/validate-content.ts` 的 `NEAR_DUPLICATE_MAX_DISTANCE = 2` 会误杀「字面近、语义远」的 3–4 字母短词（如 `red` ~ `bed`） | [`df-193`](./deferred-details.md#df-193) |
-| DF-194 | 待排期 | 未指派 | 下次改 `src/styles/tokens.css` / `src/app/store.ts` / `src/core/types.ts` / `src/core/reducer.ts` / `src/styles/responsive.css` 的注释时一并更正 | `src/styles/tokens.css` 等 5 处注释仍逐字写「四个选项」，与单元 1 现在的 2 / 3 个选项不符 | [`df-194`](./deferred-details.md#df-194) |
 | DF-195 | 待裁决 | Story 1.19 / Story 2.9 | Story 1.19 或 2.9 试玩验收时决定是否打乱选项顺序（以及是否把「正确项位置」纳入内容校验）｜📎 **2026-10-23**：Story 1.19 的试玩模板已加「作答位置分布」前置栏 ⇒ 真机试玩会带回位置分布，届时据此裁决 | `src/content/units/unit-01.json` 全部 37 张卡的正确项都在第 0 位 ⇒「永远点最左边」100% 命中 | [`df-195`](./deferred-details.md#df-195) |
 | DF-196 | 待排期 | 未指派 | 下次给 `scripts/validate-content.ts` 补「文件名 ↔ `unitNumber` 交叉核对」时（单元 2 起录入时更值钱） | `scripts/validate-content.ts` 的 `loadUnitFiles` 不核对文件名与 `unitNumber` ⇒ `unit-05.json` 写 `unitNumber: 1` 也能过校验 | [`df-196`](./deferred-details.md#df-196) |
 | DF-199 | 待触发 | Story 2.6 | Story 2.6 开工前，先枚举该单元在 `docs/card-distribution.md` §5.1.1 下的可行 N（可行集可能为空），再定词条数 | `docs/card-distribution.md` §5.1.1 的可行性对 N 敏感：实测单元 2 的 N=37 与 N=41 可行集为空、单元 3 的 N=36/37 也为空 | [`df-199`](./deferred-details.md#df-199) |
@@ -212,7 +211,7 @@
 | DF-208 | 待触发 | Story 2.6 | 关卡数扩到 24 后，给 `docs/option-count.md` 的档位表**补 21–24 关的档**，并按新 `N` 重算档 1 的选项数 | 选项数档位表只覆盖 1..20 关，**21–24 关无档可用**；档 1 = 2/3/3 又是按「一关 30 词」定的 | [`df-208`](./deferred-details.md#df-208) |
 | DF-209 | 待裁决 | Story 1.19 | Story 1.19 真机试玩（Task 3）在**浏览器标签页**（非 PWA 全屏）模式下确认 768×1024 是否真裁；确认裁切 ⇒ 下一次动选项卡尺寸时裁决「选项卡高度是否受可用高度约束」 | `OptionCard.vue` 的 `.option-card__image` 是 `aspect-ratio: 1/1` ⇒ 选项卡高由宽度定 ⇒ 浏览器标签页（内视口矮 87px）下 768×1024 题卡超出视口 21px | [`df-209`](./deferred-details.md#df-209) |
 | DF-210 | 待触发 | Story 2.6 | 教材版每关 `N` 确定后（DF-201 版本确认），按 24 关 / 新 `N` 重算 `docs/word-image-throughput.md` §8.1.3 与 §8.4 的参数表与决策表 | 该文档 §8 的 16–20 单元 / 480–600 张 / 66–133 h 全是旧口径；新口径下「口径 B 远超投入」这条结论**不成立** | [`df-210`](./deferred-details.md#df-210) |
-| DF-211 | 待排期 | 未指派 | 把「2×2」一律改成「2 列」，**判据一个字不改**（它钉的是 `repeat(2, minmax(0, 1fr))`，与选项数无关）：`src/styles/responsive.css`、`src/components/quiz/QuestionCard.vue`、`docs/option-count.md`、`tests/components/portrait-layout.test.ts`、`tests/components/option-grid-layout.test.ts` | 横屏选项是 **2 列**，不是「2×2」—— 选项数是 2 或 3 ⇒ 「2×2」这个形状压根不存在 | [`df-211`](./deferred-details.md#df-211) |
+| DF-212 | 待触发 | Story 1.18 | Story 1.18 真机字号校准时，把 `src/styles/tokens.css` 字体阶梯的推导数按今天的实测容器宽 **736px** 重算（4 个选项 ⇒ 单卡 175px、内容盒 151px ⇒ 硬上限 28.8px、余量 23.6%） | 字体阶梯仍按 Story 1.11 的旧基线 768 / 183 / 159 推导；`--text-option: 22px` 取值**仍成立**，过期的是**推导数**与「余量 27.7%」 | [`df-212`](./deferred-details.md#df-212) |
 
 ## 新增一条
 

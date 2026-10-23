@@ -127,16 +127,16 @@ describe('G270 —— 选项行的列数由子项数量决定，不得写死（S
     ).toBe(true)
   })
 
-  it('没有把按行流改成按列流（横屏 2×2 布局被 G169 逐字钉死）', () => {
+  it('没有把按行流改成按列流（横屏 2 列布局被 G169 逐字钉死）', () => {
     const body = optionsRule().body
     const flow = declarationOf(body, 'grid-auto-flow')
 
     expect(
       flow,
       '`.question-card__options` 声明了 `grid-auto-flow` —— ' +
-        '横屏那套 2×2（`src/styles/responsive.css` 的 `@media (min-aspect-ratio: 1/1)`，' +
+        '横屏那套 2 列（`src/styles/responsive.css` 的 `@media (min-aspect-ratio: 1/1)`，' +
         '被守卫 G169 逐字钉死）依赖**默认的按行流**：一旦改成按列流，' +
-        '横屏的 2×2 会变成列优先的排布 —— 那是一条已锁死的横屏布局规则，不在本 story 范围',
+        '横屏的 2 列会变成列优先的排布 —— 那是一条已锁死的横屏布局规则，不在本 story 范围',
     ).toBe('')
   })
 })

@@ -265,7 +265,7 @@ export const state: Ref<State> = ref(initialState())
  *   **这一关永远通不了**（软锁）。
  *
  * ⚠️ **为什么是 `entryId` + `optionId` 两个字段**：
- *   `optionId` **跨题单会重复** —— 单词卡的四个选项就是**另外四个词**的 id
+ *   `optionId` **跨题单会重复** —— 单词卡的选项就是**另外几个词**的 id
  *   （`u1-hello` 那道题的选项里有 `u1-goodbye`）⇒ 只记 `optionId` 会让
  *   **另一道题的某个选项**被误判成「破图仍可点」。
  *   ⇒ 两个字段都要对上。
