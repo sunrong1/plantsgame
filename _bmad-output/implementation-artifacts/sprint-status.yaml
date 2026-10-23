@@ -49,7 +49,7 @@
 #   epics.md 的销项说明处理。
 
 generated: 2026-10-12
-last_updated: 2026-10-24  # Story 1.19 `[DS]` 第四轮：14 视口真浏览器重测跑完（AC-H4 的实质实测成立）+ 量测工具两处修正 + 守卫 G290–G292；1.19 仍 in-progress（真机试玩待做），见其 story 文档
+last_updated: 2026-10-24  # `[CC]` 执行「决定 4」：GDD 关卡数改 24 关 + 全书词图改 97 张 + 决定 4 的 9 处延后条目引用号更正；DF-206 已结、DF-210 新登记，见 planning-artifacts/sprint-change-proposal-2026-10-24.md
 project: plants-game
 project_key: NOKEY
 tracking_system: file-system
