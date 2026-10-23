@@ -190,6 +190,196 @@
       "text": "Thank you!",
       "sha256": "4c5794cc40432b69fd7cc3f821710638b754bdba4a037fd0166706ea1bdaea8c",
       "bytes": 21300
+    },
+    "u2-tiger": {
+      "text": "tiger",
+      "sha256": "86fdf3d3483344d0527ec29503b12d43a743ab59c629604772f1357751c3927c",
+      "bytes": 24756
+    },
+    "u2-monkey": {
+      "text": "monkey",
+      "sha256": "416c40b680e38811faaa7f4ab78f02d17d9f0c54a698ccd41d024b4138e27391",
+      "bytes": 23604
+    },
+    "u2-duck": {
+      "text": "duck",
+      "sha256": "b84b813c195558561731fdefb3c915ab3882215edc4a42052792d2f9975432c1",
+      "bytes": 18996
+    },
+    "u2-pig": {
+      "text": "pig",
+      "sha256": "e89fb9b04dac41d46ff3f43e300a51432fbc76afd1eb769ca9ef87c8c076618b",
+      "bytes": 18996
+    },
+    "u2-cow": {
+      "text": "cow",
+      "sha256": "6fdb10c1e2047c4f95ccb71ca4fe7bf6327a764a8d4248b402a521db05ad12d0",
+      "bytes": 18996
+    },
+    "u2-bear": {
+      "text": "bear",
+      "sha256": "e79412e60c5498fb73c95d033617a277b9131abc916db66b4ce87ce2731a949a",
+      "bytes": 18996
+    },
+    "u2-elephant": {
+      "text": "elephant",
+      "sha256": "daf431c20c5512cac096b96fe7b0677675c00c996375905d8255757477b2fe07",
+      "bytes": 24756
+    },
+    "u2-lion": {
+      "text": "lion",
+      "sha256": "c3af2837e1c194acf86a592f46793b0c035e42962a9936652c3a53e81e9bc4dd",
+      "bytes": 20724
+    },
+    "u2-giraffe": {
+      "text": "giraffe",
+      "sha256": "4a4ff23100d545bae48b191259a086afb49a19f9f0f556be67faf07b777833e3",
+      "bytes": 35124
+    },
+    "u2-frog": {
+      "text": "frog",
+      "sha256": "8f55c8a7a0dafb5c9a4609d5a2425a30144b9b5b2ff372c3cbc4d92840d2277c",
+      "bytes": 25908
+    },
+    "u2-mouse": {
+      "text": "mouse",
+      "sha256": "427ffeb7fb2bf51d24e027a2a967d96f3688b4922605d56aec168017aeeb7bd4",
+      "bytes": 23604
+    },
+    "u2-egg": {
+      "text": "egg",
+      "sha256": "9cc4e971eeb7e257766c7e19857ce190f65b9962cd89a4bf2c1f4f7018ef5dab",
+      "bytes": 15540
+    },
+    "u2-ice-cream": {
+      "text": "ice cream",
+      "sha256": "d0c655b37b9785317f7cd4c1ca314da5abdf5cbf6b2ca2d251e5551495b9f0d9",
+      "bytes": 25908
+    },
+    "u2-apple": {
+      "text": "apple",
+      "sha256": "db30de8afccf14a9cdf739ab3a12351b31c2fa08036e0760009ded290e732f85",
+      "bytes": 18996
+    },
+    "u2-banana": {
+      "text": "banana",
+      "sha256": "afd8fc0bed099ab2ab249c31cc5995a6e027ef4ecfa65ec8e3f4135c4809426c",
+      "bytes": 21300
+    },
+    "u2-bread": {
+      "text": "bread",
+      "sha256": "9faedc13057dbe9dca6874a90867aee6c83dd798a0f88a2fe0b908c764919c93",
+      "bytes": 18996
+    },
+    "u2-milk": {
+      "text": "milk",
+      "sha256": "2bc27d07b731aed53fb2bc69beaac07edcb33aacab5f838c298d7feac3e73a15",
+      "bytes": 23604
+    },
+    "u2-kite": {
+      "text": "kite",
+      "sha256": "f70d0ddbf5df0b455d51e642d96ba7e60874913c072a38e292127f704cbc91cb",
+      "bytes": 17844
+    },
+    "u2-balloon": {
+      "text": "balloon",
+      "sha256": "94d8fde140c0cd4c1c7005782c3c2ff677fc2c51e2468b7c586b23badd79fd52",
+      "bytes": 23604
+    },
+    "u2-clock": {
+      "text": "clock",
+      "sha256": "2e5a2579788efb4eb0e5dd1c3eb25cd1794ce540854470d4d79d6af151bba5b8",
+      "bytes": 17844
+    },
+    "u2-drum": {
+      "text": "drum",
+      "sha256": "1e7602b96357ed983aa71b2a8dfe4eb05fd221863ecd0af2fb4b8d03930579b9",
+      "bytes": 23604
+    },
+    "u2-ruler": {
+      "text": "ruler",
+      "sha256": "e07bdd8900e02fea63f25ac5e824bf80b7898495a90427cef626acf00d101713",
+      "bytes": 28212
+    },
+    "u2-crayon": {
+      "text": "crayon",
+      "sha256": "73899763cef79c3688f489feee4e1cbe7761c2132a843ca3e20d786ef84e5fd7",
+      "bytes": 45492
+    },
+    "u2-sun": {
+      "text": "sun",
+      "sha256": "16e78ca4c88db5a3933429d2be44654048a283fc77804dbba08bbe23ae2e5f29",
+      "bytes": 20724
+    },
+    "u2-green": {
+      "text": "green",
+      "sha256": "d020d47852852a4fd656dfac256725313cbe2ae9f3dc308da8e5fe7d3de5fccf",
+      "bytes": 18996
+    },
+    "u2-pink": {
+      "text": "pink",
+      "sha256": "b50c73a4b8429967c4184bc50c7f1a87641878908dd161e61c108be36225843b",
+      "bytes": 18996
+    },
+    "u2-four": {
+      "text": "four",
+      "sha256": "368e7fcba8e0f27b1771bcd69322014f5c84fe6adf41bdc271acaea64880b170",
+      "bytes": 35124
+    },
+    "u2-doctor": {
+      "text": "doctor",
+      "sha256": "f4f7beb214a397a442e2b722d24333165c8a25bc2e7c5163d1fea5a6d1792b50",
+      "bytes": 25332
+    },
+    "u2-driver": {
+      "text": "driver",
+      "sha256": "83189267f11e596476daa55cd7b7f01c42efe00aa640736e15c1c9750ce70c6d",
+      "bytes": 25908
+    },
+    "u2-goodbye": {
+      "text": "Goodbye",
+      "sha256": "017dca8f5c84af864c3e39a9019d579b89c051542ec381b58eef4ec887e6dc68",
+      "bytes": 18996
+    },
+    "u2-s-i-see-a-tiger-and-a-dog": {
+      "text": "I see a tiger and a dog.",
+      "sha256": "91610f31c918a2ce025f8d0b25a70eac442d16a30ca82ef284811b7a6b93e07c",
+      "bytes": 71412
+    },
+    "u2-s-what-is-it": {
+      "text": "What is it?",
+      "sha256": "3721d6307c8136ed6bba86fc7e263d56c3ff226932cb71d40d43ef2a92722327",
+      "bytes": 18996
+    },
+    "u2-s-it-is-a-tiger": {
+      "text": "It is a tiger.",
+      "sha256": "ee92eb69d022e5c34f654994c1cd8e6340f4b3b97e0ccb9faf95227088a99a00",
+      "bytes": 27636
+    },
+    "u2-s-how-nice": {
+      "text": "How nice!",
+      "sha256": "fec4d0b2398d651e65837fb0a6e604a4ac7c97107ced7c78cfc141aea2baf70b",
+      "bytes": 35124
+    },
+    "u2-s-i-am-hungry": {
+      "text": "I am hungry.",
+      "sha256": "1231a120a5762c6da7defd080f78084e97fce92ae6bb39bf0cd9d57879600d19",
+      "bytes": 36852
+    },
+    "u2-s-here-you-are": {
+      "text": "Here you are.",
+      "sha256": "29adbc0d2b728b1dcbd5515d85913775002c0b909c2c51649a04cdf3a4bfc6d2",
+      "bytes": 21300
+    },
+    "u2-s-thank-you": {
+      "text": "Thank you!",
+      "sha256": "e35c395077c3d79a9f0e3d2ab157256dd0fb3bfff017b44eddd6806d5b859c03",
+      "bytes": 21300
+    },
+    "u2-s-you-are-welcome": {
+      "text": "You are welcome.",
+      "sha256": "a8c7b6e1066522a01c917cdf4d0a92d3a253f3351a67739aa4d97a054518cf7b",
+      "bytes": 51252
     }
   }
 }
