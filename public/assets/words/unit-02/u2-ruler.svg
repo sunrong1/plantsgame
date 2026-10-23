@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  词图：ruler（尺子）—— **单元 2 的内容**（Story 2.5）。
+
+  规格（docs/art-direction.md §1）：SVG / viewBox 0 0 512 512 / 512×512 / 透明底
+  构图档位：geometric    ← 几何体档（§5.1：60%–75%）；G11 按这一行取区间读，不写死
+  构图（§5 词图模板）：主体占画布约 69%、重心居中、斜置 30°
+
+  ⚠️ **为什么归 `geometric`**：尺子是**一根长条** + 一排等距刻度，
+     §5.1 的 `geometric` 判据里明写「盒体 / 圆柱 / 笔杆本质是几何体」。
+
+  ⚠️ **为什么用冰蓝色而不是木头色**：单元 2 的两个颜色词是 `green` / `pink`，
+     木色又和 `bread`（面包外壳）撞在一起 ⇒ 尺子走冰蓝 #bcd6e6，
+     与 `crayon` 的饱和蓝 #2d6cb5 也差了一个明度档（前者淡、后者浓）。
+
+  ⚠️ **为什么要斜置 30°**：轴对齐的长条在 48px 下读成「一根棍」，
+     斜过来才有「尺子」的斜切感，也把它和 `crayon`（横放）分开。
+     实算脚本支持 rotate（只实现 translate / rotate，见脚本 Matrix 的注释）。
+
+  G10：不得含 text / image / foreignObject —— 答案不许以任何形式印在图上。
+  G8：XML 注释正文里不许出现连续双短横。
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512"
+     role="img" aria-label="尺子">
+  <g transform="rotate(-30 256 256)">
+
+    <!--
+      尺身：一根长条，圆角 8px。
+      ⚠️ 描边 12px 写在元素自己身上（art-direction.md §5「已知偏差」：
+         实算只认元素自身声明的 stroke，写在 <g> 上会让实算值偏小 —— 偏小正是判绿的方向）。
+    -->
+    <rect x="86" y="213" width="340" height="86" rx="8"
+          fill="#bcd6e6" stroke="#5c5147" stroke-width="12" />
+
+    <!--
+      刻度：三长三短共 6 根，长短交替。
+      ⚠️ **交替而不是等长**：等长的刻度在 48px 下读成「一把梳子」；
+         长短交替才有「量东西」的节奏。
+      ⚠️ 刻度全部从**上边沿**往下伸（不是横贯整条）——
+         横贯的话，尺子会被切成一段一段，像「一块巧克力」。
+      ⚠️ 刻度是 fill="none" 的描边路径：它**不产生面积**，
+         所以不影响实算的重心，只影响外接盒（而它们都在尺身内部）。
+    -->
+    <g fill="none">
+      <path d="M 180 213 L 180 269" stroke="#3f2b21" stroke-width="8" stroke-linecap="round" />
+      <path d="M 228 213 L 228 241" stroke="#3f2b21" stroke-width="8" stroke-linecap="round" />
+      <path d="M 276 213 L 276 269" stroke="#3f2b21" stroke-width="8" stroke-linecap="round" />
+      <path d="M 324 213 L 324 241" stroke="#3f2b21" stroke-width="8" stroke-linecap="round" />
+      <path d="M 372 213 L 372 269" stroke="#3f2b21" stroke-width="8" stroke-linecap="round" />
+      <path d="M 410 213 L 410 241" stroke="#3f2b21" stroke-width="8" stroke-linecap="round" />
+    </g>
+
+    <!--
+      端头的挂孔：一个圆孔。
+      ⚠️ 孔里填纸白 #f7f3e8（不是挖空）—— 透明底的 SVG 里挖空会让孔在某些底色上消失。
+      ⚠️ **48px 下约 1.5px**：它给「这是一把尺子」加了一分可信度，
+         但不是识别的主来源 ⇒ §5.5b 记为 **≥180px 专属**。
+    -->
+    <circle cx="120" cy="256" r="16" fill="#f7f3e8" stroke="#5c5147" stroke-width="8" />
+
+  </g>
+
+  <!--
+    外沿实算（`npm run word-image-metrics public/assets/words/unit-02` 实测）：
+      主体占比 **68.3%**，最小留白 **81.3px**，重心偏移 **0.0px**，重心 (256, 256)
+    ⇒ §5.1 落在 geometric 的 60%–75% 内；§5.2 的 81.3px ≥30.72px；§5.3 的 0.0px ≤30.72px。
+
+    §5.5b 逐元素记账（48px 下是否承担识别）：
+      尺身 ✓（**主识别来源**：一根长条）
+      6 根长短交替的刻度 ✓（**第二识别来源**：等距短线 = 「量具」）
+      端头挂孔 ✗ —— **≥180px 专属**
+  -->
+</svg>

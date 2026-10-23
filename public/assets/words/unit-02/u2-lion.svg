@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  词图：lion（狮子）—— **单元 2 的内容**（Story 2.5）。
+
+  规格（docs/art-direction.md §1）：SVG / viewBox 0 0 512 512 / 512×512 / 透明底
+  构图档位：organic    ← 有机曲线档（§5.1：70%–85%）；G11 按这一行取区间读，不写死
+  构图（§5 词图模板）：主体占画布约 79%、重心居中略偏下、3/4 侧面朝右
+
+  ⚠️ **为什么归 `organic`**：狮子是具象动物，轮廓由曲线主导，与 `organic` 档同族。
+
+  ⚠️ **和 `tiger` 的分工（这两张同批画，最容易混）**：
+     ⇒ 狮子给**鬃毛**（一圈放射的尖瓣），老虎给**条纹**。
+     两者的特征互不重叠，而且**各自都缩到 48px 也不糊**：
+     鬃毛的锯齿轮廓、条纹的深浅色块，都是大色块级的差别。
+
+  ⚠️ **鬃毛画成 12 个尖瓣 + 一个圆**：尖瓣先画、鬃毛圆后画 ⇒
+     尖瓣的根部被圆盖住，只露出尖端 ⇒ 剪影是**锯齿状的**，
+     这正是「鬃」和「一个圆」的差别。
+     ⚠️ 实算脚本支持 rotate（只实现 translate / rotate，见脚本 Matrix 的注释）。
+
+  ⚠️ **为什么用橙黄 #e8b95a 而不是老虎的橘 #ee9b3f**：狮子的毛更金更亮，
+     老虎更红更暗；灰度档下也差一档。
+
+  G10：不得含 text / image / foreignObject —— 答案不许以任何形式印在图上。
+  G8：XML 注释正文里不许出现连续双短横。
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512"
+     role="img" aria-label="狮子">
+  <!--
+    尾巴：一根长尾，末端一撮**深色**的毛。
+    ⚠️ 狮子尾端那撮毛是它的标志之一（老虎尾上没有毛球）。
+  -->
+  <path d="M 74 296 Q 40 246 58 188" fill="none" stroke="#e8b95a" stroke-width="16" stroke-linecap="round" />
+  <ellipse cx="58" cy="176" rx="16" ry="20" fill="#a35c1f" transform="rotate(10 58 176)" />
+
+  <!--
+    身体：臀部 + 胸部两个椭圆并起来。
+    ⚠️ 胸部的右半被鬃毛盖住（鬃毛画在身体之后）—— 这正是鬃毛该有的位置。
+  -->
+  <ellipse cx="180" cy="320" rx="124" ry="104" fill="#e8b95a" stroke="#7a3b12" stroke-width="12" />
+  <ellipse cx="272" cy="302" rx="104" ry="96" fill="#e8b95a" stroke="#7a3b12" stroke-width="12" />
+
+  <!--
+    腿：两根落点齐平的腿。
+  -->
+  <rect x="132" y="326" width="56" height="104" rx="28" fill="#d99a3a" stroke="#7a3b12" stroke-width="12" />
+  <rect x="252" y="320" width="56" height="112" rx="28" fill="#e8b95a" stroke="#7a3b12" stroke-width="12" />
+
+  <!--
+    鬃毛的 12 个尖瓣：定义一次 + 旋转 12 次。
+    ⚠️ 写成「定义一次 + 旋转」而不是 12 条展开坐标，
+       理由同 u2-sun：改一处即可，不必担心漏改第 9 个。
+    ⚠️ **尖瓣画在鬃毛圆之前** —— 圆会把瓣的根部盖住，
+       只留尖端在外 ⇒ 剪影是锯齿状的（「鬃」），而不是一个圆（「球」）。
+  -->
+  <g fill="#a35c1f">
+    <path d="M 321 120 L 330 92 L 339 120 Z" stroke="#7a3b12" stroke-width="8" stroke-linejoin="round" />
+    <path d="M 321 120 L 330 92 L 339 120 Z" stroke="#7a3b12" stroke-width="8" stroke-linejoin="round" transform="rotate(30 330 200)" />
+    <path d="M 321 120 L 330 92 L 339 120 Z" stroke="#7a3b12" stroke-width="8" stroke-linejoin="round" transform="rotate(60 330 200)" />
+    <path d="M 321 120 L 330 92 L 339 120 Z" stroke="#7a3b12" stroke-width="8" stroke-linejoin="round" transform="rotate(90 330 200)" />
+    <path d="M 321 120 L 330 92 L 339 120 Z" stroke="#7a3b12" stroke-width="8" stroke-linejoin="round" transform="rotate(120 330 200)" />
+    <path d="M 321 120 L 330 92 L 339 120 Z" stroke="#7a3b12" stroke-width="8" stroke-linejoin="round" transform="rotate(150 330 200)" />
+    <path d="M 321 120 L 330 92 L 339 120 Z" stroke="#7a3b12" stroke-width="8" stroke-linejoin="round" transform="rotate(180 330 200)" />
+    <path d="M 321 120 L 330 92 L 339 120 Z" stroke="#7a3b12" stroke-width="8" stroke-linejoin="round" transform="rotate(210 330 200)" />
+    <path d="M 321 120 L 330 92 L 339 120 Z" stroke="#7a3b12" stroke-width="8" stroke-linejoin="round" transform="rotate(240 330 200)" />
+    <path d="M 321 120 L 330 92 L 339 120 Z" stroke="#7a3b12" stroke-width="8" stroke-linejoin="round" transform="rotate(270 330 200)" />
+    <path d="M 321 120 L 330 92 L 339 120 Z" stroke="#7a3b12" stroke-width="8" stroke-linejoin="round" transform="rotate(300 330 200)" />
+    <path d="M 321 120 L 330 92 L 339 120 Z" stroke="#7a3b12" stroke-width="8" stroke-linejoin="round" transform="rotate(330 330 200)" />
+  </g>
+
+  <!--
+    鬃毛：一个深色的圆，把尖瓣的根部盖住。
+    ⚠️ 颜色比身体深一档：鬃毛本来就比体毛深。
+  -->
+  <circle cx="330" cy="200" r="88" fill="#a35c1f" stroke="#7a3b12" stroke-width="10" />
+
+  <!--
+    头：一个浅色的圆，画在鬃毛之上 ⇒ 鬃毛在头周围露出一圈。
+  -->
+  <circle cx="330" cy="200" r="56" fill="#e8b95a" stroke="#7a3b12" stroke-width="10" />
+
+  <!--
+    口鼻：浅色的吻部，向右探出鬃毛之外。
+    ⚠️ **必须探出鬃毛**，否则整张缩成「一个球」，狮子就没了。
+  -->
+  <ellipse cx="372" cy="222" rx="34" ry="26" fill="#f6e7d2" stroke="#7a3b12" stroke-width="10" />
+  <ellipse cx="392" cy="210" rx="11" ry="9" fill="#7a3b12" />
+
+  <!--
+    五官：不描边的纯色点。
+  -->
+  <circle cx="306" cy="186" r="10" fill="#3b2a1d" />
+  <circle cx="348" cy="184" r="10" fill="#3b2a1d" />
+  <circle cx="309" cy="183" r="3.5" fill="#ffffff" />
+  <circle cx="351" cy="181" r="3.5" fill="#ffffff" />
+
+  <!--
+    外沿实算（`npm run word-image-metrics public/assets/words/unit-02` 实测）：
+      主体占比 **78.8%**，最小留白 **38.8px**，重心偏移 **15.6px**，重心 (240, 263)
+    ⇒ §5.1 落在 organic 的 70%–85% 内；§5.2 的 38.8px ≥30.72px；§5.3 的 15.6px ≤30.72px。
+
+    §5.5b 逐元素记账（48px 下是否承担识别）：
+      鬃毛（尖瓣 + 圆）✓（**主识别来源**：锯齿状的深色团块）
+      探出口鼻 ✓（**第二识别来源**：让「一个球」变成「一张脸」）
+      身体 ✓（**剪影**）
+      尾巴与尾毛 ✗ —— **≥180px 专属**
+      鼻头、眼睛 ✗ —— **≥180px 专属**
+  -->
+</svg>

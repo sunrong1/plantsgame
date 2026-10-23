@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  词图：driver（司机）—— **单元 2 的内容**（Story 2.5）。
+
+  规格（docs/art-direction.md §1）：SVG / viewBox 0 0 512 512 / 512×512 / 透明底
+  构图档位：figure    ← 人物档（§5.1：70%–85%）；G11 按这一行取区间读，不写死
+  构图（§5 词图模板）：主体占画布约 75%、重心居中、正面偏 3/4
+
+  ⚠️ **为什么归 `figure`**：§5.1 的 `figure` 判据是「由头 / 身 / 肢 / 道具组合，
+     有明确的前后关系」。本图是头 + 帽 + 上身 + 两臂 + **方向盘道具**，
+     而且有明确的前后（方向盘在人身**前面**）。
+
+  ⚠️ **司机的两条识别线索**：**方向盘 + 帽子**。
+     方向盘是「在开车」这件事本身；帽子是司机的制服。
+     ⚠️ **方向盘必须画在人的前面**（画在人之后）——
+       前后关系一错，整张就读成「一个人站在轮子后面」。
+
+  ⚠️ **方向盘怎么画才不是「一个甜甜圈」**：圆环 + **三根辐条 + 一个中心轴**。
+     只有圆环的话 48px 上就是一个 O 形，读不出是方向盘。
+
+  ⚠️ **帽子的帽檐朝右**：司机的帽子朝前（朝画面右），这个方向感
+     让它读成「开车的人」而不是「戴帽的人」。
+
+  G10：不得含 text / image / foreignObject —— 答案不许以任何形式印在图上。
+  G8：XML 注释正文里不许出现连续双短横。
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512"
+     role="img" aria-label="司机">
+  <!--
+    上身：一件**深蓝外套**（司机的制服色）。
+    ⚠️ 蓝色系在本单元是安全的 —— 两个颜色词是 `green` / `pink`，
+       那两个色不许大面积出现（会与颜色词那张图撞）。
+    ⚠️ 上身只画到方向盘的上沿：下半截被方向盘挡住，
+       这样才有「方向盘在身前」的层次。
+  -->
+  <path d="M 194 220 C 194 190 218 176 256 176 C 294 176 318 190 318 220
+           L 326 300 L 186 300 Z"
+        fill="#3d7ea6" stroke="#274c6b" stroke-width="14" stroke-linejoin="round" />
+
+  <!--
+    头：r=46 的圆，cx 256 / cy 136。
+  -->
+  <circle cx="256" cy="136" r="46" fill="#f2c6a0" stroke="#8a5a44" stroke-width="14" />
+
+  <!--
+    司机帽：一顶**朝右的鸭舌帽**。
+    ⚠️ 帽檐朝右 = 朝画面前方 ⇒ 读成「开车的人」而不是「戴帽的人」。
+    ⚠️ 帽冠画在头**之后**（即盖在头顶上），帽檐画在头**之前**（即伸到前面）。
+  -->
+  <path d="M 212 118 L 300 118 L 306 84 L 206 84 Z" fill="#274c6b" stroke="#1c3a52" stroke-width="12"
+        stroke-linejoin="round" />
+  <path d="M 206 112 L 300 112 L 336 128 L 210 128 Z" fill="#1c3a52" stroke="#1c3a52" stroke-width="12"
+        stroke-linejoin="round" />
+
+  <!--
+    眼睛：r=8 的实心深色圆，**不描边**（§5.5：眼睛一律实心）。
+    ⚠️ 48px 下直径 16px ≈ 1.5px ⇒ **≥180px 专属**，如实声明。
+  -->
+  <circle cx="238" cy="132" r="8" fill="#2b2b2b" />
+  <circle cx="274" cy="132" r="8" fill="#2b2b2b" />
+
+  <!--
+    嘴：一道 10px 的弧。
+    ⚠️ 48px 下不足 1px ⇒ **≥180px 专属**。
+  -->
+  <path d="M 240 156 Q 256 166 272 156" fill="none" stroke="#8a5a44" stroke-width="10" stroke-linecap="round" />
+
+  <!--
+    两条手臂：从肩斜向前下方伸到方向盘的边缘 ——
+    **先描一道 30px 的深色底，再压一道 16px 的肤色**，等于「16px 宽的手臂 + 两侧各 7px 的轮廓」
+    （同 u2-goodbye 的两道画法）。
+    ⚠️ 手臂要**伸到轮子上**（手落在轮缘上），才读成「握着方向盘」。
+  -->
+  <path d="M 206 224 L 186 300" fill="none" stroke="#274c6b" stroke-width="30" stroke-linecap="round" />
+  <path d="M 206 224 L 186 300" fill="none" stroke="#f2c6a0" stroke-width="16" stroke-linecap="round" />
+  <path d="M 306 224 L 326 300" fill="none" stroke="#274c6b" stroke-width="30" stroke-linecap="round" />
+  <path d="M 306 224 L 326 300" fill="none" stroke="#f2c6a0" stroke-width="16" stroke-linecap="round" />
+
+  <!--
+    两只手：肤色的小圆，落在轮缘上。
+  -->
+  <circle cx="184" cy="306" r="18" fill="#f2c6a0" stroke="#8a5a44" stroke-width="14" />
+  <circle cx="328" cy="306" r="18" fill="#f2c6a0" stroke="#8a5a44" stroke-width="14" />
+
+  <!--
+    方向盘：一圈**粗描边的圆环**（外径大、中心空）。
+    ⚠️ 描边 20px —— 48px 下约 3.8px，是本图最粗的一根线，
+       也就是它在 48px 上最容易被看见的原因。
+    ⚠️ 圆环**不填充**（fill="none"）：填了就不是方向盘，是一个轮盘。
+  -->
+  <circle cx="256" cy="340" r="98" fill="none" stroke="#3f2b21" stroke-width="20" />
+
+  <!--
+    三根辐条 + 中心轴。
+    ⚠️ **辐条是方向盘与「甜甜圈」的分界**：只有圆环的话，48px 上是一个 O 形。
+    ⚠️ 辐条画在圆环**之后**（即叠在上面），让它们看起来是从轮毂伸到轮缘的。
+  -->
+  <path d="M 256 340 L 256 252" fill="none" stroke="#3f2b21" stroke-width="14" stroke-linecap="round" />
+  <path d="M 256 340 L 178 390" fill="none" stroke="#3f2b21" stroke-width="14" stroke-linecap="round" />
+  <path d="M 256 340 L 334 390" fill="none" stroke="#3f2b21" stroke-width="14" stroke-linecap="round" />
+  <circle cx="256" cy="340" r="20" fill="#3f2b21" />
+
+  <!--
+    外沿实算（`npm run word-image-metrics public/assets/words/unit-02` 实测）：
+      主体占比 **72.3%**，最小留白 **64.0px**，重心偏移 **7.0px**，重心 (256, 263)
+    ⇒ §5.1 落在 figure 的 70%–85% 内；§5.2 的 64.0px ≥30.72px；§5.3 的 7.0px ≤30.72px。
+
+    §5.5b 逐元素记账（48px 下是否承担识别）：
+      方向盘的粗圆环 ✓（**主识别来源**：整张图最粗的一根线）
+      三根辐条 + 轮毂 ✓（**第二识别来源**：把「甜甜圈」变成方向盘）
+      头 + 鸭舌帽 ✓（**第三识别来源**：制服）
+      上身 ✓
+      两只手落在轮缘上 ✓（**第四识别来源**：让「方向盘在身前」的层次成立）
+      帽檐方向 ✓
+      眼睛 ✗ —— **≥180px 专属**
+      嘴 ✗ —— **≥180px 专属**
+  -->
+</svg>
