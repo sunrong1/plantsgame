@@ -115,7 +115,7 @@ const BACKOFF_MS = [1000, 2000]
  * **第 24 条就拿到业务码 1002（rate limit exceeded RPM）**，整批夭折。
  * 1500ms ⇒ 40 请求/分钟，落在限额内且留了余量。
  *
- * ⚠️ Epic 2 词量到 200-400 条时**必须**重新核算：400 × 1.5s ≈ 10 分钟。
+ * ⚠️ 词量再上一个量级时**必须**重新核算：`n × 1.5s`。
  *   `tests/scripts/generate-voice.test.ts` 有一条断言守着「当前词表能在
  *   一个 60 秒窗口内跑完」，词表变大时它会立刻变红提醒重调。
  */
@@ -443,7 +443,7 @@ function isWellFormedHex(hex: string): boolean {
  * 从 `Retry-After` 头取服务端要求的等待时长。支持秒数与 HTTP-date 两种形式。
  *
  * 官方 HD 系列限 60 RPM。固定 1s/2s 退避在服务端明确要求更长时会持续撞线，
- * 而 Epic 2 的 200-400 条正落在这个区间。取不到就返回 undefined，调用方退回固定退避。
+ * 而词量大到那个区间就会撞上。取不到就返回 undefined，调用方退回固定退避。
  */
 export function parseRetryAfter(header: string | null, now: number = Date.now()): number | undefined {
   if (header === null) return undefined

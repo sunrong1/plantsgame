@@ -212,6 +212,7 @@
 | DF-208 | 待触发 | Story 2.6 | 关卡数扩到 24 后，给 `docs/option-count.md` 的档位表**补 21–24 关的档**，并按新 `N` 重算档 1 的选项数 | 选项数档位表只覆盖 1..20 关，**21–24 关无档可用**；档 1 = 2/3/3 又是按「一关 30 词」定的 | [`df-208`](./deferred-details.md#df-208) |
 | DF-209 | 待裁决 | Story 1.19 | Story 1.19 真机试玩（Task 3）在**浏览器标签页**（非 PWA 全屏）模式下确认 768×1024 是否真裁；确认裁切 ⇒ 下一次动选项卡尺寸时裁决「选项卡高度是否受可用高度约束」 | `OptionCard.vue` 的 `.option-card__image` 是 `aspect-ratio: 1/1` ⇒ 选项卡高由宽度定 ⇒ 浏览器标签页（内视口矮 87px）下 768×1024 题卡超出视口 21px | [`df-209`](./deferred-details.md#df-209) |
 | DF-210 | 待触发 | Story 2.6 | 教材版每关 `N` 确定后（DF-201 版本确认），按 24 关 / 新 `N` 重算 `docs/word-image-throughput.md` §8.1.3 与 §8.4 的参数表与决策表 | 该文档 §8 的 16–20 单元 / 480–600 张 / 66–133 h 全是旧口径；新口径下「口径 B 远超投入」这条结论**不成立** | [`df-210`](./deferred-details.md#df-210) |
+| DF-211 | 待排期 | 未指派 | 把「2×2」一律改成「2 列」，**判据一个字不改**（它钉的是 `repeat(2, minmax(0, 1fr))`，与选项数无关）：`src/styles/responsive.css`、`src/components/quiz/QuestionCard.vue`、`docs/option-count.md`、`tests/components/portrait-layout.test.ts`、`tests/components/option-grid-layout.test.ts` | 横屏选项是 **2 列**，不是「2×2」—— 选项数是 2 或 3 ⇒ 「2×2」这个形状压根不存在 | [`df-211`](./deferred-details.md#df-211) |
 
 ## 新增一条
 

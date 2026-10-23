@@ -159,7 +159,7 @@ Story 1.15 的 G96 写的是「推进确实落盘了」，那条判据在**整�
 
 **规则** 词图 / 塔图一律以 `<img src>` 引用，JSON 里只存路径字符串，不得内嵌 data URI 或 base64。
 
-**依据** 200–400 张插画若进 bundle，首屏 JS 体积不可接受。
+**依据** 全书词图若进 bundle，首屏 JS 体积不可接受。
 
 **守卫** `tests/content/unit-01.test.ts`（JSON 里只有路径字符串）、`tests/assets/word-image-url-guard.test.ts`（运行期 `<img src>`）
 

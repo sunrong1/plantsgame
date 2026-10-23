@@ -4949,3 +4949,40 @@ jsdom 没有布局引擎 ⇒ 测不出来。本轮给可源码化的那一半补
 - **恢复条件**：教材版每关 `N` 确定后（DF-201 版本确认），按 24 关 / 新 `N` 重算 `docs/word-image-throughput.md` §8.1.3 与 §8.4 的参数表与决策表。
 
 > 来源：`## Deferred from: [CC] 执行决定 4 —— 关卡数 24 关（2026-10-24）` ｜ 旧编号 `—`
+
+---
+
+## DF-211
+
+**状态**：待排期 · **归属**：未指派 · **恢复条件**：把「2×2」一律改成「2 列」，**判据一个字不改**（它钉的是 `repeat(2, minmax(0, 1fr))`，与选项数无关）：`src/styles/responsive.css`、`src/components/quiz/QuestionCard.vue`、`docs/option-count.md`、`tests/components/portrait-layout.test.ts`、`tests/components/option-grid-layout.test.ts`
+
+**一句话**：横屏选项是 **2 列**，不是「2×2」—— 选项数是 2 或 3 ⇒ 「2×2」这个形状压根不存在
+
+### 原始论证
+
+### DF-211. 横屏 2 列布局被写成「2×2」—— 这个形状压根不存在
+
+- **来源**：Story 1.19 `[DS]` 第三轮（2026-10-23）把它登记在 DF-197 名下的「同源的措辞债」；
+  2026-10-24 DF-197 结清时**只更正了 1.19 的 AC 正文**，这条措辞债**没随它一起改**
+  （DF-197 的恢复条件逐字只管 AC-H1 / H3 / H4 的字面）⇒ 本条是它的独立后续。
+- **DF-197 的原话**（逐字）：
+  「`tests/components/portrait-layout.test.ts` 里那条守卫的**标题与失败消息**仍写「**2×2**」「**四张并排…每张只剩 ~88px**」——
+  而竖屏的规则其实是 `repeat(auto-fit, minmax(0, 1fr))`（不是它注释里写的 `repeat(4, 1fr)`），
+  且选项数现在是 2 或 3 ⇒ 那两个数字**都已过期**。」
+- **事实**：横屏的选项布局是 `src/styles/responsive.css` 里 `@media (min-aspect-ratio: 1/1)` 的
+  `grid-template-columns: repeat(2, minmax(0, 1fr))` ⇒ **2 列**。选项数按 Story 2.4 的档 1 是
+  **2 或 3**（`src/content/option-count.ts` 的 `OPTION_COUNT_TIERS`）⇒ 「2×2」（2 行 × 2 列）
+  这个形状**任何时候都不存在**：3 个选项时是 **2 + 1 两行**（那件事已单独登记为 DF-192）。
+- **现在还活着的落点**（实测 `grep -rn "2×2" src docs tests scripts`）：
+  `src/styles/responsive.css`（两处注释）、`src/components/quiz/QuestionCard.vue`（两处注释）、
+  `docs/option-count.md`（一处）、`tests/components/portrait-layout.test.ts`（守卫标题 + 失败消息）、
+  `tests/components/option-grid-layout.test.ts`（守卫标题 + 失败消息）。
+- **判据本身一个字不用改**：`tests/components/option-grid-layout.test.ts` 的 G169 钉的是
+  `repeat(2, minmax(0, 1fr))`（**列数**），与选项数无关 ⇒ **过期的只是措辞**，不是判据。
+- **与 DF-194 的关系**：DF-194 管的是源码注释里「四个选项」那 5 处，本条管「2×2」与相关测试文案。
+  `src/styles/responsive.css` 那一行**两处都有** ⇒ 两批**必须一起改** ——
+  DF-197 的原话：「半改一半不改比不改更糟」。
+- **归属**：未指派（纯文案，不改行为、不改判据 ⇒ 哪一版改都可以）。
+- **恢复条件**：把「2×2」一律改成「2 列」，**判据一个字不改**（它钉的是 `repeat(2, minmax(0, 1fr))`，与选项数无关）：`src/styles/responsive.css`、`src/components/quiz/QuestionCard.vue`、`docs/option-count.md`、`tests/components/portrait-layout.test.ts`、`tests/components/option-grid-layout.test.ts`
+
+> 来源：`## Deferred from: dev story 1-19 单元 1 首次试玩验证 · 第三轮（2026-10-23）` ｜ 旧编号 `—`

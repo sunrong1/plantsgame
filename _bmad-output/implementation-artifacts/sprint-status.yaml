@@ -49,7 +49,7 @@
 #   epics.md 的销项说明处理。
 
 generated: 2026-10-12
-last_updated: 2026-10-24  # 两轮 `[CC]`：① 关卡数 24 关 + 词图 97 张（DF-206 结、DF-210 登）；② DF-197 结：1.19 组 H 三条 AC 字面更正 ⇒ 见 planning-artifacts/sprint-change-proposal-2026-10-24{,-2}.md
+last_updated: 2026-10-24  # 两轮 `[CC]`（口径 24 关 / 97 张、1.19 组 H 字面）+ 守卫 G295–G299 ⇒ 见 planning-artifacts/sprint-change-proposal-2026-10-24{,-2}.md
 project: plants-game
 project_key: NOKEY
 tracking_system: file-system
