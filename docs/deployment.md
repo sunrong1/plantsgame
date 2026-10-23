@@ -31,18 +31,18 @@ npm run build
 
 1. `prebuild` → `validate:content`：内容层校验（JSON schema、词图双向存在性等）。
 2. `build` → `vue-tsc -b --force && vite build`：类型检查 + 打包。
-3. `postbuild` → `verify:deploy`：产物自检 **62 项**。
+3. `postbuild` → `verify:deploy`：产物自检 **64 项**（⚠️ **这个数会随单元数增长** ——
+   每个单元一项词图检查，见下）。
 
-### 实测产物形态（2026-10-17，Story 1.18 收尾时构建）
+### 实测产物形态（2026-10-23，Story 2.5 收尾时构建）
 
 ```
-dist/  2.1 MB  97 个文件
+dist/  3.3 MB  166 个文件
 dist/index.html                        3.44 kB │ gzip:   2.08 kB
-dist/assets/index-CCa7u-h3.js        228.13 kB │ gzip:  74.29 kB
-dist/assets/index-BkSWzeM0.css        14.60 kB │ gzip:   3.54 kB
+dist/assets/index-B6zhMCMw.js        242.14 kB │ gzip:  77.92 kB
+dist/assets/index-DR2TTpuc.css        15.43 kB │ gzip:   3.71 kB
 dist/manifest.webmanifest               0.75 kB
-dist/sw.js                              1.49 kB │ gzip:   0.74 kB
-precache  4 entries (240.41 KiB)
+dist/sw.js                              1.60 kB │ gzip:   0.79 kB
 ```
 
 ⚠️ **`sw.js` 每次构建的字节数几乎不变**（内容里只有清单与 token 变），
@@ -57,9 +57,22 @@ assets/index-<hash>.css
 manifest.webmanifest
 ```
 
-⚠️ **媒体（45 个 mp3 + 34 张 svg）不在 precache 里** —— 这是有意的（AC-B7 /
+⚠️ **媒体（83 个 mp3 + 64 张 svg）不在 precache 里** —— 这是有意的（AC-B7 /
 架构决策 6：「全量预载 400 张必超冷启动 3s」）。它们走 `sw.ts` 的运行时
 `CacheFirst`，由 `src/services/asset-prefetch.ts` 在进关时预热。
+
+### 词图检查是**逐单元**的（`[DS]` Story 2.5 / Task 7.4）
+
+`scripts/verify-deploy.ts` 的词图判据原先逐字是
+`fs.listDir('assets/words/unit-01')` —— **只查单元 1 一个目录** ⇒
+**单元 2 的词图整批缺失时，构建成功、产物自检也全绿**，
+而孩子的症状是「进了单元 2，每张单词卡都是空白」。
+
+⇒ 现在**每个单元一项**（`word-images-unit-01-present` / `word-images-unit-02-present` …），
+外加一条总的 `word-images-present`。
+**单元清单从产物自身推导**（录音文件名前缀 `u<N>-*.mp3` ∪ 现存的 `unit-NN` 目录名），
+**不硬编码「有 N 个单元」** ⇒ 加单元不用改脚本，改了也不会静默过期。
+⇒ 实测：加单元 2 之后自检从 **62 项**变成 **64 项**（一项一个单元 + 一条总的）。
 
 ---
 
@@ -301,11 +314,11 @@ location /plantsgame/ {
 | `sw/sw-rules.ts` | 纯规则：缓存名、旧缓存识别、媒体判定 |
 | `src/services/sw-registration.ts` | 注册 SW、检查安全上下文、`prompt` 语义 |
 | `src/services/asset-prefetch.ts` | 进关时预热本单元图片 |
-| `scripts/verify-deploy.ts` | 上线前产物自检（**62 项**），`postbuild` 自动跑 |
+| `scripts/verify-deploy.ts` | 上线前产物自检（**64 项**，⚠️ 随单元数增长），`postbuild` 自动跑 |
 | `scripts/verify-portrait-layout.ts` | 竖屏布局的**真浏览器**量测（`npm run verify:portrait`，**不**在 `test` / `postbuild` 里）；📎 判据仍**只判 800×1280**，另按 `scripts/measure-viewports.txt`（竖屏 7 + 横屏 7）**逐视口量一遍并打成一张表**（矩阵里的视口**只量不判**） |
 | `tests/scaffold/pwa-manifest.test.ts` | G120/G121/G122：manifest 与 token 同源 |
 | `tests/scaffold/pwa-sw-guard.test.ts` | G123（零强制刷新）、G124、G125/G126（SW 源码级边界）、**G127（注册调用点）**、G128/G129、**G159（`activate` 真的调 `staleCacheNames`）** |
 | `tests/scaffold/pwa-offline-shell.test.ts` | G195/G196/G197：app shell 真的进了 precache |
-| `tests/scaffold/verify-deploy.test.ts` | G155/G156/G157、**G199**：产物级判据的变异夹具与反向自测 |
+| `tests/scaffold/verify-deploy.test.ts` | G155/G156/G157、**G199**、**G283**（逐单元词图检查）：产物级判据的变异夹具与反向自测 |
 | `tests/services/sw-registration.test.ts` | G130/G131、**G202**：`preparing` 状态机的三条退路 |
 | `tests/scaffold/deployment-base.test.ts` | `base` 与 `vitest.config.ts` 一致 |

@@ -33,6 +33,7 @@ import {
   main,
   optionNearDuplicateProblems,
   parseCli,
+  unitDistributionOf,
   validateContent,
   type ValidateDeps,
 } from '../../scripts/validate-content'
@@ -1047,5 +1048,108 @@ describe('T6.6 —— 近邻阈值的那条反向自测（阈值真的在起作�
       loose,
       '阈值 99 与阈值 2 报出的条数相同 ⇒ 阈值没有接进计算（判据里那个参数是摆设）',
     ).toBeGreaterThan(tight)
+  })
+})
+
+// ── G284 —— 逐单元配比统计的输出（DF-118 的恢复条件）────────────────────────
+
+describe('G284 —— `validate:content` 逐单元打印卡型配比与逐族余量（DF-118）', () => {
+  /**
+   * **判据本体**是 `unitDistributionOf()`（脚本里导出的纯函数）——
+   * 正向用例与反向自测**都调它**。
+   *
+   * ⚠️ **为什么必须是函数而不是循环体**：反向自测要能「喂一份**假**的卡型计数进去，
+   *   断言算出来的逐族误差跟着变」—— 若判据只活在循环体里，反向自测够不着它
+   *   （只能另写一份手写比较，于是判据被改坏时反向自测照样绿）。
+   */
+  it('真实内容跑出来的逐单元统计与内容一致（从内容现算，不写死数字）', () => {
+    const units = loadUnitFiles(join(root, 'src/content/units')).map((u) => u.raw)
+    const { stats } = validateContent(units, greenDeps())
+
+    expect(stats.unitDistributions.length, '逐单元统计一条都没有 ⇒ 统计没跑').toBe(units.length)
+    for (const unit of stats.unitDistributions) {
+      const raw = units.find(
+        (candidate) => (candidate as { unitNumber: number }).unitNumber === unit.unitNumber,
+      ) as { entries: { card: { kind: string } }[] }
+      const counted = raw.entries.reduce<Record<string, number>>((acc, entry) => {
+        acc[entry.card.kind] = (acc[entry.card.kind] ?? 0) + 1
+        return acc
+      }, {})
+
+      expect(unit.entryCount, `单元 ${unit.unitNumber} 的 N 与内容里的词条数不符`).toBe(
+        raw.entries.length,
+      )
+      expect(unit.kindCounts.word, `单元 ${unit.unitNumber} 的单词卡数与内容不符`).toBe(
+        counted['word'] ?? 0,
+      )
+      expect(unit.kindCounts.keyword).toBe(counted['keyword'] ?? 0)
+      expect(unit.kindCounts.response).toBe(counted['response'] ?? 0)
+    }
+  })
+
+  it('⚠️ 反向自测：判据本体对**假**的卡型计数必须算出对应误差（不是写死的）', () => {
+    // ⚠️ R-51：判据必须真能算出「随输入变」的结果。
+    //   若它把误差写死成当前内容的数值，这条自测就会红 ⇒ 假绿被当场抓住。
+    const synthetic = unitDistributionOf(3, { word: 10, keyword: 1, response: 1 })
+    expect(synthetic, '规则覆盖的单元 3 却返回 null ⇒ 判据没跑').not.toBeNull()
+
+    const n = 12
+    expect(synthetic!.entryCount).toBe(n)
+    expect(synthetic!.familyErrors.word).toBeCloseTo(
+      Math.abs(10 - synthetic!.targetShares.word * n),
+      10,
+    )
+    expect(synthetic!.familyErrors.keyword).toBeCloseTo(
+      Math.abs(1 - synthetic!.targetShares.keyword * n),
+      10,
+    )
+    expect(synthetic!.familyErrors.response).toBeCloseTo(
+      Math.abs(1 - synthetic!.targetShares.response * n),
+      10,
+    )
+  })
+
+  it('⚠️ 反向自测：换一个卡型配比 ⇒ 误差必须跟着变（证明它读的是输入）', () => {
+    const a = unitDistributionOf(2, { word: 30, keyword: 1, response: 7 })
+    const b = unitDistributionOf(2, { word: 28, keyword: 1, response: 7 })
+
+    expect(a!.familyErrors.word).not.toBe(b!.familyErrors.word)
+    expect(b!.familyErrors.word, '少了两张单词卡而误差没变 ⇒ 判据没读输入').toBeGreaterThan(
+      a!.familyErrors.word,
+    )
+  })
+
+  it('规则未覆盖的单元号 ⇒ 返回 `null`（不外推、不记一条假问题）', () => {
+    expect(
+      unitDistributionOf(21, { word: 1, keyword: 1, response: 1 }),
+      '单元 21 落在规则覆盖范围外却算出了份额 ⇒ 规则在静默外推',
+    ).toBeNull()
+  })
+
+  it('CLI 输出里**看得见**逐族误差（DF-118 要的是「录入时就看得见余量」）', () => {
+    // ⚠️ 依赖必须是**全绿**那份 —— 校验失败时 `main()` 走的是「列出问题并退 1」那条路，
+    //   成功后的统计行**根本不会打印**（那正是这条测试要盯的那几行）。
+    const deps = greenDeps()
+    const lines: string[] = []
+    const logSpy = vi.spyOn(console, 'log').mockImplementation((msg?: unknown) => {
+      lines.push(String(msg))
+    })
+    try {
+      main([], {
+        load: () => [{ file: 'unit-01.json', raw: realUnit }],
+        wordImageRoot: deps.wordImageRoot,
+        assetRoot: deps.assetRoot,
+        fileExists: deps.fileExists,
+        readFile: deps.readFile,
+        listFiles: deps.listFiles,
+      })
+    } finally {
+      logSpy.mockRestore()
+    }
+
+    expect(
+      lines.some((line) => line.includes('逐族误差')),
+      'CLI 输出里没有「逐族误差」这一行 ⇒ DF-118 的恢复条件没达成（录入时看不见余量）',
+    ).toBe(true)
   })
 })

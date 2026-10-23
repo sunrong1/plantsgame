@@ -252,10 +252,15 @@ describe('G149 —— 预取零 dispatch、零 core import（Story 1.18 / AC-E3�
     )
     vi.stubGlobal('fetch', spy)
 
-    prefetchNextUnit(1)
+    // 🔥📎 **Story 2.5 / Task 6.6：被测单元从 1 换成 2。**
+    //   原来逐字是 `prefetchNextUnit(1)` —— 那时单元 1 是**最后一个**单元
+    //   ⇒ 「之后不再发请求」成立。2.5 录入单元 2 之后，单元 1 **后面有单元 2**
+    //   ⇒ 这一条会真的去预取单元 2 的 30 张图 ⇒ 断言红了，而**判据本身没错**。
+    //   ⚠️ 判据不变，**换被测单元**（末位单元变了 ⇒ 换谁当末位）。
+    prefetchNextUnit(2)
     await new Promise((done) => setTimeout(done, 0))
 
-    expect(spy.mock.calls, '单元 1 之后还在发请求 —— 那是往一个不存在的单元号要图，全是 404').toEqual([])
+    expect(spy.mock.calls, '单元 2 之后还在发请求 —— 那是往一个不存在的单元号要图，全是 404').toEqual([])
     vi.unstubAllGlobals()
   })
 })

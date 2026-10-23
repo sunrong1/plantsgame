@@ -126,9 +126,14 @@ const REQUIRED_ICONS = REQUIRED_ICON_SPECS.map((spec) => spec.path)
 /**
  * 产物自检本体 —— 纯函数，无副作用（不读盘、不打日志、不退出）。
  *
- * ⚠️ **`checks` 的顺序是断言的一部分**：测试逐条按下标取值，
- *   中间插一条会让后面全部错位 —— 那时测试会红，而红是**真的**（有东西变了）。
- *   追加新检查请放在**末尾**，或同步更新 `tests/scaffold/verify-deploy.test.ts`。
+ * ⚠️ **每条检查的 `id` 是断言的一部分**：守卫测试逐条**按 id** 取值
+ *   （`tests/scaffold/verify-deploy.test.ts` 的 `checkOf(report, id)`），
+ *   ⇒ **改 id 会让守卫空跑**（`checkOf` 会当场报「判据被改名或删掉了」）。
+ *   ⚠️ `[DS]` Story 2.5（2026-10-23）更正一条**过时的事实**：
+ *   本注释原先写的是「测试逐条按下标取值，中间插一条会让后面全部错位」——
+ *   那**已经不成立**（测试按 id 取值，实测 `tests/scaffold/verify-deploy.test.ts`
+ *   里零处按下标访问 `checks`）⇒ 插入新检查是安全的。
+ *   **但新增检查仍必须同步补一条守卫**（R-51：没有守卫的判据等于没有判据）。
  */
 export function verifyDeploy(fs: DeployFs): DeployReport {
   const checks: DeployCheck[] = []
@@ -366,8 +371,59 @@ export function verifyDeploy(fs: DeployFs): DeployReport {
   // ⚠️ 这里**只判「存在」不判「能加载」** —— 后者要真机（AC-B8 / AC-F5 的人工项）。
   //   判据取自**产物目录**而不是硬编码「30 张」：内容层加词时目录自动跟着变，
   //   而写死 30 的那份会静默过期、然后在某一天给出假绿。
-  const wordImages = fs.listDir('assets/words/unit-01').filter((name) => name.endsWith('.svg'))
-  add('word-images-present', wordImages.length > 0, '`dist/assets/words/unit-01/` 下一个 SVG 都没有')
+  //
+  // ⚠️📎 `[DS]` Story 2.5（2026-10-23）修一条**漏查**：
+  //   原判据逐字是 `fs.listDir('assets/words/unit-01')` —— **只查单元 1 一个目录** ⇒
+  //   **单元 2 的词图整批缺失时，`npm run build` 成功、产物自检也全绿**，
+  //   而孩子的症状是「进了单元 2，每张单词卡都是空白」。
+  //   ⇒ 现在改成**逐单元目录**都查，且**单元清单从产物自身推导**（不硬编码「有 N 个单元」）。
+  //
+  // ⚠️ **单元清单怎么推导的，为什么不是「只列 `assets/words/`」**：
+  //   只列父目录能查出「目录在但里面是空的」⇒ **整个目录不在**时它连查都不会查。
+  //   ⇒ 清单取**两处的并集**：
+  //     ① **录音文件名前缀**（`u<N>-*.mp3`）—— 录音是内容层**每个词条**都会产出的
+  //        （`generate:voice` 按内容层词表录），而词图**只**为单词卡产出
+  //        ⇒ 「有录音、没词图」就是异常（**这正是单元 2 漏查的那一类**）；
+  //     ② **产物里现存的 `unit-NN` 目录名** —— 目录在却一张图都没有，同样是异常。
+  //   ⚠️ 反过来也成立：某个单元**确实一个单词卡都没有**时，这条会红 ——
+  //     那时该改这条判据（写明豁免），**不是绕过它**。
+  //   ⚠️ **这份清单是产物自身推出来的，不硬编码「有 N 个单元」** ——
+  //     写死单元数的那份会静默过期、然后在某一天给出假绿。
+  const voiceMp3s = fs
+    .listDir('assets/audio/voice')
+    .filter((name) => name.endsWith('.mp3') && !name.includes('/'))
+  const unitsWithVoice = [
+    ...new Set(
+      voiceMp3s
+        .map((name) => /^u(\d+)-/.exec(name)?.[1])
+        .filter((digits): digits is string => digits !== undefined),
+    ),
+  ].sort()
+  const unitDirs = [
+    ...new Set([
+      ...unitsWithVoice.map((digits) => `unit-${digits.padStart(2, '0')}`),
+      ...fs.listDir('assets/words').filter((name) => /^unit-\d+$/.test(name)),
+    ]),
+  ].sort()
+  let unitsWithWordImages = 0
+  for (const dir of unitDirs) {
+    const svgs = fs
+      .listDir(`assets/words/${dir}`)
+      .filter((name) => name.endsWith('.svg') && !name.includes('/'))
+    if (svgs.length > 0) unitsWithWordImages += 1
+    add(
+      `word-images-${dir}-present`,
+      svgs.length > 0,
+      `单元 ${dir} 的录音在产物里，但 \`dist/assets/words/${dir}/\` ` +
+        '一个 SVG 都没有 —— 要么这批词图没进产物，要么这个单元真的没有单词卡' +
+        '（那就该改这条判据并写明豁免，不是绕过它）',
+    )
+  }
+  add(
+    'word-images-present',
+    unitsWithWordImages > 0,
+    '`dist/assets/words/` 下一个单元的词图都没有 —— 全部单词卡都是空白',
+  )
   for (const asset of [
     'assets/towers/direct.svg',
     'assets/towers/slow.svg',

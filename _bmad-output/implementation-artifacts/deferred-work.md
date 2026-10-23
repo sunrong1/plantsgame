@@ -69,7 +69,6 @@
 | DF-056 | 待触发 | 未指派 | 新增任何 `readSave()` 的调用点时，复核那一处是否也要「空读撤掉 `read`」；若不要，在那一处显式注释理由 | `readSave()` 的「空读撤掉 read 降级」语义只在 `store.ts` 这一个调用点成立 | [`df-056`](./deferred-details.md#df-056) |
 | DF-057 | 待排期 | Story 1.17 | 任何要加「测试专用导出」或要动 `tests/scaffold/` 边界守卫的 story，同一次改动里补一条「`src/**` 不得 import 名字以 `ForTest` 结尾的导出」的守卫 | `save.ts` 的 `clearSaveDegradationsForTest` 与 `asset-degradations.ts` 的同名导出仍无「src 不得 import `*ForTest`」守卫 | [`df-057`](./deferred-details.md#df-057) |
 | DF-058 | 待触发 | 未指派 | 出现第二条会切走 `QuestionCard` 的路径时（1.17 的调试面板、1.18 的暂停覆盖层、或任何把 `view` 从 `level` 切走的分支），必须先给 `pronunciation.ts` 补公开的 `stop`，再挂 `onBeforeUnmount` | `QuestionCard.vue` 无 `onBeforeUnmount`、`pronunciation.ts` 无公开 stop，卸载后朗读一路播到结束 | [`df-058`](./deferred-details.md#df-058) |
-| DF-059 | 待触发 | Story 2.5 | 2.5 录入单元 2 时，同一个 story 必须补上「通关后进下一单元」的 UI 路径；在此之前 `hasNextUnit` 恒为 false | `core/hud.ts` 的 `advanceUnit`/`hasNextUnit` 只在纯函数层成立，通关浮层按钮仍只有「回开始」 | [`df-059`](./deferred-details.md#df-059) |
 | DF-060 | 待排期 | 未指派 | 下一次做文档治理（`/gds-correct-course` 或 QD 治理）时，把这条口径更正一次性回写进 1.13 的归档文档，并同步 `docs/rules/` 里与「落盘看到的进度」有关的任何表述 | 归档的 1-13 文档仍写「HUD 的进度只读内存里的进度」，与 1.16 裁决 11 的「这一次结算之后」口径不一致 | [`df-060`](./deferred-details.md#df-060) |
 | DF-061 | 待触发 | 未指派 | 出现第二条会切走 `QuestionCard` 的路径时（1.17 的调试面板、1.18 的暂停覆盖层、或任何把 `view` 从 `level` 切走的分支） | `QuestionCard.vue` 仍无 `onBeforeUnmount`，1.17 未新增会切走它的路径 | [`df-061`](./deferred-details.md#df-061) |
 | DF-062 | 待触发 | Story 1.18（仅 BGM 部分） | 出现第二条不经 `enterLevel()` 进关卡的路径 | `backToStart()` 已调 `stopBgm()`，但 `state.value` 仍停在终态相位 | [`df-062`](./deferred-details.md#df-062) |
@@ -82,7 +81,6 @@
 | DF-069 | 待触发 | Story 1.18 | 下一次改架构文档（`[GA]`）时补进组件树/模块表 | `game-architecture.md` 组件树缺 `core/hud.ts`、`asset-prefetch.ts`、`sw/` 等 7 个模块 | [`df-069`](./deferred-details.md#df-069) |
 | DF-070 | 待触发 | Story 1.18 | 下一次 `[GA]` 时，①②④⑤⑦⑧ 按上表补进架构文档；③ 保持「显式不做」并写明「引入位图素材时必须重新评估」；⑥ 属运维事项，不进架构组件树 | AC-H2 的 8 项（CSS 断点 / manifest / 缓存层）只在 1.18 定案，未进架构文档 | [`df-070`](./deferred-details.md#df-070) |
 | DF-071 | 待触发 | Story 1.19 | Story 1.19 真机试玩时验，结论回填本条 | AC-B8 离线、`--color-hud-panel`、`--dur-slow`、竖屏布局 4 项须真机验 | [`df-071`](./deferred-details.md#df-071) |
-| DF-072 | 待触发 | Story 2.5 | Story 2.5 录入单元 2 之前，不得顺延 | `store.ts` 的 `hasNextUnit` 隐含「一局=一单元」，2.5 录单元 2 即爆 | [`df-072`](./deferred-details.md#df-072) |
 | DF-073 | 待触发 | Story 3.5（及各自归属 story） | E 组 5 条观察项 1.19 只观察不改，分别落 3.5 / 1.10 / `[CC]` | E 组 5 条观察项 1.19 只观察不改，分别落 3.5 / 1.10 / `[CC]` | [`df-073`](./deferred-details.md#df-073) |
 | DF-074 | 待触发 | Story 1.19 | 真机飞行模式 | D1–D8 真机项全未验，未验则不应推进 Epic 2 | [`df-074`](./deferred-details.md#df-074) |
 | DF-075 | 待触发 | Story 3.5 | 出现下列任一情况即处理：真机（或 `min-aspect-ratio` 未覆盖的视口）实测出现「战场把题面推出视口」；Epic 3 的布局打磨开工 | `responsive.css` 的 `@media (max-height:900px)` 块未算 HUD 等四个兄弟节点高度 | [`df-075`](./deferred-details.md#df-075) |
@@ -93,7 +91,6 @@
 | DF-080 | 待触发 | 未指派 | 存档损坏的降级语义统一时（AC-D4 组） | `store.ts` 的 `restoreNextUnit` 越界即 return，AC-B6 终态不可达 | [`df-080`](./deferred-details.md#df-080) |
 | DF-081 | 待触发 | Story 1.19 | 真机试玩前先把这两条 AC 的前提（「每局全对」）写进 AC 正文；否则家长会把符合设计的行为读成 bug | 1.19 的 AC-B4 / AC-B8 前提「每局全对」尚未写进 AC 正文 | [`df-081`](./deferred-details.md#df-081) |
 | DF-082 | 待触发 | 未指派 | 首次出现「给卡打标记」类需求时 | `sliceDeckForLevel` 返回内容层共享 `DeckEntry` 引用，`toEqual` 类断言仍全绿 | [`df-082`](./deferred-details.md#df-082) |
-| DF-083 | 待触发 | Story 2.5 | Story 2.5 录入单元 2 之前（与裁决 5 那条同批处理） | `masteredWordIds` 全局而切片按单元做，2.5 复用 `entryId` 即进「已学完」终态 | [`df-083`](./deferred-details.md#df-083) |
 | DF-084 | 待触发 | 未指派 | 切片判据需要第二次落点时（那时应该改成 G161 扫 core + 追常量引用，而不是加字面量） | G160 只查字面量 `10` 且豁免 `src/core/`，G161 不扫 `src/core/`，第二份题数实现可过 | [`df-084`](./deferred-details.md#df-084) |
 | DF-085 | 待触发 | 未指派 | 给守卫补一个「判据范围」自测夹具时 | `tests/guards/deck-slice-boundaries.test.ts` 用 `indexOf('\n}\n', start)` 切函数体，缩进变则静默截断 | [`df-085`](./deferred-details.md#df-085) |
 | DF-086 | 待触发 | 未指派 | 支持矩阵扩到窄横屏（或出手机版）时 | `responsive.css` 的 `minmax(0,1fr) 25rem` 无宽度下界，窄横屏格子边长 < 48px | [`df-086`](./deferred-details.md#df-086) |
@@ -115,8 +112,6 @@
 | DF-102 | 待触发 | 未指派 | 下次起新号、或要动 `quiz-card.test.ts` / `hand-build.test.ts` 时，一并 (a) 给 `G30` 重编号，(b) 在 `docs/rules/testing.md` 补一条「守卫编号全仓库唯一；起号前 grep `^describe\('G\d+`」 | `G30` 被 1.11 `quiz-card.test.ts` 与 1.12 `hand-build.test.ts` 同时占用 | [`df-102`](./deferred-details.md#df-102) |
 | DF-103 | 待触发 | 未指派 | 拿到**牛津上海版**教材的单元词表（= DF-201 的扫描件）⇒ 按真实词表重算每单元词条数，解开 AR44 的估算基数冲突 | `epics.md` AR44 的「200-400 张」估算基数与实测 480–600 张冲突，需 `[CC]` 改规划产物 | [`df-103`](./deferred-details.md#df-103) |
 | DF-104 | 待触发 | 未指派 | 拿到**牛津上海版**教材词表（DF-201）后重算各档占比；若「数词 + 公认符号」占比远高于单元 1，这个结论要重写 | `epics.md` §7.2「程序化生成⇒工时减半」被实测打掉 4/5，待真实词表重算 | [`df-104`](./deferred-details.md#df-104) |
-| DF-105 | 待触发 | 未指派 | 下一批词图开工前必须先加「食物」「场景」两档，否则每张场景/食物词图都要写一遍「这是拉伸」的声明 | `docs/art-direction.md` §5.1 缺「食物」「场景」两档，`ice-cream`/`playground` 只能借 `figure` | [`df-105`](./deferred-details.md#df-105) |
-| DF-106 | 待触发 | 未指派 | 若要支持场景类词图，§5.5 需写清「场景类允许且应当使用实心块画法」；同样要补一条「无描边词图的合法性」 | `docs/art-direction.md` §5.5 未规定无描边词图（`playground` v3 靠实心色块守住 48px） | [`df-106`](./deferred-details.md#df-106) |
 | DF-107 | 待触发 | 未指派 | 若要把这个脚本当长期产能仪表，需加「开工时刻」的显式记录（开工时先写一条 `kind: "start"` 的记录） | `scripts/word-image-throughput.ts` 只量写盘跨度，缺「开工时刻」记录（`u2-sun` 报 0.0 秒） | [`df-107`](./deferred-details.md#df-107) |
 | DF-108 | 待排期 | 未指派 | 永不复用 | 「9.7 小时 ÷ 25 张」算法不成立，保留在 `docs/word-image-throughput.md` 作反面教材 | [`df-108`](./deferred-details.md#df-108) |
 | DF-109 | 待排期 | 未指派 | 需要一个能替代目视的判据（人工抽检协议、或可接受度测试） | `docs/art-direction.md` §5.5/5.5b/5.6 永久目视，「画得像不像」仍无机器判据 | [`df-109`](./deferred-details.md#df-109) |
@@ -128,7 +123,6 @@
 | DF-115 | 待触发 | 未指派 | 若工具要区分「坏文件」与「空图」，改返回「元素数 + 是否有根」的元组或带哨兵值 | `scripts/word-image-throughput.ts` 的 `countElements` 对无根 SVG 报 0，与合法空图不可分 | [`df-115`](./deferred-details.md#df-115) |
 | DF-116 | 待触发 | 未指派 | 若「画得像不像」的判读要变成可审计记录，需在工具里加中间版归档与判读快照 | `docs/word-image-lab/versions.jsonl` 只记 48px 结论，`egg`/`playground` 中间版未落盘 | [`df-116`](./deferred-details.md#df-116) |
 | DF-117 | 待触发 | 未指派 | 任何人增删 `CardKindSchema` 的取值时，顺手在 `content-boundary.test.ts` 加一条与 `TOWER_TYPES` 同款的等值断言 | core 的 `Card.kind` 与 content 的 `CardKindSchema` 无等值守卫（`content-boundary.test.ts` 只钉 `TOWER_TYPES`） | [`df-117`](./deferred-details.md#df-117) |
-| DF-118 | 待触发 | Story 2.5 | Story 2.5 录入单元 2 时，把 §5.1.1 的两条判据实现成 `tests/content/unit-0N.test.ts` 里对该单元的断言（期望值从真实内容现算，零容差） | `card-distribution.md` §5.1.1 的 `Σ c_k===N` 与逐族误差判据已成文，但单元 2–20 无守卫 | [`df-118`](./deferred-details.md#df-118) |
 | DF-119 | 待触发 | 未指派 | 下次动 `docs/rules/process.md` 时把两条命令改成 `-P` 无 `\b` 形态；`M##` 那条的全角冒号约束仍然必要 | `docs/rules/process.md` 的 R-36 起号 grep 仍是 `-E` 加 `\b`，实测会漏 CJK 后的守卫号 | [`df-119`](./deferred-details.md#df-119) |
 | DF-120 | 待排期 | 未指派 | 给内容层加第三条形态守卫（把源码扫描的正则扩成同时吃 `from '…'` 与 `import('…')`），或改用能覆盖动态 import 的 ESLint 规则 | `content-boundary.test.ts` 源码扫描只吃 `from '…'`，动态 `import()` 仍穿过 R-10 两道守卫 | [`df-120`](./deferred-details.md#df-120) |
 | DF-121 | 待排期 | 未指派 | 加一条测试读 `docs/card-distribution.md` 的 §3 表，逐行解析后与 `targetCardDistribution` 的实算值比对（漂了就红） | `docs/card-distribution.md` §3 逐单元表仍零守卫，interpolate 改 smoothstep 时 G187–G190 全绿 | [`df-121`](./deferred-details.md#df-121) |

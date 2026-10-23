@@ -32,11 +32,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 //   `await import('../../src/core')`，而 `await import` 的返回值**不能当命名空间用**
 //   （TS2503）。两者指向同一个模块 —— 值走动态 import 是为了让 `vi.mock` 能生效，
 //   类型走静态 import 只是要那几个形状。
-import type { OptionId, Progress, State } from '../../src/core'
+import type { Progress, State } from '../../src/core'
 import { stripComments } from '../helpers/contrast'
 import { afterEachUninstall, installFakeStorage } from '../fixtures/fake-storage'
 import type { FakeStorage } from '../fixtures/fake-storage'
-import { greedyBuildActions } from '../fixtures/level-driver'
+import { driveStoreLevel } from '../fixtures/store-level-driver'
 
 let storage: FakeStorage
 let warn: ReturnType<typeof vi.spyOn>
@@ -51,17 +51,6 @@ const SRC = join(process.cwd(), 'src')
 /** 一份结构合法的初始对局。 */
 function freshState(): State {
   return core.createInitialState({ unitNumber: 1, deck: content.entriesOf(1) })
-}
-
-/** 当前这道题的正确项 id。 */
-function correctIdOfCurrentQuestion(): OptionId {
-  const phase = store.state.value.phase
-  if (phase.kind !== 'awaiting-answer') {
-    throw new Error(`当前相位是 ${phase.kind}，没有可答的题`)
-  }
-  const correct = phase.question.card.options.find((o) => o.correct)
-  if (correct === undefined) throw new Error('题上没有正确项')
-  return correct.id
 }
 
 /**
@@ -80,49 +69,24 @@ function pushIntoLevelFailed(): void {
 /**
  * 用**真的** store 门面跑完整一局，直到通关。
  *
- * ⚠️ **建塔策略复用 `greedyBuildActions`**（R-37：全仓一份建塔策略），
- *   不在本文件另写一份 —— 另写一份的结果是「本文件的一局能通关、别人的一局不能」，
- *   而两边都绿。`level-driver.ts` 文件头逐字记着这个坑（「门槛是 4」在两份驱动里
- *   给出不同的数）。
+ * 📎 **Story 2.5 / Task 5.3 把这份驱动搬到了 `tests/fixtures/store-level-driver.ts`。**
+ *   2.5 要验「单元 1 要打 4 局」⇒ 又需要一份同样的驱动 ⇒ 两份各写各的会**悄悄漂移**
+ *   （建塔策略改了只有一份 ⇒ 「4 局」这个数字在两份文件里给出不同的答案，而两边都绿 ——
+ *   这正是 `level-driver.ts` 文件头记着的那个坑）。
+ *   ⇒ 现在是**全仓一份**（R-37），本文件与 `tests/app/unit-advance.test.ts` 共用它。
+ *   ⚠️ **建塔策略仍然复用 `greedyBuildActions`**（R-37：全仓一份建塔策略）。
  *   ⚠️ 走 store 门面而不是 `applyAction(action)`：`placeSelectedAt` 才有
  *   「自动清选中态」那条边（G42），绕开它等于测的不是孩子实际走的那条路。
- *
- * ── `afterEachAnswer` 为什么必须挂在**答题之后**而不是整局之后 ──────────────
- * 实测（R-50 探针的结论，见 G96）：落盘的滞后**只在「同一次 dispatch 里既结算了
- * 掌握记录、又命中了写盘点」时**才露得出来。`ANSWER` 正是那一次
- * （`awaiting-build` 是写盘点），而 `advanceProgress` 排在 `runEffectsFromStore`
- * **之后** ⇒ 答题那一刻盘上少一个词。
- * `startRound()` 的三次 dispatch 各自重读 `progress.value`，会把这一条补上。
- * ⚠️ ⇒ **只在整局之后断言「落盘 = 内存」是一条恒绿判据**：它测不出 1.15 的偏离 3，
- *   而症状（孩子答完最后一题立刻关页面，丢一个词）恰恰发生在**中途**。
+ *   ⚠️ `afterEachAnswer` 为什么必须挂在**答题之后**而不是整局之后 ——
+ *     实测（R-50 探针的结论，见 G96）：落盘的滞后**只在「同一次 dispatch 里既结算了
+ *     掌握记录、又命中了写盘点」时**才露得出来。`ANSWER` 正是那一次
+ *     （`awaiting-build` 是写盘点），而 `advanceProgress` 排在 `runEffectsFromStore`
+ *     **之后** ⇒ 答题那一刻盘上少一个词。
+ *     `startRound()` 的三次 dispatch 各自重读 `progress.value`，会把这一条补上。
+ *     ⚠️ ⇒ **只在整局之后断言「落盘 = 内存」是一条恒绿判据**：它测不出 1.15 的偏离 3，
+ *       而症状（孩子答完最后一题立刻关页面，丢一个词）恰恰发生在**中途**。
  */
-function driveLevel(afterEachAnswer?: () => void): void {
-  let guard = 0
-  while (store.state.value.phase.kind === 'awaiting-answer') {
-    guard += 1
-    if (guard > 200) throw new Error('跑了一局还没通关 —— 判据或实现变了')
-
-    store.applyAction(core.answer(correctIdOfCurrentQuestion()))
-    afterEachAnswer?.()
-
-    for (const action of greedyBuildActions(store.state.value)) {
-      if (action.type !== 'PLACE_TOWER') {
-        throw new Error(`贪心策略产出了非建塔 action：${action.type}`)
-      }
-      const { row, col } = core.parseCellKey(action.cell)
-      store.selectTowerCard(action.entryId)
-      if (!store.placeSelectedAt(row, col)) {
-        throw new Error(`贪心策略要建的格子被门面拒了：(row=${row}, col=${col}) —— 两份判据分叉了`)
-      }
-    }
-
-    store.startRound()
-  }
-
-  if (store.state.value.phase.kind !== 'level-complete') {
-    throw new Error(`跑完一局却停在 ${store.state.value.phase.kind}`)
-  }
-}
+const driveLevel = driveStoreLevel
 
 /** 直接读盘上的原始 JSON —— 不走 `readSave()`，免得解析层把问题藏起来。 */
 function readRawSave(): { progress: Progress; currentGame: State | null } {
@@ -470,15 +434,22 @@ describe('G96 —— 落盘的 progress 必须是**这一次结算之后**的', 
     )
   })
 
-  it('Epic 1 的 UNITS.length === 1 ⇒ 通关**不**推进 currentUnitIndex（缺单元时不推进）', () => {
-    // ⚠️ 这条判据咬的是「**无条件推进**」，不是「该推进时没推进」——
-    //   后者在 Epic 1 构造上不可达（`hasNextUnit` 恒 false），
-    //   它由 `tests/core/hud.test.ts` 的 G87 / G88 以 `advanceUnit(p, true)` 覆盖。
+  it('📎 [CR]` 2026-10-23（Story 2.5）：通关**且本单元全部词条已掌握** ⇒ 推进到下一个单元', () => {
+    // ⚠️ 这条用例原来逐字是「**Epic 1 的 `UNITS.length === 1` ⇒ 通关不推进
+    //   currentUnitIndex**（缺单元时不推进）」—— 它的**前置在 2.5 之后不再成立**
+    //   （单元 2 已录入），而它咬的是「**无条件推进**」。
+    //   ⚠️ **本文件的 `freshState()` 用的是全部 37 条当题单**（不是每局 10 条）
+    //   ⇒ 这一局就把整个单元学完了 ⇒ **推进是应该发生的**。
+    //   ⚠️ 「该推进时没推进」那一半由 `tests/app/unit-advance.test.ts` 的
+    //   AC-5.2（第一局不推进）/ AC-5.5（缺下一个单元不推进）以**真路径**守住；
+    //   「缺单元时不推进」在 2.5 之后已经**不是**这一层的职责了。
     driveLevel()
 
-    expect(content.UNITS.length, '前置：Epic 1 只录了单元 1 —— 这条用例靠它成立').toBe(1)
-    expect(store.progress.value.currentUnitIndex, '没有下一个单元 ⇒ 不推进，不抛错，不记降级').toBe(0)
-    expect(readRawSave().progress.currentUnitIndex, '盘上那份也一样').toBe(0)
+    expect(
+      store.progress.value.currentUnitIndex,
+      '本单元全部词条已掌握 ⇒ 推进到单元 2（不抛错，不记降级）',
+    ).toBe(1)
+    expect(readRawSave().progress.currentUnitIndex, '盘上那份也一样').toBe(1)
   })
 
   it('⚠️ 通关**不是**一次降级 —— 不得留下任何 WARN（否则 1.17 的面板会误报）', () => {
@@ -497,14 +468,28 @@ function diskMasteredCount(): number {
   return raw === undefined ? -1 : JSON.parse(raw).progress.masteredWordIds.length
 }
 
-// ── AC-C4：单元推进判据的构造上可达性 ────────────────────────────────────
+// ── AC-C4 的前提到期：2.5 之后「有下一个单元」这一支**真机可达** ──────────────
 
-describe('AC-F2 —— 「有下一个单元」这条分支在单测里可构造，真机上不可达', () => {
-  it('UNITS 里确实只有单元 1 —— 所以 store 侧的推进判据永远走 false 分支', () => {
+describe('AC-F2 —— 「有下一个单元」这一支在 Story 2.5 之后**真机可达**', () => {
+  it('读完单元 1 ⇒ 推进判据真的走 true 分支（currentUnitIndex 0 → 1）', () => {
+    // ⚠️ 这条用例原来逐字是「UNITS 里确实只有单元 1 —— 所以 store 侧的推进判据
+    //   **永远走 false 分支**」，而它自己的失败消息逐字写着
+    //   「若这里变了（2.5 录入了单元 2），AC-C4 的『不做下一单元 UI 路径』就需要重新评估」
+    //   ⇒ 2.5 正是那个「变了」的事件，而 AC-C4 的前提**到期**（DF-059 的 UI 路径
+    //   正是 2.5 的 Task 5.2 补上的）。
+    // ⚠️ **不许把它改成 `toEqual([1, 2])` 就完事** —— 那是一条恒真的装饰守卫（R-51）：
+    //   判据要落在「这一支**真的走得到**」这个**行为**上。
     expect(
       content.UNITS.map((u) => u.unitNumber),
-      '若这里变了（2.5 录入了单元 2），AC-C4 的「不做下一单元 UI 路径」就需要重新评估',
-    ).toEqual([1])
+      '前置：单元 2 已录入 ⇒ 这一支不再是恒 false',
+    ).toEqual([1, 2])
+
+    driveLevel()
+
+    expect(
+      store.progress.value.currentUnitIndex,
+      '读完单元 1 ⇒ 这一支**真的走得到**（构造上不可达的那半年已经过去）',
+    ).toBe(1)
   })
 })
 

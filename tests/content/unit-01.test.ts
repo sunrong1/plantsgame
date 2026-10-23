@@ -22,7 +22,7 @@
  */
 
 import { createHash } from 'node:crypto'
-import { readFileSync, readdirSync, statSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -32,9 +32,8 @@ import { createInitialState } from '../../src/core/reducer'
 import * as contentModule from '../../src/content'
 import { getUnit, parseUnit, UNITS } from '../../src/content'
 import { targetCardDistribution } from '../../src/content/distribution'
-import { targetOptionCount } from '../../src/content/option-count'
 import { UnitSchema } from '../../src/content/schema'
-import type { CardKind } from '../../src/content/schema'
+import { assertOptionCountsMatchRule } from '../helpers/option-counts'
 
 const root = fileURLToPath(new URL('../../', import.meta.url))
 const voiceDir = join(root, 'public/assets/audio/voice')
@@ -48,47 +47,35 @@ const unit = getUnit(1)
 const entries = unit.entries
 
 /**
- * G264 的**判据本体** —— 抽成函数，正向用例与反向自测**都调它**。
+ * 磁盘上录音文件的 id（去扩展名）；**给了前缀就只取那一组**。
  *
- * ⚠️ **为什么要抽**（`[CR]` 2026-10-23 修）：反向自测必须能「把违规形态真写进去，
- *   断言那条守卫会红」—— 若判据只存在于某条 `it` 的循环体里，反向自测**够不着它**
- *   （只能另写一份手写比较，于是判据被改坏时反向自测照样绿）。
- *   ⇒ 判据本体是一个**函数**，两边共用同一份实现。
+ * 🔥📎 **Story 2.5 / Task 6.2：前缀参数是这一轮加的。**
+ *   原先逐字是 `mp3Ids()` —— 扫**整个** voice 目录 ⇒ 单元 2 的 38 条录音一落地，
+ *   单元 1 的三条判据（数量 / 集合相等 / 「每条都有被朗读的地方」）**当场变红**，
+ *   而它们守的东西（单元 1 的词条与单元 1 的录音一致）**一个字都没变**。
+ *   ⇒ 改成**按单元前缀分组**：单元 1 的判据只看 `u1-`，单元 2 的看 `u2-`。
  */
-function assertOptionCountsMatchRule(
-  cards: readonly { entryId: string; card: { kind: CardKind; options: readonly unknown[] } }[],
-  unitNumber = 1,
-): void {
-  for (const entry of cards) {
-    const want = targetOptionCount(unitNumber, entry.card.kind)
-    expect(
-      entry.card.options.length,
-      `${entry.entryId}（${entry.card.kind} 卡）有 ${entry.card.options.length} 个选项，` +
-        `而规则说单元 ${unitNumber} 的 ${entry.card.kind} 卡应当是 ${want} 个 —— ` +
-        '两者必须一致：改内容要同步改 src/content/option-count.ts 的档位表（或反之），' +
-        '否则「档内同值」只是一句没有人核对过的承诺',
-    ).toBe(want)
-  }
-}
-
-/** 磁盘上录音文件的 id（去扩展名）。 */
-const mp3Ids = (): string[] =>
+const mp3Ids = (prefix = ''): string[] =>
   readdirSync(voiceDir)
     .filter((name) => name.endsWith('.mp3'))
     .map((name) => name.slice(0, -'.mp3'.length))
+    .filter((id) => id.startsWith(prefix))
     .sort()
 
-describe('AC-15 —— entryId 与 37 个 mp3 完全一致', () => {
-  it('mp3 目录里是 37 个文件（改动这个数要同时改录音与本断言）', () => {
-    // 38 → 37 是 [CR] 2026-10-14 退役 `u1-s-what-is-this` 的连带，理由见 AC-16 那条。
-    expect(mp3Ids().length, '录音数量变了 —— 少一条会静默降级到设备 TTS，多一条说明词表被改过').toBe(
-      37,
-    )
+describe('AC-15 —— entryId 与本单元的 mp3 完全一致', () => {
+  it('本单元的 mp3 数量 === 本单元词条数（少一条会静默降级到设备 TTS）', () => {
+    // ⚠️ 原来逐字写死 37 —— 那是 1.16 时代的做法（Epic 1 只有一个单元）。
+    //   现在改成**数据驱动**：录音条数必须**跟着词条走**，
+    //   而「单元 1 有 37 条」这件事由下方 AC-16 那条单独钉住。
+    expect(
+      mp3Ids('u1-').length,
+      '单元 1 的录音条数与词条数不一致 —— 少一条会静默降级到设备 TTS，多一条说明词表被改过',
+    ).toBe(entries.length)
   })
 
-  it('entryId 集合 === mp3 文件名集合（两个方向都为空）', () => {
+  it('entryId 集合 === 本单元的 mp3 文件名集合（两个方向都为空）', () => {
     expect([...entries.map((e) => e.entryId)].sort(), '内容与录音不一致，见上方说明').toEqual(
-      mp3Ids(),
+      mp3Ids('u1-'),
     )
   })
 
@@ -128,7 +115,10 @@ describe('卡面文本与录音内容一致（录音不可重生成，这是不�
 
   it('每条录音都有被朗读的地方（没有「只当选项、不当题面」的孤儿录音）', () => {
     const prompts = new Set(entries.map((e) => e.card.promptText))
-    for (const id of mp3Ids()) {
+    // 🔥📎 **Story 2.5 / Task 6.2：`mp3Ids('u1-')` 而不是 `mp3Ids()`。**
+    //   原来扫的是**整个** voice 目录 ⇒ 单元 2 的录音会拿单元 1 的卡面去比
+    //   ⇒ 「u2-apple 的录音在任何一张卡的卡面上都不出现」—— 一条**跨单元**的假红。
+    for (const id of mp3Ids('u1-')) {
       const recorded = manifest.entries[id]
       expect(
         prompts.has(recorded?.text ?? ''),
@@ -405,8 +395,28 @@ describe('AC-9 —— 内容导出的 deck 能直接喂给回合层', () => {
     ).toBe(entries[0].entryId)
   })
 
-  it('UNITS 里目前只有单元 1（新增单元要在 index.ts 的 RAW_UNITS 登记）', () => {
-    expect(UNITS.map((u) => u.unitNumber)).toEqual([1])
+  it('UNITS 里的每个单元都登记了 JSON 文件，且每条词条都带自己的单元前缀', () => {
+    // ⚠️ 原来逐字是「UNITS 里目前只有单元 1（新增单元要在 index.ts 的 RAW_UNITS 登记）」
+    //   —— 2.5 录入了单元 2 之后它**必然**变红，而它守的东西
+    //   （内容层与内容文件的一致）**一个字都没变** ⇒ 它是一条**过期**的守卫，
+    //   不是一条被违反的守卫。
+    // ⚠️ **不许改成 `toEqual([1, 2])`** —— 那只是把一个过期常量换成另一个，
+    //   下一个单元录进来时它会**再次**变红（而仍然不指向任何真问题）。
+    // ⇒ 改成**数据驱动**：每个登记的单元都必须有对应的 JSON 文件，
+    //   且它的每一条词条都带 `u<单元号>-` 前缀。
+    for (const registered of UNITS) {
+      const file = join(root, `src/content/units/unit-${String(registered.unitNumber).padStart(2, '0')}.json`)
+      expect(
+        existsSync(file),
+        `单元 ${registered.unitNumber} 没有对应的内容文件：${file} —— 它是怎么进 RAW_UNITS 的？`,
+      ).toBe(true)
+      for (const entry of registered.entries) {
+        expect(
+          entry.entryId.startsWith(`u${registered.unitNumber}-`),
+          `${entry.entryId} 缺单元 ${registered.unitNumber} 的前缀`,
+        ).toBe(true)
+      }
+    }
   })
 
   it('unit-01.json 本身能通过 UnitSchema（数据与 schema 没有脱节）', () => {

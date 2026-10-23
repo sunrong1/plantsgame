@@ -146,14 +146,16 @@ const FIRST_UNIT_NUMBER = 1
 //   **业务事实**而非 UI 态：它要被存档（1.15）。但它仍然不进 reducer，
 //   因为 reducer 的输入输出必须是一局之内的状态，而它是跨局的（架构决策 5）。
 //
-// ⚠️ **`currentUnitIndex` 在 Epic 1 恒为 0** —— `advanceUnit` 的判据
-//   `hasNextUnit()` 逐字是「`phase.kind === 'level-complete'`」+「下一个单元录了没有」，
+// ⚠️ **`currentUnitIndex` 在 Epic 1 恒为 0** —— 那时 `advanceUnit` 的判据
+//   逐字是「`phase.kind === 'level-complete'`」+「下一个单元录了没有」，
 //   而 Epic 1 只录了单元 1 ⇒ 恒 false。
-//   📎 **Story 1.19 / 裁决 5：这条判据即将失效。** 一局从一个单元变成 4 局之后，
-//   **每局通关都会命中它的第一条**；今天被第二条挡住，Story 2.5 录入单元 2 的那一天
-//   第一条就会放行 ⇒ 打完单元 1 的第一局就被推进到单元 2，剩下 27 个词永久学不到。
+//   📎 **Story 1.19 / 裁决 5 曾预言这条判据会失效**：一局从一个单元变成 4 局之后，
+//   **每局通关都会命中它的第一条**；Story 2.5 录入单元 2 的那一天第二条就会放行
+//   ⇒ 打完单元 1 的第一局就被推进到单元 2，剩下 27 个词永久学不到。
 //   ⇒ 已登记 `deferred-work.md`，**恢复条件写死为「Story 2.5 录入单元 2 之前」**。
-//   ⚠️ **本 story 不改它** —— 关卡推进语义是产品决策，属 `[CC]`（R-35 只登记不擅改）。
+//   🔥📎 **Story 2.5 已按那个恢复条件把它改掉了**（Task 5.1，属 `[CC]` 级的产品决定）：
+//   推进判据现在是「**本单元全部词条已掌握**」+「本局结束」+「下一个单元录了没有」三条，
+//   详见 {@link unitFullyLearned} 与 `applyAction` 里那三行。
 
 /**
  * 跨局进度。唯一的变更点是 {@link applyAction} 末尾那行 `advanceProgress`。
@@ -834,9 +836,6 @@ export function applyAction(action: Action): void {
   //   而 1.13 的 story 文档已归档、按 R-40 不去动它。
   //
   // ⚠️ **`advanceProgress` / `advanceUnit` 各只调一次** —— 不是「算两次对得上」。
-  // ⚠️ **`hasNextUnit(reduced)` 只在 `reduced.phase.kind === 'level-complete'` 时为 `true`**，
-  //   其余相位恒 false ⇒ 两条纯函数的「无增量返回入参本身」性质被绝大多数
-  //   dispatch 保住，`progress.value` 的引用只在真有变化时才变（守卫 G54 的鉴别力）。
   // 📎 **1.17：这里刻意读 `reduced` 而不是 `next`（裁决 5 末段二选一的判定）** ——
   //   跨局进度是**孩子真的会带走的业务事实**（FR58 只增不减、还要落盘），
   //   dev 补偿是**临时手柄**。拿补偿后的掌握记录去算进度的话，
@@ -844,7 +843,28 @@ export function applyAction(action: Action): void {
   //   关掉开关、重打一局，那 25 个词仍然显示成「已掌握」，而界面上没有任何东西
   //   指向原因（R-06 说的那种「静默错到下一个生命周期」）。
   //   ⇒ 写盘拿 `next`（要一致），跨局进度拿 `reduced`（不能被 dev 手柄污染）。
-  const nextProgress = advanceUnit(advanceProgress(progress.value, reduced), hasNextUnit(reduced))
+  //
+  // 🔥📎 **Story 2.5 / Task 5.1：推进判据换成「本单元全部词条已掌握」。**
+  //   原判据是「本局打完了 ∧ 下一个单元录了没有」——
+  //   **一局打完了不代表这个单元学完了**（1.19 起一局只有至多 10 题，
+  //   单元 1 因此是 4 局）⇒ 旧判据会在**第一局**就把孩子推进单元 2，
+  //   剩下 27 个词**永久学不到**。这正是 1.19 裁决 5 登记过、
+  //   恢复条件写死为「Story 2.5 录入单元 2 之前」的那个洞。
+  //   ⚠️ **读的是「合并后」的进度**（`mergedProgress`），不是 `progress.value` ——
+  //     `progress.value` 在这一行执行时**还是旧的**（本局刚答对的词尚未并进去）
+  //     ⇒ 照抄 `progress.value` 写判据 ⇒ 最后一局（最后 7 个词）刚答对的那 7 条
+  //     **不在**里面 ⇒ **永远不推进** ⇒ 孩子卡在「第 1 单元 · 36/37」。
+  const mergedProgress = advanceProgress(progress.value, reduced)
+  // ⚠️ **「本局结束」与「本单元学完」是两件事**（旧判据用一个 `hasNextUnit`
+  //   同时表达两件事，名字会骗人）⇒ 这里拆成三个可读的布尔。
+  //   ① 本局结束 —— 只有终态才谈得上推进。
+  const levelFinished = reduced.phase.kind === 'level-complete'
+  //   ② 本单元学完 —— 判据在 {@link unitFullyLearned}，读的是**合并后**的掌握集合。
+  const unitLearned = unitFullyLearned(reduced.unitNumber, mergedProgress.masteredWordIds)
+  //   ③ 下一个单元录了没有 —— 推进到一个不存在的单元 = 静默丢数据。
+  const nextUnitRecorded = nextUnitIsRecorded(reduced.unitNumber)
+  const shouldAdvanceUnit = levelFinished && unitLearned && nextUnitRecorded
+  const nextProgress = advanceUnit(mergedProgress, shouldAdvanceUnit)
   // 📎 **Story 1.14 接上的第三步**（AC-E2）：拿 `(action, prev, next)` 三个快照去播音效。
   //
   // ⚠️ **位置不可换** —— 它读的是 prev/next 两个快照，排在 `state.value = next`
@@ -945,33 +965,45 @@ export function reportImageFailure(optionId: OptionId): void {
 }
 
 /**
- * 通关了之后有没有**下一个单元** —— {@link advanceUnit} 的那条判据。
+ * 🔥📎 **Story 2.5 / Task 5.1：三条推进判据（拆分后的样子）。**
  *
- * ⚠️ **只在 `level-complete` 时为 `true`**：重打（`RESTART_LEVEL`）把相位推成
- *   `awaiting-answer`，而「重打」逐字是**同单元内的再来一次**（FR52）
- *   ⇒ 任何非通关的相位都不得推进单元号，否则「重打一次」会把孩子推到下一个单元，
- *   而他一个词都还没答。
+ * ⚠️ **为什么拆**：旧判据用一个 `hasNextUnit` 同时表达「本局结束了」与
+ *   「可以推进到下一个单元」两件事 —— 而这两件事**在 1.19 之后不再是同一件事**
+ *   （一局只是这个单元的一部分）。
+ *   ⇒ 现在三条各归其位：**本局结束**（相位）、**本单元学完**（跨局进度）、
+ *   **下一个单元录了没有**（内容层）。
+ *
+ * ⚠️ **判据住在 app 层**：`core/` 不得 import `../content/`（R-10），
+ *   「这个单元录了没有」「这个单元的词条有哪些」都是**内容层**的知识。
+ */
+
+/**
+ * 「这个单元的词条是不是全学完了」—— 判据是**跨局进度**里还剩不剩待考的条目。
+ *
+ * ⚠️ **必须传「合并后」的掌握集合**（`advanceProgress(progress.value, reduced)`
+ *   的返回值），不是 `progress.value.masteredWordIds` ——
+ *   后者在推进判据求值的这一刻**还是旧的**（本局刚答对的词尚未并进去）
+ *   ⇒ 照抄它 ⇒ 最后一局刚答对的那几条不在里面 ⇒ **永远不推进**。
+ *
+ * ⚠️ **用 `sliceDeckForLevel` 而不是自己写一遍「未掌握 = 全部减去已掌握」**：
+ *   题单切片判据的**唯一**出处是它（R-02）——
+ *   `buildStateFor` 切的就是它、`advanceUnit` 的语义也建立在它上面。
+ *   这里要的只是「切片是不是空的」这一位信息，用同一个函数取，
+ *   才不会两边对「什么算已掌握」的理解分家。
+ */
+function unitFullyLearned(unitNumber: number, masteredWordIds: readonly string[]): boolean {
+  return sliceDeckForLevel(entriesOf(unitNumber), masteredWordIds).length === 0
+}
+
+/**
+ * 「下一个单元录了没有」——
  *
  * ⚠️ **用 `UNITS.some` 而不是 `getUnit` + try/catch**：内容层「这个单元没录」
  *   抛错是刻意设计，不是失败路径 —— 用异常表达一个**预期状态**，
  *   会把正常结局记成降级（1.17 的面板会给孩子报一个不存在的故障）。
- *
- * 🔥📎 **Story 1.19 / 裁决 5 —— 这条判据隐含「一局 = 一个单元」，1.19 起不再成立。**
- *   本函数**刻意保持原样**（改关卡推进语义属 `[CC]`，本 story 只登记不擅改，R-35）。
- *   但后果要写在这里，因为它从「一个理论隐患」变成「一个带日期的 bug」：
- *     · 1.19 起「一局」是**至多 10 题**，单元 1 因此变成 **4 局**；
- *     · 于是**每一局通关**都会命中本函数的第一条判据；
- *     · 今天它被第二条（下一个单元录了没有）挡住 —— Epic 1 只录了单元 1 ⇒ 恒 false；
- *     · **Story 2.5 录入单元 2 的那一天，第二条放行** ⇒ 打完单元 1 的**第一局**
- *       就被推进到单元 2，剩下 27 个词**永久学不到**。
- *   ⇒ 已登记 `deferred-work.md`，**恢复条件写死为「Story 2.5 录入单元 2 之前」**。
- *   ⚠️ 正确的修法是让「本单元全部词已掌握」成为推进条件，而不是「打了一局」——
- *     但那是关卡推进语义的产品决策，**不许在本 story 顺手改**。
  */
-function hasNextUnit(next: State): boolean {
-  if (next.phase.kind !== 'level-complete') return false
-  const targetUnitNumber = next.unitNumber + 1
-  return UNITS.some((unit) => unit.unitNumber === targetUnitNumber)
+function nextUnitIsRecorded(unitNumber: number): boolean {
+  return UNITS.some((unit) => unit.unitNumber === unitNumber + 1)
 }
 
 // ── 建造交互的三个门面（Story 1.12 / AC-D5、AC-F2、AC-F3）─────────────────
@@ -1133,6 +1165,93 @@ export function restartLevel(): void {
 export function backToStart(): void {
   view.value = 'start'
   stopBgm()
+}
+
+/**
+ * 🔥📎 **Story 2.5 / Task 5.2：通关后直接进下一个单元。**
+ *
+ * ⚠️ **它为什么必须存在**：通关画面那个按钮原本只有「回开始」——
+ *   孩子点它 ⇒ 回到开始界面 ⇒ 再点「开始游戏」⇒ **才**进下一个单元。
+ *   这条路能走通（`restoreFromSave` → `currentGame === null` → `restoreNextUnit`
+ *   按 `progress.currentUnitIndex + 1` 组装），但**多绕一次**，
+ *   而这一绕的代价是：孩子看到的是「读完啦」然后**被送回开始界面**，
+ *   界面上没有任何东西告诉他「你已经读完一个单元了，下一个已经准备好了」。
+ *
+ * ⚠️ **它只换战场，不碰进度**：`progress.currentUnitIndex` 在**通关那一次 dispatch**
+ *   里就已经推进了（判据见 {@link unitFullyLearned}）⇒ 本函数只要按
+ *   `currentUnitIndex + 1` 组装**下一个**单元的战场即可。
+ *   ⚠️ **不要在这里再推进一次** —— 那会把 `currentUnitIndex` 加到 2，
+ *     于是下一次进关找的是**单元 3**（而单元 3 没录）⇒ 静默卡死。
+ *
+ * ⚠️ **降级而不是崩**（NFR13）：目标单元没录 / 组装失败时，
+ *   **留在当前战场**并记一条 WARN —— 孩子看到的是「按钮没反应」，
+ *   而不是白屏。理由与 {@link restoreNextUnit} 同款。
+ *
+ * ⚠️ **清会话录制**：新单元是**新的一局**，
+ *   而录制是从 `initialState` 起算的 ⇒ 不清的话导出的是「单元 1 的开局 + 单元 2 的输入」，
+ *   回放必然对不上（`core/session-replay.ts` 逐字声明「非法 action 会照 `reduce` 的抛错抛出去」）。
+ */
+export function goToNextUnit(): void {
+  const targetUnitNumber = progress.value.currentUnitIndex + 1
+  if (!UNITS.some((unit) => unit.unitNumber === targetUnitNumber)) {
+    console.warn(
+      `[app] 下一个单元 ${targetUnitNumber} 未录入 —— 已留在当前战场，进度**不回退**`,
+    )
+    return
+  }
+  try {
+    state.value = buildStateFor(targetUnitNumber)
+  } catch (err) {
+    console.warn(
+      `[app] 组装单元 ${targetUnitNumber} 失败 —— 已留在当前战场：${describeRestore(err)}`,
+    )
+    return
+  }
+  resetSession()
+  // 📎 **与 `enterLevel()` 同款**：换单元 ⇒ 换一批图 ⇒ 预取也跟着换。
+  void prefetchUnit(state.value.unitNumber)
+  void prefetchNextUnit(state.value.unitNumber)
+}
+
+/**
+ * 🔥📎 **Story 2.5 / Task 5.2：终态浮层那个按钮**该是**哪一种**。
+ *
+ * ⚠️ **为什么判据住在 store 而不是组件里**：
+ *   守卫 **G90** 把终态浮层钉成「只读 `state.value.phase.kind`」——
+ *   「本单元学完了没有」是**跨局进度**的事实（`progress.masteredWordIds`），
+ *   组件不许读它（G90 的白名单逐字只允许 `state.value.phase.kind`）。
+ *   ⇒ 判据只能在 store 里算，组件只拿结论（一个三值的联合）。
+ *
+ * ⚠️ **四值而不是两个布尔**：
+ *   · `next-unit` —— 通关 ∧ 本单元学完 ∧ 下一个单元录了 ⇒ 进下一个单元；
+ *   · `continue`  —— 通关 ∧ 本单元**还没**学完 ⇒ 留在本单元打下一局
+ *     （现有路径已经能用：回开始 → 再进关 → `sliceDeckForLevel` 切出下一批）；
+ *   · `retry`     —— 失败 ⇒ 重打这一局；
+ *   · `finished`  —— 通关 ∧ 本单元学完 ∧ **没有下一个单元**（全书最后一个单元）⇒
+ *     回开始界面。⚠️ **这一支不是「理论上才有」**：单元 2 是本项目当前录入的**最后一个**
+ *     单元 ⇒ 孩子读完单元 2 就会撞上它（AC-5.5）。它必须与 `continue` 分开 ——
+ *     `continue` 的文案是「继续」（**承诺还有下一局**），而这一支**没有下一局可打**：
+ *     按钮若仍写「继续」，点下去又回到同一张「读完啦」卡 ⇒ 一个骗人的死胡同。
+ *     ⇒ 动作与 `continue` 相同（都回开始界面），**只有文案与承诺不同**。
+ *
+ * ⚠️ **文案不在这里**：按钮上的字是**界面文案**，它住在组件里（守卫 G91 扫的就是组件源码）⇒
+ *   本函数只给**该做什么**，不给「写成什么字」。
+ */
+export type LevelOutcomeKind = 'next-unit' | 'continue' | 'retry' | 'finished'
+
+/**
+ * 终态浮层那个按钮的**种类**（Story 2.5 / Task 5.2）。
+ *
+ * ⚠️ **只在终态下有意义**：非终态时返回 `continue`（组件此时根本不渲染浮层）。
+ */
+export function levelOutcomeKind(): LevelOutcomeKind {
+  if (state.value.phase.kind === 'level-failed') return 'retry'
+  const unitNumber = state.value.unitNumber
+  if (!unitFullyLearned(unitNumber, progress.value.masteredWordIds)) return 'continue'
+  if (nextUnitIsRecorded(unitNumber)) return 'next-unit'
+  // ⚠️ **本单元学完了，但下一个单元没录**（全书最后一个单元）⇒
+  //   回开始界面，而不是「推进到一个不存在的单元」。
+  return 'finished'
 }
 
 /**

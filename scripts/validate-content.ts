@@ -52,6 +52,11 @@ import {
   type ProblemCategory,
 } from '../src/content/schema'
 import { targetOptionCount } from '../src/content/option-count'
+// ⚠️ 份额的**唯一**出处是内容层那条规则（`src/content/distribution.ts`）——
+//   脚本**不重算**、**不抄**一份（那会是 R-37 的复制链：改规则只改一处、另一处静默过期）。
+//   Story 2.2 的裁决 3 明确**不加**「实际分布 vs 规则目标」的硬校验；
+//   本脚本只**打印**余量（DF-118 的恢复条件要的正是「录入时就看得见余量」）。
+import { targetCardDistribution } from '../src/content/distribution'
 // ⚠️ 脚本 import `src/core/` 是**允许且已实测可行**的（`tsconfig.test.json` 文件头实测记录：
 //   注入 `const x: number = "s"` 会立刻报 TS2322，既证明被 typecheck 覆盖也证明 import core/
 //   没有把它挤出检查范围）。`scripts/balance-sim.ts:49` 就是这个形态。
@@ -155,6 +160,28 @@ export interface ContentStats {
   cardCount: number
   /** 三型卡各多少（AC-14：统计是必须输出的一部分）。 */
   kindCounts: Record<'word' | 'keyword' | 'response', number>
+  /**
+   * **逐单元**的卡型配比与逐族余量（DF-118 的恢复条件：录入时就看得见余量）。
+   *
+   * ⚠️ **只是统计，不是判据** —— Story 2.2 的裁决 3 明确**不加**
+   *   「实际分布 vs 规则目标」的硬校验；越界由 `tests/content/unit-0N.test.ts`
+   *   的守卫（§5.1.1 的两条判据）负责。脚本这一侧只负责**让人看见**。
+   */
+  unitDistributions: readonly UnitDistribution[]
+}
+
+/** 一个单元的卡型配比统计。 */
+export interface UnitDistribution {
+  /** 单元号。 */
+  unitNumber: number
+  /** 本单元的词条数 N。 */
+  entryCount: number
+  /** 三型卡各多少（`c_k`）。 */
+  kindCounts: Record<'word' | 'keyword' | 'response', number>
+  /** 规则给的目标份额（`s_k`，来自内容层那条规则）。 */
+  targetShares: Record<'word' | 'keyword' | 'response', number>
+  /** 逐族误差 `|c_k − s_k × N|`（§5.1.1 的第二条判据；**四舍五入到最近整数**的残差）。 */
+  familyErrors: Record<'word' | 'keyword' | 'response', number>
 }
 
 export interface ValidationResult {
@@ -1121,6 +1148,7 @@ export function validateContent(
 ): ValidationResult {
   const problems: ContentProblem[] = []
   const kindCounts: ContentStats['kindCounts'] = { word: 0, keyword: 0, response: 0 }
+  const unitDistributions: UnitDistribution[] = []
   let entryCount = 0
 
   for (const raw of units) {
@@ -1132,9 +1160,16 @@ export function validateContent(
     const parsed = UnitSchema.safeParse(raw)
     if (!parsed.success) continue
     entryCount += parsed.data.entries.length
+    const unitKindCounts: ContentStats['kindCounts'] = { word: 0, keyword: 0, response: 0 }
     for (const entry of parsed.data.entries) {
       kindCounts[entry.card.kind] += 1
+      unitKindCounts[entry.card.kind] += 1
     }
+    // ⚠️ 规则**不外推**（`targetCardDistribution` 越界即抛）⇒ 这里**不把越界变成一条问题**
+    //   （那会给内容层加一条新的失败模式，超出「只打印余量」的范围），
+    //   只是**跳过该单元的统计**，并让输出里明说「规则未覆盖」。
+    const distribution = unitDistributionOf(parsed.data.unitNumber, unitKindCounts)
+    if (distribution !== null) unitDistributions.push(distribution)
   }
 
   problems.push(...globalEntryIdProblems(units))
@@ -1149,6 +1184,45 @@ export function validateContent(
       entryCount,
       cardCount: entryCount,
       kindCounts,
+      unitDistributions,
+    },
+  }
+}
+
+/**
+ * **判据本体** —— 某个单元的卡型配比统计（`c_k` / `s_k` / 逐族误差）。
+ *
+ * ⚠️ **为什么是导出函数而不是循环体里的一段**：守卫要能「喂一份**假**的卡型计数进去，
+ *   断言算出来的逐族误差跟着变」—— 若判据只活在循环体里，反向自测够不着它
+ *   （只能另写一份手写比较，于是判据被改坏时反向自测照样绿 —— 本仓已知的假绿形态）。
+ *
+ * ⚠️ 规则**不外推**（`targetCardDistribution` 越界即抛）⇒ 越界时返回 `null`
+ *   （不抛、不外推、不记一条假问题 —— 校验器的作用是**把问题列全**，不是自己先崩）。
+ *
+ * @param unitNumber 单元号
+ * @param kindCounts 三型卡各多少（`c_k`）
+ * @returns 统计；规则未覆盖该单元号时 `null`
+ */
+export function unitDistributionOf(
+  unitNumber: number,
+  kindCounts: Record<'word' | 'keyword' | 'response', number>,
+): UnitDistribution | null {
+  let targetShares: Record<'word' | 'keyword' | 'response', number>
+  try {
+    targetShares = targetCardDistribution(unitNumber)
+  } catch {
+    return null
+  }
+  const n = kindCounts.word + kindCounts.keyword + kindCounts.response
+  return {
+    unitNumber,
+    entryCount: n,
+    kindCounts,
+    targetShares,
+    familyErrors: {
+      word: Math.abs(kindCounts.word - targetShares.word * n),
+      keyword: Math.abs(kindCounts.keyword - targetShares.keyword * n),
+      response: Math.abs(kindCounts.response - targetShares.response * n),
     },
   }
 }
@@ -1311,6 +1385,19 @@ export function main(
       `${result.stats.cardCount} 张卡（单词 ${kindCounts.word}、关键词 ${kindCounts.keyword}、` +
       `回应 ${kindCounts.response}）`,
   )
+  // ⚠️📎 DF-118 的恢复条件：「把 §5.1.1 的两条判据搬进 `validate:content` 的统计输出，
+  //   让录入时就看得见余量」。
+  //   ⇒ 这里**逐单元**打印 `c_k` 与逐族误差 `|c_k − s_k × N|`。
+  //   ⚠️ **这是统计，不是判据** —— 越界的判定在 `tests/content/unit-0N.test.ts`
+  //   （§5.1.1 的两条判据）；脚本这一侧**不新增失败模式**（Story 2.2 裁决 3）。
+  for (const unit of result.stats.unitDistributions) {
+    console.log(
+      `[content] 单元 ${unit.unitNumber} 配比：单词 ${unit.kindCounts.word} / ` +
+        `关键词 ${unit.kindCounts.keyword} / 回应 ${unit.kindCounts.response}（N=${unit.entryCount}）` +
+        `—— 逐族误差 ${unit.familyErrors.word.toFixed(3)} / ${unit.familyErrors.keyword.toFixed(3)} / ` +
+        `${unit.familyErrors.response.toFixed(3)}（§5.1.1 的阈值 0.5）`,
+    )
+  }
   console.log(
     `[content] 词图目录：${deps.wordImageRoot ?? cli.wordImageRoot} —— 全部被引用的词图均存在且命名合规`,
   )

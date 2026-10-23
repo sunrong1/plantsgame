@@ -580,3 +580,99 @@ describe('G199 —— 产物自检的新判据真能抓到违规（Story 1.18 `[
     ).toBe(true)
   })
 })
+
+// ── G283 —— 产物自检**逐单元**查词图（Story 2.5 / Task 7.4）──────────────────
+
+describe('G283 —— 产物自检逐单元查词图（旧判据只查单元 1，单元 2 缺失时全绿）', () => {
+  /**
+   * **两个单元**的产物 —— 单元 1（BASE_FILES 自带）与单元 2（这里补上）。
+   *
+   * ⚠️ 夹具**故意**做成两个单元：旧判据逐字是
+   *   `fs.listDir('assets/words/unit-01').filter(...).length > 0` ——
+   *   它在只有单元 1 的产物上是**绿的**，而它**正是那个漏查**。
+   */
+  function twoUnitFs(mutate?: (files: Record<string, string>) => void): DeployFs {
+    const files: Record<string, string> = {
+      ...BASE_FILES,
+      'assets/words/unit-02/u2-tiger.svg': '<svg/>',
+      'assets/audio/voice/u2-tiger.mp3': 'ID3',
+    }
+    mutate?.(files)
+    return fsOf(files)
+  }
+
+  it('两个单元的词图都在 ⇒ 逐单元判据都绿', () => {
+    const report = verifyDeploy(twoUnitFs())
+    expect(checkOf(report, 'word-images-unit-01-present').ok).toBe(true)
+    expect(checkOf(report, 'word-images-unit-02-present').ok).toBe(true)
+    expect(checkOf(report, 'word-images-present').ok).toBe(true)
+  })
+
+  it('⚠️ 单元 2 的词图整批缺失（录音还在）⇒ 红', () => {
+    const report = verifyDeploy(
+      twoUnitFs((files) => {
+        delete files['assets/words/unit-02/u2-tiger.svg']
+      }),
+    )
+    expect(
+      checkOf(report, 'word-images-unit-02-present').ok,
+      '单元 2 的词图整批缺失而判据没红 —— 孩子进单元 2 看到的是一片空白，' +
+        '而 `npm run build` 成功、产物自检也全绿（旧判据只查 unit-01，正是这个漏法）',
+    ).toBe(false)
+  })
+
+  it('⚠️ R-53 反向自测：**旧判据**（只查 unit-01）在这份坏产物上**照样判绿**', () => {
+    // ⚠️ 这一条把「旧判据为什么放过这个违规」**当场证明**，
+    //   而不是只写在注释里（R-51 / R-53）。
+    const broken = twoUnitFs((files) => {
+      delete files['assets/words/unit-02/u2-tiger.svg']
+    })
+    const oldJudgment =
+      broken.listDir('assets/words/unit-01').filter((n) => n.endsWith('.svg') && !n.includes('/'))
+        .length > 0
+
+    expect(
+      oldJudgment,
+      '旧判据（只查 `assets/words/unit-01`）在这份坏产物上居然判红 ⇒ ' +
+        '「旧判据放过单元 2」这个前提错了，请把本注释与 §5 的结论一并更正',
+    ).toBe(true)
+  })
+
+  it('⚠️ 单元清单从**产物自身**推导 ⇒ 加第三个单元不用改脚本', () => {
+    const report = verifyDeploy(
+      twoUnitFs((files) => {
+        files['assets/words/unit-03/u3-fox.svg'] = '<svg/>'
+        files['assets/audio/voice/u3-fox.mp3'] = 'ID3'
+      }),
+    )
+    expect(
+      checkOf(report, 'word-images-unit-03-present').ok,
+      '产物里已经有单元 3 的词图，判据却没查它 —— 单元清单被写死了（写死的那份会静默过期）',
+    ).toBe(true)
+  })
+
+  it('⚠️ 单元 3 的词图缺失 ⇒ 红（清单是从产物推的，不是从「当前有 2 个单元」推的）', () => {
+    const report = verifyDeploy(
+      twoUnitFs((files) => {
+        files['assets/audio/voice/u3-fox.mp3'] = 'ID3'
+      }),
+    )
+    expect(
+      checkOf(report, 'word-images-unit-03-present').ok,
+      '单元 3 有录音却没词图而判据没红',
+    ).toBe(false)
+  })
+
+  it('一个单元的词图都没有 ⇒ 总的那条也红（不是只有逐单元那条红）', () => {
+    const report = verifyDeploy(
+      twoUnitFs((files) => {
+        delete files['assets/words/unit-02/u2-tiger.svg']
+        delete files['assets/words/unit-01/u1-dog.svg']
+      }),
+    )
+    expect(
+      checkOf(report, 'word-images-present').ok,
+      '全部单元的词图都没了而总的那条判据没红 —— 那条判据是恒真的',
+    ).toBe(false)
+  })
+})

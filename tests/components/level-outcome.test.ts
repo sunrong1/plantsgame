@@ -27,7 +27,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 import { HEARTS, answer } from '../../src/core'
 import type { Phase } from '../../src/core'
-import { applyAction, state, view } from '../../src/app/store'
+import { applyAction, progress, state, view } from '../../src/app/store'
 import LevelOutcome from '../../src/components/hud/LevelOutcome.vue'
 import LevelView from '../../src/views/LevelView.vue'
 
@@ -35,6 +35,7 @@ import levelOutcomeSource from '../../src/components/hud/LevelOutcome.vue?raw'
 import { stripComments } from '../helpers/contrast'
 import { questionOf } from '../fixtures/synthetic-deck'
 import { targetOptionCount } from '../../src/content/option-count'
+import { entriesOf } from '../../src/content'
 
 enableAutoUnmount(afterEach)
 
@@ -207,9 +208,20 @@ describe('组件本体 —— 只在终态下渲染，且按钮走 store 门面'
     expect(rootIfs.length, '根节点只有一个 v-if；多于一个说明有第二条渲染路径').toBe(1)
   })
 
-  it('失败态与通关态走**两个不同**的 store 门面', () => {
+  it('终态按钮的四种含义分别走 store 门面（Story 2.5 / Task 5.2）', () => {
+    // ⚠️ **这条是源码匹配，只钉「三个门面都被提到」** ——
+    //   哪一句话配哪个动作，由下面「Task 5.2 —— 终态按钮的四种含义」那组
+    //   **行为**用例验（源码里三个门面都在，并不等于它们被用对了）。
     expect(CODE, '失败画面必须调 store.restartLevel()').toContain('restartLevel')
-    expect(CODE, '通关画面必须调 store.backToStart()').toContain('backToStart')
+    expect(CODE, '本单元没学完时必须调 store.backToStart()（回开始 → 再进关 → 切出下一批）').toContain(
+      'backToStart',
+    )
+    expect(CODE, '本单元学完时必须调 store.goToNextUnit()').toContain('goToNextUnit')
+    // ⚠️ **判据不许由组件自己算**：「本单元学完了没有」是跨局进度的事实，
+    //   而 G90 的白名单只允许组件读 `state.value.phase.kind` ⇒ 必须问 store。
+    expect(CODE, '按钮的种类必须向 store 问（组件不许自己判「本单元学完没」）').toContain(
+      'levelOutcomeKind',
+    )
   })
 })
 
@@ -354,15 +366,27 @@ describe('按钮走 store 门面（AC-D1 / AC-D3）', () => {
     expect(state.value.turn, '重打后回合号回到 1').toBe(1)
   })
 
-  it('通关画面点按钮 ⇒ view 回到 start，且 state 一个字节都没动', () => {
+  it('通关但本单元**还没学完** ⇒ 按钮是「继续」，动作是回开始界面且 state 一个字节都没动', () => {
+    // ⚠️📎 **[CR]` 2026-10-23（Story 2.5 / Task 5.2）这条改写过。**
+    //   原判据逐字是「通关画面按钮 = 回开始界面」—— 那是 1.16 的世界
+    //   （一个单元 = 一局 ⇒ 通关 = 读完 ⇒ 只能回开始）。
+    //   1.19 之后**一个单元要打好几局** ⇒ 「通关」不再等于「这个单元读完了」⇒
+    //   原来那条判据会把「本单元还没学完」与「本单元学完了」两种情形混成一条。
+    //   ⇒ 现在分成两条**各自有鉴别力**的判据：
+    //     ① 本单元还没学完 ⇒ 文案「继续」＋回开始（下面这条）；
+    //     ② 本单元学完了   ⇒ 文案「下一单元」＋**换战场到单元 2**（下一组用例）。
+    //   ⚠️ **判据必须落在实质上**：只把 `'start'` 换成别的字面量是装饰守卫（R-51）。
     pushInto('level-complete')
+    progress.value = { currentUnitIndex: 0, masteredWordIds: [] }
     const before = state.value
     view.value = 'level'
 
     const w = mount(LevelOutcome)
+    expect(w.find('button').text(), '本单元还没学完 ⇒ 按钮不许承诺「下一单元」').toBe('继续')
+
     w.find('button').trigger('click')
 
-    expect(view.value, '通关画面按钮 = 回开始界面').toBe('start')
+    expect(view.value, '「继续」的动作是回开始界面（再进关时切出下一批）').toBe('start')
     expect(state.value, '回开始界面不许顺手动战场（AC-D3：只做 view.value = start）').toBe(before)
   })
 
@@ -372,6 +396,112 @@ describe('按钮走 store 门面（AC-D1 / AC-D3）', () => {
 
     pushInto('level-complete')
     expect(mount(LevelOutcome).findAll('button').length, '通关画面只给一个按钮').toBe(1)
+  })
+})
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Story 2.5 / Task 5.2 —— 终态按钮的**四种**含义
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * 🔥📎 **1.19 之后「通关」不再等于「这个单元读完了」** ——
+ *   一个单元要打好几局（单元 1 = 10/10/10/7 四局）⇒ 终态浮层那个按钮有**四种**含义：
+ *
+ *   | 情形 | 文案 | 动作 |
+ *   |---|---|---|
+ *   | 通关 ∧ 本单元学完 ∧ 下一个单元录了 | 下一单元 | `goToNextUnit()` |
+ *   | 通关 ∧ 本单元**还没**学完 | 继续 | `backToStart()` |
+ *   | 通关 ∧ 本单元学完 ∧ **没有下一个单元** | 回开始 | `backToStart()` |
+ *   | 失败 | 再来一次 | `restartLevel()` |
+ *
+ * ⚠️ **第三行不是「理论上才有」**：单元 2 是当前录入的**最后一个**单元 ⇒
+ *   孩子读完单元 2 就会撞上它（AC-5.5）。那一支若仍写「继续」，点下去又回到
+ *   同一张「读完啦」卡 ⇒ 一个**骗人的死胡同**。
+ */
+describe('Task 5.2 —— 终态按钮的四种含义（AC-5.2 / AC-5.3 / AC-5.5 / AC-5.7）', () => {
+  afterEach(() => {
+    // ⚠️ **必须复位**：本组用例改的是**跨局进度**这个模块级 ref，
+    //   漏掉复位会污染同文件后面的用例（store 在测试文件之间是共享的同一份实例）。
+    progress.value = { currentUnitIndex: 0, masteredWordIds: [] }
+    view.value = 'start'
+  })
+
+  it('通关且本单元学完 ⇒ 文案「下一单元」，点它把孩子送进**单元 2 的战场**', () => {
+    // ⚠️ **这是本组最要紧的一条**（DF-059 的 UI 路径）：孩子读完整一个单元后
+    //   **必须有一条能点的路**把他送到下一个单元，而不是把他扔回开始界面。
+    pushInto('level-complete')
+    progress.value = {
+      currentUnitIndex: 1,
+      masteredWordIds: entriesOf(1).map((entry) => entry.entryId),
+    }
+    view.value = 'level'
+
+    const w = mount(LevelOutcome)
+    expect(w.find('button').text(), '本单元学完了 ⇒ 按钮必须说「下一单元」').toBe('下一单元')
+
+    w.find('button').trigger('click')
+
+    expect(state.value.unitNumber, '点「下一单元」必须真的换战场到单元 2').toBe(2)
+    expect(state.value.phase.kind, '单元 2 的战场是开局相位，不是终态').toBe('awaiting-answer')
+    expect(view.value, '换战场不必绕回开始界面').toBe('level')
+  })
+
+  it('通关且本单元学完但**没有下一个单元** ⇒ 文案「回开始」（不许承诺「继续」）', () => {
+    state.value = { ...PRISTINE, unitNumber: 2, phase: { kind: 'level-complete' } }
+    progress.value = {
+      currentUnitIndex: 1,
+      masteredWordIds: entriesOf(2).map((entry) => entry.entryId),
+    }
+    view.value = 'level'
+
+    const w = mount(LevelOutcome)
+    expect(
+      w.find('button').text(),
+      '全书读完时按钮若写「继续」，就是承诺还有下一局 —— 而没有下一局',
+    ).toBe('回开始')
+
+    w.find('button').trigger('click')
+    expect(view.value, '全书读完 ⇒ 回开始界面').toBe('start')
+  })
+
+  it('失败 ⇒ 文案「再来一次」，动作是重打这一局', () => {
+    pushInto('level-failed')
+    view.value = 'level'
+
+    const w = mount(LevelOutcome)
+    expect(w.find('button').text(), '失败画面必须给「再来一次」').toBe('再来一次')
+
+    w.find('button').trigger('click')
+    expect(state.value.phase.kind, '重打后回到开局相位').toBe('awaiting-answer')
+  })
+
+  it('🚨 判据自检：「继续」与「下一单元」两条**互相有鉴别力**（只改文案不改动作的实现必须红）', () => {
+    // ⚠️ R-51：上面三条若都是「文案对了就算」，那么**只改文案、不改动作**的实现照样绿。
+    //   ⇒ 这里把两种情形各点一次，比较**战场单元号**：点了「继续」必须原地不动，
+    //     点了「下一单元」必须换到单元 2 ⇒ 两个结果**不相同** ⇒ 判据不是恒真。
+    pushInto('level-complete')
+    progress.value = { currentUnitIndex: 0, masteredWordIds: [] }
+    view.value = 'level'
+    const wContinue = mount(LevelOutcome)
+    wContinue.find('button').trigger('click')
+    const afterContinue = state.value.unitNumber
+
+    pushInto('level-complete')
+    progress.value = {
+      currentUnitIndex: 1,
+      masteredWordIds: entriesOf(1).map((entry) => entry.entryId),
+    }
+    view.value = 'level'
+    const wNext = mount(LevelOutcome)
+    wNext.find('button').trigger('click')
+    const afterNext = state.value.unitNumber
+
+    expect(afterContinue, '点「继续」不许换战场').toBe(1)
+    expect(afterNext, '点「下一单元」必须换战场').toBe(2)
+    expect(
+      afterContinue === afterNext,
+      '判据自检：两条判据给出了**同一个**结果 ⇒ 它们区分不出「继续」与「下一单元」',
+    ).toBe(false)
   })
 })
 

@@ -161,15 +161,23 @@ export function advanceProgress(progress: Progress, next: State): Progress {
  *     守卫 G54 就成了构造上恒真的断言。
  *
  * ── 为什么不接 `State` ───────────────────────────────────────────────────
- * 单元推进的**判据**是「这一局打完了」（`next.phase.kind === 'level-complete'`），
- * 那属于 `State`；但它**改的东西**是 `Progress`。两套生命周期不可合并（R-06），
- * 所以判据留在调用方（app 层），本函数只管改 `Progress`。
+ * 单元推进的**判据**是「这一局打完了 ∧ 这个单元学完了 ∧ 下一个单元录了没有」，
+ * 前两条与后一条分别住在 `State` / 内容层；但它**改的东西**是 `Progress`。
+ * 两套生命周期不可合并（R-06），所以判据留在调用方（app 层），本函数只管改 `Progress`。
  *
- * ⚠️ **`hasNextUnit` 是入参而不是本函数的判据** —— `core/` 不得 import `../content/`
+ * ⚠️ **`shouldAdvanceUnit` 是入参而不是本函数的判据** —— `core/` 不得 import `../content/`
  * （`effects.ts` 文件头逐字记着这条禁令及其代价：37 条词条会进每一个 core 测试）。
- * 「目标单元录了没有」由 app 层查完，用一个 boolean 传进来。
+ * 「这个单元学完了没有」「目标单元录了没有」都由 app 层查完，用一个 boolean 传进来。
  * ⇒ 副作用是**构造上可测**：`advanceUnit(p, true)` 直接喂，不需要真的录第二个单元
  * （Story 1.16 AC-F2 要求的就是这个 —— Epic 1 的 `UNITS.length === 1` 让真机路径走不到这一半）。
+ *
+ * 🔥📎 **Story 2.5 / Task 5.1：入参的名字与含义都改了（签名不变）。**
+ *   原名 `hasNextUnit` 逐字是「**下一个单元录了没有**」，
+ *   而 app 层传进来的其实是「**该推进**吗」——
+ *   判据换成了「本单元全部词条已掌握」之后，「有没有下一个单元」只是三个条件之一
+ *   ⇒ 继续叫 `hasNextUnit` 会让**名字与含义分家**（R-02：一次判定，一个说法）。
+ *   ⇒ 改名 `shouldAdvanceUnit`；**签名（两个参数、类型不变）一个字没动**
+ *   ⇒ `tests/core/hud.test.ts` 的 G87 / G88（`advanceUnit(p, true)`）照旧成立。
  *
  * ⚠️ **基的换算（0 基 ↔ 1 基）**：`currentUnitIndex` 是 **0 基**（裁决 3），
  * `State.unitNumber` 是 **1 基**。本函数推进后 `currentUnitIndex + 1` 恰好等于
@@ -177,8 +185,8 @@ export function advanceProgress(progress: Progress, next: State): Progress {
  * ⚠️ 裁决 3 逐字写过「**不用** `progress.currentUnitIndex + 1`」——
  *   那句约束的是**初值取 0**，不是「不许加 1」。别把这句话读成禁令。
  */
-export function advanceUnit(progress: Progress, hasNextUnit: boolean): Progress {
-  if (!hasNextUnit) return progress
+export function advanceUnit(progress: Progress, shouldAdvanceUnit: boolean): Progress {
+  if (!shouldAdvanceUnit) return progress
   return {
     currentUnitIndex: progress.currentUnitIndex + 1,
     masteredWordIds: progress.masteredWordIds,

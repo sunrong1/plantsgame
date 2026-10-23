@@ -26,11 +26,26 @@
  * ── 为什么按钮调 store 门面而不是直接 dispatch（AC-D1 / AC-D3）────────────
  * 与 1.12 的三个建造门面同款纪律：组件不 import `core/actions`、
  * 不直接改 `state` / `view`。守卫 **G93** 钉住 `RESTART_LEVEL` 的唯一调用点。
+ *
+ * ── 🔥📎 Story 2.5 / Task 5.2：按钮的**种类与文案**改由 store 决定 ─────────
+ *   1.19 之后**一个单元要打好几局**（单元 1 = 4 局）⇒ 终态浮层不再只有
+ *   「赢了 / 输了」两种含义，而是**四种**：
+ *     · 通关 ∧ 本单元学完 ∧ 下一个单元录了 ⇒ 「下一单元」；
+ *     · 通关 ∧ 本单元**还没**学完             ⇒ 「继续」（留在本单元打下一局）；
+ *     · 通关 ∧ 本单元学完 ∧ **没有下一个单元** ⇒ 「回开始」（全书读完了）；
+ *     · 失败                              ⇒ 「再来一次」。
+ *   ⚠️ **判据住在 store，组件不许自己算**：「本单元学完了没有」是**跨局进度**的事实
+ *     （`progress.masteredWordIds`），而守卫 **G90** 把本组件钉成「只读
+ *     `state.value.phase.kind`」⇒ 组件拿不到那份数据 ⇒ 只能问 store 门面
+ *     （`levelOutcomeKind()`），拿一个四值的联合回来。
+ *   ⚠️ **文案仍在组件里**（不在 store）：守卫 **G91** 扫的是**组件源码**里的词表
+ *     ⇒ 把文案搬进 store 会让那条守卫**扫不到它** ⇒ 悄悄变弱（R-51）。
+ *     ⇒ 分工是「store 说**该做什么**，组件说**写成什么字**」。
  */
 
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 
-import { restartLevel, backToStart, state } from '../../app/store'
+import { restartLevel, backToStart, goToNextUnit, levelOutcomeKind, state } from '../../app/store'
 
 /**
  * 当前相位种类 —— **组件读 `state` 的唯一一处**（AC-D1）。
@@ -47,6 +62,57 @@ const terminal = computed(() => phaseKind.value === 'level-complete' || phaseKin
 
 /** 这一次是赢了还是输了。只有终态下有值。 */
 const won = computed(() => phaseKind.value === 'level-complete')
+
+/**
+ * 按钮的**种类** —— 判据在 store 里（见文件头那一段）。
+ *
+ * ⚠️ **它是一个 computed，依赖是隐式的**：`levelOutcomeKind()` 内部读的是
+ *   `state.value.phase.kind` 与 `progress.value.masteredWordIds`，
+ *   两者都是 store 里的 `ref` ⇒ Vue 在 computed 求值时**照样把它们记成依赖**
+ *   ⇒ 通关那一次 dispatch 之后按钮会自动重算，**不需要**本组件再监听什么。
+ */
+const outcomeKind = computed(() => levelOutcomeKind())
+
+/**
+ * 按钮上的**字**（界面文案，守卫 G91 扫的就是这里）。
+ *
+ * ⚠️ **「继续」与「回开始」必须分开**：单元 2 是当前录入的最后一个单元 ⇒
+ *   孩子读完它时既没有「下一局」可打，也没有「下一个单元」可进 ⇒ 那个按钮若写
+ *   「继续」就是**骗人的**（点下去回到同一张「读完啦」卡）。见 store 的
+ *   `LevelOutcomeKind` 注释。
+ */
+const buttonLabel = computed(() => {
+  switch (outcomeKind.value) {
+    case 'next-unit':
+      return '下一单元'
+    case 'retry':
+      return '再来一次'
+    case 'finished':
+      return '回开始'
+    default:
+      return '继续'
+  }
+})
+
+/**
+ * 按钮点的动作 —— 同样由 store 门面执行，组件自己不碰 `state` / `view`。
+ *
+ * ⚠️ **`continue` 与 `finished` 走的是同一个动作**（回开始界面），
+ *   区别**只在文案**：`continue` 之后还有下一局（回开始 → 再进关 →
+ *   `sliceDeckForLevel` 切出下一批未掌握的词），`finished` 之后没有了。
+ */
+function onOutcomeButton(): void {
+  switch (outcomeKind.value) {
+    case 'next-unit':
+      goToNextUnit()
+      return
+    case 'retry':
+      restartLevel()
+      return
+    default:
+      backToStart()
+  }
+}
 
 /*
  * ── 📎 Story 1.18 / AC-D5：焦点管理 ────────────────────────────────────────
@@ -161,9 +227,9 @@ onBeforeUnmount(() => {
       ref="buttonEl"
       type="button"
       class="level-outcome__button"
-      @click="won ? backToStart() : restartLevel()"
+      @click="onOutcomeButton"
     >
-      {{ won ? '回开始' : '再来一次' }}
+      {{ buttonLabel }}
     </button>
   </div>
 </template>

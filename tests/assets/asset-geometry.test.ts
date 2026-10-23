@@ -1050,14 +1050,21 @@ function towerAndZombieFilesOnDisk(): string[] {
 }
 
 describe('G8 —— 注释良构性：正文不出现连续双短横 + 不留未闭合注释', () => {
-  it('覆盖面真的扩到了 30 张词图，而不是「碰巧读到几张」（AC-2）', () => {
-    const wordImages = G8_COVERED_ASSETS.filter((p) => p.startsWith(wordsDir))
+  it('覆盖面真的扩到了**全部**词图，而不是「碰巧读到几张」（AC-2）', () => {
+    // 🔥📎 **Story 2.5 / Task 6.3：原来逐字是 `expect(wordImages.length).toBe(30)`**
+    //   —— 写死的张数。单元 2 的 30 张一落地就红，而它守的东西（覆盖面没缩水）
+    //   一个字都没变 ⇒ 那是一条**过期**的守卫，不是一条被违反的守卫。
+    //   ⇒ 改成与**内容层引用的图片集合**逐条比对（数据驱动，且跨层）。
+    const covered = G8_COVERED_ASSETS.filter((p) => p.startsWith(wordsDir))
+      .map((file) => `/assets/${file.slice(assetRoot.length + 1)}`)
+      .sort()
 
     expect(
-      wordImages.length,
-      'G8 里的词图数量不对 —— `it.each` 的数据源没扩到词图目录，' +
-        '词图上的中文注释就仍然没人守，而那正是本条被造出来要守的地方。',
-    ).toBe(30)
+      covered,
+      'G8 的数据源没覆盖到全部词图 —— `it.each` 的数据源没扩到词图目录，' +
+        '词图上的中文注释就仍然没人守，而那正是本条被造出来要守的地方。' +
+        '（多出来的 = 没人守的图；缺的 = 内容引用了但磁盘上没有的图）',
+    ).toEqual(referencedWordImages())
     // ⚠️ 反向断言：扩覆盖面**不许**把塔与僵尸挤掉。
     //    只断言「词图有 30 张」时，一个写成 `[...wordImageFiles()]` 的数据源也能过 ——
     //    而那会让 Story 1.7 修好的那条（塔图注释里的 token 名炸掉三张图）重新失守。
@@ -1287,6 +1294,44 @@ function wordImageFilesPerUnitDir(): string[] {
 }
 
 /**
+ * 词图文件的**站点路径**形式（`/assets/words/unit-01/u1-dog.svg`）。
+ *
+ * ⚠️ 这是内容层 `imageSrc` 用的那种写法 ⇒ 两条判据可以直接比集合。
+ */
+function wordImageFilesAsSitePaths(): string[] {
+  return wordImageFiles()
+    .map((file) => `/assets/${file.slice(assetRoot.length + 1)}`)
+    .sort()
+}
+
+/**
+ * **内容层引用到的**全部词图（站点路径形式）。
+ *
+ * 🔥📎 **Story 2.5 / Task 6.3 新增 —— 这是「词图有几张」的**数据驱动**出处。**
+ *   原来 G8 / G10 两条覆盖面断言都把张数**写死**（`toBe(30)`）⇒
+ *   单元 2 的 30 张一落地就变红，而它们守的东西（覆盖面没缩水）**一个字都没变**。
+ *   ⇒ 改成与**内容层引用的图片集合**逐条比对：
+ *     · 多一张磁盘上的图 = 没人守的图（悄悄多画的、或前一个单元的残留）；
+ *     · 少一张 = **孩子看得见的图片缺了**（内容引用了它，磁盘上没有）。
+ *   ⚠️ 这条比「两套目录枚举互比」更强：它跨了**内容层与资产层**，
+ *   而两套目录枚举只证明了「同一个目录被读了两次」。
+ */
+function referencedWordImages(): string[] {
+  const out = new Set<string>()
+  for (const { raw } of loadUnitFiles(join(root, 'src/content/units'))) {
+    const unit = raw as {
+      entries?: { card?: { options?: { imageSrc?: unknown }[] } }[]
+    }
+    for (const entry of unit.entries ?? []) {
+      for (const option of entry.card?.options ?? []) {
+        if (typeof option.imageSrc === 'string') out.add(option.imageSrc)
+      }
+    }
+  }
+  return [...out].sort()
+}
+
+/**
  * 该文件用到的被禁标签（小写形式）。
  *
  * ⚠️ `[CR]` 2026-10-14 —— **`stripNonRendered: false`，这是必须的，不是可选优化。**
@@ -1318,10 +1363,20 @@ describe('G10 —— 词图不含 <text> / <image> / <foreignObject>（裁决 2 
     ).toEqual([])
   })
 
-  it('确实覆盖了全部 30 张词图，而不是「读了目录里碰到的头几张」', () => {
+  it('确实覆盖了**全部**词图，而不是「读了目录里碰到的头几张」', () => {
     const files = wordImageFiles()
 
-    expect(files.length, '词图数量不对 —— 少读几张，G10 就在剩下的图上恒绿').toBe(30)
+    // 🔥📎 **Story 2.5 / Task 6.3：原来逐字是 `expect(files.length).toBe(30)`**
+    //   —— 写死的张数。单元 2 的 30 张一落地就红，而覆盖面并没有缩水
+    //   ⇒ 那是一条**过期**的守卫，不是一条被违反的守卫。
+    //   ⇒ 改成与**内容层引用的图片集合**逐条比对（数据驱动，且跨层）：
+    //     少一张 = 内容引用了它而磁盘上没有（孩子看得见的图片缺了）；
+    //     多一张 = 磁盘上多了一张没人守的图。
+    expect(
+      wordImageFilesAsSitePaths(),
+      '词图目录与内容层引用的图片集合不一致 —— ' +
+        '少读几张，G10 就在剩下的图上恒绿；而多出来的那些图根本没人守。',
+    ).toEqual(referencedWordImages())
     // ⚠️ 这一条不再用「basename 去重后个数 == 数组长度」——
     //    那来自一次 readdirSync，结构上恒真，见 `wordImageFilesPerUnitDir()` 的注释。
     //    改成与**第二套独立枚举**逐条比对：只要两套枚举分叉，就说明有一张图没人守。
