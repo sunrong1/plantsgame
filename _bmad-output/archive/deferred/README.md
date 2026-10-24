@@ -317,9 +317,9 @@ git log --oneline --follow -- _bmad-output/implementation-artifacts/deferred-wor
 | 2026-10-22--cr-epic-1-集成层检视.md | 29 | E29 | E29. `docs/rules/process.md` 的 R-37 漂移表把 `--color-*` 个数写成 15，真实是 18 | DF-176 | 已结 |
 | 2026-10-22--cr-epic-1-集成层检视.md | 30 | E30 | E30. 架构文档的模块表漏了至少 16 个已交付模块 | DF-177 | 开放 |
 | 2026-10-22--cr-epic-1-集成层检视.md | 31 | E31 | E31. `deferred-work.md` 的行号指针有 6/50 指不到被声称的内容 | DF-178 | 开放 |
-| 2026-10-22--cr-epic-1-集成层检视.md | 32 | E32 | E32. 5 处 story 文档头与 `sprint-status.yaml` 不一致 | DF-179 | 开放 |
-| 2026-10-22--cr-epic-1-集成层检视.md | 33 | E33 | E33. 3 份 `done` 的 story 文档还躺在 `implementation-artifacts/` | DF-180 | 开放 |
-| 2026-10-22--cr-epic-1-集成层检视.md | 34 | E34 | E34. R-40 的现有守卫只查「引用方向」，不查「归档方向」 | DF-181 | 开放 |
+| 2026-10-22--cr-epic-1-集成层检视.md | 32 | E32 | E32. 5 处 story 文档头与 `sprint-status.yaml` 不一致 | DF-179 | 已结 |
+| 2026-10-22--cr-epic-1-集成层检视.md | 33 | E33 | E33. 3 份 `done` 的 story 文档还躺在 `implementation-artifacts/` | DF-180 | 已结 |
+| 2026-10-22--cr-epic-1-集成层检视.md | 34 | E34 | E34. R-40 的现有守卫只查「引用方向」，不查「归档方向」 | DF-181 | 已结 |
 | 2026-10-22--cr-epic-1-集成层检视.md | 35 | E35 | E35. `scripts/check-execution-drift.py` 是个假绿 | DF-182 | 开放 |
 | 2026-10-22--cr-epic-1-集成层检视.md | 36 | E36 | E36. R-12「既有 `--color-*` 的**值**不得改」：改掉一个既有 token 的值，全仓测试照样全绿 | DF-183 | 已结 |
 | 2026-10-22--cr-epic-1-集成层检视.md | 37 | E37 | E37. R-22「平衡模拟器不得另起一份数值」：把 import 换成副本，全仓测试照样全绿 | DF-184 | 开放 |
@@ -346,8 +346,8 @@ git log --oneline --follow -- _bmad-output/implementation-artifacts/deferred-wor
 
 | 结论 | 条数 |
 |---|---|
-| 开放 | 182 |
-| 已结 | 63 |
+| 开放 | 179 |
+| 已结 | 66 |
 | 作废 | 4 |
 | **合计（分诊单元）** | **249** |
 

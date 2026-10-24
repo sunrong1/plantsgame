@@ -336,7 +336,7 @@ B#5 后半段**证实**：`raw.includes('37')` 会被 §7 表里的 `21:37:18`�
   # 验收审计报告 —— Story 2.1「词图产能验证」
   
   **审计对象**：`docs/word-image-throughput.md` §8、`scripts/word-image-throughput.ts`、`tests/scripts/word-image-throughput.test.ts`、`docs/word-image-lab/`、`deferred-work.md` 第 26–34 条
-  **事实源**：`_bmad-output/implementation-artifacts/2-1-词图产能验证.md` 的 AC 正文（组 A/B/C/D/E）
+  **事实源**：`_bmad-output/archive/2-1-词图产能验证.md` 的 AC 正文（组 A/B/C/D/E）—— 📎 2026-10-25 夜：该文件随本 story 一起归档，路径随之上移
   **审计方式**：只读复核 + 在 `/tmp/mut` 副本上重跑全部 5 条变异（仓库磁盘零改动）
   
   **总体判定**：**A 组、B1/B2/B5、C2/C3/C4/C5、D 组全条、E 组基本达成；B4 与 C1（杠杆 2）部分达成；§8 内部另有 5 处数字/引用不自洽。** 结论方向（选项一：全册 + 全手绘）不因下列问题翻转，但**产能模型的核心方法学步骤（档位加权）没有执行**，且**决策表用的每张工时不是本 story 实测的那个数**。

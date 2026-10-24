@@ -15,7 +15,8 @@
  *
  * 不在 src/core/ 下 —— NFR16：测试全部在 tests/。
  */
-import { readFileSync, readdirSync, statSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
@@ -391,3 +392,181 @@ describe('R-40 已完成 story 归档（AC-2 / AC-3 / AC-4）', () => {
     ).toEqual([])
   })
 })
+
+/**
+ * ── G307 —— R-40 的**归档方向** ────────────────────────────────────────
+ *
+ * AC-4 那条守卫只查**一个方向**：活跃文档**不许引用**归档里的具体文件。
+ * 它**查不出**另一个方向：**`done` 的 story 文档是不是真的归档了** ——
+ * 一份 `done` 的 story 文档继续躺在 `implementation-artifacts/`，AC-4 一声不吭
+ * （它没被引用，也不违反引用方向）。
+ *
+ * 实测（DF-180 / DF-181）：`1-11` / `1-12` / `2-1` 三份 `done` 的 story 文档
+ * 一直躺在活跃目录里，而 `sprint-status.yaml` 早已把它们记成 `done`
+ * ⇒ 「已归档」这件事**只写在约定里，没有任何牙齿**。
+ *
+ * 判据：**`sprint-status.yaml` 里状态是 `done` 的 story，它的文档不许留在
+ * `implementation-artifacts/`**（要么在 `archive/`，要么根本没有文档 ——
+ * 后者不算违规，因为 R-40 管的是「不许留在活跃目录」）。
+ *
+ * 出处：DF-180（归档没做）+ DF-181（守卫只查一个方向）。
+ */
+describe('G307 —— R-40 归档方向：done 的 story 文档不许留在活跃目录', () => {
+  /** 从 `sprint-status.yaml` 的 `development_status` 块里取出状态为 `done` 的 story 键。 */
+  it('G307.1 没有 `done` 的 story 文档还躺在 `implementation-artifacts/`', () => {
+    const yaml = readFileSync(SPRINT_STATUS, 'utf8')
+    // 非空自检：一条 `done` 都没解析到 ⇒ 判据在空集上成立（正则或缩进变了？）
+    expect(
+      doneStoryKeys(yaml).length,
+      '一条 done 的 story 都没解析到 ⇒ 判据在空集上成立（正则或缩进变了？）',
+    ).toBeGreaterThan(10)
+    const problems = unarchivedDoneStories(yaml, (rel) => existsSync(join(root, rel)))
+    expect(
+      problems,
+      `这些 story 在 sprint-status.yaml 里是 done，但文档还在活跃目录（R-40：done 的 story 文档要 git mv 进 archive/）：\n${problems.join('\n')}`,
+    ).toEqual([])
+  })
+
+  it('G307.2 反向自测：判据真能把「done 却没归档」判成问题（判据本体真的被调用）', () => {
+    // 构造：一份假 yaml，说 `1-99` 是 done，而「文件存在」⇒ 判据必须报出来。
+    const fakeYaml = 'development_status:\n  1-99-假故事: done\n  1-98-别的: review\n'
+    const problems = unarchivedDoneStories(fakeYaml, (rel) => rel.includes('1-99'))
+    expect(
+      problems.some((p) => p.includes('1-99')),
+      `构造失效：判据没有报出 1-99 未归档：\n${problems.join('\n')}`,
+    ).toBe(true)
+    // 反向：真的归档了（文件不在活跃目录）⇒ 不许报。
+    expect(
+      unarchivedDoneStories(fakeYaml, () => false),
+      '构造失效：文件不在活跃目录时判据仍然报错',
+    ).toEqual([])
+    // 构造：`review` 的 story 留在活跃目录是**合法的** ⇒ 不许报。
+    const reviewProblems = unarchivedDoneStories(
+      'development_status:\n  1-97-在审: review\n',
+      () => true,
+    )
+    expect(reviewProblems, '构造失效：把 review 的 story 当成未归档报了出来').toEqual([])
+  })
+})
+
+/** 判据本体：返回「状态是 done 但文档还留在活跃目录」的 story 键（空数组 = 全归档了）。 */
+export function unarchivedDoneStories(
+  yamlText: string,
+  exists: (relPath: string) => boolean,
+): string[] {
+  const problems: string[] = []
+  for (const key of doneStoryKeys(yamlText)) {
+    if (exists(`_bmad-output/implementation-artifacts/${key}.md`)) {
+      problems.push(
+        `${key}：sprint-status.yaml 记的是 done，但它的文档还留在 implementation-artifacts/ —— ` +
+          'R-40 要求 done 的 story 文档进 archive/',
+      )
+    }
+  }
+  return problems
+}
+
+/** `sprint-status.yaml` 的 `development_status` 块：story 键 → 状态。 */
+export function yamlStatuses(yamlText: string): Map<string, string> {
+  const statuses = new Map<string, string>()
+  for (const line of yamlText.split('\n')) {
+    // 只认 `development_status` 块里**两格缩进**的条目（顶层键没有缩进）。
+    const m = line.match(/^ {2}(\S[^:]*):\s*(\S+)/)
+    if (m) statuses.set(m[1]!.trim(), m[2]!.trim())
+  }
+  return statuses
+}
+
+/** `sprint-status.yaml` 里状态为 `done` 的 story 键（按出现顺序）。 */
+export function doneStoryKeys(yamlText: string): string[] {
+  const keys: string[] = []
+  for (const [key, status] of yamlStatuses(yamlText)) {
+    if (status === 'done') keys.push(key)
+  }
+  return keys
+}
+
+/**
+ * ── G308 —— story 文档头的 `Status:` 必须与 `sprint-status.yaml` 一致 ────────
+ *
+ * DF-179 实测：全仓有 **5 处** story 文档头写着 `Status: review`，
+ * 而 `sprint-status.yaml` 里那些 story 早已是 `done`（1-5 / 1-9 / 1-11 / 1-12 / 1-20）。
+ * 漂移方向恒定：**文档头滞后**（yaml 改了、文档没改）——
+ * 因为「状态」这个字段**住在 yaml 里**（R-30 唯一状态源），而文档头那行是**抄的**。
+ *
+ * 判据：对**有文档的** story 键，文档头的 `Status:` 行必须与 yaml 的状态**逐字相同**。
+ * 没有文档的键（`backlog` 的 story、`epic-N`、retrospective）**不参与**判定 ——
+ * 判据不假装管得了不存在的东西。
+ */
+describe('G308 —— story 文档头的 `Status:` 与 sprint-status.yaml 必须一致', () => {
+  it('G308.1 没有 story 文档头与 yaml 的状态漂移', () => {
+    const yaml = readFileSync(SPRINT_STATUS, 'utf8')
+    // 非空自检：一个 story 文档都没找到 ⇒ 判据在空集上成立（路径或 yaml 解析变了？）
+    const checked = [...yamlStatuses(yaml).keys()].filter((k) => readStoryDoc(k) !== null)
+    expect(
+      checked.length,
+      '一个 story 文档都没找到 ⇒ 判据在空集上成立（路径或 yaml 解析变了？）',
+    ).toBeGreaterThan(10)
+    const problems = storyStatusDrift(yaml, (key) => readStoryDoc(key))
+    expect(
+      problems,
+      `story 文档头的 Status 与 sprint-status.yaml 对不上（以 yaml 为准，R-30）：\n${problems.join('\n')}`,
+    ).toEqual([])
+  })
+
+  it('G308.2 反向自测：判据真能把「文档头与 yaml 不一致」判成问题（判据本体真的被调用）', () => {
+    const fakeYaml = 'development_status:\n  1-99-假故事: done\n'
+    const drifted = storyStatusDrift(fakeYaml, () => 'Status: review\n')
+    expect(
+      drifted.some((p) => p.includes('1-99')),
+      `构造失效：判据没有报出 1-99 的状态漂移：\n${drifted.join('\n')}`,
+    ).toBe(true)
+    // 反向：状态一致 ⇒ 不许报。
+    expect(
+      storyStatusDrift(fakeYaml, () => 'Status: done\n'),
+      '构造失效：状态一致时判据仍然报错',
+    ).toEqual([])
+    // 反向：**没有文档**的键不参与判定（不假装管得了不存在的东西）。
+    expect(
+      storyStatusDrift(fakeYaml, () => null),
+      '构造失效：没有文档的 story 被判成了漂移',
+    ).toEqual([])
+  })
+})
+
+/**
+ * 判据本体：返回「文档头的 `Status:` 与 yaml 对不上」的条目（空数组 = 全一致）。
+ *
+ * `readDoc` 返回 `null` 表示**这个 story 没有文档**（`backlog` / epic / retrospective）⇒ 不判定。
+ */
+export function storyStatusDrift(
+  yamlText: string,
+  readDoc: (key: string) => string | null,
+): string[] {
+  const problems: string[] = []
+  for (const [key, status] of yamlStatuses(yamlText)) {
+    const doc = readDoc(key)
+    if (doc === null) continue
+    const m = doc.match(/^Status:\s*(\S+)/m)
+    if (!m) {
+      problems.push(`${key}：文档头没有 Status 行，而 sprint-status.yaml 记的是 ${status}`)
+      continue
+    }
+    if (m[1] !== status) {
+      problems.push(
+        `${key}：文档头写 Status: ${m[1]}，sprint-status.yaml 写的是 ${status} —— ` +
+          '以 yaml 为准（R-30 唯一状态源）',
+      )
+    }
+  }
+  return problems
+}
+
+/** 读一个 story 的文档正文（归档层或活跃层都找；都没有 ⇒ `null`）。 */
+function readStoryDoc(key: string): string | null {
+  for (const dir of ['_bmad-output/archive/', '_bmad-output/implementation-artifacts/']) {
+    const path = join(root, dir, `${key}.md`)
+    if (existsSync(path)) return readFileSync(path, 'utf8')
+  }
+  return null
+}

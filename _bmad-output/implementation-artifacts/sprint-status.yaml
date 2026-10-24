@@ -58,7 +58,8 @@ story_location: _bmad-output/implementation-artifacts
 development_status:
   epic-1: in-progress
   1-1-工程脚手架与启动界面: done
-  # ⚠️ 1.2 与 1.10 的 `review` 是**有意留的**，不是漏转 —— 理由见各自 story 文档。
+  # ⚠️ 1.2 与 1.18 的 `review` 是**有意留的**，不是漏转 —— 理由见各自 story 文档。
+  #    （📎 2026-10-25 夜更正：这里原写「1.10」，但 1.10 早已是 `done`（文档已归档）⇒ 指向错了。）
   #    按 R-42，运行复盘一律不写进本文件，只留状态与指针。
   # 2-1 [CR] 完成 → done —— 复盘、实测值与三层评审全在它自己的 story 文档里。
   1-2-音频解锁与-tts-朗读: review
@@ -70,8 +71,8 @@ development_status:
   1-8-单元-1-词图-第一批: done
   1-9-单元-1-词图-第二批: done
   1-10-战场渲染与网格: done   # [CR] 第二轮完成；文档已归档，见 story 文档
-  1-11-三种卡型与答题交互: done
-  1-12-建造-阳光与射程可视化: done
+  1-11-三种卡型与答题交互: done   # 📎 2026-10-25 夜：文档已归档（DF-180；文档头的 `review` 同轮改为 `done`，见 DF-179）
+  1-12-建造-阳光与射程可视化: done   # 📎 2026-10-25 夜：文档已归档（DF-180；文档头的 `review` 同轮改为 `done`，见 DF-179）
   1-13-hud-阳光-心与进度: done
   1-14-音效与-bgm-接入: done   # [CR] 第二轮完成；文档已归档，见 story 文档
   1-15-存档与断点续学: done   # [CR] 第二轮完成；文档已归档，见 story 文档
@@ -83,7 +84,7 @@ development_status:
   1-20-相邻不同型-把植物不重复从巧合变成代码保证: done
   1-retrospective: optional
   epic-2: in-progress
-  2-1-词图产能验证: done
+  2-1-词图产能验证: done   # 📎 2026-10-25 夜：story 文档与它的 `[CR]` 中间报告同批归档（DF-180）
   2-2-难度阶梯规则落地: done
   2-3-阳光经济档位扩展: done   # [CR] 完成；1 条未裁决见 deferred-work 的 DF-138，见 story 文档
   2-4-选项数量递进规则: done   # [CR] 完成；守卫 G262–G276 / 变异 M308–M325；对抗评审分诊与四处更正留痕见其 story 文档

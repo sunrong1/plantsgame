@@ -177,9 +177,6 @@
 | DF-175 | 待触发 | Story 1.4 / 2.3 | 下次改 1.4 的 AC 措辞时 | `epics.md` Story 1.4 的「档位 5-10 与 11-20 留空待 Epic 2」已过期（`core/balance.ts` 已填） | [`df-175`](./deferred-details.md#df-175) |
 | DF-177 | 待触发 | 未指派 | 下次改架构文档时 | `game-architecture.md` 的 System Location Mapping 表漏了至少 16 个已交付模块 | [`df-177`](./deferred-details.md#df-177) |
 | DF-178 | 待触发 | 未指派 | 下次动这 6 条时（不必专门跑一遍） | `deferred-work.md` 约 50 条行号指针有 6 条已漂移指不到内容 | [`df-178`](./deferred-details.md#df-178) |
-| DF-179 | 待触发 | 未指派 | 下次同步 sprint 状态时 | story 文档头与 `sprint-status.yaml` 不一致（如 `1-11`/`1-12` 写 review、yaml 写 done） | [`df-179`](./deferred-details.md#df-179) |
-| DF-180 | 待触发 | 未指派 | 下次动这三份文档时 | 3 份 `done` 的 story 文档（`1-11`/`1-12`/`2-1`）仍躺在 `implementation-artifacts/` | [`df-180`](./deferred-details.md#df-180) |
-| DF-181 | 待触发 | 未指派 | 与 DF-180（E33）一条同批做 | R-40 归档守卫只断言「活跃文档不引用归档文件名」，不断言 `done` 文档已归档 | [`df-181`](./deferred-details.md#df-181) |
 | DF-182 | 待触发 | 未指派 | 与 DF-181（E34）一条同批做 | `scripts/check-execution-drift.py` 正则只扫 `1[-.]\d+`，抓不到实际漂移 | [`df-182`](./deferred-details.md#df-182) |
 | DF-184 | 待触发 | 未指派 | 与 E12 同批做（都在平衡工具那条线上） | R-22「模拟器不得另起一份数值」无守卫，`balance-sim.ts` 可换本地副本仍全绿 | [`df-184`](./deferred-details.md#df-184) |
 | DF-185 | 待触发 | 未指派 | 与 DF-186（E39）一条同批做 | G25 只扫 `src/components/quiz/` 三文件，组件可直 import `services/pronunciation` 不红 | [`df-185`](./deferred-details.md#df-185) |
