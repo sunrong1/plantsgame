@@ -15,6 +15,7 @@
     "test": "vitest run",
     "typecheck": "vue-tsc -b",
     "lint": "eslint .",
+    "lint:wiki": "python3 scripts/wiki-lint.py",
     "validate:content": "tsx scripts/validate-content.ts",
     "verify:deploy": "tsx scripts/verify-deploy.ts",
     "verify:portrait": "tsx scripts/verify-portrait-layout.ts",
