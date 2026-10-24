@@ -160,10 +160,13 @@ grep -rhoP '\bM[0-9]{3}\b' . --exclude-dir=node_modules --exclude-dir=.git --exc
 | `jsdom` 与 `happy-dom` 都没装（`deferred-work.md`） | `jsdom ^30.1.2` 早已装好，连 `vitest.config.ts` 的注释都已更正 |
 | `effects-runner` 属 1.13 | 属 1.14 |
 | 改 GDD 一律走 `[CC]`（5 篇） | 见 R-33 |
+| 「录音生成参数 \| `scripts/gen-voice.ts`」（`game-architecture.md` 的 Configuration 表） | 实际是 `scripts/generate-voice.ts`（Story 3.4 修；守卫 **G314** 逐条查路径是否真实存在） |
 
 **发现正文被抄到别处时**：把副本删掉，换成 R-ID 引用。**不要**去「同步」两份 —— 那只是把一条约定变成两条要同步的约定。
 
 **守卫** `tests/scaffold/docs-rules.test.ts` —— 对每条规则的「规则」正文全仓库 grep，排除 `docs/rules/` 与 `archive/` 后必须 0 命中
+
+**守卫** `tests/scaffold/planning-consistency.test.ts`（**G314**）—— 规划产物里写的**文件路径**必须此刻真实存在（`game-architecture.md` 的 `### Configuration` 表逐条查）。⚠️ 它守的是**复制链漂移的又一种形态**：文档里抄了一份文件清单，文件改名或挪走之后，那一份就成了一份**指空的旧副本** —— 而复制链漂移里，**指空的那一份最危险**（读者会以为路径仍然有效）。判据含一条抗假绿要求：**一个路径声明都取不到时必须红**（表头一改就取不到 ⇒ 那不是「没问题」）。
 
 **首现** Story 1.4（当时写作「判据单一来源」的 AC）
 

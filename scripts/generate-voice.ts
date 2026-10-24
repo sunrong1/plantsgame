@@ -111,7 +111,7 @@ export function manifestFileIn(outputDir: string): string {
   return join(outputDir, 'manifest.json')
 }
 
-/** 文件内容的 sha256。逐条核对用，38 条不到 1 MB，成本可忽略。 */
+/** 文件内容的 sha256。逐条核对用，全部 75 条不到 2 MB，成本可忽略。 */
 export function hashFileSync(path: string): string {
   return createHash('sha256').update(readFileSync(path)).digest('hex')
 }
@@ -128,8 +128,15 @@ export function listVoiceMp3s(outputDir: string): string[] {
     return readdirSync(outputDir)
       .filter((name) => name.endsWith('.mp3'))
       .sort()
-  } catch {
-    return []
+  } catch (err) {
+    // ⚠️⚠️ **只有「目录不存在」才等于「盘上没有 mp3」**（Story 3.4 / [CR] 修复）。
+    //   其余错误（权限不足、EIO、路径其实是个文件……）**不许**吞成空数组 ——
+    //   那会让「没有 manifest 但盘上有 mp3 ⇒ 拒跑」这道闸**静默失效**：
+    //   脚本以为盘上干净 ⇒ 照常跑 ⇒ 旧参数录音被登记进新指纹的 manifest。
+    //   ⇒ 响亮失败：把错误原样抛出去。
+    const code = (err as NodeJS.ErrnoException).code
+    if (code === 'ENOENT' || code === 'ENOTDIR') return []
+    throw err
   }
 }
 
@@ -140,8 +147,12 @@ export function listVoiceMp3s(outputDir: string): string[] {
  * ⚠️ 目录与文件名都由参数 `outputDir` 推导（Story 3.4 / Task 3.1）——
  *   这里**不许**回落到模块级常量，否则一次测试运行就会覆盖仓库里
  *   已提交的 75 条溯源记录。
+ *   ⇒ 2026-10-25 夜 `[CR]` 把那个**默认参数删掉了**：注释说「不许回落」而
+ *     签名却写着 `outputDir: string = OUTPUT_DIR` —— 注释与代码互相否定，
+ *     下一个人照注释以为安全、直接 `writeManifestFile(m)` 就会覆盖提交物。
+ *     ⇒ 现在 `outputDir` **必传**，唯一调用点是 `main()`（它自己算得出来）。
  */
-export function writeManifestFile(manifest: VoiceManifest, outputDir: string = OUTPUT_DIR): void {
+export function writeManifestFile(manifest: VoiceManifest, outputDir: string): void {
   mkdirSync(outputDir, { recursive: true })
   const manifestFile = manifestFileIn(outputDir)
   const tmp = `${manifestFile}.tmp`
@@ -259,8 +270,8 @@ export function estimateCost(chars: number): number {
  * 决定录音长什么样的那几个常量。
  *
  * ⚠️ 为什么非得有它：跳过判据是「文件存在」。只靠存在性，磁盘上的 mp3 到底是用
- * 哪组参数生成的**无从判断** —— 改完 `VOICE_SPEED` 重跑，脚本会报「跳过 38 条」，
- * 于是 38 条按新语速生成的假设出货，实际全是旧语速的录音，而且没有任何报错。
+ * 哪组参数生成的**无从判断** —— 改完 `VOICE_SPEED` 重跑，脚本会报「跳过全部 75 条」，
+ * 于是「75 条按新语速生成的」假设出货，实际全是旧语速的录音，而且没有任何报错。
  * 「孩子在任何设备上听到的发音都是产品的确定常量」这句话，靠存在性守不住。
  */
 export interface VoiceFingerprint {
@@ -762,24 +773,34 @@ export async function runBatch(entries: VoiceEntry[], deps: RunDeps): Promise<Ru
         e.text,
       )
       if (decision.skip) {
-        deps.log(`[voice] skip ${e.id}（${SKIP_REASON_TEXT[decision.reason]}）`)
-        skipped += 1
-        if (decision.reason === 'unrecorded') {
-          // 首次运行（还没有 manifest）或词表新增一条，而磁盘上已经有它的录音。
-          // 把现状登记进 manifest，下次它就能按「已验证」路径跳过。
-          // ⚠️ 第一次跑（manifest 还不存在）时 deps.manifest 恰好是 null ——
-          //    这里若再按 manifest 是否存在加一道门控，bootstrap 就永远登记不上。
-          // ⚠️⚠️ 但这条登记**只在 manifest 存在时安全**：manifest 缺失 ⇒
-          //    磁盘上的录音**来源不明**，把它们登记进新指纹 = 拿新参数给旧音频盖章。
-          //    CLI 那侧已经用「没有 manifest 但盘上有 mp3 ⇒ 拒跑」堵住了这条路
-          //    （Story 3.4 / AC-7 的第二个 Given 块）。
-          nextManifest.entries[e.id] = {
-            text: e.text,
-            sha256: deps.hashFile(target),
-            bytes: deps.fileSize(target),
+        // ⚠️⚠️ 「manifest **存在**却**没有这一条**」= 盘上这个 mp3 **来源不明**
+        //   （Story 3.4 / [CR] 修复）。CLI 那侧的「没有 manifest 但盘上有 mp3 ⇒ 拒跑」
+        //   只堵住了**整体**缺失；**缺一条**是同一族漏洞的另一半：
+        //   manifest 被裁过 / 手工塞进来的文件 / 上一轮跑到一半留下的 ——
+        //   登记它 = **拿新参数给旧音频盖章**（混批被盖上「同源」的戳）。
+        //   ⇒ 不登记、不跳过：**重录**（代价是一次 API 调用，¥0.0037）。
+        if (decision.reason === 'unrecorded' && deps.manifest !== null) {
+          deps.log(
+            `[voice] ${e.id} 已存在但 manifest 里没有它的溯源记录（来源不明）—— 重新生成`,
+          )
+        } else {
+          deps.log(`[voice] skip ${e.id}（${SKIP_REASON_TEXT[decision.reason]}）`)
+          skipped += 1
+          if (decision.reason === 'unrecorded') {
+            // manifest **缺失** ⇒ 首次运行（bootstrap）。CLI 那侧已经在
+            // 「没有 manifest 但盘上有 mp3 ⇒ 拒跑」这道闸上挡住了「盘上有旧录音」
+            // 那一支 ⇒ 到这里的「盘上有这个文件」只可能是**本次**跑出来的。
+            // 把现状登记进 manifest，下次它就能按「已验证」路径跳过。
+            // ⚠️ 第一次跑（manifest 还不存在）时 deps.manifest 恰好是 null ——
+            //    这里若再按 manifest 是否存在加一道门控，bootstrap 就永远登记不上。
+            nextManifest.entries[e.id] = {
+              text: e.text,
+              sha256: deps.hashFile(target),
+              bytes: deps.fileSize(target),
+            }
           }
+          continue
         }
-        continue
       }
       if (decision.reason === 'corrupt') {
         deps.log(`[voice] ${e.id} 已存在但内容与 manifest 不符（半截文件或被改过）—— 重新生成`)
@@ -804,6 +825,17 @@ export async function runBatch(entries: VoiceEntry[], deps: RunDeps): Promise<Ru
           sha256: deps.hashFile(target),
           bytes: result.audio.byteLength,
         }
+        // ⚠️⚠️ **每生成一条就落一次 manifest**（不是跑完才落）。
+        //   落盘时机若只在末尾，那么**跑到一半被 Ctrl-C / 崩了 / 网断了**之后，
+        //   盘上就只剩「一堆 mp3 + 没有 manifest」⇒ 下一次跑会被
+        //   「没有 manifest 但盘上有 mp3 ⇒ 拒跑」那道闸挡住，
+        //   而它要求「删掉整个目录重跑全量」⇒ **已经录好的那几十条全部作废**，
+        //   钱和配额白花（与脚本自己承诺的「已成功的文件全部保留，重跑只补这些」矛盾）。
+        //   ⇒ 每条生成完立刻把 manifest 落盘：中断后重跑只剩「没录的那几条」要补。
+        //   ⚠️ 窗口仍在：`writeFile` 与这次 `writeManifest` 之间被杀掉 ⇒ 那一条
+        //   在 manifest 里没有溯源记录 ⇒ 下次跑按「来源不明」重录（代价：一条的 API 调用）。
+        //   那是**有意接受的窄窗口**，不是漏网。
+        deps.writeManifest(nextManifest)
         last = null
         break
       }
@@ -893,7 +925,7 @@ const USAGE = [
   '',
   '  --dry            只估算费用，不发请求、不读写产物目录（不需要 API key）',
   '  --only <前缀>    只处理 id 以 <前缀> 开头的词条',
-  '  --force          用当前参数**重录全部**（即使哈希一致）；不越过指纹闸',
+  '  --force          用当前参数**重录**（即使哈希一致）；与 --only 合用时只重录被筛中的那些；不越过指纹闸',
   '  --help           打印本用法并退出（不需要 API key）',
   '',
   '改录音生成参数（模型 / 音色 / 语速 / 音高）后的**正确流程**（整批，不许零散补录）：',
@@ -947,7 +979,9 @@ function parseCli(argv: string[]): Cli {
  * `opts.outputDir` 可注入（Story 3.4 / Task 3.1）：守卫要在临时目录里驱动
  * 「指纹不匹配 ⇒ 拒跑」这条路径；而产物目录写死的话，测试会把新的 manifest
  * 写到**仓库里真的**那个已提交文件上，覆盖 75 条溯源记录。
- * ⚠️ 默认值不变 ⇒ `npm run generate:voice` 的行为逐字不变。
+ * ⚠️ `outputDir` 的默认值不变 ⇒ 产物仍落在同一个目录；
+ *   但**行为**有变（新增了两道拒跑闸）—— 见 `main()` 里那两处的注释。
+ *   ⇒ 「默认值不变 ⇒ 行为逐字不变」这句话在 2026-10-25 夜 `[CR]` 之后**不再成立**。
  */
 export async function main(
   argv: string[],
@@ -1063,7 +1097,7 @@ export async function main(
         return 1
       }
       console.log(
-        '[voice] 未找到 manifest —— 现有录音将按「无溯源」跳过，本次跑完会为它们建立 manifest。',
+        '[voice] 未找到 manifest，且产物目录里没有录音 —— 本次是**首次全量生成**。',
       )
     }
   }

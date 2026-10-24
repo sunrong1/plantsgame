@@ -126,7 +126,7 @@
 | DF-123 | 待触发 | Story 1.19 | 给 `LevelOutcome` 浮层自己的 `padding-left/right` 补上 `env(safe-area-inset-left/right)`，并加一条守卫断言 | `src/components/hud/LevelOutcome.vue` 浮层 `padding-left/right` 仍只有 `var(--space-panel-pad)` | [`df-123`](./deferred-details.md#df-123) |
 | DF-124 | 待触发 | Story 1.2 | 把「结束朗读」收敛成单一出口（`try/finally` 或一个 `finishPronunciation()`），所有提前 `return` 路径都走它；并加一条守卫断言「任何一次朗读请求结束后 `playing` 必为 false」 | `src/services/pronunciation.ts` 的 `playPronunciation` 提前 `return` 路径不发 `idle`，浮层可能永亮 | [`df-124`](./deferred-details.md#df-124) |
 | DF-125 | 待排期 | Story 1.19 / 1.20 / 2.1 / 2.2 | ① 先把 110 行按 story 归位，账本里只留一行指针；② 归位完成后再把 R-42 守卫的射程扩到 `last_updated:` 块，上限沿用 `SPRINT_STATUS_MAX_COMMENT_LINES`；③ 扩射程那一步要配一条反向自测 | `sprint-status.yaml` 的 `last_updated:` 块 110 行注释未归位，R-42 守卫上限仍是 4 | [`df-125`](./deferred-details.md#df-125) |
-| DF-126 | 待裁决 | 未指派（接线规格见 Story 3.4 决策包） | 裁决 ducking 曲线（起落时间常数 + 稳态增益）后，按 Story 3.4 给出的接线规格在 `startBgmIfReady`/`playSfx` 两侧各接一个 `GainNode`，并补守卫 | `services/audio.ts` 的 `startBgmIfReady`/`playSfx` 两侧未接 `GainNode` 做 BGM ducking | [`df-126`](./deferred-details.md#df-126) |
+| DF-126 | 待裁决 | 未指派（接线规格见 Story 3.4 文档的「裁决 C」小节） | 裁决 ducking 曲线（起落时间常数 + 稳态增益）后，按 Story 3.4 文档「裁决 C」小节给出的接线规格在 `startBgmIfReady`/`playSfx` 两侧各接一个 `GainNode`，并补守卫 | `services/audio.ts` 的 `startBgmIfReady`/`playSfx` 两侧未接 `GainNode` 做 BGM ducking | [`df-126`](./deferred-details.md#df-126) |
 | DF-127 | 待触发 | Story 1.18 | 真机上确认目标设备是否真的需要前缀；确认不需要就把它划掉，不要为了「完备」而加没人验证过的分支 | `services/audio.ts` 只读 `globalThis.AudioContext`，无 `webkitAudioContext` 前缀回退 | [`df-127`](./deferred-details.md#df-127) |
 | DF-128 | 待裁决 | 未指派 | 先定「许可字段允许填什么」（是否允许 `AI-generated (...)` 这类描述），再据此把 G251 的「已知形态」清单补全 | `tests/assets/audio-assets.test.ts` 的许可字段允许哪些前缀仍待人裁决 | [`df-128`](./deferred-details.md#df-128) |
 | DF-129 | 待排期 | 未指派 | 下次动这批文件时顺手改；或单独开一次「守卫编号可检索性」的小改，改完跑一遍全仓确认没有用例只靠标题匹配 | `tests/` 各守卫编号只写在 `describe` 上，`it` 标题不含 G 号，按号搜不到用例 | [`df-129`](./deferred-details.md#df-129) |
@@ -201,7 +201,7 @@
 | DF-210 | 待触发 | Story 2.6 | 教材版每关 `N` 确定后（DF-201 版本确认），按 24 关 / 新 `N` 重算 `docs/word-image-throughput.md` §8.1.3 与 §8.4 的参数表与决策表 | 该文档 §8 的 16–20 单元 / 480–600 张 / 66–133 h 全是旧口径；新口径下「口径 B 远超投入」这条结论**不成立** | [`df-210`](./deferred-details.md#df-210) |
 | DF-212 | 待触发 | Story 1.18 | Story 1.18 真机字号校准时，把 `src/styles/tokens.css` 字体阶梯的推导数按今天的实测容器宽 **736px** 重算（4 个选项 ⇒ 单卡 175px、内容盒 151px ⇒ 硬上限 28.8px、余量 23.6%） | 字体阶梯仍按 Story 1.11 的旧基线 768 / 183 / 159 推导；`--text-option: 22px` 取值**仍成立**，过期的是**推导数**与「余量 27.7%」 | [`df-212`](./deferred-details.md#df-212) |
 | DF-213 | 待裁决 | 未指派 | 有人裁决辅通路四个常量的「现场调」归属（候选：Story 1.19 试玩校准 / 某个尚未存在的 story），并把 5 个文件里的 10 处口径一次改齐 | `pronunciation.ts` 的四个 rate/pitch 常量在 5 个文件 10 处写着两个归属（Epic 1 现场调 / Epic 3 现场调） | [`df-213`](./deferred-details.md#df-213) |
-| DF-214 | 待排期 | Story 3.4 | 下次动 `epics.md` 的 FR4 段或 `game-architecture.md` 的 Configuration 表时，先回读 Story 3.4 的 rev 3 note 与本条详情，核对那两处更正仍在 | Story 3.4 由 `[DS]` 直接更正了 `game-architecture.md` 的 `scripts/gen-voice.ts` 路径与 `epics.md` FR4 的重复行 | [`df-214`](./deferred-details.md#df-214) |
+| DF-214 | 待排期 | 未指派 | 下次动 `epics.md` 的 FR4 段或 `game-architecture.md` 的 Configuration 表时，先回读 Story 3.4 的 rev 3 note 与本条详情，核对那三处更正仍在 | Story 3.4 由 `[DS]` 直接更正了 `game-architecture.md` 的 `scripts/gen-voice.ts` 路径与「录音生成参数」字段列表，以及 `epics.md` FR4 的重复行 | [`df-214`](./deferred-details.md#df-214) |
 | DF-215 | 待触发 | Story 1.19 | Story 1.19 真机试玩那一批（与 Story 3.4 裁决 A 同场）里，把「音效 / BGM / 预生成录音」三者的响度配比问出结论并记进试玩记录 | GDD 的「音量 / 响度配比是否适合 4–8 岁孩子」至今无归属 story、无任何结论记录 | [`df-215`](./deferred-details.md#df-215) |
 
 ## 新增一条

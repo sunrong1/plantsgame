@@ -32,6 +32,7 @@ import {
   estimateCost,
   fingerprintDiff,
   fingerprintMatches,
+  listVoiceMp3s,
   looksLikeMp3,
   main,
   normalizeFingerprint,
@@ -1114,7 +1115,7 @@ function extractFunctionBody(code: string, marker: string): string {
 const scriptCode = (): string =>
   stripComments(readFileSync(new URL('scripts/generate-voice.ts', REPO_ROOT), 'utf8'))
 
-describe('指纹归一化与比较方式（AC-6 / §3.1）', () => {
+describe('G312 —— 指纹归一化与比较方式（AC-6 / §3.1）', () => {
   it('归一化只查历史默认值表，不许查当前常量', () => {
     // ⚠️ 这条是**结构性**守卫，不是行为性守卫 —— 因为方向写反的后果
     //   （「改了音高却没重生成」被放过）只有在 `VOICE_PITCH ≠ 0` 时才**看得见**，
@@ -1164,6 +1165,30 @@ describe('指纹归一化与比较方式（AC-6 / §3.1）', () => {
     ).toBe(0)
   })
 
+  it('归一化的展开顺序：磁盘上的值优先于历史默认值（顺序反了 ⇒ manifest 里的 pitch 会被压成 0）', () => {
+    // ⚠️⚠️ 2026-10-25 夜 `[CR]` 实测：把脚本里的 `{ ...HISTORICAL_DEFAULTS, ...stored }`
+    //   反过来写成 `{ ...stored, ...HISTORICAL_DEFAULTS }` ⇒ **104 条用例全绿**
+    //   （上面那条结构守卫只查「不许引用当前常量」，**不看顺序**）。
+    //   ⇒ 后果：manifest 里 `pitch: 2` 会被历史默认 0 **覆盖** ⇒ 与常量 0 判成
+    //   「一致」⇒ 「改了音高却没重生成」被放过 —— 正是 AC-6 要杀的那种状态。
+    //   ⇒ 这里用**行为**钉住顺序（结构守卫钉不住「哪边在前」）。
+    expect(
+      normalizeFingerprint({ model: 'x', pitch: 5 }).pitch,
+      '归一化把磁盘上的值压成了历史默认值 ⇒ 展开顺序反了（{ ...stored, ...HISTORICAL_DEFAULTS }）',
+    ).toBe(5)
+    expect(
+      normalizeFingerprint({ model: 'x' }).pitch,
+      '缺键时没有用历史默认值 ⇒ 「引入音高之前」那批录音会被判成异常',
+    ).toBe(0)
+  })
+
+  it('历史默认值表里只许有 pitch 一个键（多一个键 ⇒ 「manifest 缺 model」这种异常被归一成正常）', () => {
+    expect(
+      Object.keys(HISTORICAL_DEFAULTS),
+      '历史默认值表里多了键 ⇒ 那个键的「缺失」会被归一成正常（G310 也就抓不到「manifest 少了一个键」）',
+    ).toEqual(['pitch'])
+  })
+
   it('历史 manifest（缺 pitch 键）仍与当前常量一致 —— 75 条录音不必重生成', () => {
     const legacy = {
       model: 'speech-2.8-hd',
@@ -1173,7 +1198,9 @@ describe('指纹归一化与比较方式（AC-6 / §3.1）', () => {
     }
     expect(
       fingerprintMatches({ fingerprint: legacy, entries: {} }),
-      '历史 manifest 被判成不匹配 ⇒ 脚本会无端拒跑、已提交的 75 条录音被白白重生成',
+      '历史 manifest 被判成不匹配 ⇒ 脚本会无端拒跑、已提交的 75 条录音被白白重生成。' +
+        '⚠️ 注意：若你刚改了 `VOICE_SPEED` / `VOICE_PITCH`，**这条红是对的** —— ' +
+        '改了生成参数就必须整批重生成（别去改 `HISTORICAL_DEFAULTS`）',
     ).toBe(true)
   })
 
@@ -1292,9 +1319,28 @@ describe('G311 —— 指纹闸：参数变了 ⇒ 脚本拒绝运行（AC-7）'
 
     expect(
       code,
-      '历史 manifest 被判成不匹配 ⇒ 脚本无端拒跑、已提交的 75 条录音被白白重生成',
+      '历史 manifest 被判成不匹配 ⇒ 脚本无端拒跑、已提交的 75 条录音被白白重生成。' +
+        '⚠️ 注意：若你刚改了 `VOICE_SPEED` / `VOICE_PITCH`，**这条红是对的** —— ' +
+        '改了生成参数就必须整批重生成（别去改 `HISTORICAL_DEFAULTS`）',
     ).toBe(0)
     expect(fetchCalls, '闸放行了却一个请求都没发 —— 脚本根本没往下走').toBe(1)
+  })
+
+  it('manifest 里多一个键 ⇒ 退出码 1、诊断指名那个键（G311 的端到端一条）', async () => {
+    // ⚠️ 「多出来的键也要报」这条判据原先只在**模块级**的纯函数用例里成立
+    //   （`fingerprintMatches` 直接构造对象）。
+    //   这条是端到端：走 `main()` ⇒ 确认 `parseManifest` 不会把带未知键的
+    //   fingerprint 判成「结构不对」而提前吞掉、也不会让闸失效。
+    writeManifest({ ...currentFingerprint(), extra_key: 1 })
+
+    const code = await main(['--only', 'u1-dog'], { MINIMAX_API_KEY: 'sk-test' }, { outputDir: dir })
+
+    expect(
+      code,
+      'manifest 里多一个键却放行了 ⇒ 提交物里可能夹着别的东西，而没有任何东西会红',
+    ).toBe(1)
+    expect(errors.join('\n'), '诊断文案没指名那个多余的键').toMatch(/extra_key/)
+    expect(fetchCalls, '拒绝之前已经发了请求').toBe(0)
   })
 
   it('`--force` 也不越闸：指纹不匹配时仍然退出码 1（裁决 F 的 (b) 方案）', async () => {
@@ -1335,6 +1381,49 @@ describe('G311 —— 指纹闸：参数变了 ⇒ 脚本拒绝运行（AC-7）'
     expect(code, '一次性首跑被拒 —— 脚本在空目录上跑不起来').toBe(0)
     expect(fetchCalls, '首跑没有生成任何录音').toBe(1)
   })
+
+  it('listVoiceMp3s 只把「目录不存在」当成「盘上没有 mp3」（其余读目录错误必须抛出去）', () => {
+    // ⚠️⚠️ 2026-10-25 夜 `[CR]` 修复的洞：原来的 `catch { return [] }` 把
+    //   **所有**读目录失败都当成「目录不存在」⇒ 权限错 / EIO / 路径是个文件时，
+    //   「没有 manifest 但盘上有 mp3 ⇒ 拒跑」那道闸**静默失效**（脚本以为盘上干净）。
+    // ⇒ 行为面：目录不存在 ⇒ 空数组（一次性首跑的正常形态）。
+    expect(
+      listVoiceMp3s(join(tmpdir(), `voice-not-exist-${process.pid}`)),
+      '目录不存在时不是空数组 —— 一次性首跑会被当成「盘上有孤儿录音」而拒跑',
+    ).toEqual([])
+    // ⇒ 结构面：catch 里必须**按错误码分流**，且**非 ENOENT 的错误必须抛出去**。
+    //   （非 ENOENT 的错误在测试环境里**造不出来** —— 容器里是 root，
+    //     权限位对 root 无效 ⇒ EACCES 触发不了 ⇒ 这一条只能靠源码形状钉住。）
+    // ⚠️⚠️ 2026-10-25 `[CR]` 变异实测抓到的**假绿**：这一段原先写的是
+    //   `not.toMatch(/catch\s*\{\s*return \[\]\s*\}/)` —— 它只认「`catch { return [] }`
+    //   这一种**字面形态**。把 catch 改成 `catch (err) { … return [] }`（同一份坏行为，
+    //   换一种写法）⇒ **旧判据全绿**（变异 M375 实测 97 条全绿）。
+    //   ⇒ 判据改成**看行为后果**：catch 体里必须有 `throw`（把错误原样抛出去）。
+    const body = extractFunctionBody(scriptCode(), 'export function listVoiceMp3s')
+    expect(
+      body,
+      'listVoiceMp3s 没有按错误码分流 ⇒ 读目录失败会被当成「盘上干净」⇒ 拒跑闸静默失效',
+    ).toMatch(/ENOENT/)
+    expect(
+      body,
+      'listVoiceMp3s 的 catch 没有把非 ENOENT 的错误抛出去 ⇒ 闸会静默失效（旧参数录音被盖上新参数的戳）',
+    ).toMatch(/\bthrow\b/)
+  })
+
+  it('writeManifestFile 必须要求显式传 outputDir（不许有默认值 —— 会覆盖已提交的 75 条溯源记录）', () => {
+    // ⚠️ 2026-10-25 夜 `[CR]`：注释逐字写「这里**不许**回落到模块级常量」，
+    //   而签名逐字是 `outputDir: string = OUTPUT_DIR` ⇒ 注释与代码互相否定。
+    // ⚠️ 断言要看的是**签名**，不是函数体 ⇒ 这里单独切出「函数头到 `{` 为止」那一段
+    //   （`extractFunctionBody` 只切函数体，会漏掉签名里的默认值）。
+    const source = scriptCode()
+    const start = source.indexOf('export function writeManifestFile')
+    expect(start, '源码里找不到 `writeManifestFile` —— 守卫扫的函数被改名或挪走了').toBeGreaterThan(-1)
+    const signature = source.slice(start, source.indexOf('{', start))
+    expect(
+      signature,
+      'writeManifestFile 的 outputDir 又有了默认值 ⇒ 一次 `writeManifestFile(m)` 就会覆盖仓库里已提交的 75 条溯源记录',
+    ).not.toMatch(/outputDir:\s*string\s*=/)
+  })
 })
 
 describe('--force 与 --help（Task 4 / DF-010）', () => {
@@ -1354,6 +1443,69 @@ describe('--force 与 --help（Task 4 / DF-010）', () => {
     expect(result.skipped, '--force 仍然跳过了已存在的文件 —— 它什么也没干').toBe(0)
     expect(result.generated).toBe(1)
     expect(writes).toBe(1)
+  })
+
+  it('--force 只重录筛中的那些 ⇒ manifest 里**未被涉及**的条目必须原样保留', async () => {
+    // ⚠️ 2026-10-25 夜 `[CR]` 补：`nextManifest` 是从 `deps.manifest` 拷出来的，
+    //   这条不变量当时**没有断言** —— 一旦改成新建空对象，一次
+    //   `--force --only u1-dog` 就会把其余 74 条的溯源记录抹掉，
+    //   而 G310 仍然绿（它只看**指纹**，不看 entries）。
+    let written: VoiceManifest | null = null
+    const deps = makeDeps({
+      force: true,
+      manifest: {
+        fingerprint: currentFingerprint(),
+        entries: {
+          'u1-cat': { text: 'cat', sha256: 'sha-cat', bytes: 100 },
+        },
+      },
+      fileExists: () => true,
+      writeFile: () => undefined,
+      writeManifest: (m) => {
+        written = m
+      },
+    })
+
+    await runBatch([{ id: 'u1-dog', text: 'dog' }], deps)
+
+    expect(
+      written!.entries['u1-cat']?.sha256,
+      '一次 --force 把未被涉及的条目的溯源记录从 manifest 里抹掉了 ⇒ manifest 名不副实',
+    ).toBe('sha-cat')
+  })
+
+  it('manifest 存在却没有这一条 ⇒ 盘上的录音来源不明 ⇒ 重录，不登记进新指纹', async () => {
+    // ⚠️⚠️ 2026-10-25 夜 `[CR]` 修复的正是这个洞：
+    //   CLI 那侧的「没有 manifest 但盘上有 mp3 ⇒ 拒跑」只堵住了**整体**缺失；
+    //   **缺一条**（manifest 被裁过 / 手工塞进来的文件 / 上一轮跑到一半留下的）
+    //   原先会被 `unrecorded` 分支**登记进新指纹** ⇒ 旧参数录音被盖上新参数的戳。
+    let content = 'stale'
+    let written: VoiceManifest | null = null
+    const deps = makeDeps({
+      manifest: { fingerprint: currentFingerprint(), entries: {} },
+      fileExists: () => true,
+      hashFile: () => `sha-${content}`,
+      fileSize: () => 4096,
+      writeFile: () => {
+        content = 'fresh'
+      },
+      fetchImpl: (async () => okHexResponse()) as unknown as typeof fetch,
+      writeManifest: (m) => {
+        written = m
+      },
+    })
+
+    const result = await runBatch([{ id: 'u1-dog', text: 'dog' }], deps)
+
+    expect(
+      result.skipped,
+      '来源不明的录音被跳过了 ⇒ 它会原样留下（旧参数音频 + 新指纹的戳，混批被盖章）',
+    ).toBe(0)
+    expect(result.generated, '来源不明的录音没有被重录').toBe(1)
+    expect(
+      written!.entries['u1-dog']?.sha256,
+      '重录之后 manifest 里记的还是那个旧文件的哈希 ⇒ 旧录音仍被盖上了新参数的戳',
+    ).toBe('sha-fresh')
   })
 
   it('--help 不需要 API key，退出码 0，并打印全部用法', async () => {
@@ -1388,5 +1540,105 @@ describe('--force 与 --help（Task 4 / DF-010）', () => {
 
     expect(code).toBe(0)
     expect(after, '--help 动了产物目录 —— 打印用法不该有任何副作用').toBe(before)
+  })
+})
+
+/**
+ * G313 —— **中断后可续跑**：每生成一条就落一次 manifest。
+ *
+ * ── 它守的是什么 ──────────────────────────────────────────────────────────
+ *   落盘时机若只在**跑完**时，那么「跑到一半被 Ctrl-C / 崩了 / 断网了」之后，
+ *   盘上只剩「一堆 mp3 + 没有 manifest」⇒ 下一次跑被
+ *   「没有 manifest 但盘上有 mp3 ⇒ 拒跑」那道闸挡住，而它要求
+ *   **删掉整个目录重跑全量** ⇒ 已经录好的那几十条全部作废（钱与配额白花），
+ *   且与脚本自己承诺的「已成功的文件全部保留，重跑只补这些」**直接矛盾**。
+ *
+ *   ⇒ 判据：落盘的 manifest 必须**逐条增长**（第 k 条生成完，manifest 里就有 k 条）。
+ *   只有这样，「被杀在第 k 条」这一瞬间，盘上留着的那份 manifest 才是**可续的**。
+ */
+describe('G313 —— 中断后可续跑（每生成一条就落一次 manifest）', () => {
+  /**
+   * 判据本体：落盘点数序列里必须**逐条**出现 1..N。
+   *
+   * ⚠️ 判据粒度比「跑完落过一次」粗（它管全部 N 条），这是**故意的** ——
+   * 旧行为（只在末尾落一次）的落盘点数序列是 `[N]`，在本判据下**必红**。
+   */
+  const incrementalWriteProblems = (writeCounts: number[], generated: number): string[] => {
+    const problems: string[] = []
+    for (let i = 1; i <= generated; i += 1) {
+      if (!writeCounts.includes(i)) {
+        problems.push(
+          `第 ${i} 条生成完没有落过 manifest（落盘时的条目数集合：${[...new Set(writeCounts)].join('、')}）` +
+            ' —— 中途被杀时盘上就没有可续的溯源记录，下次跑只能删掉整个目录重录全量',
+        )
+      }
+    }
+    return problems
+  }
+
+  it('每生成一条就落一次 manifest ⇒ 落盘点数逐条增长', async () => {
+    const writeCounts: number[] = []
+    const deps = makeDeps({
+      fetchImpl: (async () => okHexResponse()) as unknown as typeof fetch,
+      writeManifest: (m) => {
+        writeCounts.push(Object.keys(m.entries).length)
+      },
+    })
+
+    const result = await runBatch(
+      [
+        { id: 'u1-dog', text: 'dog' },
+        { id: 'u1-cat', text: 'cat' },
+        { id: 'u1-bus', text: 'bus' },
+      ],
+      deps,
+    )
+
+    expect(result.generated, '三条都该生成 —— 夹具是每条都成功').toBe(3)
+    expect(
+      incrementalWriteProblems(writeCounts, 3),
+      'manifest 不是逐条落盘 ⇒ 中断后无法续跑，已录好的录音会被逼着重录全量',
+    ).toEqual([])
+  })
+
+  it('中断后重跑：已录的那几条按「已验证」跳过，只补剩下的（脚本承诺的「重跑只补这些」）', async () => {
+    const entries: VoiceEntry[] = [
+      { id: 'u1-dog', text: 'dog' },
+      { id: 'u1-cat', text: 'cat' },
+      { id: 'u1-bus', text: 'bus' },
+    ]
+    let captured: VoiceManifest | null = null
+    const deps1 = makeDeps({
+      fetchImpl: (async () => okHexResponse()) as unknown as typeof fetch,
+      writeManifest: (m) => {
+        captured = m
+      },
+    })
+
+    // 第一次跑到一半就「断了」：只喂前两条
+    await runBatch(entries.slice(0, 2), deps1)
+    expect(captured!.entries['u1-dog'], '前两条的溯源记录没落盘 —— 中断后无从续跑').toBeDefined()
+    expect(captured!.entries['u1-cat']).toBeDefined()
+    expect(captured!.entries['u1-bus'], '没录的那条不该出现在 manifest 里').toBeUndefined()
+
+    // 第二次跑：盘上前两条都在，manifest 是上面那份
+    const onDisk = new Set(['u1-dog.mp3', 'u1-cat.mp3'])
+    const deps2 = makeDeps({
+      manifest: captured,
+      fileExists: (p: string) => onDisk.has(p.slice(p.lastIndexOf('/') + 1)),
+      fetchImpl: (async () => okHexResponse()) as unknown as typeof fetch,
+    })
+
+    const result = await runBatch(entries, deps2)
+    expect(result.skipped, '已录的两条必须按「已验证」跳过 —— 否则每次重跑都在烧配额').toBe(2)
+    expect(result.generated, '只该补录剩下那一条').toBe(1)
+  })
+
+  it('反向自测：判据本体对「只在跑完时落一次」必须能报（旧行为 = 落盘点数序列 [3]）', () => {
+    expect(
+      incrementalWriteProblems([3], 3).length,
+      '判据本体对旧行为（末尾才落盘）必须报错 —— 否则它是个永远绿的摆设',
+    ).toBeGreaterThan(0)
+    expect(incrementalWriteProblems([1, 2, 3], 3), '合规形态不许被误报').toEqual([])
   })
 })

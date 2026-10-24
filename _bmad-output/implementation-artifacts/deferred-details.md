@@ -2813,7 +2813,7 @@ jsdom 没有布局引擎 ⇒ 测不出来。本轮给可源码化的那一半补
 
 ## DF-126
 
-**状态**：待裁决 · **归属**：未指派（接线规格见 Story 3.4 决策包） · **恢复条件**：裁决 ducking 曲线（起落时间常数 + 稳态增益）后，按 Story 3.4 给出的接线规格在 `startBgmIfReady`/`playSfx` 两侧各接一个 `GainNode`，并补守卫
+**状态**：待裁决 · **归属**：未指派（接线规格见 Story 3.4 文档的「裁决 C」小节） · **恢复条件**：裁决 ducking 曲线（起落时间常数 + 稳态增益）后，按 Story 3.4 文档「裁决 C」小节给出的接线规格在 `startBgmIfReady`/`playSfx` 两侧各接一个 `GainNode`，并补守卫
 
 **一句话**：`services/audio.ts` 的 `startBgmIfReady`/`playSfx` 两侧未接 `GainNode` 做 BGM ducking
 
@@ -4805,19 +4805,22 @@ jsdom 没有布局引擎 ⇒ 测不出来。本轮给可源码化的那一半补
 
 ## DF-214
 
-**状态**：待排期 · **归属**：Story 3.4 · **恢复条件**：下次动 `epics.md` 的 FR4 段或 `game-architecture.md` 的 Configuration 表时，先回读 Story 3.4 的 rev 3 note 与本条详情，核对那两处更正仍在
+**状态**：待排期 · **归属**：未指派 · **恢复条件**：下次动 `epics.md` 的 FR4 段或 `game-architecture.md` 的 Configuration 表时，先回读 Story 3.4 的 rev 3 note 与本条详情，核对那三处更正仍在
 
-**一句话**：Story 3.4 由 `[DS]` 直接更正了 `game-architecture.md` 的 `scripts/gen-voice.ts` 路径与 `epics.md` FR4 的重复行
+**一句话**：Story 3.4 由 `[DS]` 直接更正了 `game-architecture.md` 的 `scripts/gen-voice.ts` 路径与「录音生成参数」字段列表，以及 `epics.md` FR4 的重复行
 
 ### 原始论证
 
 ### 1. R-33 第 3 条要求「同步 `deferred-work.md`」—— 本条就是那次同步
 
 **为什么本条存在**：R-33 逐字写「③ 升 `revision` + **追加** `revisionNote`
-（不覆盖旧版 note）+ **同步 `deferred-work.md`**」。Story 3.4 的 `[DS]` 做了两处
+（不覆盖旧版 note）+ **同步 `deferred-work.md`**」。Story 3.4 的 `[DS]` 做了三处
 **规划产物正文**的更正（不是设计决定、不是数值），因此按 R-33 改了两个文件 ——
 而「同步 `deferred-work.md`」这一条**不许因为那个文件没有 `revision` 字段就免掉**
 ⇒ 本条就是那次同步的落点。
+⚠️ **归属为什么是「未指派」**：Story 3.4 已交付，而本条的恢复条件是
+「**谁下次动那两段谁负责**」⇒ 挂在一个已交付的 story 名下，会让下一个人
+以为「3.4 还没做完这条」（这正是 DF-011 改成「未指派」的同一条理由）。
 
 **更正一（路径漂移）**：`game-architecture.md` 的 Configuration 表逐字写
 「录音生成参数 | `scripts/gen-voice.ts`（Story 1-3）」，而磁盘上的文件是
@@ -4826,15 +4829,28 @@ jsdom 没有布局引擎 ⇒ 测不出来。本轮给可源码化的那一半补
 ⚠️ **该文件没有 `revision` / `revisionNote` 字段** ⇒ 按 Story 3.4 的处置
 **不凭空造字段**（那会造出一套新的 revision 机制），依据写在 Story 3.4 的
 Completion Notes 与本条里。
+⚠️ **这条处置本身已被 `[CR]` 记为待人裁决**（见 Story 3.4 文档的
+`[Review][Decision]` 一条：R-33 第 3 条对**没有 revision 字段**的规划产物
+是否成立 ⇒ 要不要改走 `[CC]`）。
 ⚠️ 归档层的 Story 1.3 文档里也逐字引着旧路径 —— **不改**
 （那是历史原文，改它等于篡改历史；R-43）。
 
-**更正二（重复行）**：`epics.md` 的 FR4 段里，「降级通路必须固定在架构层，不得是临时 if」
+**更正二（字段列表失实）**：`game-architecture.md` 的同一行逐字写
+「`model` / `voice_id` / `speed`」—— 而 Story 3.4 已把 `pitch` 变成一等生成参数
+（`VOICE_PITCH` 常量 + `VoiceFingerprint.pitch` 字段）⇒ **该行当场失实**，
+且与 `docs/rules/testing.md` 的 R-59（「fingerprint（model / voice_id / speed / format /
+**pitch**）」）**互相矛盾**。
+⇒ 2026-10-25 改为「`model` / `voice_id` / `speed` / `format` / `pitch`」
+（`format` 顺带补上 —— 它一直在指纹里，那一行的列表**本来就漏了它**）。
+⚠️ 改的是**字段清单**（事实），不是归属（归属冲突在同表**另一行**「TTS 参数（辅通路）」，
+那一行**一个字没动** —— 归属由 DF-213 裁决）。
+
+**更正三（重复行）**：`epics.md` 的 FR4 段里，「降级通路必须固定在架构层，不得是临时 if」
 **连写两遍** ⇒ 删掉其中一条，`epics.md` **升 `revision: 2` → `3` + 追加 `revisionNote`**
 （**不覆盖** rev 2 的 note）。
 ⚠️ 删的是**排版重复**，三条要求（主通路 / 降级通路 / 不得是临时 if）**一字未动**。
 
-**为什么这两处现在还不能被「顺手改回去」**：它们都在**规划产物**里，
+**为什么这三处现在还不能被「顺手改回去」**：它们都在**规划产物**里，
 而规划产物的改动要么走 `[CC]`、要么满足 R-33 的三条件 ——
 本条的作用就是提醒下一个动这两段的人：**先回读 rev 3 note，再决定要不要动**。
 
@@ -4859,6 +4875,10 @@ Completion Notes 与本条里。
   **Story 1.19（Epic 1 唯一的那场试玩）的任务清单里没有这一项** ——
   它的 4 处提到只来自「Source」清单里对 GDD 那一节的引用。
   ⇒ 「归某个 story」这句话**落不到具体条目上** ⇒ 这一项会**静默过期**。
+  ✅ **2026-10-25 `[CR]` 已把这个洞堵上**：Story 1.19 文档**新增了 Task 3.13**（任务清单侧）
+  与**组 E 的 E7**（观察项侧），两边都逐字指回本条 ⇒ 现在「归 Story 1.19」这句话
+  **落得到具体条目**。⚠️ 上一条那段「任务清单里没有这一项」是**登记当时**的实测，
+  **现已不成立** —— 留在这里是为了说明本条当初为什么要登记。
 - **为什么今天不自己测**：本地开发环境的一次性试听**不能**回答它（GDD 逐字），
   而**响度配比是数值**（R-20：碰数值先问人）⇒ agent 测了也不算数。
 - **本 story 给出的处置**：与 Story 3.4 的**裁决 A**（录音的语速与音高取值）

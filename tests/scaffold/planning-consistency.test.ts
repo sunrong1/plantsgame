@@ -28,7 +28,7 @@
  *
  * 不在 src/core/ 下 —— NFR16：测试全部在 tests/。
  */
-import { readFileSync, readdirSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
@@ -326,6 +326,91 @@ describe('G294 决定 4 引用的延后条目必须真的在说这件事', () =>
     expect(
       problems.some((p) => p.includes('DF-999') && p.includes('查不到')),
       `构造失效：引用不存在的 DF-999 竟没被判出来：\n${problems.join('\n')}`,
+    ).toBe(true)
+  })
+})
+
+// ── G314：架构文档 Configuration 表里写的路径必须真实存在 ──────────────────
+
+/**
+ * 架构文档 `### Configuration` 表的「位置」列里，哪些是**路径声明**。
+ *
+ * ⚠️ 判据只认**仓库顶层目录开头**的反引号 token（`src/` / `scripts/` / `public/` /
+ *   `tests/` / `docs/` / `_bmad-output/`）—— 那一列里还有 `import.meta.env.DEV`
+ *   这种**不是路径**的开关名，它不是路径声明，硬要当路径查只会得到假红。
+ */
+export function configurationPathClaims(text: string): string[] {
+  const lines = text.split('\n')
+  const rows = tableRows(lines, '### Configuration')
+  if (rows === null) return []
+  const claims: string[] = []
+  for (const row of rows) {
+    const cells = splitCells(row)
+    if (cells.length < 2) continue
+    for (const m of cells[1].matchAll(/`([^`]+)`/g)) {
+      const token = m[1].trim()
+      if (/^(src|scripts|public|tests|docs|_bmad-output)\//.test(token)) claims.push(token)
+    }
+  }
+  return claims
+}
+
+/**
+ * G314 的判据本体：**每一个路径声明都必须指向一个此刻真实存在的文件**。
+ *
+ * ⚠️ 两条抗假绿的要求：
+ *   ① **零声明必须红** —— 表头或反引号写法一改，判据就可能取不到任何路径，
+ *      而「取不到」不等于「没问题」（那是本仓库最常见的一类假绿）。
+ *   ② 逐条判，不抽查 —— 抽查会让「恰好漏掉的那一条」永远绿。
+ */
+export function checkConfigurationPaths(
+  text: string,
+  exists: (repoRelativePath: string) => boolean,
+): string[] {
+  const claims = configurationPathClaims(text)
+  const problems: string[] = []
+  if (claims.length === 0) {
+    problems.push(
+      '架构文档的 `### Configuration` 表里一个路径声明都取不到 —— ' +
+        '判据可能已经失效（表头、反引号写法或目录名变了），而不是「没有问题」',
+    )
+    return problems
+  }
+  for (const claim of claims) {
+    if (!exists(claim)) {
+      problems.push(`架构文档的 Configuration 表指向了不存在的路径：${claim}`)
+    }
+  }
+  return problems
+}
+
+describe('G314 架构文档 Configuration 表里的路径必须真实存在', () => {
+  it('G314.1 表里每一条路径声明都能在盘上找到', () => {
+    const problems = checkConfigurationPaths(architectureText, (p) => existsSync(`${root}${p}`))
+    expect(problems, `架构文档里的路径声明指空了：\n${problems.join('\n')}`).toEqual([])
+  })
+
+  it('G314.2 反向自测：把一条路径改成不存在的，必须红（判据不许放过指空的路径）', () => {
+    const broken = architectureText.replace('`src/core/balance.ts`', '`src/core/balance-gone.ts`')
+    expect(broken, '构造失效：架构文档里找不到 `src/core/balance.ts` 这一处路径声明').not.toBe(
+      architectureText,
+    )
+    const problems = checkConfigurationPaths(broken, (p) => existsSync(`${root}${p}`))
+    expect(
+      problems.some((p) => p.includes('src/core/balance-gone.ts')),
+      `构造失效：把路径指空竟没被判出来：\n${problems.join('\n')}`,
+    ).toBe(true)
+  })
+
+  it('G314.3 反向自测：一个路径声明都取不到时必须红（不许因为「取不到」而全绿）', () => {
+    const broken = architectureText.replace('### Configuration', '### 配置')
+    expect(broken, '构造失效：架构文档里找不到 `### Configuration` 这个小节').not.toBe(
+      architectureText,
+    )
+    const problems = checkConfigurationPaths(broken, (p) => existsSync(`${root}${p}`))
+    expect(
+      problems.some((p) => p.includes('一个路径声明都取不到')),
+      `构造失效：判据取不到路径时竟没报错：\n${problems.join('\n')}`,
     ).toBe(true)
   })
 })

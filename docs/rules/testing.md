@@ -267,8 +267,9 @@ epics 的 AC（`[CR]` 时按 AC 逐条对账靠的就是「出处锚点」）；
 
 **首现** Story 1.3（`pitch` 与五态、逐键比较：Story 3.4）
 
-**守卫** `tests/scripts/generate-voice.test.ts`（「哈希一致才跳过」/「哈希对不上就重新生成」）、`tests/content/unit-01.test.ts`（「跳过判据是哈希，不是『文件存在』」）。⚠️ **仅 mp3 有守卫；词图侧无守卫**（仓库没有词图生成脚本）。
-📎 **Story 3.4 补两条**：**G310**（`tests/assets/audio-assets.test.ts` —— **已提交的** `manifest.json` 指纹与脚本当前常量逐键一致；「改了常量却没重生成」今天原本**零守卫**）、**G311**（`tests/scripts/generate-voice.test.ts` —— 指纹不匹配 ⇒ 脚本**真的**退出码 1 且诊断指名差异的键）。
+**守卫** `tests/scripts/generate-voice.test.ts`（「哈希一致才跳过」/「哈希对不上就重新生成」）、`tests/content/unit-01.test.ts`（「跳过判据是哈希，不是『文件存在』」）。
+📎 **mp3 侧已补齐四条（Story 3.4）**：**G310**（`tests/assets/audio-assets.test.ts` —— **已提交的** `manifest.json` 指纹与脚本当前常量逐键一致；「改了常量却没重生成」今天原本**零守卫**）、**G311**（`tests/scripts/generate-voice.test.ts` —— 指纹不匹配 ⇒ 脚本**真的**退出码 1 且诊断指名差异的键）、**G312**（指纹**归一化**与**逐键比较**的方式 —— 归一方向反了、只比键不比值，都会被放过）、**G313**（**每生成一条就落一次 manifest** ⇒ 跑到一半被杀掉时，盘上留着**可续**的溯源记录，不必删掉整个目录重录全量）。
+ℹ️ **词图侧当前没有「已存在就跳过」那条通路**（仓库没有词图生成脚本）⇒ **没有守卫对象**，不是漏写。
 ⚠️ G310 的**比较逻辑在测试文件里自己写** —— 拿脚本自己的 `fingerprintMatches` 判它自己，
 等于「守卫和被守卫者是同一段代码」，脚本的比较逻辑一坏守卫跟着一起坏。
 

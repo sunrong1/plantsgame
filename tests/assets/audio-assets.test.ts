@@ -320,12 +320,20 @@ describe('G251 —— 登记的扫描范围与「逐条真实」（AC-H1 / AC-H2
  *   `JSON.stringify` 键序敏感），守卫会**跟着一起坏**，而守卫变绿正是我们要防的事。
  *   ⇒ **取值**只取一处（脚本的 `currentFingerprint()` / `HISTORICAL_DEFAULTS`），
  *     **比较逻辑**在本文件自己写。
+ *
+ * ⚠️⚠️ **2026-10-25 夜 `[CR]` 修复：判据从两份并成一份。**
+ *   原先正向用例**另写了一份**内联比较，反向自测调的是 `fingerprintAgrees`
+ *   ⇒ 两份判据可以各坏各的，而反向自测**看不见**正向用例那份坏掉。
+ *   实测：把正向用例的逐键断言改成 `.toBe(norm[k])`（恒真），
+ *   **全仓 88 文件 / 2425 条仍全绿** ⇒ 那条核心断言**当时没有牙齿**。
+ *   ⇒ 现在正向用例与反向自测**都调 `fingerprintDifferences` 这一个判据**。
  */
 describe('G310 —— 已提交的录音溯源指纹 == 脚本当前常量（AC-6）', () => {
   const MANIFEST_FILE = join(root, 'public/assets/audio/voice/manifest.json')
 
   /**
-   * 磁盘上的指纹与当前常量是否一致。
+   * **判据本体**（只有这一份）：磁盘上的指纹与当前常量有哪些差异。
+   * 返回空数组 = 一致。
    *
    * 两条要求（缺一不可）：
    * ① **键集合恰好相等** —— manifest 里**多出来的键**也要报
@@ -333,12 +341,42 @@ describe('G310 —— 已提交的录音溯源指纹 == 脚本当前常量（AC-
    * ② **逐键比较** —— 不许 `JSON.stringify` 比整份对象（键序敏感，
    *    而归一化会把 `pitch` 排到最前 ⇒ 整对象比较会把现状误判为不匹配）。
    */
-  const fingerprintAgrees = (stored: Record<string, unknown>): boolean => {
+  const fingerprintDifferences = (stored: Record<string, unknown>): string[] => {
     const cur = currentFingerprint() as unknown as Record<string, unknown>
     const norm: Record<string, unknown> = { ...HISTORICAL_DEFAULTS, ...stored }
-    const curKeys = Object.keys(cur).sort()
-    if (Object.keys(norm).sort().join(',') !== curKeys.join(',')) return false
-    return curKeys.every((k) => norm[k] === cur[k])
+    const diffs: string[] = []
+    for (const k of Object.keys(cur).sort()) {
+      if (!Object.prototype.hasOwnProperty.call(norm, k)) {
+        diffs.push(`缺键 ${k}（当前常量有，manifest 没有）`)
+        continue
+      }
+      if (norm[k] !== cur[k]) {
+        diffs.push(`${k}：${String(norm[k])} → ${String(cur[k])}`)
+      }
+    }
+    for (const k of Object.keys(norm).sort()) {
+      if (!Object.prototype.hasOwnProperty.call(cur, k)) {
+        diffs.push(`多余键 ${k}`)
+      }
+    }
+    return diffs
+  }
+
+  /** 读已提交的那份 manifest。读不出来 / 不是合法 JSON ⇒ 给出中文消息而不是裸栈。 */
+  const readCommittedManifest = (): { fingerprint: Record<string, unknown> } => {
+    let raw: string
+    try {
+      raw = readFileSync(MANIFEST_FILE, 'utf8')
+    } catch (err) {
+      return expect.fail(`已提交的录音溯源清单读不出来：${String(err)}`)
+    }
+    try {
+      return JSON.parse(raw) as { fingerprint: Record<string, unknown> }
+    } catch (err) {
+      return expect.fail(
+        `已提交的 manifest 不是合法 JSON：${err instanceof Error ? err.message : String(err)}`,
+      )
+    }
   }
 
   it('G310：已提交的 manifest 存在（不是「存在就跳过」）', () => {
@@ -349,47 +387,41 @@ describe('G310 —— 已提交的录音溯源指纹 == 脚本当前常量（AC-
   })
 
   it('G310：已提交 manifest 的指纹与脚本当前常量逐键一致', () => {
-    const parsed = JSON.parse(readFileSync(MANIFEST_FILE, 'utf8')) as {
-      fingerprint: Record<string, unknown>
-    }
-    const cur = currentFingerprint() as unknown as Record<string, unknown>
-    const norm: Record<string, unknown> = { ...HISTORICAL_DEFAULTS, ...parsed.fingerprint }
+    const parsed = readCommittedManifest()
 
     expect(
-      Object.keys(norm).sort(),
-      '已提交 manifest 的指纹键集合与当前常量不一致 —— 多出来的键或缺失的键都要报出来',
-    ).toEqual(Object.keys(cur).sort())
-
-    for (const k of Object.keys(cur)) {
-      expect(
-        norm[k],
-        `已提交 manifest 的指纹「${k}」与脚本当前常量不一致 —— ` +
-          '要么改了常量没重生成录音，要么重生成后 manifest 没更新（两种都是「提交物自相矛盾」）',
-      ).toBe(cur[k])
-    }
+      fingerprintDifferences(parsed.fingerprint),
+      '已提交 manifest 的指纹与脚本当前常量不一致 —— ' +
+        '要么改了常量没重生成录音，要么重生成后 manifest 没更新（两种都是「提交物自相矛盾」）',
+    ).toEqual([])
   })
 
-  it('G310 反向自测：判据真的能咬住三种差异', () => {
+  it('G310 反向自测：判据真的能咬住四种差异', () => {
     const cur = currentFingerprint() as unknown as Record<string, unknown>
 
     expect(
-      fingerprintAgrees({ ...cur, speed: 1.2 }),
+      fingerprintDifferences({ ...cur, speed: 1.2 }),
       '语速不同却判成一致 ⇒ 改了常量没重生成不会被任何人发现',
-    ).toBe(false)
+    ).not.toEqual([])
 
     expect(
-      fingerprintAgrees({
+      fingerprintDifferences({ ...cur, pitch: (cur['pitch'] as number) + 1 }),
+      '音高不同却判成一致 ⇒ 改了音高没重生成不会被任何人发现',
+    ).not.toEqual([])
+
+    expect(
+      fingerprintDifferences({
         model: cur['model'],
         voice_id: cur['voice_id'],
         speed: cur['speed'],
         format: cur['format'],
       }),
       '缺 pitch 键（历史 manifest 的形态）却判成不一致 ⇒ 已提交的那批录音会被无端重生成',
-    ).toBe(true)
+    ).toEqual([])
 
     expect(
-      fingerprintAgrees({ ...cur, extra_key: 1 }),
+      fingerprintDifferences({ ...cur, extra_key: 1 }),
       'manifest 里多出来的键被放过 ⇒ 提交物里可能夹着别的东西',
-    ).toBe(false)
+    ).not.toEqual([])
   })
 })
