@@ -36,7 +36,27 @@ git show 5049e69:_bmad-output/implementation-artifacts/1-4-战斗内核与-5-条
 `review` 状态的留在 `_bmad-output/implementation-artifacts/`，
 等 `[CR]` 结束、`[DS]` 把它标为 `done` 后再移。
 
+## 📎 归档后的路径引用（2026-10-25 夜，批量改写）
+
+**`git mv` 会把**别处**写着这个文档的路径一起作废。** 归档层内共有 **30 处**
+「`_bmad-output/implementation-artifacts/<X>.md`」形式的引用，其目标已随归档移走
+⇒ 本批统一改成 `archive/` 前缀（**只改目录段，文件名一字未动**）。
+依据与守卫见 [`docs/rules/process.md` 的 R-40](../../docs/rules/process.md) 与守卫 **G309**。
+
+**未改的 6 处，各有理由**（守卫 G309 的例外清单，逐条写明）：
+
+- **5 处**指向 `1-5-回合状态机与题单.md` —— 那是 **DF-028** 正在等人裁决的
+  `.claude/settings.local.json` 里**真的失效**的 Bash 授权路径；
+  那几处写的**正是那个失效路径本身**，改成新路径反而会掩盖问题。
+- **1 处**是上面第 3 条命令里的 `git show 5049e69:<旧路径>` ——
+  那是**历史 commit 上的路径**，在那个 commit 上真实存在，不是失效引用。
+
+⚠️ 活跃目录（`_bmad-output/implementation-artifacts/`）里的引用**不改成 `archive/` 路径** ——
+R-40 的 AC-4 守卫禁止活跃文档引用归档里的具体文件 ⇒ 那里改成**键**。
+（**判据只写在 R-40 一处**，此处不复制 —— R-37。）
+
 ## 谁负责把它移进来
 
 执行该 story `[DS]` 的那个 agent，在收尾时执行 `git mv`。
 不要另开一次专门归档 —— 归档属于收尾动作的一部分。
+**归档的同一个 commit 里**必须把指向被归档文档的路径引用一并改掉（G309）。

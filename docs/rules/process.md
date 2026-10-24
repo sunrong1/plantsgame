@@ -201,7 +201,12 @@ grep -rhoP '\bM[0-9]{3}\b' . --exclude-dir=node_modules --exclude-dir=.git --exc
 
 `review` 状态的留在原地，等 `[CR]` 结束、`[DS]` 标为 `done` 后再移。**归档是收尾动作的一部分，不要另开一次专门归档。**
 
+⚠️ **`git mv` 会连带作废别处写着这个文档的路径。** 归档的那个 commit 里**必须**把指向被归档文档的路径引用一并改掉：
+归档层内改成 `archive/` 前缀；**活跃层内改不成 `archive/` 前缀**（AC-4 那条守卫禁止活跃文档引用归档里的具体文件）⇒ 一律改写成**键**（例：`Story 1.15 文档（键 `1-15-存档与断点续学`）`）。
+
 **守卫** `tests/scaffold/docs-rules.test.ts` —— 活跃文档（CLAUDE.md、`docs/` 与未归档 story）中检索 `archive/1-*` 命中的**具体归档文件**必须 0 命中
+
+**守卫** `tests/scaffold/archive-path-refs.test.ts`（**G309**）—— 仓库里凡是 `_bmad-output/implementation-artifacts/<文件名>.md` 形式的路径引用，其目标必须**此刻**住在活跃目录；目标已归档 ⇒ 悬空，必须改（例外清单逐条写明理由并**写死出现次数**）。⚠️ 这条与上面那条**互补两个方向**：AC-4 查「不许引用归档里的文件」，G309 查「不许引用一个已经不在原处的文件」—— 只查前者的话，把 `archive/1-15-…md` 手滑写回 `implementation-artifacts/1-15-…md` 就能骗过它，而那正是归档时最容易犯的错。
 
 **首现** 2026-10-15 文档治理（本次）
 
