@@ -259,6 +259,18 @@ export interface TextOption {
 export type Option = ImageOption | TextOption
 
 /**
+ * 卡型三选一 —— 内容层 `CardKindSchema` 的取值必须与它**逐字相同**（守卫 G303）。
+ *
+ * ⚠️ **为什么 core 要导出这个常量**：`Card.kind` 的类型若只写成字面量联合
+ *   `'word' | 'keyword' | 'response'`，那它与内容层 `z.enum([...])` 就是两份
+ *   互不相干的副本 —— 任何一侧增删卡型，另一侧**一声不响**
+ *   （DF-117 记录的正是这个洞：内容层能录第四型，core 那边仍认三种）。
+ *   导出成常量后，core 侧的取值**只有这一处**，守卫直接比两个来源即可，
+ *   不必去正则解析源码。
+ */
+export const CARD_KINDS = ['word', 'keyword', 'response'] as const
+
+/**
  * 卡 —— 三种卡型共用一个形状（架构模式 B）。
  *
  * ⚠️ **本 story 的选择：把架构的 `kind` 三分支并集拍平成一个 `kind: CardKind`
@@ -271,7 +283,7 @@ export type Option = ImageOption | TextOption
  */
 export interface Card {
   /** 仅用于渲染（图片卡 vs 文字卡）与卡型分布统计，**不参与战斗**（FR14）。 */
-  readonly kind: 'word' | 'keyword' | 'response'
+  readonly kind: (typeof CARD_KINDS)[number]
   readonly promptText: string
   readonly options: readonly Option[]
 }

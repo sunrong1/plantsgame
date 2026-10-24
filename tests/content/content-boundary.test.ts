@@ -22,8 +22,10 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 import { TOWER_TYPES } from '../../src/core/balance'
-import { TowerTypeSchema } from '../../src/content/schema'
+import { CARD_KINDS } from '../../src/core/types'
+import { CardKindSchema, TowerTypeSchema } from '../../src/content/schema'
 import { rulesForFile, severityOf } from '../fixtures/eslint-rules'
+import { findForbiddenImports } from '../helpers/import-specifiers'
 
 /**
  * ⚠️ `[CR]` 2026-10-16 删除 —— **这里原来还有第三份 `rulesFor` 副本。**
@@ -90,22 +92,78 @@ describe('AC-7 / M11 —— 塔型的单一事实源', () => {
     ).toContain('**/core/**')
   })
 
-  it('content/ 的源码里真的没有 import core（规则之外再验一次实际代码）', () => {
+  it('G304 content/ 的源码里真的没有 import core（规则之外再验一次实际代码）', () => {
     // 规则可能配错、可能只对某些 glob 生效。这条直接读源码，
     // 是「边界」这个断言最后一道不依赖任何配置的兜底。
+    //
+    // ⚠️ **G304（2026-10-24 夜）**：这一条原先用正则 `/from\s+'([^']+)'/g` 扫，
+    //   **只认静态形态** ⇒ 动态 `import()` 两道守卫都放过（DF-120 的实测：
+    //   往 `distribution.ts` 注入 `await import('../core/balance')`，
+    //   ESLint 0 problems、typecheck 通过、**运行期真的把 `ZOMBIE_HP` 读了回来**）。
+    //   现在改用 TypeScript 的 AST（`tests/helpers/import-specifiers.ts`）⇒
+    //   静态 / 动态 / 重导出 / `require` 四种形态一次收齐，
+    //   且**注释与字符串里的字面量天然不算导入**（正则分不清，AST 分得清）。
     const srcDir = fileURLToPath(new URL('../../src/content/', import.meta.url))
     const offenders: string[] = []
     for (const name of readdirSync(srcDir)) {
       if (!name.endsWith('.ts')) continue
       const body = readFileSync(join(srcDir, name), 'utf8')
-      for (const m of body.matchAll(/from\s+'([^']+)'/g)) {
-        if (/(^|\/)core(\/|$)/.test(m[1])) offenders.push(`${name} → ${m[1]}`)
+      for (const hit of findForbiddenImports(name, body, /(^|\/)core(\/|$)/)) {
+        offenders.push(`${name} → ${hit}`)
       }
     }
 
     expect(
       offenders,
       `内容层 import 了 core：${offenders.join('、')} —— 内容校验不得依赖战斗层模块加载成功`,
+    ).toEqual([])
+  })
+
+  it('G304.2 反向自测：动态 import / 静态 import 都要被抓到，注释里的不算', () => {
+    const forbidden = /(^|\/)core(\/|$)/
+
+    // ① 动态 import —— 这正是 DF-120 实测能穿过两道守卫的形态。
+    const dynamic = findForbiddenImports(
+      'probe.ts',
+      "export async function probe() {\n  const m = await import('../core/balance')\n  return m\n}\n",
+      forbidden,
+    )
+    expect(
+      dynamic.length,
+      '构造失效：动态 `import(\'../core/balance\')` 没被抓到 ⇒ 判据仍然只认静态形态',
+    ).toBeGreaterThan(0)
+    expect(
+      dynamic.some((h) => h.includes('dynamic')),
+      `构造失效：抓到了，但不是认出的「dynamic」形态：\n${dynamic.join('\n')}`,
+    ).toBe(true)
+
+    // ② 静态 import —— 老判据唯一认得的形态，不能因为换实现而丢掉。
+    const staticImport = findForbiddenImports(
+      'probe.ts',
+      "import { ZOMBIE_HP } from '../core/balance'\n",
+      forbidden,
+    )
+    expect(
+      staticImport.length,
+      '构造失效：静态 import 没被抓到 ⇒ 换 AST 判据把老形态弄丢了',
+    ).toBeGreaterThan(0)
+
+    // ③ 注释里写着同样的字面量 ⇒ **不算导入**（DF-120 的「分不清注释与代码」）。
+    const inComment = findForbiddenImports(
+      'probe.ts',
+      "// 边界拦的是这种写法：import { ZOMBIE_HP } from '../core/balance'\n/* 动态的也拦：await import('../core/balance') */\n",
+      forbidden,
+    )
+    expect(
+      inComment,
+      `构造失效：注释里的字面量被判成了导入 —— 说明判据仍在按文本匹配：\n${inComment.join('\n')}`,
+    ).toEqual([])
+
+    // ④ 无关的导入不该误报（判据得是「按禁列」而不是「见到 import 就红」）。
+    const benign = findForbiddenImports('probe.ts', "import { z } from 'zod'\n", forbidden)
+    expect(
+      benign,
+      `构造失效：连 zod 都被报出来了 ⇒ 判据的禁列写错了：\n${benign.join('\n')}`,
     ).toEqual([])
   })
 })
@@ -130,5 +188,84 @@ describe('AC-30 的副作用 —— content/ 的 DOM 边界由 ESLint 守', () =
     for (const name of ['window', 'document', 'localStorage']) {
       expect(rule, `content/ 的 DOM 边界没禁住 ${name}`).toContain(name)
     }
+  })
+})
+
+/**
+ * 判据本体：比对 core 侧与 content 侧的卡型取值集合（**顺序无关**）。
+ *
+ * 抽成函数是为了让**反向自测真的调用判据本体**（R-51）——
+ * 反向自测只断言假夹具自身的话，判据被掏空时照样绿。
+ */
+export function cardKindProblems(
+  coreKinds: readonly string[],
+  contentKinds: readonly string[],
+): string[] {
+  const problems: string[] = []
+  const core = new Set(coreKinds)
+  const content = new Set(contentKinds)
+  for (const kind of core) {
+    if (!content.has(kind)) problems.push(`core 认的卡型「${kind}」，内容层不认`)
+  }
+  for (const kind of content) {
+    if (!core.has(kind)) problems.push(`内容层能录的卡型「${kind}」，core 不认`)
+  }
+  return problems
+}
+
+/** schema 的卡型枚举取值集合（从 schema 的元信息取，不另抄一份字面量）。 */
+function cardKindsFromSchema(): readonly string[] {
+  // Zod 4 的枚举把合法值放在 `.def.entries` 里（与塔型那条同款）。
+  const def = CardKindSchema.def as { entries?: Record<string, string> }
+  if (def.entries === undefined) {
+    throw new Error('CardKindSchema 不再是枚举 —— 卡型白名单的形状变了，本断言需要重写')
+  }
+  return Object.keys(def.entries)
+}
+
+describe('G303 —— 卡型的单一事实源（core ↔ content）', () => {
+  it('G303.1 内容层的卡型集合 === core 的 CARD_KINDS', () => {
+    const contentKinds = cardKindsFromSchema()
+    expect(
+      contentKinds.length,
+      '内容层的卡型集合读出来是空的 ⇒ 判据在空集上成立',
+    ).toBeGreaterThan(0)
+
+    const problems = cardKindProblems(CARD_KINDS, contentKinds)
+    expect(
+      problems,
+      `core 的卡型与内容层的卡型不一致：\n${problems.join('\n')}\n` +
+        '—— 两侧各写一份时，任何一侧增删卡型，另一侧一声不响（DF-117）',
+    ).toEqual([])
+  })
+
+  it('G303.2 反向自测：任一侧多出一个卡型，判据必须报出来（判据本体真的被调用）', () => {
+    const contentKinds = cardKindsFromSchema()
+
+    const coreExtra = cardKindProblems([...CARD_KINDS, 'phrase'], contentKinds)
+    expect(
+      coreExtra.length,
+      '构造失效：core 侧多出一个卡型，判据却没报出来',
+    ).toBeGreaterThan(0)
+    expect(
+      coreExtra.some((p) => p.includes('phrase')),
+      `构造失效：判据报了别的卡型，没报多出来的那个：\n${coreExtra.join('\n')}`,
+    ).toBe(true)
+
+    const contentExtra = cardKindProblems(CARD_KINDS, [...contentKinds, 'phrase'])
+    expect(
+      contentExtra.length,
+      '构造失效：内容层多出一个卡型，判据却没报出来',
+    ).toBeGreaterThan(0)
+    expect(
+      contentExtra.some((p) => p.includes('phrase')),
+      `构造失效：判据报了别的卡型，没报多出来的那个：\n${contentExtra.join('\n')}`,
+    ).toBe(true)
+
+    // 一致时必须零命中 —— 否则判据可能恒红（那样它就什么也没守住）。
+    expect(
+      cardKindProblems(CARD_KINDS, contentKinds),
+      '构造失效：两侧一致时判据却报了问题 ⇒ 判据恒红',
+    ).toEqual([])
   })
 })

@@ -49,7 +49,7 @@
 #   epics.md 的销项说明处理。
 
 generated: 2026-10-12
-last_updated: 2026-10-24  # 两轮 `[CC]`（24 关 / 97 张、1.19 组 H 字面）+ 守卫 G295–G301 ⇒ 见 planning-artifacts/sprint-change-proposal-2026-10-24{,-2}.md
+last_updated: 2026-10-25  # 两轮 `[CC]`（24 关 / 97 张、1.19 组 H 字面）+ 守卫 G295–G304 ⇒ 见 planning-artifacts/sprint-change-proposal-2026-10-24{,-2}.md
 project: plants-game
 project_key: NOKEY
 tracking_system: file-system

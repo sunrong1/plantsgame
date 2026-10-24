@@ -149,7 +149,7 @@ Story 1.15 的 G96 写的是「推进确实落盘了」，那条判据在**整�
 
 **依据** 内容要能在不加载战斗规则的前提下独立校验（`validate:content` 正是如此）。
 
-**守卫** `tests/content/content-boundary.test.ts`
+**守卫** `tests/content/content-boundary.test.ts` —— ESLint 的 `no-restricted-imports`（⚠️ 它**只认静态 import 形态**，动态 `import()` 看不见）+ **G304**（同一文件里用 **TypeScript 的 AST** 扫源码，**静态 / 动态 / 重导出 / `require` 四种形态**一次收齐；注释与字符串里的字面量**不算**导入）。
 
 **首现** Story 1.6
 
@@ -175,7 +175,7 @@ Story 1.15 的 G96 写的是「推进确实落盘了」，那条判据在**整�
 
 **依据** 视觉一致性 + 已交付的词图/SVG 按当时的字面着色，改值会让整套资产与 UI 脱节。
 
-**守卫** ⚠️ **无守卫** —— `tests/content/palette.test.ts` 只断言 token **存在**与对比度；`asset-geometry.test.ts` 的 G3 只断言 SVG 里的 hex **等于 tokens.css 当期字面值**（一致性，不是冻结）。**即：改了 tokens.css 的值，G3 会跟着一起绿，拦不住。**
+**守卫** `tests/scaffold/color-token-values.test.ts`（**G302** —— 逐个 token 比对**值**与快照 `tests/fixtures/color-tokens.ts`；新增 token 未登记 / 既有值被改 / token 被删，三种都红）。⚠️ `tests/content/palette.test.ts` 只断言 token **存在**与对比度；`asset-geometry.test.ts` 的 G3 只断言 SVG 里的 hex **等于 tokens.css 当期字面值**（一致性，不是冻结）—— 这两条**拦不住改值**，拦值的是 G302。
 
 **首现** Story 1.8
 

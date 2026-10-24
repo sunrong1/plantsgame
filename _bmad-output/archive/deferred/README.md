@@ -252,11 +252,11 @@ git log --oneline --follow -- _bmad-output/implementation-artifacts/deferred-wor
 | 2026-10-20--cr-story-2-1.md | 4 | W4 | W4. `countElements` 对「无根 SVG」报 0，与「合法空图」不可分 | DF-115 | 开放 |
 | 2026-10-20--cr-story-2-1.md | 5 | W5 | W5. 48px 判读结论没有机器可读载体；6 个中间版内容永久不可复核 | DF-116 | 开放 |
 | 2026-10-20--ds-story-2-2.md | 1 | 35 | ✅ 已作废 —— `[CR]` 2026-10-20 在本 story 内就地更正（结论不变） | — | 已结 |
-| 2026-10-20--ds-story-2-2.md | 2 | 36 | `Card.kind`（core 侧）与 `CardKindSchema`（content 侧）之间没有等值守卫 | DF-117 | 开放 |
+| 2026-10-20--ds-story-2-2.md | 2 | 36 | `Card.kind`（core 侧）与 `CardKindSchema`（content 侧）之间没有等值守卫 | DF-117 | 已结 |
 | 2026-10-20--ds-story-2-2.md | 3 | 37 | ✅ 已补 —— `[CR]` 2026-10-20 当场补进 §8.1.4 与 §8.4.1 | — | 已结 |
 | 2026-10-20--ds-story-2-2.md | 4 | 38 | 卡型分布规则**不**校验「整数化后与份额的误差」——口径已定，守卫仍缺 | DF-118 | 已结 |
 | 2026-10-20--ds-story-2-2.md | 5 | 39 | 🔥 R-36 的起号 `grep` 命令实测会漏号（`\b` 在 CJK 前不成立） | DF-119 | 开放 |
-| 2026-10-20--ds-story-2-2.md | 6 | 40 | 🔥 R-10 只拦得住**静态** import：动态 `import()` 两条守卫都放过（Story 2.2 `[CR]` 实测） | DF-120 | 开放 |
+| 2026-10-20--ds-story-2-2.md | 6 | 40 | 🔥 R-10 只拦得住**静态** import：动态 `import()` 两条守卫都放过（Story 2.2 `[CR]` 实测） | DF-120 | 已结 |
 | 2026-10-20--ds-story-2-2.md | 7 | 41 | `docs/card-distribution.md` §3 的逐单元表仍然**零守卫**（Story 2.2 `[CR]`） | DF-121 | 开放 |
 | 2026-10-20--cr-story-1-18.md | 1 | W6 | W6. `LevelOutcome` 模态只把焦点移进浮层，没有把 Tab 键锁在浮层内（1.16 引入） | DF-122 | 开放 |
 | 2026-10-20--cr-story-1-18.md | 2 | W7 | W7. `LevelOutcome` 浮层的左右安全区（1.16 引入；`[CR]` 2026-10-20 **更正过原因**） | DF-123 | 开放 |
@@ -321,7 +321,7 @@ git log --oneline --follow -- _bmad-output/implementation-artifacts/deferred-wor
 | 2026-10-22--cr-epic-1-集成层检视.md | 33 | E33 | E33. 3 份 `done` 的 story 文档还躺在 `implementation-artifacts/` | DF-180 | 开放 |
 | 2026-10-22--cr-epic-1-集成层检视.md | 34 | E34 | E34. R-40 的现有守卫只查「引用方向」，不查「归档方向」 | DF-181 | 开放 |
 | 2026-10-22--cr-epic-1-集成层检视.md | 35 | E35 | E35. `scripts/check-execution-drift.py` 是个假绿 | DF-182 | 开放 |
-| 2026-10-22--cr-epic-1-集成层检视.md | 36 | E36 | E36. R-12「既有 `--color-*` 的**值**不得改」：改掉一个既有 token 的值，全仓测试照样全绿 | DF-183 | 开放 |
+| 2026-10-22--cr-epic-1-集成层检视.md | 36 | E36 | E36. R-12「既有 `--color-*` 的**值**不得改」：改掉一个既有 token 的值，全仓测试照样全绿 | DF-183 | 已结 |
 | 2026-10-22--cr-epic-1-集成层检视.md | 37 | E37 | E37. R-22「平衡模拟器不得另起一份数值」：把 import 换成副本，全仓测试照样全绿 | DF-184 | 开放 |
 | 2026-10-22--cr-epic-1-集成层检视.md | 38 | E38 | E38. R-04 的 TTS 那半：G25 只扫 `quiz/` 三个文件，组件在别处直接 import `services/pronunciation` ⇒ 实测 0 红 | DF-185 | 开放 |
 | 2026-10-22--cr-epic-1-集成层检视.md | 39 | E39 | E39. R-04 今天就在被违反：TTS 由组件里的 `watch` 触发，而 `effects-runner` 的 `case 'TTS'` 是空 `return` | DF-186 | 开放 |
@@ -346,8 +346,8 @@ git log --oneline --follow -- _bmad-output/implementation-artifacts/deferred-wor
 
 | 结论 | 条数 |
 |---|---|
-| 开放 | 188 |
-| 已结 | 57 |
+| 开放 | 185 |
+| 已结 | 60 |
 | 作废 | 4 |
 | **合计（分诊单元）** | **249** |
 

@@ -2659,28 +2659,6 @@ jsdom 没有布局引擎 ⇒ 测不出来。本轮给可源码化的那一半补
 
 > 来源：`## Deferred from: code review of story-2-1-词图产能验证 `[CR]` (2026-10-20)` ｜ 旧编号 `W5` ｜ 详见 `archive/deferred/2026-10-20--cr-story-2-1.md` 的「分诊结论」
 
-## DF-117
-
-**状态**：待触发 · **归属**：未指派 · **恢复条件**：任何人增删 `CardKindSchema` 的取值时，顺手在 `content-boundary.test.ts` 加一条与 `TOWER_TYPES` 同款的等值断言
-
-**一句话**：core 的 `Card.kind` 与 content 的 `CardKindSchema` 无等值守卫（`content-boundary.test.ts` 只钉 `TOWER_TYPES`）
-
-### 原始论证
-
-### 36. `Card.kind`（core 侧）与 `CardKindSchema`（content 侧）之间没有等值守卫
-
-- **实测**：塔型有 `tests/content/content-boundary.test.ts` 的 `TOWER_TYPES` 等值断言，
-  **卡型没有**。本 story 的变异 **M224**（给 `CardKindSchema` 加第四型 `'phrase'`）实测：
-  只有本 story 新加的 G187 键集合判据与 `tests/content/schema.test.ts` 的既有断言变红，
-  **`src/core/` 侧零反应** —— core 那边仍认三种，内容层已经能录四种。
-- **为什么不在本 story 补**：补它要动 `tests/core/`（core↔content 的跨层断言），
-  超出「只落数据层规则」的边界，且属另一个 story 的范围。
-- **恢复条件**：任何人增删 `CardKindSchema` 的取值时，顺手在
-  `content-boundary.test.ts` 加一条与 `TOWER_TYPES` 同款的等值断言。
-
-
-> 来源：`## Deferred from: story-2-2-难度阶梯规则落地 `[DS]` (2026-10-20)` ｜ 旧编号 `36` ｜ 详见 `archive/deferred/2026-10-20--ds-story-2-2.md` 的「分诊结论」
-
 ## DF-119
 
 **状态**：待触发 · **归属**：未指派 · **恢复条件**：下次动 `docs/rules/process.md` 时把两条命令改成 `-P` 无 `\b` 形态；`M##` 那条的全角冒号约束仍然必要
@@ -2710,41 +2688,6 @@ jsdom 没有布局引擎 ⇒ 测不出来。本轮给可源码化的那一半补
 
 
 > 来源：`## Deferred from: story-2-2-难度阶梯规则落地 `[DS]` (2026-10-20)` ｜ 旧编号 `39` ｜ 详见 `archive/deferred/2026-10-20--ds-story-2-2.md` 的「分诊结论」
-
-## DF-120
-
-**状态**：待排期 · **归属**：未指派 · **恢复条件**：给内容层加第三条形态守卫（把源码扫描的正则扩成同时吃 `from '…'` 与 `import('…')`），或改用能覆盖动态 import 的 ESLint 规则
-
-**一句话**：`content-boundary.test.ts` 源码扫描只吃 `from '…'`，动态 `import()` 仍穿过 R-10 两道守卫
-
-### 原始论证
-
-### 40. 🔥 R-10 只拦得住**静态** import：动态 `import()` 两条守卫都放过（Story 2.2 `[CR]` 实测）
-
-- **实测**（Story 2.2 `[CR]`，往 `src/content/distribution.ts` 注入探针后逐项跑）：
-  | 写法 | ESLint | `content-boundary.test.ts` | typecheck | 运行期 |
-  |---|---|---|---|---|
-  | `import { ZOMBIE_HP } from '../core/balance'` | 🔴 拦 | — | — | — |
-  | `import { ZOMBIE_HP } from '../core/balance.ts'` | 🔴 拦 | — | — | — |
-  | `await import('../core/balance')` | 🟢 0 problems | 🟢 5/5 通过 | 🟢 无输出 | **真的返回 100** |
-- **根因**：`no-restricted-imports` 的 `paths`/`patterns` 由 ESLint 解析 **import 声明**得出，
-  动态 `import()` 不产生 ImportDeclaration ⇒ 规则看不见。
-  而 `content-boundary.test.ts` 那条源码兜底只正则 `/from\s+'([^']+)'/g` ——
-  **动态 import 没有 `from` 关键字** ⇒ 同样看不见。两道守卫都只认静态形态。
-- **为什么不在 Story 2.2 补**：Story 2.2 只落数据层规则，补它要动 `eslint.config.js`
-  与跨层守卫文件，且 R-10 是 Story 1.6 起的既有边界，不属本 story 的改动面。
-- **恢复条件**：给内容层加第三条形态守卫（可复用第 39 条「两条命令都跑」的思路 ——
-  在 `content-boundary.test.ts` 的源码扫描里把正则扩成同时吃
-  `from '…'` 与 `import('…')` 两种形态），或改用能覆盖动态 import 的 ESLint 规则。
-  ⚠️ 顺带：`src/content/distribution.ts` 的文件头原本宣称 R-10 使它「**结构上**读不到
-  `ZOMBIE_HP`」—— 该措辞已被 `[CR]` 当场更正为「拦住静态 import」，原文不得复活。
-  ⚠️ 另一条顺手撞出来的：**那条源码兜底分不清注释与代码**。本 story 在 `[CR]` 里第一版
-  注释写了静态导入的完整形态（含 `from` + 引号 + core 路径），`content-boundary.test.ts`
-  当场红（`distribution.ts → ../core/…`）—— 也就是说**在 `src/content/` 里连「写清楚这条
-  边界拦的是什么」都做不到**，除非把导入形态拆开写。补守卫时顺手把这条也处理掉。
-
-
-> 来源：`## Deferred from: story-2-2-难度阶梯规则落地 `[DS]` (2026-10-20)` ｜ 旧编号 `40` ｜ 详见 `archive/deferred/2026-10-20--ds-story-2-2.md` 的「分诊结论」
 
 ## DF-121
 
@@ -4204,24 +4147,6 @@ jsdom 没有布局引擎 ⇒ 测不出来。本轮给可源码化的那一半补
 
 
 > 来源：`## Deferred from: code review of epic-1-集成层检视 (2026-10-22)` ｜ 旧编号 `E35` ｜ 详见 `archive/deferred/2026-10-22--cr-epic-1-集成层检视.md` 的「分诊结论」
-
-## DF-183
-
-**状态**：待触发 · **归属**：未指派 · **恢复条件**：下次补 `tokens.css` 的守卫时
-
-**一句话**：R-12「既有 `--color-*` 值不得改」无守卫，改 token 值全仓测试仍全绿
-
-### 原始论证
-
-### E36. R-12「既有 `--color-*` 的**值**不得改」：改掉一个既有 token 的值，全仓测试照样全绿
-
-- **事实**：R-12 逐字要求既有色板 token 的**值**不得改，但**没有任何守卫**守它。
-- **修法**：加一条守卫（逐个 token 断言当前值）。
-- **归属**：规则守卫。
-- **恢复条件**：下次补 `tokens.css` 的守卫时。
-
-
-> 来源：`## Deferred from: code review of epic-1-集成层检视 (2026-10-22)` ｜ 旧编号 `E36` ｜ 详见 `archive/deferred/2026-10-22--cr-epic-1-集成层检视.md` 的「分诊结论」
 
 ## DF-184
 

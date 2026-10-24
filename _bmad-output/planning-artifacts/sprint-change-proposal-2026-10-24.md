@@ -288,3 +288,63 @@
 ⚠️ **M352 变 2 红而不是 1 红**：因为 G300.3 是**反向自测**，它同样调用判据本体
 ⇒ 判据被削弱时，**正向与反向一起红**（这正是 R-51 要的形态）。
 
+## 8. 三条规则守卫补齐：DF-183 / DF-117 / DF-120
+
+> 追加补记（**2026-10-25 夜**，无人值守批次；本提案正文的日期仍是 2026-10-24）。
+> §1–§7 的结论仍然成立。
+> 三条条目的**原文与结清依据**在归档层（`archive/deferred/2026-10-22--cr-epic-1-集成层检视.md`、
+> `archive/deferred/2026-10-20--ds-story-2-2.md` 的「分诊结论」），
+> 活账本与详情层的那几行按 R-43 三处一起删掉了。
+
+### 8.1 DF-183 —— R-12「既有 `--color-*` 的**值**不得改」（已结）
+
+- **触发条件原文**：「下次补 `tokens.css` 的守卫时」—— 那条触发条件在 **G301**
+  （个数只有一个出处）落地时就到了；本条接着补上**值**的那一半。
+- **新守卫 G302**（`tests/scaffold/color-token-values.test.ts`）：判据本体
+  `tokenValueProblems(actual, expected)` 逐个 token 比对 `src/styles/tokens.css`
+  的声明值与快照 `tests/fixtures/color-tokens.ts` ⇒ **值被改 / token 被删 /
+  新 token 未登记**，三种都红。
+- ⚠️ **快照是第二份副本，但它不是 R-37 说的「复制链」** —— 冻结一个值就**必须**
+  有一份第二副本可比对，没有第二份就没有比对基准；选**可读快照**而不是哈希，
+  是为了让 reviewer 在 diff 里**直接看到**改成了什么。
+
+### 8.2 DF-117 —— core 的 `Card.kind` ↔ content 的 `CardKindSchema` 等值守卫（已结）
+
+- **改了什么**：core 侧新增导出 `CARD_KINDS`（`src/core/types.ts`；
+  `Card.kind` 的类型改成 `(typeof CARD_KINDS)[number]` ⇒ core 侧的取值**只剩这一处**），
+  `src/core/index.ts` 同步重导出；`tests/content/content-boundary.test.ts` 新增 **G303**
+  （判据本体 `cardKindProblems(coreKinds, contentKinds)`，顺序无关）。
+- ⚠️ **这条的恢复条件是「触发式」的**（等人改 `CardKindSchema` 的取值才动），
+  但**常驻的等值守卫**比「等人改时再补」更强 ⇒ 无人值守下自动选择：**提前补上**。
+
+### 8.3 DF-120 —— R-10 只拦得住**静态** import（已结）
+
+- **改了什么**：新建 `tests/helpers/import-specifiers.ts`，用 **TypeScript 的 AST**
+  列出源码里所有导入写法（静态 `import` / 动态 `import()` / `export … from` /
+  `require` / `import x = require(…)`）；`content-boundary.test.ts` 里那条源码兜底
+  **换成**它（不再用正则 `/from\s+'([^']+)'/g`）⇒ **G304**。
+- ⚠️ **顺带消解的两件事**：① 「那条源码兜底分不清注释与代码」—— AST 分得清 ⇒
+  `src/content/distribution.ts` 的文件头不必再为绕开正则而把导入形态拆开写；
+  ② 动态 `import()` 不再能穿过 R-10（**运行期真的能读到 `ZOMBIE_HP`** 那个洞）。
+- ⚠️ **ESLint 那条 `no-restricted-imports` 至今只认静态形态** ——
+  拦住动态 import 的是**本仓库的守卫**，不是语言层面的禁止。
+
+### 8.4 变异验证记录（R-50 四步，2026-10-25 夜实测）
+
+| # | 改坏的那一处 | grep 证实落盘 | 变红 | 复原 |
+|---|---|---|---|---|
+| **M354** | `src/styles/tokens.css` 的 `--color-sun: #fdd835` → `#fdd836` | ✅ 命中 1 处 | **2 红**（G302.1 + G302.2） | ✅ 已复原 |
+| **M355** | `src/core/types.ts` 的 `CARD_KINDS` 加第四型 `'phrase'` | ✅ 命中 1 处 | **2 红**（G303.1 + G303.2） | ✅ 已复原 |
+| **M356** | `src/content/distribution.ts` 注入 `await import('../core/balance')` | ✅ 命中 1 处 | **1 红**（G304） | ✅ 已复原 |
+
+三轮跑之前都先 `rm -rf node_modules/.vite`（R-50 第 0 步）；每轮跑的是**全量**套件
+（**2397** 条）—— 不是只跑被改的那一个文件，因为「别的守卫会不会跟着红」也是结论的一部分。
+⚠️ **M354 / M355 都变 2 红**：因为各自的**反向自测**同样调用判据本体
+⇒ 判据被削弱时，**正向与反向一起红**（R-51 要的形态）。
+⚠️ **M356 只变 1 红，而它正是那个真洞**：变异前那条源码兜底用正则 `/from\s+'([^']+)'/g`
+⇒ 动态 import 没有 `from` 关键字 ⇒ **老判据对这次注入毫无反应**：
+把 M356 那段探针单独喂给老正则，实测**命中 0 处**（`node -e` 实跑，输出 `[]`），
+这与 DF-120 的原始实测一致（「`content-boundary.test.ts` **5/5** 通过」，运行期真的返回 100）。
+⇒ **新守卫补上之后，同一处注入变 1 红** —— 这就是补守卫的意义。
+
+

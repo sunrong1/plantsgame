@@ -23,11 +23,15 @@
  *   所以本文件读不到 `ZOMBIE_HP` / `ZOMBIE_MOVE_PER_ROUND` / 网格行号，也读不到
  *   `isCorrect`。难度递增由**卡型分布与词汇本身**承载，不由战斗数值与阳光承载
  *   （AC-C1 / AC-C2）。
- *   ⚠️ `[CR]` 2026-10-20 更正：原文写的是「**结构上**读不到」。实测**不成立** ——
+ *   ⚠️ `[CR]` 2026-10-20 更正：原文写的是「**结构上**读不到」。当日实测**不成立** ——
  *   动态 `import()` 形态既不触发 ESLint（0 problems）、也不触发
  *   `content-boundary.test.ts` 的源码兜底（那条只正则 `from '…'`）、typecheck 也过，
  *   且**运行期真的把 `ZOMBIE_HP` 读了回来**。两条守卫都只认静态 import 形态。
- *   已登记 `deferred-work.md`。本文件自身不越界，但别把这条边界当结构保证用。
+ *   📎 **2026-10-25 夜已补上**（DF-120）：那条源码兜底改用 **TypeScript 的 AST**
+ *   （守卫 **G304**，判据在 `tests/helpers/import-specifiers.ts`）⇒ 静态 / 动态 /
+ *   重导出 / `require` 四种形态一次收齐 ⇒ 现在「结构上读不到」这句话**成立**。
+ *   ⚠️ 但**别把它当成结构保证**：拦下来的是**本仓库的守卫**，不是语言层面的禁止 ——
+ *   ESLint 那条 `no-restricted-imports` 至今**只认静态 import 形态**。
  * · **复用 `CardKindSchema` 的取值而不是新造一份联合类型**：`CardDistribution` 的键
  *   直接是 `Record<CardKind, number>`，于是「三型齐全」由类型系统保证 ——
  *   schema 增删卡型时这条类型当场变红，而规则悄悄少算一族卡不会发生。

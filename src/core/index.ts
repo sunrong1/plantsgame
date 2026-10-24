@@ -78,6 +78,9 @@ export {
 } from './combat.js'
 
 export {
+  // 📎 卡型三选一的**唯一**出处（core 侧）。内容层的 `CardKindSchema` 必须与它逐字相同
+  //   —— 守卫 G303 比对这两个来源（DF-117：两侧曾各写一份，无人发现）。
+  CARD_KINDS,
   assertNonEmptyId,
   assertSlowTurns,
   assertZombieCol,

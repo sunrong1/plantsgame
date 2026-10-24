@@ -122,9 +122,7 @@
 | DF-114 | 待触发 | 未指派 | 若该测试未来变成「实现契约的独立见证」，改手写 interface 而非 `typeof import` | `tests/scripts/word-image-throughput.test.ts` 用 `as typeof import(...)` 做夹具，类型层不再独立 | [`df-114`](./deferred-details.md#df-114) |
 | DF-115 | 待触发 | 未指派 | 若工具要区分「坏文件」与「空图」，改返回「元素数 + 是否有根」的元组或带哨兵值 | `scripts/word-image-throughput.ts` 的 `countElements` 对无根 SVG 报 0，与合法空图不可分 | [`df-115`](./deferred-details.md#df-115) |
 | DF-116 | 待触发 | 未指派 | 若「画得像不像」的判读要变成可审计记录，需在工具里加中间版归档与判读快照 | `docs/word-image-lab/versions.jsonl` 只记 48px 结论，`egg`/`playground` 中间版未落盘 | [`df-116`](./deferred-details.md#df-116) |
-| DF-117 | 待触发 | 未指派 | 任何人增删 `CardKindSchema` 的取值时，顺手在 `content-boundary.test.ts` 加一条与 `TOWER_TYPES` 同款的等值断言 | core 的 `Card.kind` 与 content 的 `CardKindSchema` 无等值守卫（`content-boundary.test.ts` 只钉 `TOWER_TYPES`） | [`df-117`](./deferred-details.md#df-117) |
 | DF-119 | 待触发 | 未指派 | 下次动 `docs/rules/process.md` 时把两条命令改成 `-P` 无 `\b` 形态；`M##` 那条的全角冒号约束仍然必要 | `docs/rules/process.md` 的 R-36 起号 grep 仍是 `-E` 加 `\b`，实测会漏 CJK 后的守卫号 | [`df-119`](./deferred-details.md#df-119) |
-| DF-120 | 待排期 | 未指派 | 给内容层加第三条形态守卫（把源码扫描的正则扩成同时吃 `from '…'` 与 `import('…')`），或改用能覆盖动态 import 的 ESLint 规则 | `content-boundary.test.ts` 源码扫描只吃 `from '…'`，动态 `import()` 仍穿过 R-10 两道守卫 | [`df-120`](./deferred-details.md#df-120) |
 | DF-121 | 待排期 | 未指派 | 加一条测试读 `docs/card-distribution.md` 的 §3 表，逐行解析后与 `targetCardDistribution` 的实算值比对（漂了就红） | `docs/card-distribution.md` §3 逐单元表仍零守卫，interpolate 改 smoothstep 时 G187–G190 全绿 | [`df-121`](./deferred-details.md#df-121) |
 | DF-122 | 待排期 | 未指派 | 在 `LevelOutcome.vue` 里加一层 focus trap（捕获 Tab / Shift+Tab 在浮层内循环，Esc 关闭），并加一条守卫断言「浮层打开后连按 N 次 Tab，焦点仍在浮层内的可聚焦元素上」 | `src/components/hud/LevelOutcome.vue` 只 `focus()` 不锁 Tab，焦点能跑到浮层后的格子 | [`df-122`](./deferred-details.md#df-122) |
 | DF-123 | 待触发 | Story 1.19 | 给 `LevelOutcome` 浮层自己的 `padding-left/right` 补上 `env(safe-area-inset-left/right)`，并加一条守卫断言 | `src/components/hud/LevelOutcome.vue` 浮层 `padding-left/right` 仍只有 `var(--space-panel-pad)` | [`df-123`](./deferred-details.md#df-123) |
@@ -185,7 +183,6 @@
 | DF-180 | 待触发 | 未指派 | 下次动这三份文档时 | 3 份 `done` 的 story 文档（`1-11`/`1-12`/`2-1`）仍躺在 `implementation-artifacts/` | [`df-180`](./deferred-details.md#df-180) |
 | DF-181 | 待触发 | 未指派 | 与 DF-180（E33）一条同批做 | R-40 归档守卫只断言「活跃文档不引用归档文件名」，不断言 `done` 文档已归档 | [`df-181`](./deferred-details.md#df-181) |
 | DF-182 | 待触发 | 未指派 | 与 DF-181（E34）一条同批做 | `scripts/check-execution-drift.py` 正则只扫 `1[-.]\d+`，抓不到实际漂移 | [`df-182`](./deferred-details.md#df-182) |
-| DF-183 | 待触发 | 未指派 | 下次补 `tokens.css` 的守卫时 | R-12「既有 `--color-*` 值不得改」无守卫，改 token 值全仓测试仍全绿 | [`df-183`](./deferred-details.md#df-183) |
 | DF-184 | 待触发 | 未指派 | 与 E12 同批做（都在平衡工具那条线上） | R-22「模拟器不得另起一份数值」无守卫，`balance-sim.ts` 可换本地副本仍全绿 | [`df-184`](./deferred-details.md#df-184) |
 | DF-185 | 待触发 | 未指派 | 与 DF-186（E39）一条同批做 | G25 只扫 `src/components/quiz/` 三文件，组件可直 import `services/pronunciation` 不红 | [`df-185`](./deferred-details.md#df-185) |
 | DF-186 | 待触发 | 未指派 | 与 DF-185（E38）一条同批做 | `effects-runner` 的 `case 'TTS'` 是空 `return`，朗读实际由组件 `watch` 触发 | [`df-186`](./deferred-details.md#df-186) |
