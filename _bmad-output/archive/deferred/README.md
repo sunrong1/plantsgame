@@ -236,7 +236,7 @@ git log --oneline --follow -- _bmad-output/implementation-artifacts/deferred-wor
 | 2026-10-19--cr-story-1-19-r6.md | 7 | 22（CR6 节） | `sliceDeckForLevel` 返回**可变**的 `DeckEntry[]`，与「纯函数 + 不改动传入」的注释纪律不成类型级约束 | DF-099 | 开放 |
 | 2026-10-19--cr-story-1-19-r6.md | 8 | 23（CR6 节） | 建造期锁定时，反馈文案仍是「再想想」，与「选项已置灰不可点」在观感上打架 | DF-100 | 开放 |
 | 2026-10-19--cr-story-1-19-r6.md | 9 | 24（CR6 节） | `G174③`「四局连起来 == 整个词表」只在「每局切片恰好合规」时成立 | DF-101 | 开放 |
-| 2026-10-19--cr-story-1-19-r6.md | 10 | 25（CR6 节） | 守卫编号没有起号纪律：`G30` 已被两个不相干的 story 共用（且缺一条跨 story 的查重守卫） | DF-102 | 开放 |
+| 2026-10-19--cr-story-1-19-r6.md | 10 | 25（CR6 节） | 守卫编号没有起号纪律：`G30` 已被两个不相干的 story 共用（且缺一条跨 story 的查重守卫） | DF-102 | 已结 |
 | 2026-10-20--ds-story-2-1.md | 1 | 26 | 🔥 「200-400 张」这个估算基数被实测推翻，但源文档一个字未改 | DF-103 | 开放 |
 | 2026-10-20--ds-story-2-1.md | 2 | 27 | 🔥 `epics.md` §7.2 的「程序化生成 ⇒ 工时减半」被实测打掉 4/5 | DF-104 | 开放 |
 | 2026-10-20--ds-story-2-1.md | 3 | 28 | `docs/art-direction.md` §5.1 缺「食物」档与「场景」档 | DF-105 | 已结 |
@@ -255,7 +255,7 @@ git log --oneline --follow -- _bmad-output/implementation-artifacts/deferred-wor
 | 2026-10-20--ds-story-2-2.md | 2 | 36 | `Card.kind`（core 侧）与 `CardKindSchema`（content 侧）之间没有等值守卫 | DF-117 | 已结 |
 | 2026-10-20--ds-story-2-2.md | 3 | 37 | ✅ 已补 —— `[CR]` 2026-10-20 当场补进 §8.1.4 与 §8.4.1 | — | 已结 |
 | 2026-10-20--ds-story-2-2.md | 4 | 38 | 卡型分布规则**不**校验「整数化后与份额的误差」——口径已定，守卫仍缺 | DF-118 | 已结 |
-| 2026-10-20--ds-story-2-2.md | 5 | 39 | 🔥 R-36 的起号 `grep` 命令实测会漏号（`\b` 在 CJK 前不成立） | DF-119 | 开放 |
+| 2026-10-20--ds-story-2-2.md | 5 | 39 | 🔥 R-36 的起号 `grep` 命令实测会漏号（`\b` 在 CJK 前不成立） | DF-119 | 已结 |
 | 2026-10-20--ds-story-2-2.md | 6 | 40 | 🔥 R-10 只拦得住**静态** import：动态 `import()` 两条守卫都放过（Story 2.2 `[CR]` 实测） | DF-120 | 已结 |
 | 2026-10-20--ds-story-2-2.md | 7 | 41 | `docs/card-distribution.md` §3 的逐单元表仍然**零守卫**（Story 2.2 `[CR]`） | DF-121 | 开放 |
 | 2026-10-20--cr-story-1-18.md | 1 | W6 | W6. `LevelOutcome` 模态只把焦点移进浮层，没有把 Tab 键锁在浮层内（1.16 引入） | DF-122 | 开放 |
@@ -326,7 +326,7 @@ git log --oneline --follow -- _bmad-output/implementation-artifacts/deferred-wor
 | 2026-10-22--cr-epic-1-集成层检视.md | 38 | E38 | E38. R-04 的 TTS 那半：G25 只扫 `quiz/` 三个文件，组件在别处直接 import `services/pronunciation` ⇒ 实测 0 红 | DF-185 | 开放 |
 | 2026-10-22--cr-epic-1-集成层检视.md | 39 | E39 | E39. R-04 今天就在被违反：TTS 由组件里的 `watch` 触发，而 `effects-runner` 的 `case 'TTS'` 是空 `return` | DF-186 | 开放 |
 | 2026-10-22--cr-epic-1-集成层检视.md | 40 | E40 | E40. R-31：活的项目文档里就有 4 处**已经失效**的行号引用 | DF-187 | 开放 |
-| 2026-10-22--cr-epic-1-集成层检视.md | 41 | E41 | E41. `docs/rules/testing.md` 里没有「守卫编号全仓库唯一」这条纪律 | DF-188 | 开放 |
+| 2026-10-22--cr-epic-1-集成层检视.md | 41 | E41 | E41. `docs/rules/testing.md` 里没有「守卫编号全仓库唯一」这条纪律 | DF-188 | 已结 |
 | 2026-10-22--cr-epic-1-集成层检视.md | 42 | E42 | E42. 六条「现状合规、但没有守卫」的规则（LOW） | DF-189 | 开放 |
 | 2026-10-23--ds-story-2-5.md | 1 | — | 下一个单元的词条数 N 不可照抄单元 1（§5.1.1 的可行集对 N 敏感，甚至可能为空） | DF-199 | 开放 |
 | 2026-10-23--ds-story-2-5.md | 2 | — | 跳过的词（词图加载失败）在单元推进后怎么办 | DF-200 | 开放 |
@@ -342,12 +342,12 @@ git log --oneline --follow -- _bmad-output/implementation-artifacts/deferred-wor
 | 2026-10-24--cr-story-2-4-选项措辞.md | 1 | — | 源码里五处「四个选项」的陈旧注释 | DF-194 | 已结 |
 | 2026-10-24--cr-story-2-4-校验器文件名核对.md | 1 | — | 单元文件名与 `unitNumber` 没有交叉核对 | DF-196 | 已结 |
 
-## 分诊统计（2026-10-22 这次治理；**2026-10-24 按实测重算**）
+## 分诊统计（2026-10-22 这次治理；**2026-10-25 按实测重算**）
 
 | 结论 | 条数 |
 |---|---|
-| 开放 | 185 |
-| 已结 | 60 |
+| 开放 | 182 |
+| 已结 | 63 |
 | 作废 | 4 |
 | **合计（分诊单元）** | **249** |
 

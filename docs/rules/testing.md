@@ -186,7 +186,11 @@ epics 的 AC（`[CR]` 时按 AC 逐条对账靠的就是「出处锚点」）；
 
 **依据** 写死后，一旦设计令牌合法变更，断言会在毫无关联的地方红，训练出「测试红了就改断言」的习惯 —— 而那正是 R-57 禁止的。（见 [art-direction.md](../art-direction.md) 的 §5 分档）
 
-**注意**：`asset-geometry.test.ts` 的 G3 断言 SVG 里的 hex **等于 `tokens.css` 当期字面值** —— 它守的是**一致性**，**不是冻结值**。也就是说改了 `tokens.css` 的值，G3 会跟着一起绿。冻结色彩值目前**无守卫**（见 [architecture.md R-12](architecture.md)）。
+**注意**：`asset-geometry.test.ts` 的 G3 断言 SVG 里的 hex **等于 `tokens.css` 当期字面值** —— 它守的是**一致性**，**不是冻结值**。也就是说改了 `tokens.css` 的值，G3 会跟着一起绿。
+
+📎 **2026-10-25 夜更正**：本段原写「冻结色彩值目前**无守卫**」—— **这句已经不成立**。冻结由 **G302** 承担（`tests/scaffold/color-token-values.test.ts`）：18 个 `--color-*` 的**值**逐个对 `tests/fixtures/color-tokens.ts` 的黄金快照，改 `tokens.css` 的值 ⇒ G302 红。
+⚠️ 但 G3 那条**仍然**是「一致性」守卫，它跟着一起绿是**对的**（R-56 的本意就是不许写死）。
+⚠️ G302 的**已知边界**：黄金快照与 `tokens.css` 是**两份** ⇒ 一起改就一起绿（冻结的是「不许单方面改」，不是「永远不许改」）。R-12 的裁决源见 [architecture.md R-12](architecture.md)。
 
 **首现** Story 1.6
 

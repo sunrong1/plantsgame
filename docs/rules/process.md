@@ -116,20 +116,32 @@
 
 ---
 
-### R-36 守卫 / 变异编号必须接续既有号段
+### R-36 守卫 / 变异编号必须接续既有号段，且**一个编号只对应一个守卫**
 
 **规则** 新 story 的守卫从 `G##` 起、变异从 `M##` 起，接续全仓库现有最大号。起编号前先实测：
 
 ```bash
-grep -rhoE '\bG[0-9]+[a-z]?' tests/ src/ | sort -uV | tail
-grep -rhoE '\bM[0-9]+：' tests/ src/ | sort -uV | tail   # ⚠️ 必须带全角冒号
+grep -rhoP 'G[0-9]{2,3}' . --exclude-dir=node_modules --exclude-dir=.git --exclude-dir=dist --exclude-dir=coverage | sort -uV | tail
+grep -rhoP 'M[0-9]{3}：' . --exclude-dir=node_modules --exclude-dir=.git --exclude-dir=dist --exclude-dir=coverage | sort -uV | tail   # ⚠️ 必须带全角冒号
+grep -rhoP '\bM[0-9]{3}\b' . --exclude-dir=node_modules --exclude-dir=.git --exclude-dir=dist --exclude-dir=coverage | sort -uV | tail          # ⚠️ 只能查**上界**
 ```
 
-**依据** 第二条命令**必须带全角冒号**：`\bM[0-9]+\b` 会命中 `src/core/placeholder.ts` 里 SVG path 数据 `d="M112 384 …"` 的 moveto 命令，照那个输出起编号会与实际号段撞出一大段空洞。
+**编号必须全仓唯一**：一个 `G##` 只能对应**一个守卫**。同一个守卫**跨两个文件**各写一段断言是允许的（那不是撞号），但必须登记进守卫 **G306** 的例外清单并写清「为什么这两个文件是同一个守卫」。
 
-**守卫** ⚠️ **无守卫**（这是查号段的手段，不是被守的不变量）
+**依据** 三条命令各有各的坑，**都实测过**（DF-119）：
 
-**首现** Story 1.8
+| 命令 | 为什么这么写 |
+|---|---|
+| `G[0-9]{2,3}`（**不带 `\b`**） | `\b` 要求两侧是「单词字符 / 非单词字符」边界，**多字节 CJK 字符在字节层面不构成 `\b` 认定的分隔** ⇒ 原命令 `-E '\bG[0-9]+[a-z]?'` 的输出**止于 G185**，而 `tests/services/save.test.ts` 里逐字存在 `（G186 —— 第七轮补）` ⇒ **紧跟在 CJK 括号/标点后的守卫号会被整段漏掉**。漏号的方向恰好是「以为没占 → 用了别人的号」。 |
+| `M[0-9]{3}：`（**带全角冒号**） | `\bM[0-9]+\b` 会命中 `src/core/placeholder.ts` 里 SVG path 数据 `d="M112 384 …"` 的 moveto 命令，照那个输出起编号会与实际号段撞出一大段空洞。 |
+| `\bM[0-9]{3}\b`（**不带冒号，只能查上界**） | 变异号在**代码注释**里写 `M41：…`（带冒号），在**文档表格**里写 `**M354**`（不带冒号）⇒ 只跑带冒号那条会**严重低报**。实测：带冒号那条在全仓只报到 **M336**，而不带冒号那条报到 **M356**（真值）。⇒ 两条都要跑；不带冒号那条**会命中 SVG path** ⇒ 只能用来查上界，不能用来判占用。 |
+
+⚠️ **扫描范围是全仓，不是 `tests/ src/`**：变异号登记在 `_bmad-output/` 的规划文档与归档文档里（`sprint-change-proposal-*.md`、`archive/deferred/*.md`），只扫代码会**低报一整段号段**（实测：只扫 `tests/ src/` 时 M 的上界报 M346，真值 M356 ⇒ 中间 10 个号已占用）。
+
+**守卫** `tests/scaffold/guard-id-uniqueness.test.ts` —— 守卫 **G306**（编号全仓唯一；例外清单写死了文件集合，清单与现状对不上也红）。
+⚠️ **「接续最大号」这半条仍无守卫**（那是查号段的手段，不是被守的不变量）—— 但号段一旦被漏查，**撞号会被 G306 立刻抓出来**（红在两个文件上，不在号段上）。
+
+**首现** Story 1.8（2026-10-25 夜补入「编号全仓唯一」与查号命令的实测更正）
 
 ---
 

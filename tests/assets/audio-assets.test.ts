@@ -201,7 +201,13 @@ describe('G65 —— 播放器 URL 与磁盘布局一致（AC-D3 / AC-H3）', ()
   })
 })
 
-describe('G59 反向自检 —— CUES 列表没跟 SfxCue 脱节', () => {
+// 📎 2026-10-25 夜更正：本块原写「**G59** 反向自检」—— 那是**错标**：
+//   `G59` 是 `tests/scaffold/effects-boundary.test.ts` 的「effects.ts 零 DOM / 零 Vue /
+//   零随机 / 零时间」，与本块无关；而本块守的 `CUES` 列表属于**本文件的 G66**
+//   （G66 的第一个用例就在比 `CUES` 与 `sources.sfx`）。
+//   ⇒ 错标让「G59」在两个不相干的文件里同时出现 ⇒ 守卫 G306 判为撞号。
+//   ⇒ 改标为 G66（见 DF-102 / DF-188）。
+describe('G66 反向自检 —— CUES 列表没跟 SfxCue 脱节', () => {
   it('core 的 SfxCue 成员与本守卫的 CUES 双向一致', () => {
     expect(
       [...CUES].sort(),

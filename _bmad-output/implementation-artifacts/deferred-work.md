@@ -109,7 +109,6 @@
 | DF-099 | 待触发 | 未指派 | 若要把 `core/` 的返回类型系统性收紧为 `readonly`（那是一次跨模块的签名改动） | `sliceDeckForLevel` 返回 `DeckEntry[]` 而非 `readonly`，纯度只写在注释里 | [`df-099`](./deferred-details.md#df-099) |
 | DF-100 | 待触发 | Story 1.19 | 平板真机试玩时若家长/孩子实际表现困惑（AC-D5 的观察项），再走 `[CC]` 改文案 | `AnswerFeedback` 文案仍是「再想想」，与 `locked` 置灰不可点观感打架 | [`df-100`](./deferred-details.md#df-100) |
 | DF-101 | 待排期 | Story 1.20 | 将来动 A2 或给 `G174③` 换夹具时一并处理；那时需要一条能区分「重排改了归属」与「本来就不该按原序拼」的判据 | `tests/app/store-deck-slice.test.ts` 的 G174③「四局=整个词表」前提随 1.20 重排收窄 | [`df-101`](./deferred-details.md#df-101) |
-| DF-102 | 待触发 | 未指派 | 下次起新号、或要动 `quiz-card.test.ts` / `hand-build.test.ts` 时，一并 (a) 给 `G30` 重编号，(b) 在 `docs/rules/testing.md` 补一条「守卫编号全仓库唯一；起号前 grep `^describe\('G\d+`」 | `G30` 被 1.11 `quiz-card.test.ts` 与 1.12 `hand-build.test.ts` 同时占用 | [`df-102`](./deferred-details.md#df-102) |
 | DF-103 | 待触发 | 未指派 | 拿到**牛津上海版**教材的单元词表（= DF-201 的扫描件）⇒ 按真实词表重算每单元词条数，解开 AR44 的估算基数冲突 | `epics.md` AR44 的「200-400 张」估算基数与实测 480–600 张冲突，需 `[CC]` 改规划产物 | [`df-103`](./deferred-details.md#df-103) |
 | DF-104 | 待触发 | 未指派 | 拿到**牛津上海版**教材词表（DF-201）后重算各档占比；若「数词 + 公认符号」占比远高于单元 1，这个结论要重写 | `epics.md` §7.2「程序化生成⇒工时减半」被实测打掉 4/5，待真实词表重算 | [`df-104`](./deferred-details.md#df-104) |
 | DF-107 | 待触发 | 未指派 | 若要把这个脚本当长期产能仪表，需加「开工时刻」的显式记录（开工时先写一条 `kind: "start"` 的记录） | `scripts/word-image-throughput.ts` 只量写盘跨度，缺「开工时刻」记录（`u2-sun` 报 0.0 秒） | [`df-107`](./deferred-details.md#df-107) |
@@ -122,7 +121,6 @@
 | DF-114 | 待触发 | 未指派 | 若该测试未来变成「实现契约的独立见证」，改手写 interface 而非 `typeof import` | `tests/scripts/word-image-throughput.test.ts` 用 `as typeof import(...)` 做夹具，类型层不再独立 | [`df-114`](./deferred-details.md#df-114) |
 | DF-115 | 待触发 | 未指派 | 若工具要区分「坏文件」与「空图」，改返回「元素数 + 是否有根」的元组或带哨兵值 | `scripts/word-image-throughput.ts` 的 `countElements` 对无根 SVG 报 0，与合法空图不可分 | [`df-115`](./deferred-details.md#df-115) |
 | DF-116 | 待触发 | 未指派 | 若「画得像不像」的判读要变成可审计记录，需在工具里加中间版归档与判读快照 | `docs/word-image-lab/versions.jsonl` 只记 48px 结论，`egg`/`playground` 中间版未落盘 | [`df-116`](./deferred-details.md#df-116) |
-| DF-119 | 待触发 | 未指派 | 下次动 `docs/rules/process.md` 时把两条命令改成 `-P` 无 `\b` 形态；`M##` 那条的全角冒号约束仍然必要 | `docs/rules/process.md` 的 R-36 起号 grep 仍是 `-E` 加 `\b`，实测会漏 CJK 后的守卫号 | [`df-119`](./deferred-details.md#df-119) |
 | DF-121 | 待排期 | 未指派 | 加一条测试读 `docs/card-distribution.md` 的 §3 表，逐行解析后与 `targetCardDistribution` 的实算值比对（漂了就红） | `docs/card-distribution.md` §3 逐单元表仍零守卫，interpolate 改 smoothstep 时 G187–G190 全绿 | [`df-121`](./deferred-details.md#df-121) |
 | DF-122 | 待排期 | 未指派 | 在 `LevelOutcome.vue` 里加一层 focus trap（捕获 Tab / Shift+Tab 在浮层内循环，Esc 关闭），并加一条守卫断言「浮层打开后连按 N 次 Tab，焦点仍在浮层内的可聚焦元素上」 | `src/components/hud/LevelOutcome.vue` 只 `focus()` 不锁 Tab，焦点能跑到浮层后的格子 | [`df-122`](./deferred-details.md#df-122) |
 | DF-123 | 待触发 | Story 1.19 | 给 `LevelOutcome` 浮层自己的 `padding-left/right` 补上 `env(safe-area-inset-left/right)`，并加一条守卫断言 | `src/components/hud/LevelOutcome.vue` 浮层 `padding-left/right` 仍只有 `var(--space-panel-pad)` | [`df-123`](./deferred-details.md#df-123) |
@@ -187,7 +185,6 @@
 | DF-185 | 待触发 | 未指派 | 与 DF-186（E39）一条同批做 | G25 只扫 `src/components/quiz/` 三文件，组件可直 import `services/pronunciation` 不红 | [`df-185`](./deferred-details.md#df-185) |
 | DF-186 | 待触发 | 未指派 | 与 DF-185（E38）一条同批做 | `effects-runner` 的 `case 'TTS'` 是空 `return`，朗读实际由组件 `watch` 触发 | [`df-186`](./deferred-details.md#df-186) |
 | DF-187 | 待触发 | 未指派 | 下次动这两份文档时 | `docs/word-image-throughput.md` 与 `docs/art-direction.md` 有 4 处失效行号引用 | [`df-187`](./deferred-details.md#df-187) |
-| DF-188 | 待触发 | 未指派 | 下次改 `docs/rules/testing.md` 时 | `docs/rules/testing.md` 未写「守卫编号全仓库唯一」纪律，也无唯一性守卫 | [`df-188`](./deferred-details.md#df-188) |
 | DF-189 | 待触发 | 未指派 | 下次补规则守卫时，按这条表逐条销账 | 六条规则（R-14/R-08/R-09/R-05/R-74/R-13 等）今天合规但无机器守卫 | [`df-189`](./deferred-details.md#df-189) |
 | DF-190 | 待触发 | Story 2.9 | Story 2.9 试玩验收时逐条人工过；或另建生僻词表 / 语义距离词典后补机器守卫 | 「语义近但字面远」的选项（如 `Thank you!` ~ `I am fine, thank you.`）字符级编辑距离抓不到 —— 属人工项 | [`df-190`](./deferred-details.md#df-190) |
 | DF-191 | 待触发 | Story 1.19 | Story 1.19 试玩验收时人工复核视角；在出现「机器判视角」的手段前不得结清 | 单词卡**图片**选项的视角一致性机器判不了 —— `docs/art-direction.md` §5.4 台账是目视结论 | [`df-191`](./deferred-details.md#df-191) |
