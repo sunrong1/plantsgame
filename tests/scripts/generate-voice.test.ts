@@ -21,7 +21,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ENTRY_ID_PATTERN as RUNTIME_ENTRY_ID_PATTERN } from '../../src/services/pronunciation'
 import { UNITS } from '../../src/content'
 import { ENTRY_ID_PATTERN as CONTENT_ENTRY_ID_PATTERN } from '../../src/content/schema'
+import { stripComments } from '../fixtures/strip-comments'
 import {
+  HISTORICAL_DEFAULTS,
   REQUEST_INTERVAL_MS,
   buildRequestBody,
   currentFingerprint,
@@ -32,6 +34,7 @@ import {
   fingerprintMatches,
   looksLikeMp3,
   main,
+  normalizeFingerprint,
   parseManifest,
   parseRetryAfter,
   readApiKey,
@@ -55,6 +58,7 @@ const makeDeps = (over: Partial<RunDeps> = {}): RunDeps => ({
   apiKey: 'sk-test-key',
   outputDir: '/nonexistent-output-dir',
   dry: false,
+  force: false,
   requestIntervalMs: 0,
   fetchImpl: (async () => {
     throw new Error('测试中不应发起网络请求')
@@ -231,6 +235,29 @@ describe('合成请求体（AC-4）', () => {
     expect(body.voice_setting.voice_id).toBe('English_LovelyGirl')
     expect(body.voice_setting.speed).toBe(0.9)
     expect(body.stream, '流式响应不在本脚本的处理范围内').toBe(false)
+  })
+
+  it('音高只有一个事实源：请求体里的 pitch 必须与指纹里的 pitch 同源（AC-6）', () => {
+    // ⚠️ 判据里**不许**出现第二份数值（R-37）：不写 `toBe(0)`，只与 `currentFingerprint()` 对。
+    //   改了 `VOICE_PITCH` 的取值时，这条会自动跟着走，不会变成「悄悄漂移的第二份事实源」。
+    const body = buildRequestBody('dog')
+    const cur = currentFingerprint()
+    const sent = body.voice_setting.pitch
+
+    if (cur.pitch === 0) {
+      // 默认态**不把该字段发出去** —— 这样请求体与产出已提交 75 条录音时**逐字节相同**，
+      // 「已提交的录音仍是当前脚本能复现的产物」这句话才不依赖 TTS 的随机性
+      // （2026-10-25 实测：TTS 无 seed，同一请求体发两次的响应音频也不相同）。
+      expect(
+        sent,
+        '默认态把 pitch 发了出去 ⇒ 请求体与产出已提交那 75 条时不再逐字节相同，那批录音的来源就说不清了',
+      ).toBeUndefined()
+    } else {
+      expect(
+        sent,
+        '请求体的音高与指纹不一致 ⇒ 录出来的音频与 manifest 记的不是同一组参数（混批且无从察觉）',
+      ).toBe(cur.pitch)
+    }
   })
 })
 
@@ -1048,5 +1075,318 @@ describe('--only 的取值校验（[CR] P4）', () => {
 
   it('合法前缀仍然可用', async () => {
     expect(await main(['--only', 'u1-d', '--dry'], {})).toBe(0)
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Story 3.4（音频品质打磨）：AC-6 / AC-7 的两条新守卫
+//
+// ① G310 —— 已提交的 manifest 指纹 == 脚本当前常量（落在 tests/assets/audio-assets.test.ts）
+// ② G311 —— 指纹不匹配 ⇒ 脚本拒绝运行（本文件）
+//
+// ⚠️ 这两条守的都不是「代码写得对不对」，而是**提交物自相矛盾时有没有东西会红**：
+//   改了 `VOICE_SPEED` 却没重生成 —— 磁盘上是旧录音、manifest 与常量却对得上 ——
+//   今天**没有任何东西会红**，而孩子听到的是旧语速。
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * 取某个函数的**函数体**（大括号之间的文本）。源码匹配型守卫的通用零件。
+ *
+ * ⚠️ 只对「函数体里没有含大括号的字符串字面量」的函数可靠 ——
+ *   本文件用它扫的两处（`normalizeFingerprint` / `fingerprintMatches`）都满足这个前提。
+ */
+function extractFunctionBody(code: string, marker: string): string {
+  const start = code.indexOf(marker)
+  expect(start, `源码里找不到「${marker}」—— 守卫扫的函数被改名或挪走了`).toBeGreaterThan(-1)
+  const open = code.indexOf('{', start)
+  let depth = 0
+  for (let i = open; i < code.length; i += 1) {
+    if (code[i] === '{') depth += 1
+    else if (code[i] === '}') {
+      depth -= 1
+      if (depth === 0) return code.slice(open + 1, i)
+    }
+  }
+  return code.slice(open + 1)
+}
+
+/** 脚本源码（先剥注释 —— R-52：注释里写着「JSON.stringify」不算违规）。 */
+const scriptCode = (): string =>
+  stripComments(readFileSync(new URL('scripts/generate-voice.ts', REPO_ROOT), 'utf8'))
+
+describe('指纹归一化与比较方式（AC-6 / §3.1）', () => {
+  it('归一化只查历史默认值表，不许查当前常量', () => {
+    // ⚠️ 这条是**结构性**守卫，不是行为性守卫 —— 因为方向写反的后果
+    //   （「改了音高却没重生成」被放过）只有在 `VOICE_PITCH ≠ 0` 时才**看得见**，
+    //   而今天 `VOICE_PITCH = 0` ⇒ 写反了与写对了**结果一样** ⇒ 行为性断言抓不到。
+    //   ⇒ 方向必须靠结构钉住：归一化函数里**不许**出现当前常量。
+    const body = extractFunctionBody(scriptCode(), 'export function normalizeFingerprint')
+
+    expect(
+      body,
+      '归一化函数里没有引用历史默认值表 —— 缺键会被归一成什么就无从判断了',
+    ).toMatch(/HISTORICAL_DEFAULTS/)
+    expect(
+      body,
+      '归一化查了当前常量 ⇒ 缺键会被归一成**当前**取值 ⇒ 「改了参数却没重生成」被放过（AC-6 整个失效）',
+    ).not.toMatch(/currentFingerprint|VOICE_PITCH/)
+  })
+
+  it('指纹比较不许用 JSON.stringify 比整份对象（键序敏感）', () => {
+    // ⚠️ 归一化用 `{...HISTORICAL_DEFAULTS, ...stored}` 会把 `pitch` 排到**最前**，
+    //   而 `currentFingerprint()` 里它排在**最后** ⇒ 两个 `JSON.stringify` **必然不等**
+    //   ⇒ 现状（`VOICE_PITCH = 0`）会被**误判为不匹配**：
+    //   G310 假红 + 脚本无端拒跑 ⇒ 「75 条录音不必重生成」这条承诺的破口。
+    const body = extractFunctionBody(scriptCode(), 'export function fingerprintMatches')
+
+    expect(
+      body,
+      '指纹比较用 JSON.stringify 比整份对象 ⇒ 键序敏感 ⇒ 现状被误判为不匹配（假红 + 无端拒跑）',
+    ).not.toMatch(/JSON\.stringify/)
+  })
+
+  it('manifest 缺 pitch 键 ⇒ 归一为历史默认值 0', () => {
+    const legacy = {
+      model: 'speech-2.8-hd',
+      voice_id: 'English_LovelyGirl',
+      speed: 0.9,
+      format: 'mp3',
+    }
+    const norm = normalizeFingerprint(legacy)
+
+    expect(
+      norm.pitch,
+      '缺键没有归一为历史默认值 ⇒ 已提交的那批录音（生成时还没有音高这个键）会被判成异常',
+    ).toBe(0)
+    expect(
+      HISTORICAL_DEFAULTS.pitch,
+      '历史默认值必须逐字是 0 —— 它是「引入音高之前」的取值，改了它等于伪造历史',
+    ).toBe(0)
+  })
+
+  it('历史 manifest（缺 pitch 键）仍与当前常量一致 —— 75 条录音不必重生成', () => {
+    const legacy = {
+      model: 'speech-2.8-hd',
+      voice_id: 'English_LovelyGirl',
+      speed: 0.9,
+      format: 'mp3',
+    }
+    expect(
+      fingerprintMatches({ fingerprint: legacy, entries: {} }),
+      '历史 manifest 被判成不匹配 ⇒ 脚本会无端拒跑、已提交的 75 条录音被白白重生成',
+    ).toBe(true)
+  })
+
+  it('manifest 里多出来的键也要报（只比当前常量有的那几个键会放过它）', () => {
+    const extra = { ...currentFingerprint(), extra_key: 1 }
+    const m = { fingerprint: extra, entries: {} }
+
+    expect(
+      fingerprintMatches(m),
+      'manifest 里的多余键被放过 ⇒ 提交物里可能夹着别的东西，而没有任何东西会红',
+    ).toBe(false)
+    expect(fingerprintDiff(m), '差异文案没指出多余键').toMatch(/extra_key/)
+  })
+
+  it('当前常量有的键在 manifest 里缺失 ⇒ 报（异常不能被归一成正常）', () => {
+    const missing: Record<string, unknown> = { ...currentFingerprint() }
+    delete missing['format']
+
+    expect(
+      fingerprintMatches({ fingerprint: missing, entries: {} }),
+      '缺了 key 的指纹被当成一致 —— 那不是「历史产物」，那是异常',
+    ).toBe(false)
+    expect(fingerprintDiff({ fingerprint: missing, entries: {} })).toMatch(/format/)
+  })
+
+  it('语速变了 ⇒ 不匹配，并指名差异（改动要能被人一眼看懂）', () => {
+    const stale = { ...currentFingerprint(), speed: 1.2 }
+    expect(fingerprintMatches({ fingerprint: stale, entries: {} })).toBe(false)
+    expect(fingerprintDiff({ fingerprint: stale, entries: {} })).toMatch(/speed/)
+  })
+})
+
+describe('G311 —— 指纹闸：参数变了 ⇒ 脚本拒绝运行（AC-7）', () => {
+  let dir = ''
+  let fetchCalls = 0
+  let errors: string[] = []
+  let logs: string[] = []
+  let errorSpy: ReturnType<typeof vi.spyOn>
+  let logSpy: ReturnType<typeof vi.spyOn>
+
+  /** 仓库里已提交的那份 manifest —— 守卫跑完必须**逐字未变**（Task 3.5）。 */
+  const repoManifestPath = new URL('public/assets/audio/voice/manifest.json', REPO_ROOT)
+
+  const writeManifest = (fingerprint: Record<string, unknown>): void => {
+    writeFileSync(
+      join(dir, 'manifest.json'),
+      `${JSON.stringify({ fingerprint, entries: {} }, null, 2)}\n`,
+    )
+  }
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'voice-gate-'))
+    fetchCalls = 0
+    errors = []
+    logs = []
+    // ⚠️ fetch 用**全局 stub**：`main()` 直接调全局 `fetch`，不注入。
+    //   这里返回一个**合法**响应（而不是抛错）—— 那样「闸被绕过」的后果是
+    //   「脚本成功、fetchCalls = 1」，断言 `fetchCalls === 0` 就能抓住它；
+    //   若 stub 抛错，失败原因会变成异常而不是「多发了请求」，指向错误的方向。
+    vi.stubGlobal('fetch', async () => {
+      fetchCalls += 1
+      return okHexResponse()
+    })
+    errorSpy = vi.spyOn(console, 'error').mockImplementation((msg: unknown) => {
+      errors.push(String(msg))
+    })
+    logSpy = vi.spyOn(console, 'log').mockImplementation((msg: unknown) => {
+      logs.push(String(msg))
+    })
+  })
+
+  afterEach(() => {
+    errorSpy.mockRestore()
+    logSpy.mockRestore()
+    vi.unstubAllGlobals()
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('指纹不匹配 ⇒ 退出码 1、诊断指名差异的键、且一个网络请求都不发', async () => {
+    writeManifest({ ...currentFingerprint(), speed: 1.2 })
+    const before = readFileSync(repoManifestPath, 'utf8')
+
+    const code = await main(['--only', 'u1-dog'], { MINIMAX_API_KEY: 'sk-test' }, { outputDir: dir })
+
+    expect(
+      code,
+      '指纹不匹配却放行了 —— 旧参数录音会被盖上新参数的戳（静默混批，正是 AC-7 要杀的那种失败）',
+    ).toBe(1)
+    expect(
+      errors.join('\n'),
+      '诊断文案没指名差异的键 —— 用户只知道「不匹配」，不知道该改哪个常量',
+    ).toMatch(/speed/)
+    expect(
+      fetchCalls,
+      '拒绝之前已经发过网络请求 —— 白花钱，而且旧录音可能已经被改写',
+    ).toBe(0)
+    expect(
+      readFileSync(repoManifestPath, 'utf8'),
+      '守卫跑完之后仓库里已提交的 manifest 变了 —— 测试把产物写到了真的那个文件上',
+    ).toBe(before)
+  })
+
+  it('历史 manifest（缺 pitch 键）不该被误判为不匹配 ⇒ 不拒跑', async () => {
+    // ⚠️ 这条是「归一化方向」的行为性证据：方向写反（缺键取当前常量）时，
+    //   在 `VOICE_PITCH = 0` 这一天它与写对**结果一样** ⇒ 抓不到；
+    //   但只要归一化把缺键归一成**非 0**（例如误取当前常量后又有人把常量改了），
+    //   这条就会红。结构性那条（上面的「归一化只查历史默认值表」）才是常驻的牙齿。
+    writeManifest({
+      model: 'speech-2.8-hd',
+      voice_id: 'English_LovelyGirl',
+      speed: 0.9,
+      format: 'mp3',
+    })
+
+    const code = await main(['--only', 'u1-dog'], { MINIMAX_API_KEY: 'sk-test' }, { outputDir: dir })
+
+    expect(
+      code,
+      '历史 manifest 被判成不匹配 ⇒ 脚本无端拒跑、已提交的 75 条录音被白白重生成',
+    ).toBe(0)
+    expect(fetchCalls, '闸放行了却一个请求都没发 —— 脚本根本没往下走').toBe(1)
+  })
+
+  it('`--force` 也不越闸：指纹不匹配时仍然退出码 1（裁决 F 的 (b) 方案）', async () => {
+    writeManifest({ ...currentFingerprint(), speed: 1.2 })
+
+    const code = await main(
+      ['--force', '--only', 'u1-dog'],
+      { MINIMAX_API_KEY: 'sk-test' },
+      { outputDir: dir },
+    )
+
+    expect(
+      code,
+      '`--force` 越过了指纹闸 —— 越闸 + 部分失败会造出「旧音频 + 新指纹」的真混批',
+    ).toBe(1)
+    expect(fetchCalls, '越闸之后已经发了请求').toBe(0)
+  })
+
+  it('没有 manifest 但盘上已有 mp3 ⇒ 拒绝运行（AC-7 的第二个 Given 块）', async () => {
+    // 这条是「只删 manifest、不删 mp3」那条绕过整道闸的路径：
+    // 闸**只在 manifest 存在时**才生效 ⇒ manifest 一没，旧参数录音就会被
+    // `decideSkip` 的 `unrecorded` 分支登记进**新指纹**的 manifest ⇒ 混批被盖章。
+    writeFileSync(join(dir, 'u1-dog.mp3'), 'ID3-fake-audio')
+
+    const code = await main(['--only', 'u1-dog'], { MINIMAX_API_KEY: 'sk-test' }, { outputDir: dir })
+
+    expect(
+      code,
+      '没有 manifest 却照跑 —— 盘上的旧录音会被登记进新指纹的 manifest（混批且无从察觉）',
+    ).toBe(1)
+    expect(fetchCalls, '拒绝之前已经发了请求').toBe(0)
+    expect(errors.join('\n'), '诊断文案没说清「删整个目录」这条正确流程').toMatch(/manifest/)
+  })
+
+  it('产物目录空且没有 manifest ⇒ 照常跑（一次性首跑不受那条拒绝影响）', async () => {
+    const code = await main(['--only', 'u1-dog'], { MINIMAX_API_KEY: 'sk-test' }, { outputDir: dir })
+
+    expect(code, '一次性首跑被拒 —— 脚本在空目录上跑不起来').toBe(0)
+    expect(fetchCalls, '首跑没有生成任何录音').toBe(1)
+  })
+})
+
+describe('--force 与 --help（Task 4 / DF-010）', () => {
+  it('--force 时一律重录，不走跳过判定', async () => {
+    let writes = 0
+    const deps = makeDeps({
+      force: true,
+      fileExists: () => true,
+      writeFile: () => {
+        writes += 1
+      },
+      fetchImpl: (async () => okHexResponse()) as unknown as typeof fetch,
+    })
+
+    const result = await runBatch([{ id: 'u1-dog', text: 'dog' }], deps)
+
+    expect(result.skipped, '--force 仍然跳过了已存在的文件 —— 它什么也没干').toBe(0)
+    expect(result.generated).toBe(1)
+    expect(writes).toBe(1)
+  })
+
+  it('--help 不需要 API key，退出码 0，并打印全部用法', async () => {
+    const logs: string[] = []
+    const spy = vi.spyOn(console, 'log').mockImplementation((msg: unknown) => {
+      logs.push(String(msg))
+    })
+    let code = 1
+    try {
+      code = await main(['--help'], {})
+    } finally {
+      spy.mockRestore()
+    }
+
+    expect(code, '--help 返回非 0 —— 在没配 key 的机器上（恰恰是最需要看用法的人）拿不到用法').toBe(0)
+    const out = logs.join('\n')
+    expect(out).toMatch(/--dry/)
+    expect(out).toMatch(/--only/)
+    expect(out).toMatch(/--force/)
+    expect(out).toMatch(/--help/)
+    expect(out, '用法里没写「改参数后要整批重来」这条正确流程').toMatch(/manifest/)
+  })
+
+  it('--help 不碰产物目录', async () => {
+    const dir = new URL('public/assets/audio/voice/', REPO_ROOT)
+    const snapshot = (): string =>
+      existsSync(dir) ? readdirSync(dir).sort().join(',') : ''
+
+    const before = snapshot()
+    const code = await main(['--help'], {})
+    const after = snapshot()
+
+    expect(code).toBe(0)
+    expect(after, '--help 动了产物目录 —— 打印用法不该有任何副作用').toBe(before)
   })
 })

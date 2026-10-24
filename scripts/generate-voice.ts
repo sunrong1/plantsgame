@@ -29,7 +29,7 @@
  *   改回「不 import」之前请先跑一次 `npm run typecheck` 看这个前提是否还成立。
  */
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
@@ -44,7 +44,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 
 // ── 常量（架构 Configuration：本文件的参数归属）──────────────────────────
 //
-// ⚠️⚠️ 改 VOICE_MODEL / VOICE_ID / VOICE_SPEED 任意一行 = **全量重生成**。
+// ⚠️⚠️ 改 VOICE_MODEL / VOICE_ID / VOICE_SPEED / VOICE_PITCH 任意一行 = **全量重生成**。
 // 音色一致性是本脚本存在的全部理由：孩子在任何设备上听到的发音必须是产品的
 // 确定常量，而不是「设备上恰好装了哪个语音引擎」的偶然产物（支柱 1 / FR）。
 
@@ -56,6 +56,27 @@ const VOICE_ID = 'English_LovelyGirl'
 const VOICE_SPEED = 0.9
 /** 输出容器。⚠️ 改了要全量重生成。 */
 const VOICE_FORMAT = 'mp3'
+
+/**
+ * 音高（`voice_setting.pitch`）。**默认 0**，即「不改变音高」。
+ *
+ * ⚠️ 改了要全量重生成（与上面三个常量同一条纪律）。
+ *
+ * ── 为什么默认态**不把这个字段发出去**（Story 3.4 / Task 1.1 实测）─────────
+ * 已提交的 75 条录音是**引入 `pitch` 之前**的脚本产物。若从今天起每个请求都带上
+ * `pitch: 0`，请求体就与产出那 75 条时的请求体**不再逐字节相同** ⇒
+ * 「已提交的录音仍是当前脚本能复现的产物」这句话就失去了依据。
+ * 而 Task 1.1 原本打算用「两次请求的音频逐字节相同」来证明等价 ——
+ * **实测证明这条判据本身不成立**（TTS 无 `seed`，**同一请求体发两次，响应音频也不相同**），
+ * 于是唯一站得住的等价论证就是「**默认态的请求体与之前逐字节相同**」。
+ * ⇒ `pitch` 只在 ≠ 0 时进请求体（见 `buildRequestBody`）。
+ *
+ * ⚠️ **取值本身不是本 story 定的**（裁决 A）：AC-2 逐字把判断标准交给
+ * 「孩子听长句时能稳定提取关键词」，那是人的耳朵说了算（R-20 / R-21）。
+ * 官方文档写 `pitch` 是 int、取值 −12..12、默认 0；2026-10-25 实测确认
+ * 0 / −1 / 12 / 99 都被接受（业务码 0），但**取值由人裁决**。
+ */
+const VOICE_PITCH = 0
 
 /** speech-2.8-hd 国内站按量价：3.5 元 / 万字符。`[CS]` 2026-10-13 按官方定价页核实。 */
 const PRICE_PER_10K_CHARS = 3.5
@@ -81,8 +102,14 @@ const OUTPUT_DIR = 'public/assets/audio/voice'
 /**
  * 溯源清单。与录音同目录、一起提交进 git —— 换设备、换人接手都能看出
  * 磁盘上的录音是哪组参数生成的。skip 判定的依据就是它，而不是「文件碰巧在」。
+ *
+ * ⚠️ 路径**由 `outputDir` 推导**，不写死（Story 3.4 / Task 3.1）：
+ *   守卫要能在临时目录里驱动「指纹不匹配 ⇒ 拒跑」这条路径，
+ *   而产物目录写死的话，测试会把它**真的**写回仓库里那个已提交的 manifest。
  */
-const MANIFEST_FILE = join(OUTPUT_DIR, 'manifest.json')
+export function manifestFileIn(outputDir: string): string {
+  return join(outputDir, 'manifest.json')
+}
 
 /** 文件内容的 sha256。逐条核对用，38 条不到 1 MB，成本可忽略。 */
 export function hashFileSync(path: string): string {
@@ -90,14 +117,36 @@ export function hashFileSync(path: string): string {
 }
 
 /**
+ * 列出产物目录里已有的录音文件名（只要文件名，不递归子目录）。
+ *
+ * 用途只有一个：**「没有 manifest 但盘上有 mp3」这个组合是否存在** ——
+ * 那意味着盘上的录音**来源不明**（Story 3.4 / AC-7 的第二个 Given 块）。
+ * 目录不存在 ⇒ 返回空数组（那是一次性首跑的正常形态）。
+ */
+export function listVoiceMp3s(outputDir: string): string[] {
+  try {
+    return readdirSync(outputDir)
+      .filter((name) => name.endsWith('.mp3'))
+      .sort()
+  } catch {
+    return []
+  }
+}
+
+/**
  * 落盘 manifest。走原子写，与录音同一套理由：写一半被杀会留下一个
  * 能被 `parseManifest` 读成「合法但条目不全」的 JSON，下次跑就会漏校验。
+ *
+ * ⚠️ 目录与文件名都由参数 `outputDir` 推导（Story 3.4 / Task 3.1）——
+ *   这里**不许**回落到模块级常量，否则一次测试运行就会覆盖仓库里
+ *   已提交的 75 条溯源记录。
  */
-function writeManifestFile(manifest: VoiceManifest): void {
-  mkdirSync(OUTPUT_DIR, { recursive: true })
-  const tmp = `${MANIFEST_FILE}.tmp`
+export function writeManifestFile(manifest: VoiceManifest, outputDir: string = OUTPUT_DIR): void {
+  mkdirSync(outputDir, { recursive: true })
+  const manifestFile = manifestFileIn(outputDir)
+  const tmp = `${manifestFile}.tmp`
   writeFileSync(tmp, `${JSON.stringify(manifest, null, 2)}\n`)
-  renameSync(tmp, MANIFEST_FILE)
+  renameSync(tmp, manifestFile)
 }
 
 // ⚠️ 旧的 `ENTRIES_FILE = data/voice-entries.json` 已在 Story 1.6 删除 ——
@@ -207,7 +256,7 @@ export function estimateCost(chars: number): number {
 // ── 溯源 manifest ──────────────────────────────────────────────────────────
 
 /**
- * 决定录音长什么样的那四个常量。
+ * 决定录音长什么样的那几个常量。
  *
  * ⚠️ 为什么非得有它：跳过判据是「文件存在」。只靠存在性，磁盘上的 mp3 到底是用
  * 哪组参数生成的**无从判断** —— 改完 `VOICE_SPEED` 重跑，脚本会报「跳过 38 条」，
@@ -219,7 +268,37 @@ export interface VoiceFingerprint {
   voice_id: string
   speed: number
   format: string
+  /** 音高。⚠️ 2026-10-25 起进指纹（Story 3.4 / AC-6）。 */
+  pitch: number
 }
+
+/** 指纹里某个键的取值类型。 */
+export type FingerprintValue = string | number
+
+/**
+ * **磁盘上读到的**指纹 —— 可能**缺键**。
+ *
+ * ⚠️ 缺键不是「异常」，而是**历史产物**的正常形态：
+ *   `pitch` 是 2026-10-25 才加进指纹的（Story 3.4），
+ *   而已提交的 manifest 是那之前生成的 ⇒ 它没有 `pitch` 这个键。
+ *   ⇒ 类型上必须允许缺键，否则读历史 manifest 就要靠 `as` 硬转。
+ */
+export type StoredFingerprint = Partial<Record<keyof VoiceFingerprint, FingerprintValue>>
+
+/**
+ * **历史默认值**：manifest 里**缺**某个键时，按这里的值解释。
+ *
+ * ⚠️⚠️ **方向不能搞反**（Story 3.4 / AC-6 / §3.1）：
+ *   - ✅ 缺键 ⇒ 取**历史默认值**（`pitch` ⇒ 0）：现状（`VOICE_PITCH = 0`）仍然有效，
+ *     75 条录音不必重生成；而一旦有人把 `VOICE_PITCH` 改成 2，就**不匹配** ⇒ 拒跑 + 报红。
+ *   - ❌ 缺键 ⇒ 取**当前常量值**（`{...cur, ...manifest}`）：那等于把「改了参数却没重生成」
+ *     这件事**归一成正常** ⇒ AC-6 整个失效。
+ *
+ * ⚠️ **这张表只能含 `pitch: 0`** —— `model` / `voice_id` / `speed` / `format`
+ *   在已提交 manifest 里**一直都在**，它们「缺键」本身就是异常；
+ *   把任何一个放进默认表 = 把异常归一成正常（守卫 G310 也就抓不到「manifest 少了一个键」）。
+ */
+export const HISTORICAL_DEFAULTS: Readonly<StoredFingerprint> = { pitch: 0 }
 
 export interface ManifestEntry {
   text: string
@@ -228,25 +307,78 @@ export interface ManifestEntry {
 }
 
 export interface VoiceManifest {
-  fingerprint: VoiceFingerprint
+  fingerprint: StoredFingerprint
   entries: Record<string, ManifestEntry>
 }
 
 export function currentFingerprint(): VoiceFingerprint {
-  return { model: VOICE_MODEL, voice_id: VOICE_ID, speed: VOICE_SPEED, format: VOICE_FORMAT }
+  return {
+    model: VOICE_MODEL,
+    voice_id: VOICE_ID,
+    speed: VOICE_SPEED,
+    format: VOICE_FORMAT,
+    pitch: VOICE_PITCH,
+  }
 }
 
+/**
+ * 把磁盘上读到的指纹**归一化**（缺键 ⇒ 历史默认值）。
+ *
+ * 归一化只有这一处实现 —— `fingerprintMatches` / `fingerprintDiff` / 守卫 G310
+ * 全走它（R-37：判据只有一份）。
+ */
+export function normalizeFingerprint(stored: StoredFingerprint): StoredFingerprint {
+  return { ...HISTORICAL_DEFAULTS, ...stored }
+}
+
+/**
+ * 指纹是否与当前常量**完全一致**。
+ *
+ * ⚠️⚠️ **必须逐键比较，且键集合必须恰好相等**（Story 3.4 / AC-6 / §3.1）：
+ *   - 原来的写法是 `JSON.stringify(m.fingerprint) === JSON.stringify(currentFingerprint())`
+ *     —— **键序敏感**。而归一化用 `{...HISTORICAL_DEFAULTS, ...stored}` 会把 `pitch`
+ *     排到**最前**，`currentFingerprint()` 里它排在**最后**
+ *     ⇒ 两个序列化结果**必然不等** ⇒ 现状（`VOICE_PITCH = 0`）会被**误判为不匹配**
+ *     （G310 假红 + 脚本无端拒跑）—— 那正是「75 条录音不必重生成」这条承诺的破口。
+ *   - 只比「当前常量有的那几个键」也不行：manifest 里**多出来的键**会被放过。
+ * ⇒ 三件事一起做：① 键数相等 ② 当前常量的每个键都在归一化结果里 ③ 值逐个 `===`。
+ */
 export function fingerprintMatches(m: VoiceManifest): boolean {
-  return JSON.stringify(m.fingerprint) === JSON.stringify(currentFingerprint())
+  const cur = currentFingerprint()
+  const norm = normalizeFingerprint(m.fingerprint)
+  const curKeys = Object.keys(cur) as (keyof VoiceFingerprint)[]
+  if (Object.keys(norm).length !== curKeys.length) return false
+  for (const k of curKeys) {
+    if (!Object.prototype.hasOwnProperty.call(norm, k)) return false
+    if (norm[k] !== cur[k]) return false
+  }
+  return true
 }
 
+/**
+ * 差异的可读描述。**指名到键** —— 脚本拒跑时靠它告诉人「哪个键、从什么变成什么」。
+ *
+ * 三种差异都要说出来：值不同、当前常量有而 manifest 缺、manifest 有而当前常量没有。
+ */
 export function fingerprintDiff(m: VoiceManifest): string {
   const cur = currentFingerprint()
-  const keys = Object.keys(cur) as (keyof VoiceFingerprint)[]
-  return keys
-    .filter((k) => m.fingerprint[k] !== cur[k])
-    .map((k) => `${k}: ${String(m.fingerprint[k])} → ${String(cur[k])}`)
-    .join('，')
+  const norm = normalizeFingerprint(m.fingerprint)
+  const parts: string[] = []
+  for (const k of Object.keys(cur) as (keyof VoiceFingerprint)[]) {
+    if (!Object.prototype.hasOwnProperty.call(norm, k)) {
+      parts.push(`${k}: 缺失 → ${String(cur[k])}`)
+      continue
+    }
+    if (norm[k] !== cur[k]) {
+      parts.push(`${k}: ${String(norm[k])} → ${String(cur[k])}`)
+    }
+  }
+  for (const k of Object.keys(norm)) {
+    if (!Object.prototype.hasOwnProperty.call(cur, k)) {
+      parts.push(`${k}: 多余键 ${String(norm[k as keyof VoiceFingerprint])}`)
+    }
+  }
+  return parts.join('，')
 }
 
 /** manifest 读不出来（文件不存在 / 不是合法 JSON / 结构不对）时返回 null，调用方据此走「无溯源」通路。 */
@@ -326,7 +458,7 @@ export function buildRequestBody(text: string): {
   text: string
   stream: boolean
   output_format: string
-  voice_setting: { voice_id: string; speed: number }
+  voice_setting: { voice_id: string; speed: number; pitch?: number }
   audio_setting: { format: string; sample_rate: number; bitrate: number; channel: number }
 } {
   return {
@@ -334,7 +466,19 @@ export function buildRequestBody(text: string): {
     text,
     stream: false,
     output_format: 'hex',
-    voice_setting: { voice_id: VOICE_ID, speed: VOICE_SPEED },
+    voice_setting: {
+      voice_id: VOICE_ID,
+      speed: VOICE_SPEED,
+      // ⚠️ `pitch` **只在 ≠ 0 时才带上**（Story 3.4 / Task 1.1 的实测结论）：
+      //   2026-10-25 实测确认 —— TTS **无 `seed`**，**同一请求体发两次，响应音频也不逐字节相同**
+      //   ⇒ 「发两次比字节」这条等价性判据**本身不成立**，不能用来证明
+      //   「加了 `pitch: 0` 之后产出的音频与之前一样」。
+      //   ⇒ 唯一站得住的论证是**请求体逐字节相同**：默认态下 `pitch` 不进请求体，
+      //   于是已提交的 75 条录音**仍然是当前脚本能复现的产物**（这条承诺不依赖 TTS 的随机性）。
+      //   ⇒ 一旦有人把 `VOICE_PITCH` 改成非 0，字段就会发出去，
+      //      而那时**必须整批重生成**（指纹闸会先拒跑，逼人走「删整个目录重跑全量」）。
+      ...(VOICE_PITCH !== 0 ? { pitch: VOICE_PITCH } : {}),
+    },
     audio_setting: {
       format: VOICE_FORMAT,
       sample_rate: SAMPLE_RATE,
@@ -367,6 +511,15 @@ export interface RunDeps {
   apiKey: string
   outputDir: string
   dry: boolean
+  /**
+   * `--force`：**用当前参数重录全部**（即使哈希一致、即使文件已存在）。
+   *
+   * ⚠️ 它**不越过指纹闸**（Story 3.4 / 裁决 F 的 (b) 方案）：
+   *   闸的存在意义就是「参数变了就整批重来」，而越闸 + 部分失败
+   *   会造出「旧音频 + 新指纹」那份真混批（裁决 F 逐字列了这条后果）。
+   *   ⇒ `--force` 的适用范围是「参数没变，但想把全部录音重录一遍」。
+   */
+  force: boolean
   requestIntervalMs: number
   fetchImpl: typeof fetch
   fileExists: (path: string) => boolean
@@ -592,35 +745,45 @@ export async function runBatch(entries: VoiceEntry[], deps: RunDeps): Promise<Ru
   for (const e of entries) {
     const target = join(deps.outputDir, `${e.id}.${VOICE_FORMAT}`)
 
-    // 跳过判定只认正式名（不认 .tmp，见 writeFileAtomic），且要求**内容**对得上
-    // manifest —— 「存在」不等于「正确」。半截文件、手工改过的文件、换了常量的
-    // 旧录音都从这里被重新生成，而不是被当成已完成的产物跳过。
-    const decision = decideSkip(
-      e.id,
-      deps.fileExists(target),
-      deps.hashFile,
-      target,
-      deps.manifest,
-      e.text,
-    )
-    if (decision.skip) {
-      deps.log(`[voice] skip ${e.id}（${SKIP_REASON_TEXT[decision.reason]}）`)
-      skipped += 1
-      if (decision.reason === 'unrecorded') {
-        // 首次运行（还没有 manifest）或词表新增一条，而磁盘上已经有它的录音。
-        // 把现状登记进 manifest，下次它就能按「已验证」路径跳过。
-        // ⚠️ 第一次跑（manifest 还不存在）时 deps.manifest 恰好是 null ——
-        //    这里若再按 manifest 是否存在加一道门控，bootstrap 就永远登记不上。
-        nextManifest.entries[e.id] = {
-          text: e.text,
-          sha256: deps.hashFile(target),
-          bytes: deps.fileSize(target),
+    if (deps.force) {
+      // `--force`：一律重录。⚠️ 刻意**不改** `decideSkip` 的签名与语义 ——
+      //   它是导出的纯函数且有既有用例，绕过它比改它更不容易造出「两套跳过规则」。
+      deps.log(`[voice] --force：${e.id} 不走跳过判定，重录`)
+    } else {
+      // 跳过判定只认正式名（不认 .tmp，见 writeFileAtomic），且要求**内容**对得上
+      // manifest —— 「存在」不等于「正确」。半截文件、手工改过的文件、换了常量的
+      // 旧录音都从这里被重新生成，而不是被当成已完成的产物跳过。
+      const decision = decideSkip(
+        e.id,
+        deps.fileExists(target),
+        deps.hashFile,
+        target,
+        deps.manifest,
+        e.text,
+      )
+      if (decision.skip) {
+        deps.log(`[voice] skip ${e.id}（${SKIP_REASON_TEXT[decision.reason]}）`)
+        skipped += 1
+        if (decision.reason === 'unrecorded') {
+          // 首次运行（还没有 manifest）或词表新增一条，而磁盘上已经有它的录音。
+          // 把现状登记进 manifest，下次它就能按「已验证」路径跳过。
+          // ⚠️ 第一次跑（manifest 还不存在）时 deps.manifest 恰好是 null ——
+          //    这里若再按 manifest 是否存在加一道门控，bootstrap 就永远登记不上。
+          // ⚠️⚠️ 但这条登记**只在 manifest 存在时安全**：manifest 缺失 ⇒
+          //    磁盘上的录音**来源不明**，把它们登记进新指纹 = 拿新参数给旧音频盖章。
+          //    CLI 那侧已经用「没有 manifest 但盘上有 mp3 ⇒ 拒跑」堵住了这条路
+          //    （Story 3.4 / AC-7 的第二个 Given 块）。
+          nextManifest.entries[e.id] = {
+            text: e.text,
+            sha256: deps.hashFile(target),
+            bytes: deps.fileSize(target),
+          }
         }
+        continue
       }
-      continue
-    }
-    if (decision.reason === 'corrupt') {
-      deps.log(`[voice] ${e.id} 已存在但内容与 manifest 不符（半截文件或被改过）—— 重新生成`)
+      if (decision.reason === 'corrupt') {
+        deps.log(`[voice] ${e.id} 已存在但内容与 manifest 不符（半截文件或被改过）—— 重新生成`)
+      }
     }
 
     let last: AttemptErr | null = null
@@ -720,15 +883,36 @@ const NODE_FS: AtomicFs = { writeFileSync, renameSync }
 
 interface Cli {
   dry: boolean
+  force: boolean
+  help: boolean
   only?: string
 }
 
+const USAGE = [
+  '[voice] 用法：npm run generate:voice -- [选项]',
+  '',
+  '  --dry            只估算费用，不发请求、不读写产物目录（不需要 API key）',
+  '  --only <前缀>    只处理 id 以 <前缀> 开头的词条',
+  '  --force          用当前参数**重录全部**（即使哈希一致）；不越过指纹闸',
+  '  --help           打印本用法并退出（不需要 API key）',
+  '',
+  '改录音生成参数（模型 / 音色 / 语速 / 音高）后的**正确流程**（整批，不许零散补录）：',
+  '  1. 改 scripts/generate-voice.ts 的常量区；',
+  '  2. 重跑本脚本 —— 指纹闸会**拒跑**并指名差异；',
+  '  3. 删掉**整个**产物目录（mp3 与 manifest 一起删），再重跑全量。',
+  '  ⚠️ 只删 manifest、不删 mp3 是不允许的：那样旧参数录音会被盖上新参数的戳。',
+].join('\n')
+
 function parseCli(argv: string[]): Cli {
-  const cli: Cli = { dry: false }
+  const cli: Cli = { dry: false, force: false, help: false }
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i]
     if (arg === '--dry') {
       cli.dry = true
+    } else if (arg === '--force') {
+      cli.force = true
+    } else if (arg === '--help') {
+      cli.help = true
     } else if (arg === '--only') {
       const value = argv[i + 1]
       if (value === undefined) {
@@ -746,7 +930,9 @@ function parseCli(argv: string[]): Cli {
       cli.only = value
       i += 1
     } else {
-      throw new Error(`[voice] 未知参数：${arg}（支持 --dry / --only <前缀>）`)
+      throw new Error(
+        `[voice] 未知参数：${arg}（支持 --dry / --only <前缀> / --force / --help）`,
+      )
     }
   }
   return cli
@@ -757,14 +943,32 @@ function parseCli(argv: string[]): Cli {
  * 这样本函数可被测试直接调用。
  *
  * `env` 可注入：测试要在**没有** key 的情况下断言 dry 路径仍返回 0。
+ *
+ * `opts.outputDir` 可注入（Story 3.4 / Task 3.1）：守卫要在临时目录里驱动
+ * 「指纹不匹配 ⇒ 拒跑」这条路径；而产物目录写死的话，测试会把新的 manifest
+ * 写到**仓库里真的**那个已提交文件上，覆盖 75 条溯源记录。
+ * ⚠️ 默认值不变 ⇒ `npm run generate:voice` 的行为逐字不变。
  */
-export async function main(argv: string[], env: NodeJS.ProcessEnv = process.env): Promise<number> {
+export async function main(
+  argv: string[],
+  env: NodeJS.ProcessEnv = process.env,
+  opts: { outputDir?: string } = {},
+): Promise<number> {
+  const outputDir = opts.outputDir ?? OUTPUT_DIR
   let cli: Cli
   try {
     cli = parseCli(argv)
   } catch (err) {
     console.error(err instanceof Error ? err.message : String(err))
     return 1
+  }
+
+  // ⚠️ `--help` 必须在**读 key 之前**返回（与 `--dry` 同款纪律）：
+  //   「打印用法」这件事不该要求 API key —— 否则在一台没配 key 的机器上
+  //   `--help` 直接返回 1，而用户恰恰是这台机器上最需要看用法的人。
+  if (cli.help) {
+    console.log(USAGE)
+    return 0
   }
 
   // `.env` 已在 .gitignore，放 API key 在这里是安全的。
@@ -819,9 +1023,10 @@ export async function main(argv: string[], env: NodeJS.ProcessEnv = process.env)
   // ── 溯源校验（--dry 不碰：它一个文件都不该读、更不该写）────────────────
   let manifest: VoiceManifest | null = null
   if (!cli.dry) {
+    const manifestFile = manifestFileIn(outputDir)
     let raw: string | null = null
     try {
-      raw = readFileSync(MANIFEST_FILE, 'utf8')
+      raw = readFileSync(manifestFile, 'utf8')
     } catch {
       raw = null
     }
@@ -833,12 +1038,30 @@ export async function main(argv: string[], env: NodeJS.ProcessEnv = process.env)
         `[voice] 现有录音是用另一组参数生成的：${fingerprintDiff(manifest)}`,
       )
       console.error(
-        `[voice] 拒绝把它们当成已完成。请删除 ${OUTPUT_DIR}/ 下的录音与 manifest 后重跑全量 —— ` +
+        `[voice] 拒绝把它们当成已完成。请删除 ${outputDir}/ 下的录音与 manifest 后重跑全量 —— ` +
           '混用两组参数的录音无法保证音色一致。',
       )
       return 1
     }
     if (manifest === null) {
+      // ⚠️⚠️ 「没有 manifest 但盘上已有 mp3」= **来源不明**。
+      //   此时若照常跑，`decideSkip` 的 `unrecorded` 分支会把那些**旧参数**的录音
+      //   登记进**新指纹**的 manifest ⇒ 混批被盖上「同源」的戳，而 G310 抓不到
+      //   （manifest 与常量一致得很）。
+      //   ⇒ 选定的堵法（Story 3.4 / AC-7 的第二个 Given 块）：**拒绝运行**，
+      //     要求「删整个目录重跑全量」。这是**响亮失败**，不是静默损坏。
+      //   ⚠️ 真正的一次性首跑（目录里连 mp3 都没有）不受影响 —— 那条路照常走下去。
+      const orphanMp3s = listVoiceMp3s(outputDir)
+      if (orphanMp3s.length > 0) {
+        console.error(
+          `[voice] ${outputDir}/ 下有 ${orphanMp3s.length} 个 mp3，但**没有 manifest** —— ` +
+            '这些录音是用哪组参数生成的已经无从判断，不能拿当前参数给它们盖章。',
+        )
+        console.error(
+          `[voice] 拒绝运行。请删除整个 ${outputDir}/ 目录（mp3 与 manifest 一起删）后重跑全量。`,
+        )
+        return 1
+      }
       console.log(
         '[voice] 未找到 manifest —— 现有录音将按「无溯源」跳过，本次跑完会为它们建立 manifest。',
       )
@@ -847,13 +1070,16 @@ export async function main(argv: string[], env: NodeJS.ProcessEnv = process.env)
 
   console.log(
     `[voice] 词表 ${entries.length} 条 → ${VOICE_ID} / ${VOICE_MODEL} / speed=${VOICE_SPEED}` +
-      (cli.dry ? '（--dry 预估模式）' : ''),
+      ` / pitch=${VOICE_PITCH}` +
+      (cli.dry ? '（--dry 预估模式）' : '') +
+      (cli.force ? '（--force 重录全部）' : ''),
   )
 
   const result = await runBatch(entries, {
     apiKey,
-    outputDir: OUTPUT_DIR,
+    outputDir,
     dry: cli.dry,
+    force: cli.force,
     requestIntervalMs: REQUEST_INTERVAL_MS,
     fetchImpl: fetch,
     fileExists: existsSync,
@@ -864,7 +1090,7 @@ export async function main(argv: string[], env: NodeJS.ProcessEnv = process.env)
     timeoutSignal: () => AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     hashFile: (path) => hashFileSync(path),
     fileSize: (path) => statSync(path).size,
-    writeManifest: (m) => writeManifestFile(m),
+    writeManifest: (m) => writeManifestFile(m, outputDir),
     manifest,
   })
 

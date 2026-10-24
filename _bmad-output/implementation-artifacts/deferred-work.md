@@ -20,8 +20,8 @@
 | DF-007 | 待排期 | 未指派 | 下次改这三个测试文件时，把 `expect` 补上中文失败消息（R-55 的约定） | 三个测试文件的 `expect` 仍欠中文失败消息（实测 89 / 13 / 20 处） | [`df-007`](./deferred-details.md#df-007) |
 | DF-008 | 待排期 | 未指派 | 下一次给 AC-9 的「不越界」禁令补守卫时（在那之前只能靠交付时人工复核） | AC-9 七条「不越界」禁令仍零守卫，事后归因只能靠 git 历史 | [`df-008`](./deferred-details.md#df-008) |
 | DF-009 | 待触发 | 未指派 | 缺的是「真实浏览器上 `ended` 之后仍会派发 `error`」这一前提的实测 | `isEnglish` 仍只认 `/^en[-_]/`，`playRecording` 的 `ended` 不置 settled | [`df-009`](./deferred-details.md#df-009) |
-| DF-010 | 待触发 | Story 3.4 | Story 3.4 一旦真的调了音色或语速，手工 `rm` 的操作成本会第一次变成实际摩擦 —— 那时一并加 `--force` 与 `--help` | `generate-voice.ts` 仍只有 `--dry`/`--only`，缺 `--force`/`--help` | [`df-010`](./deferred-details.md#df-010) |
-| DF-011 | 待触发 | Story 3.4 | Story 3.4 需要按业务码分类统计（例如「只有音色类失败才换音色」）时 | `generate-voice.ts` 的 `Failure.code` 仍是无区分 `string` | [`df-011`](./deferred-details.md#df-011) |
+| DF-010 | 待触发 | Story 3.4（裁决 A 落地时） | 真的调了音色或语速、且 `--force` 仍无法免除手工 `rm` 时 ⇒ 裁决要不要让 `--force` 越指纹闸 | `generate-voice.ts` 已有 `--force`/`--help`，但 `--force` 不越闸 ⇒ 改参数后仍须手工删整个产物目录 | [`df-010`](./deferred-details.md#df-010) |
+| DF-011 | 待触发 | 未指派 | 下次要按业务码分类统计 `Failure.code` 时（例如「只有音色类失败才换音色」） | `generate-voice.ts` 的 `Failure.code` 仍是无区分 `string` | [`df-011`](./deferred-details.md#df-011) |
 | DF-012 | 待触发 | Story 3.2 / Story 1.12 | Story 3.2 拿到试玩数据后，二选一 —— 调射程/速度让窗口恒含 2 个可达列，或接受「塔位有讲究」并把范围写进 Story 1.12 的 UI 引导；不要在本层悄悄调 | `src/core/combat.ts` 射程窗口裁剪 ⇒ col 0/2/4/6/7 单塔打不死 100 血僵尸 | [`df-012`](./deferred-details.md#df-012) |
 | DF-013 | 待触发 | Story 3.2 | Story 3.2 依试玩数据决定减速塔伤害（25 → 34 使 3 发合计 102 ≥ 100）或持续回合数 | `src/core/combat.ts` 减速塔 25 伤害实测 75，GDD「6 回合 × 25 = 150」已被证伪 | [`df-013`](./deferred-details.md#df-013) |
 | DF-014 | 待触发 | Story 3.2（调数值）/ Epic 1 试玩（Story 1.19） | Epic 1 试玩；若 4 题门槛显得过严，首选调起始心数 3 → 4 或开局前 2 回合不出僵尸 | `gdd.md` 失败门槛 4 待 Epic 1 试玩复核（首选调起始心数 3 → 4） | [`df-014`](./deferred-details.md#df-014) |
@@ -126,13 +126,13 @@
 | DF-123 | 待触发 | Story 1.19 | 给 `LevelOutcome` 浮层自己的 `padding-left/right` 补上 `env(safe-area-inset-left/right)`，并加一条守卫断言 | `src/components/hud/LevelOutcome.vue` 浮层 `padding-left/right` 仍只有 `var(--space-panel-pad)` | [`df-123`](./deferred-details.md#df-123) |
 | DF-124 | 待触发 | Story 1.2 | 把「结束朗读」收敛成单一出口（`try/finally` 或一个 `finishPronunciation()`），所有提前 `return` 路径都走它；并加一条守卫断言「任何一次朗读请求结束后 `playing` 必为 false」 | `src/services/pronunciation.ts` 的 `playPronunciation` 提前 `return` 路径不发 `idle`，浮层可能永亮 | [`df-124`](./deferred-details.md#df-124) |
 | DF-125 | 待排期 | Story 1.19 / 1.20 / 2.1 / 2.2 | ① 先把 110 行按 story 归位，账本里只留一行指针；② 归位完成后再把 R-42 守卫的射程扩到 `last_updated:` 块，上限沿用 `SPRINT_STATUS_MAX_COMMENT_LINES`；③ 扩射程那一步要配一条反向自测 | `sprint-status.yaml` 的 `last_updated:` 块 110 行注释未归位，R-42 守卫上限仍是 4 | [`df-125`](./deferred-details.md#df-125) |
-| DF-126 | 待触发 | Story 3.4 | 3.4 开工时先定 ducking 曲线（起落时间常数 + 稳态增益），再在 `startBgmIfReady` / `playSfx` 两侧各接一个 `GainNode`；接线后补一条守卫：BGM 起播中播放音效 ⇒ `bgmGain` 被压低 | `services/audio.ts` 的 `startBgmIfReady`/`playSfx` 两侧未接 `GainNode` 做 BGM ducking | [`df-126`](./deferred-details.md#df-126) |
+| DF-126 | 待裁决 | 未指派（接线规格见 Story 3.4 决策包） | 裁决 ducking 曲线（起落时间常数 + 稳态增益）后，按 Story 3.4 给出的接线规格在 `startBgmIfReady`/`playSfx` 两侧各接一个 `GainNode`，并补守卫 | `services/audio.ts` 的 `startBgmIfReady`/`playSfx` 两侧未接 `GainNode` 做 BGM ducking | [`df-126`](./deferred-details.md#df-126) |
 | DF-127 | 待触发 | Story 1.18 | 真机上确认目标设备是否真的需要前缀；确认不需要就把它划掉，不要为了「完备」而加没人验证过的分支 | `services/audio.ts` 只读 `globalThis.AudioContext`，无 `webkitAudioContext` 前缀回退 | [`df-127`](./deferred-details.md#df-127) |
 | DF-128 | 待裁决 | 未指派 | 先定「许可字段允许填什么」（是否允许 `AI-generated (...)` 这类描述），再据此把 G251 的「已知形态」清单补全 | `tests/assets/audio-assets.test.ts` 的许可字段允许哪些前缀仍待人裁决 | [`df-128`](./deferred-details.md#df-128) |
 | DF-129 | 待排期 | 未指派 | 下次动这批文件时顺手改；或单独开一次「守卫编号可检索性」的小改，改完跑一遍全仓确认没有用例只靠标题匹配 | `tests/` 各守卫编号只写在 `describe` 上，`it` 标题不含 G 号，按号搜不到用例 | [`df-129`](./deferred-details.md#df-129) |
 | DF-130 | 待触发 | 未指派 | 先定「复习模式」在 `State` 里的表示，再决定判据落在哪一层；触发条件 = 引入复习模式的那天 | `core/effects.ts` 的 `answer-correct` 在引入复习模式后会重新可达 | [`df-130`](./deferred-details.md#df-130) |
-| DF-131 | 待触发 | Story 3.4 | 3.4 开工时先定「回合结算要不要留下逐只的结算明细」；别为了这条去动 `State` | `core/effects.ts` 的 `zombie-died` 判据分不清「被打死」与「到达后被带走」的僵尸 | [`df-131`](./deferred-details.md#df-131) |
-| DF-132 | 待触发 | Story 3.4 | 3.4 决定要不要排队播放 | `services/audio.ts` 各音效各自解码，先解完先响 ⇒ `runEffects` 数组顺序 ≠ 听觉顺序 | [`df-132`](./deferred-details.md#df-132) |
+| DF-131 | 待触发 | Story 3.2 / 3.6（战斗结算侧） | 回合结算把**逐只**僵尸的结算明细写进 `State` 之后 ⇒ 收窄 `zombie-died` 的判据；别为了这条去动 `State` | `core/effects.ts` 的 `zombie-died` 判据分不清「被打死」与「到达后被带走」的僵尸 | [`df-131`](./deferred-details.md#df-131) |
+| DF-132 | 待触发 | 未指派（战斗反馈侧） | 音效播放改为**可等待的串行队列**时（排队会改体感，须先定） | `services/audio.ts` 各音效各自解码，先解完先响 ⇒ `runEffects` 数组顺序 ≠ 听觉顺序 | [`df-132`](./deferred-details.md#df-132) |
 | DF-133 | 待触发 | Story 1.17 | 1.17 若要收这条，就在 G109 那条守卫里扩，而不是新开一条 | `app/dev-adjust.ts` 补偿缝的音效触发顺序由 Story 1.17 的 G109 负责 | [`df-133`](./deferred-details.md#df-133) |
 | DF-134 | 待触发 | 未指派 | 音效若改用程序化生成，需搬 Story 1.3 的 manifest/fingerprint/sha256（R-59 全套） | `core/effects.ts` 的音效若改用程序化生成要补 R-59 全套 | [`df-134`](./deferred-details.md#df-134) |
 | DF-135 | 待排期 | Story 3.2 / 3.6 | 3.2 调数值时把「单元边界处的初始阳光净变化」列入检查项；并另加一条检查项（相邻档位 `floor((初始阳光 + 答对增量) ÷ 最低造价)` 是否相同） | `BALANCE_TIERS` 三档在单元边界净缩水 50，档位 3 门槛比档位 1-2 宽一问 | [`df-135`](./deferred-details.md#df-135) |
@@ -200,6 +200,9 @@
 | DF-209 | 待裁决 | Story 1.19 | Story 1.19 真机试玩（Task 3）在**浏览器标签页**（非 PWA 全屏）模式下确认 768×1024 是否真裁；确认裁切 ⇒ 下一次动选项卡尺寸时裁决「选项卡高度是否受可用高度约束」 | `OptionCard.vue` 的 `.option-card__image` 是 `aspect-ratio: 1/1` ⇒ 选项卡高由宽度定 ⇒ 浏览器标签页（内视口矮 87px）下 768×1024 题卡超出视口 21px | [`df-209`](./deferred-details.md#df-209) |
 | DF-210 | 待触发 | Story 2.6 | 教材版每关 `N` 确定后（DF-201 版本确认），按 24 关 / 新 `N` 重算 `docs/word-image-throughput.md` §8.1.3 与 §8.4 的参数表与决策表 | 该文档 §8 的 16–20 单元 / 480–600 张 / 66–133 h 全是旧口径；新口径下「口径 B 远超投入」这条结论**不成立** | [`df-210`](./deferred-details.md#df-210) |
 | DF-212 | 待触发 | Story 1.18 | Story 1.18 真机字号校准时，把 `src/styles/tokens.css` 字体阶梯的推导数按今天的实测容器宽 **736px** 重算（4 个选项 ⇒ 单卡 175px、内容盒 151px ⇒ 硬上限 28.8px、余量 23.6%） | 字体阶梯仍按 Story 1.11 的旧基线 768 / 183 / 159 推导；`--text-option: 22px` 取值**仍成立**，过期的是**推导数**与「余量 27.7%」 | [`df-212`](./deferred-details.md#df-212) |
+| DF-213 | 待裁决 | 未指派 | 有人裁决辅通路四个常量的「现场调」归属（候选：Story 1.19 试玩校准 / 某个尚未存在的 story），并把 5 个文件里的 10 处口径一次改齐 | `pronunciation.ts` 的四个 rate/pitch 常量在 5 个文件 10 处写着两个归属（Epic 1 现场调 / Epic 3 现场调） | [`df-213`](./deferred-details.md#df-213) |
+| DF-214 | 待排期 | Story 3.4 | 下次动 `epics.md` 的 FR4 段或 `game-architecture.md` 的 Configuration 表时，先回读 Story 3.4 的 rev 3 note 与本条详情，核对那两处更正仍在 | Story 3.4 由 `[DS]` 直接更正了 `game-architecture.md` 的 `scripts/gen-voice.ts` 路径与 `epics.md` FR4 的重复行 | [`df-214`](./deferred-details.md#df-214) |
+| DF-215 | 待触发 | Story 1.19 | Story 1.19 真机试玩那一批（与 Story 3.4 裁决 A 同场）里，把「音效 / BGM / 预生成录音」三者的响度配比问出结论并记进试玩记录 | GDD 的「音量 / 响度配比是否适合 4–8 岁孩子」至今无归属 story、无任何结论记录 | [`df-215`](./deferred-details.md#df-215) |
 
 ## 新增一条
 

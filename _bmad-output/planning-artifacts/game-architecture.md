@@ -654,7 +654,7 @@ function playPronunciation(text: string): void {
 |---|---|---|
 | 平衡数值 | `src/core/balance.ts` | GDD 首版数值集中于此。塔伤害/射程/造价、僵尸血量/速度、阳光速率 |
 | TTS 参数（辅通路） | `src/services/pronunciation.ts` | `rate` / `pitch`，**Epic 1 现场调**的可配置常量 |
-| 录音生成参数 | `scripts/gen-voice.ts`（Story 1-3） | `model` / `voice_id` / `speed`，**生成期常量**，改了要全量重生成 |
+| 录音生成参数 | `scripts/generate-voice.ts`（Story 1-3） | `model` / `voice_id` / `speed`，**生成期常量**，改了要全量重生成 |
 | 网格规格 | `src/core/grid.ts` | 5 行 × 9 列、僵尸行 = 第 3 行 |
 | 调试开关 | `import.meta.env.DEV` + URL 参数 | 调试面板、网格覆盖层 |
 

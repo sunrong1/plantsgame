@@ -249,7 +249,14 @@ epics 的 AC（`[CR]` 时按 AC 逐条对账靠的就是「出处锚点」）；
 
 ### R-59 「已存在就跳过」必须验哈希，不是验存在
 
-**规则** 任何「文件已存在就跳过」的逻辑都必须**验内容**：记录 fingerprint（model / voice_id / speed / format）+ 每条 sha256。判定走四态：`verified`（哈希一致）/ `unrecorded`（跳过但登记）/ `missing` / `corrupt`（重新生成）。fingerprint 与常量不符 → **退出码 1 拒跑**，不静默重生成。
+**规则** 任何「文件已存在就跳过」的逻辑都必须**验内容**：记录 fingerprint（model / voice_id / speed / format / **pitch**）+ 每条 sha256。判定走**五态**：`verified`（哈希一致）/ `unrecorded`（跳过但登记）/ `missing` / `corrupt`（重新生成）/ `text-mismatch`（文件本身没问题，但它是**另一个文本**录出来的 ⇒ 重录）。fingerprint 与常量不符 → **退出码 1 拒跑**，不静默重生成。
+
+⚠️ **fingerprint 的比较必须逐键做，且键集合必须恰好相等**（Story 3.4 实测补）：
+① manifest 里**缺**某个键 ⇒ 归一为该参数的**历史默认值**（`pitch` ⇒ 0），
+**不是**当前常量值 —— 归一方向反了，「改了参数却没重生成」会被放过；
+② **不许**用 `JSON.stringify` 比整份对象（键序敏感，而归一化会把 `pitch` 排到最前
+⇒ 现状会被**误判**为不匹配）；
+③ manifest 里**多出来的键**也要报（只比「当前常量有的那几个键」会放过它）。
 
 **依据** 这个根因已经两次静默地伤到孩子听见的发音：
 
@@ -258,9 +265,12 @@ epics 的 AC（`[CR]` 时按 AC 逐条对账靠的就是「出处锚点」）；
 
 原子写只防「写一半被杀」，不防「整份写完但内容是垃圾」—— 这两道闸各缺一不可。
 
-**首现** Story 1.3
+**首现** Story 1.3（`pitch` 与五态、逐键比较：Story 3.4）
 
 **守卫** `tests/scripts/generate-voice.test.ts`（「哈希一致才跳过」/「哈希对不上就重新生成」）、`tests/content/unit-01.test.ts`（「跳过判据是哈希，不是『文件存在』」）。⚠️ **仅 mp3 有守卫；词图侧无守卫**（仓库没有词图生成脚本）。
+📎 **Story 3.4 补两条**：**G310**（`tests/assets/audio-assets.test.ts` —— **已提交的** `manifest.json` 指纹与脚本当前常量逐键一致；「改了常量却没重生成」今天原本**零守卫**）、**G311**（`tests/scripts/generate-voice.test.ts` —— 指纹不匹配 ⇒ 脚本**真的**退出码 1 且诊断指名差异的键）。
+⚠️ G310 的**比较逻辑在测试文件里自己写** —— 拿脚本自己的 `fingerprintMatches` 判它自己，
+等于「守卫和被守卫者是同一段代码」，脚本的比较逻辑一坏守卫跟着一起坏。
 
 ---
 

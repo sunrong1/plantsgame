@@ -1,8 +1,20 @@
 ---
 stepsCompleted: [1, 2, 3, 4]
 status: complete
-revision: 2
+revision: 3
 revisionNote: |
+  rev 3 —— [DS] Story 3.4 的**事实更正**（**不改任何设计决定**）。只删掉 FR4 段里
+  **连写两遍**的同一行「降级通路必须固定在架构层，不得是临时 if」中的一条 ——
+  该行在 rev 2 之前就重复了（同一段里逐字出现两次），属**排版重复**而非两条要求。
+  **为什么由 `[DS]` 改**（R-33 的三个条件全满足）：① 被描述的行为**已交付且有守卫钉住**
+  （`src/services/pronunciation.ts` 的统一入口 + `tests/services/pronunciation.test.ts`
+  的「预生成录音主通路（架构决策 7）」与「G252 —— `new Audio()` 构造抛错时回落到设备 TTS」
+  两条 describe）；② **另一侧没有选择** —— 让需求正文去迁就一处排版重复不成立；
+  ③ 本 note 即「升 revision + 追加」（**不覆盖** rev 2 的 note），
+  并已同步 `deferred-work.md`（新增 `DF-214` 记录这次更正，防它被改回去）。
+  ⚠️ 本 note 引用原文句子而非行号（R-31：行号随 revision 漂移）。
+  ⚠️ **没有**顺手改 FR4 里的其它内容：主通路 / 降级通路 / 「不得是临时 if」这三条要求**一字未动**。
+
   rev 2 —— [DS] Story 1.17 的**事实更正**（**不改任何设计决定**）。只更正 Story 1.17 AC 的
   「降级标志来源」口径：原文逐字是「消费 Story 1.11 / 1.13 / 1.14 各自暴露的降级标志」，
   而实测 —— ① **1.11（三种卡型）与 1.13（HUD）没有可降级的东西**：词图 / 塔图 / 僵尸图
@@ -51,7 +63,6 @@ FR3:  speechSynthesis.cancel() 仅在 speechSynthesis.speaking === true 时调�
 FR4:  朗读走统一的 playPronunciation(text) 接口。
       主通路为预生成录音（audio/voice/<词条id>.mp3）；
       录音缺失或加载失败时降级为设备 TTS。
-      降级通路必须固定在架构层，不得是临时 if
       降级通路必须固定在架构层，不得是临时 if
 FR5:  TTS 播放失败绝不阻断回合流转 —— 支柱 1 的唯一入口挂掉时游戏仍须能进行
 FR6:  音效共 7 个事件：答对、答错、建塔、僵尸死亡、僵尸抵达（掉心）、通关、失败；

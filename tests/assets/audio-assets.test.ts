@@ -1,5 +1,6 @@
 /**
- * **G66 / G67** —— 音效与 BGM 素材的存在性与来源登记守卫（Story 1.14 / AC-H1、AC-H2）。
+ * **G66 / G67 / G251 / G310** —— 音频素材的存在性、来源登记与**录音溯源**守卫
+ * （G66 / G67 / G251：Story 1.14 / AC-H1、AC-H2；G310：Story 3.4 / AC-6）。
  *
  * ── G66：磁盘上真的躺着 7 个音效 + 1 首 BGM，且**不是空文件** ────────────────
  * ⚠️ 「文件存在」不等于「文件正确」。本 story 之前就有过 **0 字节 mp3** 的静默失效
@@ -14,8 +15,18 @@
  * 没人知道它的许可证是什么）。
  * ⇒ 双向都查：SOURCES.json 有而磁盘没有 ⇒ 红；磁盘有而 SOURCES.json 没有 ⇒ 红。
  *
+ * ── G310：**已提交的**朗读录音溯源指纹 == 脚本当前常量 ──────────────────────
+ * 脚本里的指纹闸只在**运行那一刻**生效（退出码 1）；
+ * 而**已提交进 git 的那份 manifest 与那 75 条 mp3** 原本**没有任何守卫** ——
+ * 改了 `VOICE_SPEED` 却没重生成，磁盘上是旧录音、manifest 与常量却对得上，
+ * **没有任何测试会红**，而孩子听到的是旧语速。
+ * ⇒ 本守卫把「常量 / 请求体 / 指纹 / 已提交 manifest」四者绑成一条链。
+ *
  * ⚠️ **判据只有一份**：cue 列表一律从 `src/core/effects.ts` 的 `SfxCue` 取，
  *   不在本文件重抄七个字符串（1.9 的 P0：判据抄多份 ⇒ 真守卫停用也全绿）。
+ *   G310 的**取值**也只取一处（脚本的 `currentFingerprint()` 与 `HISTORICAL_DEFAULTS`），
+ *   但**比较逻辑在本文件自己写** —— 拿脚本自己的比较函数来判它自己，
+ *   等于「守卫和被守卫者是同一段代码」（守卫失效时它会跟着一起失效）。
  *
  * ── AC-H2：每条登记必须**真实可核** ─────────────────────────────────────────
  * `license` / `url` / `author` 三个字段逐条非空。AC-H2 禁止的是
@@ -31,6 +42,7 @@ import { describe, expect, it } from 'vitest'
 import type { SfxCue } from '../../src/core'
 import { MUSIC_BASE_PATH, SFX_BASE_PATH } from '../../src/services/audio'
 import { assetPathWithinPublic } from '../../src/services/asset-url'
+import { HISTORICAL_DEFAULTS, currentFingerprint } from '../../scripts/generate-voice'
 
 const root = process.cwd()
 
@@ -297,5 +309,87 @@ describe('G251 —— 登记的扫描范围与「逐条真实」（AC-H1 / AC-H2
   it('G251：登记的来源页（url）两两不同（不许一个来源页登记成好几条）', () => {
     const urls = [...sources.sfx, ...sources.music].map((r) => r.url)
     expect(new Set(urls).size, `来源页有重复：${urls.join(' / ')} —— 那说明两条登记指的是同一个来源`).toBe(urls.length)
+  })
+})
+
+/**
+ * G310 —— **已提交的**朗读录音溯源指纹必须与脚本当前常量一致（Story 3.4 / AC-6）。
+ *
+ * ⚠️ **为什么这条守卫不调脚本自己的 `fingerprintMatches`**：
+ *   那样等于「用被测对象判被测对象」—— 脚本的比较逻辑一旦坏掉（比如退化成
+ *   `JSON.stringify` 键序敏感），守卫会**跟着一起坏**，而守卫变绿正是我们要防的事。
+ *   ⇒ **取值**只取一处（脚本的 `currentFingerprint()` / `HISTORICAL_DEFAULTS`），
+ *     **比较逻辑**在本文件自己写。
+ */
+describe('G310 —— 已提交的录音溯源指纹 == 脚本当前常量（AC-6）', () => {
+  const MANIFEST_FILE = join(root, 'public/assets/audio/voice/manifest.json')
+
+  /**
+   * 磁盘上的指纹与当前常量是否一致。
+   *
+   * 两条要求（缺一不可）：
+   * ① **键集合恰好相等** —— manifest 里**多出来的键**也要报
+   *    （只比「当前常量有的那几个键」会把多出来的键放过）；
+   * ② **逐键比较** —— 不许 `JSON.stringify` 比整份对象（键序敏感，
+   *    而归一化会把 `pitch` 排到最前 ⇒ 整对象比较会把现状误判为不匹配）。
+   */
+  const fingerprintAgrees = (stored: Record<string, unknown>): boolean => {
+    const cur = currentFingerprint() as unknown as Record<string, unknown>
+    const norm: Record<string, unknown> = { ...HISTORICAL_DEFAULTS, ...stored }
+    const curKeys = Object.keys(cur).sort()
+    if (Object.keys(norm).sort().join(',') !== curKeys.join(',')) return false
+    return curKeys.every((k) => norm[k] === cur[k])
+  }
+
+  it('G310：已提交的 manifest 存在（不是「存在就跳过」）', () => {
+    expect(
+      existsSync(MANIFEST_FILE),
+      '已提交的录音溯源清单不在了 —— 那 75 条录音的来源就无从判断了（这正是 G310 要守的东西）',
+    ).toBe(true)
+  })
+
+  it('G310：已提交 manifest 的指纹与脚本当前常量逐键一致', () => {
+    const parsed = JSON.parse(readFileSync(MANIFEST_FILE, 'utf8')) as {
+      fingerprint: Record<string, unknown>
+    }
+    const cur = currentFingerprint() as unknown as Record<string, unknown>
+    const norm: Record<string, unknown> = { ...HISTORICAL_DEFAULTS, ...parsed.fingerprint }
+
+    expect(
+      Object.keys(norm).sort(),
+      '已提交 manifest 的指纹键集合与当前常量不一致 —— 多出来的键或缺失的键都要报出来',
+    ).toEqual(Object.keys(cur).sort())
+
+    for (const k of Object.keys(cur)) {
+      expect(
+        norm[k],
+        `已提交 manifest 的指纹「${k}」与脚本当前常量不一致 —— ` +
+          '要么改了常量没重生成录音，要么重生成后 manifest 没更新（两种都是「提交物自相矛盾」）',
+      ).toBe(cur[k])
+    }
+  })
+
+  it('G310 反向自测：判据真的能咬住三种差异', () => {
+    const cur = currentFingerprint() as unknown as Record<string, unknown>
+
+    expect(
+      fingerprintAgrees({ ...cur, speed: 1.2 }),
+      '语速不同却判成一致 ⇒ 改了常量没重生成不会被任何人发现',
+    ).toBe(false)
+
+    expect(
+      fingerprintAgrees({
+        model: cur['model'],
+        voice_id: cur['voice_id'],
+        speed: cur['speed'],
+        format: cur['format'],
+      }),
+      '缺 pitch 键（历史 manifest 的形态）却判成不一致 ⇒ 已提交的那批录音会被无端重生成',
+    ).toBe(true)
+
+    expect(
+      fingerprintAgrees({ ...cur, extra_key: 1 }),
+      'manifest 里多出来的键被放过 ⇒ 提交物里可能夹着别的东西',
+    ).toBe(false)
   })
 })
