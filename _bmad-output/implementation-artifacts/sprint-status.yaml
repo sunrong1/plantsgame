@@ -49,7 +49,7 @@
 #   epics.md 的销项说明处理。
 
 generated: 2026-10-12
-last_updated: 2026-10-25  # Story 3.4 `[CR]` 完成（守卫 G310–G314，变异 M371–M378）⇒ 仍 `review`；两轮 `[CC]` ⇒ 见 planning-artifacts/sprint-change-proposal-2026-10-24{,-2}.md
+last_updated: 2026-10-25  # Story 3.5 `[CS]` 建档 ⇒ `ready-for-dev`；代码侧 = 真浏览器量测补齐 + 动效守卫覆盖面
 project: plants-game
 project_key: NOKEY
 tracking_system: file-system
@@ -100,7 +100,7 @@ development_status:
   3-2-战斗数值调优: backlog
   3-3-经济与节奏调优: backlog
   3-4-音频品质打磨: review   # 📎 2026-10-25 夜：[DS]+[CR] 完成（守卫 G310–G314，变异 M363–M378）；参数取值仍待人裁决，见 story 文档
-  3-5-平板竖屏布局细节打磨: backlog
+  3-5-平板竖屏布局细节打磨: ready-for-dev   # 📎 2026-10-25 夜：[CS] 建档；代码侧 = 真浏览器量测补齐（间距 / 命中区 / 两个相位）+ 动效守卫覆盖面；真机项并进 1.19 的清单
   3-6-平衡回归锁定: backlog
   3-7-全流程最终验收: backlog
   3-8-条件-story-战斗疲劳重评-触发才开-不触发则销项: backlog

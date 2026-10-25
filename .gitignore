@@ -53,3 +53,6 @@ playwright/.cache/
 # Python 核算工具的字节码缓存（GDD 目录下的 balance-scan.py 会被分析时执行）
 __pycache__/
 *.pyc
+
+# 真机环境探针（临时页，只在本地 public/ 里用，不入库）
+public/_voices-probe.html
