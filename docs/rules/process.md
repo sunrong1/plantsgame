@@ -118,7 +118,7 @@
 
 ### R-36 守卫 / 变异编号必须接续既有号段，且**一个编号只对应一个守卫**
 
-**规则** 新 story 的守卫从 `G##` 起、变异从 `M##` 起，接续全仓库现有最大号。起编号前先实测：
+**规则** 新 story 的守卫从 `G##` 起，接续全仓库现有最大号。**变异号 `M##` 只在真的做了变异验证时才分配**（见 [R-50](testing.md) 的触发条件）——没做的变异不占号，也不得为「预留」而跳号。起编号前先实测：
 
 ```bash
 grep -rhoP 'G[0-9]{2,3}' . --exclude-dir=node_modules --exclude-dir=.git --exclude-dir=dist --exclude-dir=coverage | sort -uV | tail
