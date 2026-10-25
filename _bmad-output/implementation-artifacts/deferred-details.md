@@ -2674,9 +2674,9 @@ jsdom 没有布局引擎 ⇒ 测不出来。本轮给可源码化的那一半补
 
 ## DF-122
 
-**状态**：待排期 · **归属**：未指派 · **恢复条件**：在 `LevelOutcome.vue` 里加一层 focus trap（捕获 Tab / Shift+Tab 在浮层内循环，Esc 关闭），并加一条守卫断言「浮层打开后连按 N 次 Tab，焦点仍在浮层内的可聚焦元素上」
+**状态**：待裁决 · **归属**：未指派 · **恢复条件**：人裁决终态浮层的 Esc 语义（关掉 / 只把焦点收回按钮 / 不响应）：现状是**不关** —— 终态下浮层是整棵视图树里唯一可交互的面，关掉它就是把孩子留在没有出口的战场；焦点陷阱本身已于 2026-10-26 补上（`LevelOutcome.vue` 的 `trapTab` + 守卫 G322）
 
-**一句话**：`src/components/hud/LevelOutcome.vue` 只 `focus()` 不锁 Tab，焦点能跑到浮层后的格子
+**一句话**：`LevelOutcome.vue` 终态浮层按 Esc 要什么语义待人裁决（焦点陷阱已补上，G322）
 
 ### 原始论证
 
@@ -2697,6 +2697,32 @@ jsdom 没有布局引擎 ⇒ 测不出来。本轮给可源码化的那一半补
 
 
 > 来源：`## Deferred from: code review of story-1-18-目标平板落地-竖屏布局-离线与部署 `[CR]` (2026-10-20)` ｜ 旧编号 `W6` ｜ 详见 `archive/deferred/2026-10-20--cr-story-1-18.md` 的「分诊结论」
+
+### 2026-10-26（无人值守夜）的处置 —— **焦点陷阱已结，「Esc 关闭」那一半留待人裁决**
+
+- **已结的部分（focus trap 本体）**：`src/components/hud/LevelOutcome.vue` 新增
+  `dialogEl` / `FOCUSABLE_SELECTOR` / `focusablesInDialog()` / `trapTab()`。
+  浮层打开（`watch(terminal, …)`，`flush: 'post'`）时把 `keydown` 监听挂在 **`document`** 上 ——
+  浮层自己收不到「焦点已经跑出去之后」的 Tab（那种事件不从浮层里冒泡）⇒ 必须挂 `document`；
+  连按 Tab / Shift+Tab 时焦点在浮层内循环，且**每次都 `preventDefault()`**（原生 Tab 不参与）；
+  相位离开终态或组件卸载时**摘掉监听器** ⇒ 不劫持全局 Tab 导航。
+- **守卫**：新文件 `tests/components/level-outcome-focus-trap.test.ts`（守卫 **G322**），6 条用例 ——
+  前置（焦点确实进了浮层）、连按 5 次 Tab、连按 5 次 Shift+Tab、
+  焦点已在浮层外时下一次 Tab 把它拉回、浮层关掉后不再劫持 Tab、判据自检。
+  ⚠️ **判据必须同时断言「原生 Tab 被 preventDefault」与「焦点仍在浮层内」两条** ——
+  只断言后者的话，一个**完全没有陷阱**的组件也会绿（jsdom 的原生 Tab 根本不动焦点）⇒ 装饰性守卫。
+- **变异验证 M383**（R-50 四步）：把 `document.addEventListener('keydown', trapTab)` 换成注释
+  ⇒ **3 条红**（Tab / Shift+Tab / 拉回三条都点名「没有被 preventDefault()」）；
+  复原后 `grep` 确认标记为 0、`git diff --stat` 确认组件只多了 84 行。
+- **⚠️ 顺带发现（比本条本身更值钱）**：`@vue/test-utils` v2 的 `mount()` **默认不把组件挂进文档**
+  ⇒ jsdom 的 `HTMLElement.focus()` 对游离元素是**静默 no-op**
+  ⇒ **1.18 那条「焦点管理」此前零行为覆盖**（守卫 G136 只在源码层断言「有 `.focus()`、有 `nextTick`」，
+  而源码里写了不等于焦点真的进去了）⇒ 本条用 `attachTo` 补上 ⇒ 「焦点真的进了浮层」第一次被**行为**验到。
+- **为什么不销项（原恢复条件里「Esc 关闭」那一半）**：**刻意不实现** Esc 关闭 ——
+  终态下整棵视图树里**可点的元素只有浮层那一个按钮**（`level-outcome.test.ts` 的 AC-D5 逐字断言）
+  ⇒ 关掉浮层 = 把孩子留在一个**没有出口**的战场；
+  且全仓 `src/` 此前**零** Esc 处理先例 ⇒ 不在这里立一个没有出口的先例。
+  ⇒ 「Esc 要什么语义」是**产品裁决**（关掉 / 只把焦点收回按钮 / 不响应）⇒ 本条状态改 **待裁决**。
 
 ## DF-123
 

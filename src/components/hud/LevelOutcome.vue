@@ -132,16 +132,98 @@ const buttonEl = ref<HTMLButtonElement | null>(null)
 /** 打开浮层前的焦点 —— 关闭后还回去，否则键盘用户要从页面开头重新 Tab。 */
 let previousFocus: HTMLElement | null = null
 
+/**
+ * ── 📎 DF-122（2026-10-26 夜）：焦点陷阱 ──────────────────────────────────
+ *
+ * ⚠️ **为什么 1.18 补的「焦点管理」不够**：
+ *   1.18 补的是「浮层打开时把焦点**移进去**、关闭时**还回来**」——
+ *   那只管**进**与**出**，不管**留在里面**。
+ *   而浏览器原生 Tab 是**按文档顺序**走的 ⇒ 浮层只有一个按钮时，
+ *   按一下 Tab 焦点就跑到浮层**背后**的战场格子（那些格子是真正的 `<button>`）上。
+ *   症状与「焦点管理没做」一模一样：焦点框落在**看不见**的地方，
+ *   读屏则继续读浮层背后的战场与手牌 —— 等于模态性根本不存在。
+ *
+ * ⚠️ **为什么监听挂在 `document` 上，而不是浮层自己**：
+ *   浮层自己（`@keydown`）只能收到**从它里面冒泡上来**的事件。
+ *   而「点一下浮层的空白底板」在真实浏览器里会把焦点**打散**（点非可聚焦元素
+ *   ⇒ `activeElement` 变成 `body`）⇒ 此时按 Tab，事件**不从浮层里冒泡**，
+ *   浮层自己根本收不到 ⇒ 焦点就跑到文档里第一个可聚焦元素上（多半在浮层背后）。
+ *   ⇒ 监听必须挂在 **document** 上，且**无论焦点当前在哪**都要把它拉回浮层。
+ *
+ * ⚠️ **为什么必须 `preventDefault()`**：
+ *   浏览器的原生 Tab 会**同时**把焦点移走 —— 我们自己移焦点是不够的，
+ *   两边叠加的结果是「焦点被移了两次」，落点不可预测。
+ *   ⇒ 自己算落点 + 阻止原生行为，两件事缺一不可。
+ *   （这一条也是本条守卫能在 jsdom 里成立的前提：jsdom **不模拟**原生 Tab，
+ *   所以「阻止了原生行为」这件事只能靠 `defaultPrevented` 断言 —— 见守卫 G322。）
+ *
+ * ⚠️ **Esc 为什么不做成「关掉浮层」**（与 DF-122 恢复条件的字面写法有出入，如实记）：
+ *   终态下**整棵视图树里可点的元素只有浮层那一个按钮**（守卫
+ *   `level-outcome.test.ts` 的 AC-D5 那组逐字断言过）⇒ 关掉浮层 = 孩子被留在
+ *   一个**没有任何出口**的战场上（战场格子在终态下不可点）。
+ *   ⇒ 那不是「关闭」，那是**死胡同**。所以 Esc **不关**这层浮层；
+ *   全仓 `src/` 此前也**零** Esc 处理先例，不在这里立一个没有出口的先例。
+ *   ⇒ 「Esc 要什么语义」留作待裁决（见 `deferred-work.md` 的 DF-122）。
+ */
+
+/** 浮层根节点 —— 焦点陷阱的对象集合从这里取。 */
+const dialogEl = ref<HTMLElement | null>(null)
+
+/**
+ * 「可聚焦」元素的名单 —— 焦点陷阱只在这份名单里转。
+ *
+ * ⚠️ **与 AC-D5 那份「可点」名单不是同一份**：那边问的是「孩子能主动点到什么」
+ *   （含 `role="button"` / `[contenteditable]` 这类语义可点元素），
+ *   这边问的是「**键盘**能聚焦到什么」（原生可聚焦元素 + 显式 `tabindex`）——
+ *   焦点陷阱只跟后者有关。
+ */
+const FOCUSABLE_SELECTOR =
+  'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+
+/** 浮层里当前可聚焦的元素（按文档顺序）。 */
+function focusablesInDialog(): HTMLElement[] {
+  const dialog = dialogEl.value
+  if (dialog === null) return []
+  return Array.from(dialog.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR))
+}
+
+/**
+ * Tab / Shift+Tab 的焦点陷阱。
+ *
+ * ⚠️ **落点是**自己算**的**（不是靠浏览器原生 Tab 顺序）——
+ *   所以「焦点当前在浮层外」时也能算出一个确定落点（第一个 / 最后一个）。
+ */
+function trapTab(event: KeyboardEvent): void {
+  if (event.key !== 'Tab') return
+  const focusables = focusablesInDialog()
+  // ⚠️ 先阻止原生行为，**再**决定落点：无论有没有可聚焦元素，
+  //   原生 Tab 都不能参与（它会把焦点移出浮层）。
+  event.preventDefault()
+  if (focusables.length === 0) return
+  const current = focusables.indexOf(document.activeElement as HTMLElement)
+  const next = event.shiftKey
+    ? current <= 0
+      ? focusables.length - 1
+      : current - 1
+    : current < 0 || current === focusables.length - 1
+      ? 0
+      : current + 1
+  focusables[next]?.focus()
+}
+
 watch(
   terminal,
   (isTerminal) => {
     if (isTerminal) {
       previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
+      // ⚠️ 浮层一开就把 Tab 收进笼子 —— 否则「打开浮层 → 按 Tab」这一步就已经跑出去了。
+      document.addEventListener('keydown', trapTab)
       void nextTick(() => {
         buttonEl.value?.focus()
       })
       return
     }
+    document.removeEventListener('keydown', trapTab)
     previousFocus?.focus()
     previousFocus = null
   },
@@ -153,6 +235,7 @@ watch(
 onBeforeUnmount(() => {
   // 组件被整体卸载时（`view` 切回开始页）把引用还回去，
   // 否则 `activeElement` 指向一个已被移除的节点，`.focus()` 静默无效。
+  document.removeEventListener('keydown', trapTab)
   previousFocus?.focus()
   previousFocus = null
 })
@@ -177,6 +260,7 @@ onBeforeUnmount(() => {
   -->
   <div
     v-if="terminal"
+    ref="dialogEl"
     class="level-outcome"
     :class="won ? 'level-outcome--won' : 'level-outcome--lost'"
     data-testid="level-outcome"
