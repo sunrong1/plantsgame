@@ -90,7 +90,6 @@
 | DF-086 | 待触发 | 未指派 | 支持矩阵扩到窄横屏（或出手机版）时 | `responsive.css` 的 `minmax(0,1fr) 25rem` 无宽度下界，窄横屏格子边长 < 48px | [`df-086`](./deferred-details.md#df-086) |
 | DF-087 | 待裁决 | Story 3.5 | 人裁决横屏矮视口的战场尺寸策略（Story 3.5 `[DS]` 实测 1280×660 与 1280×713 的**建造相**「手牌区与战场相交」= **是** ⇒ 本条记的症状**已复现**；候选：战场改由可用高度定尺寸 / 允许滚动 / 缩窄题面栏）；裁决后写进新 story 实施 | `battle-grid` 高度由 `aspect-ratio` 推出，1280×660 下溢出手牌行、孩子点不到卡（Story 3.5 `[DS]` 真浏览器实测已复现） | [`df-087`](./deferred-details.md#df-087) |
 | DF-088 | 待触发 | Story 1.19 | 词图 404 率被真机验证之前；若真出现连续 404，先降级成「跳过全部 ⇒ 通关」而不是抛错 | `reducer.ts` 的 CONTINUE 分支 `next === null` 抛错，全跳时技术错误抛给孩子 | [`df-088`](./deferred-details.md#df-088) |
-| DF-089 | 待排期 | Story 1.19 | 本 story 的 patch 项落地时补齐（本条与 patch 组第 5 条是同一处，一起改） | `createUnitCompletedState` 空账使 `assertDeckRelations` 四条不变量真空成立 | [`df-089`](./deferred-details.md#df-089) |
 | DF-090 | 待触发 | Story 1.17 | 存档深层校验加固时（1.17 的降级面板已登记资产 / 存档降级项，那是同一处的自然落点） | `assertDeckRelations` 查 `deck` 唯一性却不查 `unlocked` 内部重复 | [`df-090`](./deferred-details.md#df-090) |
 | DF-091 | 待触发 | 未指派 | 若将来给切片加第二个调用点，或 `Progress` 的字段名与实际语义分家时 | `deck-slice.ts` 的参数名 `masteredWordIds` 与 `entry.entryId` 是两个 ID 命名空间 | [`df-091`](./deferred-details.md#df-091) |
 | DF-092 | 待排期 | Story 1.20 | 用户对「植物不重复出现」这条需求给出裁决之后 | `tests/content/unit-01.test.ts` 只断言整单元三塔型；1.20 已落地「一局内零相邻同型」 | [`df-092`](./deferred-details.md#df-092) |
@@ -118,7 +117,6 @@
 | DF-122 | 待裁决 | 未指派 | 人裁决终态浮层的 Esc 语义（关掉 / 只把焦点收回按钮 / 不响应）：现状是**不关** —— 终态下浮层是整棵视图树里唯一可交互的面，关掉它就是把孩子留在没有出口的战场；焦点陷阱本身已于 2026-10-26 补上（`LevelOutcome.vue` 的 `trapTab` + 守卫 G322） | `LevelOutcome.vue` 终态浮层按 Esc 要什么语义待人裁决（焦点陷阱已补上，G322） | [`df-122`](./deferred-details.md#df-122) |
 | DF-123 | 待触发 | Story 1.19 | 给 `LevelOutcome` 浮层自己的 `padding-left/right` 补上 `env(safe-area-inset-left/right)`，并加一条守卫断言 | `src/components/hud/LevelOutcome.vue` 浮层 `padding-left/right` 仍只有 `var(--space-panel-pad)` | [`df-123`](./deferred-details.md#df-123) |
 | DF-124 | 待触发 | Story 1.2 | 把「结束朗读」收敛成单一出口（`try/finally` 或一个 `finishPronunciation()`），所有提前 `return` 路径都走它；并加一条守卫断言「任何一次朗读请求结束后 `playing` 必为 false」 | `src/services/pronunciation.ts` 的 `playPronunciation` 提前 `return` 路径不发 `idle`，浮层可能永亮 | [`df-124`](./deferred-details.md#df-124) |
-| DF-125 | 待排期 | Story 1.19 / 1.20 / 2.1 / 2.2 | ① 先把 110 行按 story 归位，账本里只留一行指针；② 归位完成后再把 R-42 守卫的射程扩到 `last_updated:` 块，上限沿用 `SPRINT_STATUS_MAX_COMMENT_LINES`；③ 扩射程那一步要配一条反向自测 | `sprint-status.yaml` 的 `last_updated:` 块 110 行注释未归位，R-42 守卫上限仍是 4 | [`df-125`](./deferred-details.md#df-125) |
 | DF-126 | 待裁决 | 未指派（接线规格见 Story 3.4 文档的「裁决 C」小节） | 裁决 ducking 曲线（起落时间常数 + 稳态增益）后，按 Story 3.4 文档「裁决 C」小节给出的接线规格在 `startBgmIfReady`/`playSfx` 两侧各接一个 `GainNode`，并补守卫 | `services/audio.ts` 的 `startBgmIfReady`/`playSfx` 两侧未接 `GainNode` 做 BGM ducking | [`df-126`](./deferred-details.md#df-126) |
 | DF-127 | 待触发 | Story 1.18 | 真机上确认目标设备是否真的需要前缀；确认不需要就把它划掉，不要为了「完备」而加没人验证过的分支 | `services/audio.ts` 只读 `globalThis.AudioContext`，无 `webkitAudioContext` 前缀回退 | [`df-127`](./deferred-details.md#df-127) |
 | DF-128 | 待裁决 | 未指派 | 先定「许可字段允许填什么」（是否允许 `AI-generated (...)` 这类描述），再据此把 G251 的「已知形态」清单补全 | `tests/assets/audio-assets.test.ts` 的许可字段允许哪些前缀仍待人裁决 | [`df-128`](./deferred-details.md#df-128) |

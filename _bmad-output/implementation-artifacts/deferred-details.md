@@ -2096,26 +2096,6 @@ jsdom 没有布局引擎 ⇒ 测不出来。本轮给可源码化的那一半补
 
 > 来源：`## Deferred from: code review of 1-19-单元-1-首次试玩验证-epic-1-的生死线 `[CR]` (2026-10-18)` ｜ 旧编号 `11（CR 节）` ｜ 详见 `archive/deferred/2026-10-18--cr-story-1-19.md` 的「分诊结论」
 
-## DF-089
-
-**状态**：待排期 · **归属**：Story 1.19 · **恢复条件**：本 story 的 patch 项落地时补齐（本条与 patch 组第 5 条是同一处，一起改）
-
-**一句话**：`createUnitCompletedState` 空账使 `assertDeckRelations` 四条不变量真空成立
-
-### 原始论证
-
-### 12. 空题单终态下 `assertDeckRelations` 四条不变量全部真空成立
-
-- `createUnitCompletedState` 把 `unlocked` / `masteredEntryIds` / `skippedEntryIds` 三套账都初始化为空 ⇒ 四条不变量对 `deck: []` 结构性成立，不提供任何约束。
-- 「终态的 deck 必须是 `[]`」目前只有 `tests/app/store-deck-slice.test.ts` 一条 `expect(done.deck).toEqual([])` 守着；`tests/core/deck-slice.test.ts` 的「与 CONTINUE 终态同形」只比 phase/towers/grid/zombies、不比 deck。
-- ⚠️ 典型失效：有人为「让进度条有分母」把终态的 `deck` 填成 `entriesOf(unitNumber)` ⇒ G165 绿、`assertInvariants` 绿、同形断言也绿。
-- **恢复条件** 本 story 的 patch 项落地时补齐（本条与 patch 组第 5 条是同一处，一起改）。
-
-- — Story 1.19 文档（键 `1-19-单元-1-首次试玩验证-epic-1-的生死线`）—— 📎 2026-10-25 夜：**不再写路径**，只写**键**（story 文档会归档，路径会变，键不会）
-
-
-> 来源：`## Deferred from: code review of 1-19-单元-1-首次试玩验证-epic-1-的生死线 `[CR]` (2026-10-18)` ｜ 旧编号 `12（CR 节）` ｜ 详见 `archive/deferred/2026-10-18--cr-story-1-19.md` 的「分诊结论」
-
 ## DF-090
 
 **状态**：待触发 · **归属**：Story 1.17 · **恢复条件**：存档深层校验加固时（1.17 的降级面板已登记资产 / 存档降级项，那是同一处的自然落点）
@@ -2699,46 +2679,6 @@ jsdom 没有布局引擎 ⇒ 测不出来。本轮给可源码化的那一半补
 
 
 > 来源：`## Deferred from: code review of story-1-18-目标平板落地-竖屏布局-离线与部署 `[CR]` (2026-10-20)` ｜ 旧编号 `W8` ｜ 详见 `archive/deferred/2026-10-20--cr-story-1-18.md` 的「分诊结论」
-
-## DF-125
-
-**状态**：待排期 · **归属**：Story 1.19 / 1.20 / 2.1 / 2.2 · **恢复条件**：① 先把 110 行按 story 归位，账本里只留一行指针；② 归位完成后再把 R-42 守卫的射程扩到 `last_updated:` 块，上限沿用 `SPRINT_STATUS_MAX_COMMENT_LINES`；③ 扩射程那一步要配一条反向自测
-
-**一句话**：`sprint-status.yaml` 的 `last_updated:` 块 110 行注释未归位，R-42 守卫上限仍是 4
-
-### 原始论证
-
-### W9. R-42 守卫的射程只到 `development_status:`，而复盘真正回流在 `last_updated:` 块（1.13 起累积）
-
-- **实测（2026-10-20，Story 1.18 `[CR]`）**：
-  `sprint-status.yaml` 的 `last_updated:` 续行块是**第 52–162 行，共 110 行注释**
-  （下一条非注释非空行是第 163 行 `project: plants-game`）。
-  而 `tests/scaffold/docs-rules.test.ts` 的 R-42 守卫逐字只量
-  「`development_status:` 块**及其之后**的注释行」，上限 **4** ⇒ **`last_updated:` 块不在其射程**。
-- **这 110 行是谁的**：**不是 1.18 写的** —— 是 Story **1.19 / 1.20 / 2.1 / 2.2** 累积的运行记录。
-  ⚠️ 抽查三条**只存在于账本、在各自 story 文档里搜不到**：
-  - 「N2 盲审报 PLAUSIBLE」
-  - 「查重时打自己的脸：全仓库 `uniq -d` 实测 **10 个重号**」
-  - 「🔥 全仓库 `uniq -d` 实测 **10 个重号**，9 个是假警报，唯一真撞的 **G30 早于本 story**（1.11 vs 1.12…）」
-  ⇒ 它们**不是重复，是尚未归档的证据**；按 R-42 逐字「运行复盘……**一律写进该 story 文档**」，
-  搬进那四份文档需要逐条核对，**不能凭某一个 story 的记忆改写**。
-- **为什么不在 1.18 补**：1.18 的 `[CR]` 动它等于**替另外四个 story 搬运并改写它们的证据**，
-  超出本 story 范围；且按 **R-57 不许为了变绿而松阈值** ——
-  把上限从 4 调到 110 正是典型的「为了让守卫变绿而松」，**比不做更坏**（它会让守卫永久失去牙齿）。
-- **恢复条件**（**顺序不能反**）：
-  ① 先把 110 行按 story 归位 —— 各自搬进对应的 story 文档（1.20 / 2.2 已按 R-40 归档，
-     搬进 `_bmad-output/archive/`），账本里只留**一行指针**；
-  ② **归位完成后再**把 R-42 守卫的射程扩到 `last_updated:` 块，
-     上限沿用 `SPRINT_STATUS_MAX_COMMENT_LINES`（**不新设一个更大的数**）；
-  ③ 扩射程那一步要配一条**反向自测**（在 `last_updated:` 块里塞 N+1 行复盘 ⇒ 必须红），
-     否则又是一条恒绿守卫（R-50 第 ② 步 / R-51）。
-- ⚠️ **顺带记一条已发生的**：Story 1.18 的 `[DS]` 曾在同一块里加过两行运行记录注释
-  （`# 1-18 [DS] 开工 —— 13 条裁决…` / `# 1-18 [CS] 完成 …`），
-  **后来 1.20 / 2.1 / 2.2 的 `[CR]` 已把 1.18 那一段清掉**（文件头逐字「`[CR]` 已按 R-42 收敛成指针」）
-  ⇒ **1.18 自己的残留已归零**，恢复时**不必**再搬 1.18 的行，只需搬那四份的。
-
-
-> 来源：`## Deferred from: code review of story-1-18-目标平板落地-竖屏布局-离线与部署 `[CR]` (2026-10-20)` ｜ 旧编号 `W9` ｜ 详见 `archive/deferred/2026-10-20--cr-story-1-18.md` 的「分诊结论」
 
 ## DF-126
 

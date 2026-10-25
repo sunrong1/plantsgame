@@ -223,7 +223,7 @@ git log --oneline --follow -- _bmad-output/implementation-artifacts/deferred-wor
 | 2026-10-18--cr-story-1-19.md | 9 | 9（CR 节） | 宽屏分栏没有宽度下界 | DF-086 | 开放 |
 | 2026-10-18--cr-story-1-19.md | 10 | 10（CR 节） | 战场行轨不足时溢出手牌行 | DF-087 | 开放 |
 | 2026-10-18--cr-story-1-19.md | 11 | 11（CR 节） | 全部跳过时 `nextQuestion` 返回 null ⇒ 技术错误抛给孩子 | DF-088 | 开放 |
-| 2026-10-18--cr-story-1-19.md | 12 | 12（CR 节） | 空题单终态下 `assertDeckRelations` 四条不变量全部真空成立 | DF-089 | 开放 |
+| 2026-10-18--cr-story-1-19.md | 12 | 12（CR 节） | 空题单终态下 `assertDeckRelations` 四条不变量全部真空成立 | DF-089 | 已结 |
 | 2026-10-18--cr-story-1-19-r2.md | 1 | 13（CR2 节） | `unlocked` 没有唯一性不变量，而 `deck` 有 | DF-090 | 开放 |
 | 2026-10-18--cr-story-1-19-r2.md | 2 | 14（CR2 节） | `masteredWordIds`（名）与 `entry.entryId`（实）是两个 ID 命名空间，类型都是 `string` | DF-091 | 开放 |
 | 2026-10-18--cr-story-1-19-r2.md | 3 | 15（CR2 节） | 全仓唯一的塔型构成守卫只看整单元，粒度粗于「一局内」 | DF-092 | 开放 |
@@ -261,7 +261,7 @@ git log --oneline --follow -- _bmad-output/implementation-artifacts/deferred-wor
 | 2026-10-20--cr-story-1-18.md | 1 | W6 | W6. `LevelOutcome` 模态只把焦点移进浮层，没有把 Tab 键锁在浮层内（1.16 引入） | DF-122 | 开放 |
 | 2026-10-20--cr-story-1-18.md | 2 | W7 | W7. `LevelOutcome` 浮层的左右安全区（1.16 引入；`[CR]` 2026-10-20 **更正过原因**） | DF-123 | 开放 |
 | 2026-10-20--cr-story-1-18.md | 3 | W8 | W8. `pronunciation.ts` 的 `playing` 收敛点只有五处，发声路径提前 `return` 时没有统一兜底（1.2 引入） | DF-124 | 开放 |
-| 2026-10-20--cr-story-1-18.md | 4 | W9 | W9. R-42 守卫的射程只到 `development_status:`，而复盘真正回流在 `last_updated:` 块（1.13 起累积） | DF-125 | 开放 |
+| 2026-10-20--cr-story-1-18.md | 4 | W9 | W9. R-42 守卫的射程只到 `development_status:`，而复盘真正回流在 `last_updated:` 块（1.13 起累积） | DF-125 | 已结 |
 | 2026-10-21--cr-story-1-14.md | 1 | 1 | 🚨 BGM ducking（SFX 起播时压低 BGM 音量）—— AC-H6 表格里有，1.14 从未登记也从未实现 | DF-126 | 开放 |
 | 2026-10-21--cr-story-1-14.md | 2 | 2 | `webkitAudioContext` 回退 —— AC-H6 表格里有，1.14 从未登记也从未实现 | DF-127 | 开放 |
 | 2026-10-21--cr-story-1-14.md | 3 | 3 | BGM 曲目与 AC-H3 不一致（文档写 `Happy Lullaby`，盘上是别的曲子） | — | 已结 |
@@ -342,12 +342,12 @@ git log --oneline --follow -- _bmad-output/implementation-artifacts/deferred-wor
 | 2026-10-24--cr-story-2-4-选项措辞.md | 1 | — | 源码里五处「四个选项」的陈旧注释 | DF-194 | 已结 |
 | 2026-10-24--cr-story-2-4-校验器文件名核对.md | 1 | — | 单元文件名与 `unitNumber` 没有交叉核对 | DF-196 | 已结 |
 
-## 分诊统计（2026-10-22 这次治理；**2026-10-25 按实测重算**；**2026-10-26 夜随 DF-049 结清重算**；**2026-10-26 夜随 DF-057 / DF-166 / DF-146 结清重算**；**2026-10-26 夜随 DF-036 / DF-044 结清重算**）
+## 分诊统计（2026-10-22 这次治理；**2026-10-25 按实测重算**；**2026-10-26 夜随 DF-049 结清重算**；**2026-10-26 夜随 DF-057 / DF-166 / DF-146 结清重算**；**2026-10-26 夜随 DF-036 / DF-044 结清重算**；**2026-10-26 夜随 DF-089 / DF-125 结清重算**）
 
 | 结论 | 条数 |
 |---|---|
-| 开放 | 170 |
-| 已结 | 74 |
+| 开放 | 168 |
+| 已结 | 76 |
 | 作废 | 5 |
 | **合计（分诊单元）** | **249** |
 
