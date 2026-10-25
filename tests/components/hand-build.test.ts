@@ -74,6 +74,10 @@ import handCardSource from '../../src/components/hand/HandCard.vue?raw'
 import typesSource from '../../src/core/types.ts?raw'
 import { contrastMsg, contrastRatio, cssDecl, declValue, extractColor, overBlack, resolveColor, rgbaAlpha, stripComments as sharedStripComments, tokenValue } from '../helpers/contrast'
 import { styleBlockOf } from '../helpers/css-cascade'
+import { allVueSources, animationViolations } from '../helpers/animation-rule'
+
+/** 仓库根（`allVueSources` 要它来算相对路径）。 */
+const root = process.cwd()
 
 enableAutoUnmount(afterEach)
 
@@ -1414,13 +1418,15 @@ describe('[CR] G43 —— 组件不得自己「选中」卡（可清空，但不
 })
 
 describe('G38 / G39 —— 动效写 CSS、不引入拖拽', () => {
-  it('真实源码通过 G38', () => {
-    expect(g38Violation(COMPONENT_SOURCES)).toEqual([])
+  it('真实源码通过 G38（**扫描面 = `src/` 下全部 `.vue`**）', () => {
+    // 📎 **Story 3.5 / D2**：扫描面从硬编码的 4 个文件扩到**全部 `.vue`**。
+    //   判据本体已抽到 `tests/helpers/animation-rule.ts`（与 G315 共用一份，R-37）。
+    expect(animationViolations(allVueSources(root))).toEqual([])
   })
 
   it('M70：覆盖层里写死 120ms 必须红', () => {
     const bad = rangeOverlaySource.replace('var(--dur-feedback)', '120ms')
-    expect(g38Violation([{ name: 'battle/RangeOverlay.vue', source: bad }])).not.toEqual([])
+    expect(animationViolations([{ name: 'battle/RangeOverlay.vue', source: bad }])).not.toEqual([])
   })
 
   it('M70：用 setTimeout 收掉压暗闪必须红', () => {
@@ -1428,7 +1434,7 @@ describe('G38 / G39 —— 动效写 CSS、不引入拖拽', () => {
       'function onCellAnimationEnd(): void {',
       'function onCellAnimationEnd(): void {\n  setTimeout(() => {}, 100)',
     )
-    expect(g38Violation([{ name: 'battle/BattleField.vue', source: bad }])).not.toEqual([])
+    expect(animationViolations([{ name: 'battle/BattleField.vue', source: bad }])).not.toEqual([])
   })
 
   it('真实源码通过 G39（无拖拽 / 无 pointermove）', () => {
@@ -1471,23 +1477,11 @@ describe('G38 / G39 —— 动效写 CSS、不引入拖拽', () => {
   })
 })
 
-/** G38 判据：无定时器、无字面量毫秒（动效时长写 CSS）。 */
-function g38Violation(sources: readonly { readonly name: string; readonly source: string }[]): string[] {
-  const defects: string[] = []
-  const forbidden: readonly [RegExp, string][] = [
-    [/setInterval\s*\(/, 'setInterval'],
-    [/setTimeout\s*\(/, 'setTimeout'],
-    [/requestAnimationFrame\s*\(/, 'requestAnimationFrame'],
-    [/\b\d+ms\b/, '字面量毫秒'],
-  ]
-  for (const { name, source } of sources) {
-    const code = stripComments(source)
-    for (const [pattern, label] of forbidden) {
-      if (pattern.test(code)) defects.push(`${name} 出现了 ${label}`)
-    }
-  }
-  return defects
-}
+/**
+ * 📎 **G38 判据已抽到 `tests/helpers/animation-rule.ts`**（Story 3.5 / D1）——
+ *   「无定时器、无字面量毫秒（动效时长写 CSS）」的判据本体与扫描面都在那里，
+ *   G38 与新守卫 **G315** **共用同一份**（R-37：判据单一来源，不许抄两份）。
+ */
 
 /** G39 判据：无拖拽 / 无 hover 通路 / 无触摸拖动。 */
 function g39Violation(sources: readonly { readonly name: string; readonly source: string }[]): string[] {

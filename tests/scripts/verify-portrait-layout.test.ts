@@ -1,5 +1,5 @@
 /**
- * 竖屏布局量测工具的守卫（Story 1.19 `[DS]` 第四轮）。
+ * 竖屏布局量测工具的守卫（Story 1.19 `[DS]` 第四轮；Story 3.5 扩到**两个相位**）。
  *
  * ── 为什么这个工具需要守卫 ────────────────────────────────────────────────
  *   `scripts/verify-portrait-layout.ts` **不是 vitest 守卫**（它要一个真浏览器），
@@ -19,10 +19,14 @@
  * · **G291**：视口补偿的算术 —— 差值加回 `--window-size` 后，内视口必须等于请求值。
  * · **G292**：**假浏览器端到端** —— 整条管线（矩阵解析 → 起浏览器 → 解析 → 汇总表）
  *   跑一遍，断言表里的「列数」是 **2** 而不是 **57**。
+ * · **G318**（Story 3.5 新增）：**三条**新判据的纯函数
+ *   （`hudBattleGapVerdict` / `overlayBattleGapVerdict` / `touchTargetViolations`）
+ *   的**表驱动负向夹具**：违规输入 ⇒ 红；合规输入 ⇒ 绿；量不到 ⇒ **「量不到」**
+ *   （**不是**「不合格」，也不是「通过」）。
  *
  * ── ⚠️ 假浏览器的纪律 ──────────────────────────────────────────────────────
  *   夹具吐的是**合成数据** ⇒ 它证明的是**管线与算术**，**不证明任何几何**。
- *   真实几何只能由 `npm run verify:portrait` 在真浏览器上量（Story 1.19 Task 7.3）。
+ *   真实几何只能由 `npm run verify:portrait` 在真浏览器上量（Story 3.19 Task 7.3）。
  */
 
 import { execFileSync } from 'node:child_process'
@@ -35,35 +39,46 @@ import { describe, expect, it } from 'vitest'
 
 import {
   nextChromeDelta,
+  overlayBattleGapVerdict,
   parseMeasured,
   renderedColumnCount,
   summaryOf,
+  touchTargetViolations,
+  hudBattleGapVerdict,
   viewportMatches,
   type Measured,
+  type PhaseMeasured,
+  type TouchTarget,
 } from '../../scripts/verify-portrait-layout'
 
 const REPO_ROOT = fileURLToPath(new URL('../../', import.meta.url))
 
+/** 一条命中区量测记录。 */
+function target(over: Partial<TouchTarget> = {}): TouchTarget {
+  return {
+    selector: '.probe',
+    present: true,
+    count: 1,
+    rendered: 1,
+    w: 60,
+    h: 60,
+    sizes: { '60x60': 1 },
+    note: null,
+    ...over,
+  }
+}
+
 /**
- * 一份**像真测量**的载荷：选项区是 2 张卡、2 列，
+ * 一份**像真测量**的相位载荷：选项区是 2 张卡、2 列，
  * 而 CSS 轨道数是 **57**（800px 宽 + `repeat(auto-fit, minmax(0,1fr))` 的实测值）。
  */
-function fakeMeasured(): Measured {
+function fakePhase(phase: 'answer' | 'build'): PhaseMeasured {
   return {
-    viewport: { w: 800, h: 1280 },
-    diag: {
-      start_button: false,
-      level_view: true,
-      body_classes: ['DIV.(no class)'],
-      app_html_length: 7575,
-      first_text: '第 1 单元',
-      notice_forced: true,
-      notice_scope_attr: 'data-v-2bef07c1',
-    },
+    phase,
     level_view: { rect: null, scrollHeight: 1280, clientHeight: 1280 },
     level_view_display: 'flex',
     battle_grid: { top: 91, bottom: 566, left: 16, right: 784, w: 768, h: 475 },
-    battle_ratio: 1.618,
+    battle_ratio: 1.8,
     question_card: { top: 566, bottom: 1008, left: 16, right: 784, w: 768, h: 442 },
     question_card_fully_visible: true,
     hud: { top: 16, bottom: 59, left: 16, right: 784, w: 768, h: 43 },
@@ -94,7 +109,60 @@ function fakeMeasured(): Measured {
     plantable_cells: 35,
     page_h_overflow: false,
     level_view_h_overflow: false,
+    // ── Story 3.5 新增的四组数据 ────────────────────────────────────────
+    // 📎 合规值（48 = 阈值 ⇒ 刚好合格）；**不合格**的那一档在 G318.1 里单独构造。
+    hud_battle_gap_px: 48,
+    overlay_battle_gap_px: 0,
+    vertical_slack_px: 1280 - 1008,
+    touch_targets: [
+      target({ selector: '.start-button', w: 220, h: 56, sizes: { '220x56': 1 } }),
+      target({ selector: '.battle-cell', count: 45, rendered: 45, w: 60, h: 60, sizes: { '60x60': 45 } }),
+      target({ selector: '.option-card', count: 2, rendered: 2, w: 362, h: 362, sizes: { '362x362': 2 } }),
+      target({ selector: '.question-card__tappable', w: 700, h: 120, sizes: { '700x120': 1 } }),
+    ],
+    // ── 建造相专属 ──────────────────────────────────────────────────────
+    hand_deck: null,
+    hand_card: null,
+    hand_cards: [],
+    hand_battle_intersect: null,
+    hand_cards_in_viewport: null,
   }
+}
+
+/** 一份**像真测量**的整体载荷。 */
+function fakeMeasured(): Measured {
+  const answer = fakePhase('answer')
+  const build = fakePhase('build')
+  return {
+    viewport: { w: 800, h: 1280 },
+    tokens: { touch_min: 48 },
+    diag: {
+      local_storage_cleared: true,
+      start_button: true,
+      start_button_box: { top: 600, bottom: 656, left: 290, right: 510, w: 220, h: 56 },
+      level_view: true,
+      body_classes: ['DIV.(no class)'],
+      app_html_length: 7575,
+      first_text: '第 1 单元',
+      notice_forced: true,
+      notice_scope_attr: 'data-v-2bef07c1',
+      picked_option: 'u1-hello',
+      answer_correct: true,
+      answer_wrong: false,
+      hand_deck_present: true,
+      build_not_reached: null,
+      no_option_to_pick: false,
+    },
+    answer,
+    build,
+  }
+}
+
+/** 取一个相位的载荷（`null` ⇒ 测试写错了，不是被测行为）。 */
+function phaseOf(m: Measured, phase: 'answer' | 'build'): PhaseMeasured {
+  const p = phase === 'answer' ? m.answer : m.build
+  if (p === null) throw new Error(`夹具里没有 ${phase} 相的载荷`)
+  return p
 }
 
 describe('G290 选项列数按渲染位置算，不按 CSS 轨道数算', () => {
@@ -113,19 +181,19 @@ describe('G290 选项列数按渲染位置算，不按 CSS 轨道数算', () => 
 
   it('G290.4 汇总表里的「列数」是 2，**不是** 57（轨道数）', () => {
     const m = fakeMeasured()
-    const row = summaryOf(m)
+    const row = summaryOf(phaseOf(m, 'answer'))
     expect(row['列数']).toBe(2)
-    expect(row['列数']).not.toBe(m.options.grid_track_count)
+    expect(row['列数']).not.toBe(m.answer?.options.grid_track_count)
   })
 
   it('G290.5 反向自测：把判据换成「按轨道数算」必须红（否则这条守卫是空的）', () => {
     const m = fakeMeasured()
     // 错误做法：按 CSS 轨道数报列数 ⇒ 报出 57
-    const wrongColumnCount = m.options.grid_track_count
+    const wrongColumnCount = m.answer?.options.grid_track_count
     expect(wrongColumnCount).toBe(57)
-    expect(wrongColumnCount).not.toBe(renderedColumnCount(m.options.distinct_lefts))
+    expect(wrongColumnCount).not.toBe(renderedColumnCount(m.answer?.options.distinct_lefts ?? []))
     // 正确做法：按渲染位置 ⇒ 2
-    expect(renderedColumnCount(m.options.distinct_lefts)).toBe(2)
+    expect(renderedColumnCount(m.answer?.options.distinct_lefts ?? [])).toBe(2)
   })
 })
 
@@ -191,7 +259,8 @@ describe('G292 假浏览器端到端：管线跑通且列数不是轨道数', ()
         },
       )
 
-      expect(out).toContain('5/5 项通过')
+      // ⚠️ 判据数从 5 变 8（Story 3.5 多了三条）⇒ 这个字面量必须跟着改。
+      expect(out).toContain('8/8 项通过')
       // 矩阵表里的「列数」必须是 2；57 只允许出现在原始轨道字段里
       expect(out).toContain('"列数": 2')
       expect(out).not.toContain('"列数": 57')
@@ -202,5 +271,123 @@ describe('G292 假浏览器端到端：管线跑通且列数不是轨道数', ()
 
   it('G292.2 载荷里没有 <pre id="__measure"> 时必须报错，不许静默当绿', () => {
     expect(() => parseMeasured('<html><body>白屏</body></html>')).toThrow(/__measure/)
+  })
+
+  it('G292.3 载荷是**旧版形状**（字段平铺、没有 answer/build）时必须报错', () => {
+    const legacy = '<html><body><pre id="__measure">{"viewport":{"w":800,"h":1280}}</pre></body></html>'
+    expect(() => parseMeasured(legacy)).toThrow(/answer/)
+  })
+})
+
+/* ── G318：三条新判据的纯函数（Story 3.5 / B5）───────────────────────────────
+ * 📎 **表驱动负向夹具**（R-50 降级后的默认动作）：
+ *   违规输入 ⇒ 红；合规输入 ⇒ 绿；量不到 ⇒ **「量不到」**（既不是红也不是绿）。
+ * 📎 ⚠️ **反向自测必须调用判据本体**（R-51 第 9 条）⇒ 这里每一行都直接调
+ *   `hudBattleGapVerdict` / `overlayBattleGapVerdict` / `touchTargetViolations`。
+ */
+describe('G318 —— 三条新判据的纯函数', () => {
+  describe('B2.1 HUD↔战场间距（竖屏专属）', () => {
+    it('G318.1 竖屏 + 间距 32px（低于 48）⇒ 不合格', () => {
+      const p = fakePhase('answer')
+      p.hud_battle_gap_px = 32
+      const j = hudBattleGapVerdict(p, 48, true)
+      expect(j.status).toBe('fail')
+      expect(j.value).toBe(32)
+    })
+
+    it('G318.2 竖屏 + 间距 48px（等于阈值）⇒ 合格（「≥」而不是「>」）', () => {
+      const p = fakePhase('answer')
+      p.hud_battle_gap_px = 48
+      expect(hudBattleGapVerdict(p, 48, true).status).toBe('pass')
+    })
+
+    it('G318.3 横屏 ⇒ **不适用**（不是「通过」，也不是「不合格」）', () => {
+      const p = fakePhase('answer')
+      p.hud_battle_gap_px = 10
+      const j = hudBattleGapVerdict(p, 48, false)
+      expect(j.status).toBe('not-applicable')
+      expect(j.status).not.toBe('pass')
+      expect(j.status).not.toBe('fail')
+    })
+
+    it('G318.4 量不到盒子 ⇒ **量不到**（不是「不合格」）', () => {
+      const p = fakePhase('answer')
+      p.hud_battle_gap_px = null
+      expect(hudBattleGapVerdict(p, 48, true).status).toBe('not-measured')
+    })
+  })
+
+  describe('B2.2 浮层↔战场（与姿态无关）', () => {
+    it('G318.5 间距 0（结构保证的常态）⇒ 合格', () => {
+      const p = fakePhase('answer')
+      p.overlay_battle_gap_px = 0
+      expect(overlayBattleGapVerdict(p).status).toBe('pass')
+    })
+
+    it('G318.6 间距为负（浮层压住战场）⇒ 不合格', () => {
+      const p = fakePhase('answer')
+      p.overlay_battle_gap_px = -3
+      const j = overlayBattleGapVerdict(p)
+      expect(j.status).toBe('fail')
+      expect(j.value).toBe(-3)
+    })
+
+    it('G318.7 量不到浮层 ⇒ **量不到**', () => {
+      const p = fakePhase('answer')
+      p.overlay_battle_gap_px = null
+      expect(overlayBattleGapVerdict(p).status).toBe('not-measured')
+    })
+  })
+
+  describe('B2.3 命中区（与姿态无关）', () => {
+    it('G318.8 全部量到的元素都 ≥ 阈值 ⇒ 合格，且**覆盖率要报出来**', () => {
+      const p = fakePhase('answer')
+      const j = touchTargetViolations(p, 48)
+      expect(j.status).toBe('pass')
+      // 最小的那一个 = `.start-button` 的 56px（min(220, 56)）
+      expect(j.value).toBe(56)
+      expect(j.detail?.['coverage']).toBe('4/4')
+    })
+
+    it('G318.9 有一个元素只有 30×30 ⇒ 不合格，且**要点名是哪一个**', () => {
+      const p = fakePhase('answer')
+      p.touch_targets = [
+        target({ selector: '.battle-cell', count: 45, rendered: 45, w: 30, h: 30 }),
+      ]
+      const j = touchTargetViolations(p, 48)
+      expect(j.status).toBe('fail')
+      expect(j.why).toContain('.battle-cell')
+    })
+
+    it('G318.10 本相不存在的选择器 ⇒ **不算合格也不算不合格**，但**必须被点名**', () => {
+      const p = fakePhase('answer')
+      p.touch_targets = [
+        target({ selector: '.battle-cell' }),
+        target({ selector: '.hand-card', present: false, count: 0, rendered: 0, w: null, h: null, note: '本相不存在' }),
+      ]
+      const j = touchTargetViolations(p, 48)
+      expect(j.status).toBe('pass')
+      expect(j.detail?.['coverage']).toBe('1/2')
+      expect(j.why).toContain('.hand-card')
+      expect(j.why).toContain('本相不存在')
+    })
+
+    it('G318.11 一个都量不到 ⇒ **量不到**（不许静默当过）', () => {
+      const p = fakePhase('answer')
+      p.touch_targets = [
+        target({ selector: '.hand-card', present: false, count: 0, rendered: 0, w: null, h: null }),
+      ]
+      expect(touchTargetViolations(p, 48).status).toBe('not-measured')
+    })
+
+    it('G318.12 匹配到但**没有渲染尺寸**的元素不算「量到了」', () => {
+      const p = fakePhase('answer')
+      p.touch_targets = [
+        target({ selector: '.battle-cell', count: 45, rendered: 0, w: null, h: null, note: '匹配到但都没有渲染尺寸（隐藏？）' }),
+      ]
+      const j = touchTargetViolations(p, 48)
+      expect(j.status).toBe('not-measured')
+      expect(j.detail?.['coverage']).toBe('0/1')
+    })
   })
 })

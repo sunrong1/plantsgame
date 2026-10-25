@@ -28,6 +28,7 @@ import { describe, expect, it } from 'vitest'
 
 import { COLS, ROWS } from '../../src/core'
 import { stripComments } from '../fixtures/strip-comments'
+import { clickableClassNames, templateOf } from '../helpers/clickable-classes'
 
 const root = process.cwd()
 
@@ -95,32 +96,15 @@ function isBaseRuleFor(selector: string, name: string): boolean {
 /**
  * 抽出模板里**带 `@click` / `@pointerdown` / `@pointerup`** 的元素上的 class 名。
  *
+ * 📎 **Story 3.5 已抽到 `tests/helpers/clickable-classes.ts`** ——
+ *   G138 与 G317 **共用同一份**（R-37：判据单一来源，不许抄两份；
+ *   抄两份的漂移方向恰好是「判据静默变窄」）。
+ *
  * ⚠️ **`[CR]` 2026-10-20 新增**：G138 的规则级判据原来只按 `cursor: pointer`
  *   取规则，而文件级闸门却按 `@click` 纳管 ⇒ 「模板里能点、样式里没写 cursor」
  *   的元素**整个逃过**触控尺寸判据。
  *   ⇒ 这份清单把两处接上：模板说它能点，规则就按它判。
- *
- * ⚠️ **只认 `<tag …>` 开标签** —— 结束标签与自闭合标签不带绑定。
- *   ⚠️ **class 是精确匹配**（`.foo` 不匹配 `.foo__label`）：
- *   否则一个可点元素的**子元素**规则（`.option-card__label { font-size: 22px }`）
- *   会被一起卷进来 ⇒ 大量假红。
  */
-function clickableClassNames(source: string): readonly string[] {
-  const template = templateOf(source)
-  const out = new Set<string>()
-  const tagPattern = /<([A-Za-z][\w.-]*)\b((?:[^<>"]|"[^"]*")*?)>/g
-  let match: RegExpExecArray | null
-  while ((match = tagPattern.exec(template)) !== null) {
-    const attrs = match[2]!
-    if (!/@click|@pointerdown|@pointerup/.test(attrs)) continue
-    const cls = /class="([^"]*)"/.exec(attrs)?.[1]
-    if (cls === undefined) continue
-    for (const name of cls.split(/\s+/)) {
-      if (name.length > 0) out.add(name)
-    }
-  }
-  return [...out]
-}
 
 /** `src/` 下所有 `.vue` 文件。 *//**
  * `src/` 下**全部** `.vue` 文件（递归）。
@@ -1970,6 +1954,9 @@ function gridAreaOf(block: string, panelClass: string): string | null {
 /**
  * `<template>` 正文（去掉 `<style>` 块，避免把 CSS 当成标签）。
  *
+ * 📎 **Story 3.5 已抽到 `tests/helpers/clickable-classes.ts`**（与
+ *   `clickableClassNames` 放在一起，G138 与 G317 共用一份）。
+ *
  * ⚠️🔥 **顺带必须剥掉 HTML 注释**（`<!-- -->`），这是 R-52 在模板侧的同一课：
  *   `stripComments` 只认 `//` 与块注释两种形态（它的文档逐字写了「故意不处理」其它），
  *   而本仓库的模板注释里**大量用反引号提到真实标签** ——
@@ -1979,14 +1966,6 @@ function gridAreaOf(block: string, panelClass: string): string | null {
  *   同一块面板被数两遍。
  *   剥法复刻 `stripComments` 的规矩：换成等长空白而不是删掉，保持位置不变。
  */
-function templateOf(source: string): string {
-  const open = source.indexOf('<template>')
-  const close = source.lastIndexOf('</template>')
-  if (open === -1 || close === -1) return ''
-  return source
-    .slice(open + '<template>'.length, close)
-    .replace(/<!--[\s\S]*?-->/g, (match) => match.replace(/[^\n]/g, ' '))
-}
 
 interface DirectChild {
   /** 小写是原生标签（`div`），首字母大写是子组件（`BattleField`）。 */

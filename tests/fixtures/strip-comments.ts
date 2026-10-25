@@ -90,3 +90,48 @@ export function stripComments(source: string): string {
 
   return out.join('')
 }
+
+/**
+ * 剥掉 **HTML 注释**（`<!-- … -->`），保留字符位置（注释换成等长空白）。
+ *
+ * ── 为什么需要它（Story 3.5 / D1）────────────────────────────────────────
+ *   `stripComments` 只认四种状态：普通代码、单双引号字符串、模板串、
+ *   行注释、块注释 ⇒ **`.vue` 模板里的 `<!-- … -->` 会被当成代码扫**。
+ *   ⇒ 扩面扫描（19 个 `.vue`）之后，模板注释里的字面量会**假红**。
+ *   ⇒ 本函数与 `stripComments` **配对使用**：
+ *     `stripComments(stripHtmlComments(source))`
+ *     （**先**剥 HTML 注释 —— 否则 HTML 注释里的 `//` 或 `/*` 会先把真代码吃掉）。
+ *
+ * ⚠️ **顺序不能反**：`stripComments` 会把 HTML 注释里的 `//` 当成行注释起点、
+ *   把 `/*` 当成块注释起点 ⇒ 那样会把注释**后面**的真代码一起吃掉。
+ *
+ * 📎 同样保留换行 ⇒ 行号与逐行报告在剥之前后**保持一致**。
+ */
+export function stripHtmlComments(source: string): string {
+  const out = source.split('')
+  const blank = (from: number, to: number): void => {
+    for (let i = from; i < to; i += 1) {
+      if (out[i] !== '\n') out[i] = ' '
+    }
+  }
+
+  let i = 0
+  while (i < source.length) {
+    // ⚠️ `<!-->` 是合法的**空注释** ⇒ 它的结束符不是 `-->`。
+    if (source.startsWith('<!-->', i)) {
+      blank(i, i + 5)
+      i += 5
+      continue
+    }
+    if (source.startsWith('<!--', i)) {
+      const close = source.indexOf('-->', i + 4)
+      const end = close < 0 ? source.length : close + 3
+      blank(i, end)
+      i = end
+      continue
+    }
+    i += 1
+  }
+
+  return out.join('')
+}
