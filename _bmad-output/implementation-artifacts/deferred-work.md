@@ -45,7 +45,6 @@
 | DF-033 | 待排期 | 未指派 | 任何 `package.json` script 或 `scripts/` 下门禁的增删，都应回头 grep `_bmad-output/` 与 `docs/` 并逐处登记 | `check-doc-consistency.sh` 被换掉后 6 处旧文档仍列它为收尾命令，无工具能发现 | [`df-033`](./deferred-details.md#df-033) |
 | DF-034 | 待触发 | 未指派 | 若 typecheck 再出现整批、且错误内容与源码对不上的报错，先跑 `npx vue-tsc -b --force` 再下结论 | `npm run typecheck` 曾出 34 条指向 `node_modules/.tmp` 的假红，机制未复现 | [`df-034`](./deferred-details.md#df-034) |
 | DF-035 | 待触发 | Story 1.16 / 1.17 | 若 1.15 存档格式要求「本存档累计获得多少阳光」，或 1.17 的 DebugPanel 要显示它 ⇒ 走 `[CC]` 加字段，不要在 1.13 补 | `store.ts` 无 `sunEarned` 累计阳光字段，FR66「累计所得只增不减」只在 `masteredWordIds` 落地 | [`df-035`](./deferred-details.md#df-035) |
-| DF-036 | 待触发 | Story 1.16 / 1.18 | 下一次改架构文档（`[GA]`）时把 `core/hud.ts` 补进组件树/模块表 | `src/core/hud.ts` 仍未进 `game-architecture.md` 的 core/ 组件树，架构文档比代码少一模块 | [`df-036`](./deferred-details.md#df-036) |
 | DF-037 | 待触发 | 未指派 | 若单元 2 的 JSON 换了 id 前缀形态，必须同步改 `progressDisplay` 并新增一条守卫，否则进度条会恒显示 0 而不报错 | `core/hud.ts` 的 `progressDisplay` 用 `startsWith('u'+unitNumber+'-')`，eslint 的 `src/core/**` 块不禁 `content`，无守卫 | [`df-037`](./deferred-details.md#df-037) |
 | DF-038 | 待触发 | Story 1.18 | 1.18 真机校准时复算三条对比度（阳光 / 心 / 白字）；若要改 `--color-heart` 或 `--color-sun` 的值，必须先跑 `palette.test.ts` | `tokens.css` 的 `--color-hud-panel: #1f2d11` 是推导值，未在 1.18 真机复算三条对比度 | [`df-038`](./deferred-details.md#df-038) |
 | DF-039 | 待触发 | 未指派 | 单元 2 或任何一条内容出现 `entryId !== wordId` 的词条时，立即走 `[CC]`：改字段名或引入映射表；不许继续把 `entryId` 塞进 `masteredWordIds` | `masteredWordIds` 存的是 `entryId`，单元 1 的 37/37 条恰好相等，单元 2 一分叉就得走 `[CC]` | [`df-039`](./deferred-details.md#df-039) |
@@ -53,7 +52,6 @@
 | DF-041 | 待触发 | Story 1.18 | 1.18 部署 PWA 时加一个 favicon，这条自动闭合 | AC-G1 三件事：`.battle-grid` 3px 横向溢出、`/favicon.ico` 404 待 1.18 PWA 收口，③ HUD 不进 G20 已定 | [`df-041`](./deferred-details.md#df-041) |
 | DF-042 | 待触发 | 未指派 | 1.14 接上掉心音效后，那时可以用「同一 tick 内音效与 class 同时触发」把 G53 升级成行为守卫；在此之前不许把 G53 的源码守卫当成「已用行为证明过」 | G56/G57/G53 仍停在源码层；1.14 已接音效但结论是 G53 未升级 | [`df-042`](./deferred-details.md#df-042) |
 | DF-043 | 待触发 | 未指派 | 下一个改 `eslint.config.js` 覆盖名单的 story，或引入 minimatch 时 | `tests/scaffold/audio-unlock-guard.test.ts` 的 `matchesGlob` 不支持 `[...]`，eslint 写 `src/{app,views}/**` 会静默判「没覆盖」 | [`df-043`](./deferred-details.md#df-043) |
-| DF-044 | 待排期 | Story 1.16 / 1.18 | 下一次改 `game-architecture.md` 的组件树/模块表时，补上 `core/hud.ts` | `core/hud.ts` 仍未列进 `game-architecture.md` 组件树/模块表；1.14 只确认 effects 两文件已列 | [`df-044`](./deferred-details.md#df-044) |
 | DF-045 | 待裁决 | 未指派 | Story 1.16 把 `Effect` 的 `TTS` 成员真正接上时，必须重新裁决这一点 | TTS 不在 `runEffects` 里产出，`store.speakQuestion()` 与 `QuestionCard.vue` 独立 watch 两处入口 | [`df-045`](./deferred-details.md#df-045) |
 | DF-046 | 待触发 | 未指派 | Story 1.16 若给 `Effect` 加上会抛的新成员（`TTS`），且把它排在 `SAVE` 之前，这一条立刻变成可构造 ⇒ 那时必须补上「前一条抛错、后一条仍执行」的正向用例 | `core/effects.ts` 里 SAVE 恒排末尾，`effects-runner` 写盘抛错后无后续条目可执行 | [`df-046`](./deferred-details.md#df-046) |
 | DF-047 | 待触发 | Story 1.16 / 1.17 | 1.16 / 1.17 每次给 `State` 加字段时，同一次改动里确认 `core/reducer.ts` 的 `assertInvariants` 覆盖了它（并在 story 文档里留一行） | `save.ts` 的 `parseSaveFile` 只查 progress 两键 + currentGame 是对象，State 新字段无拒绝判据 | [`df-047`](./deferred-details.md#df-047) |

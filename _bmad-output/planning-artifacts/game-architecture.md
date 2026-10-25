@@ -4,7 +4,7 @@ project: 'plants-game'
 date: '2026-10-12'
 author: 'sunrong'
 version: '1.0'
-revision: 1
+revision: 2
 revisionNote: |
   rev 1 —— [DS] 追认事实（**不改任何设计决定**）。改了 §10「网格布局与坐标映射」三处：
   ① 代码样本里的 `repeat(9, 1fr)` 改成 `repeat(9, minmax(0, 1fr))` —— Story 1.18 / AC-D4
@@ -20,6 +20,37 @@ revisionNote: |
   另一侧没有选择（改实现去迁就文档才是真正的设计变更，而 G133 会先红）/
   升 revision + 追加本 note + 同步 `deferred-work.md`（结清 **DF-146**）。
   ⚠️ **机制正文只写一份**（R-37）—— 本文档不复述它，只写 R-15 引用。
+  rev 2 —— [DS] 追认事实（**不改任何设计决定，一个数值未动**）。改了
+  `## Project Structure → ### Directory Structure` 的目录树与
+  `### System Location Mapping` 模块表 —— **这两处是 2026-10-12 的设计快照，
+  到 2026-10-26 已经烂掉**：实测 `src/core/` 实际 **14** 个文件而树上只列 **9** 个
+  （缺 `build.ts` / `deck-slice.ts` / `hud.ts` / `placeholder.ts` / `session-replay.ts`），
+  `src/services/` 实际 **8** 个只列 **4** 个，`src/app/` 缺 **3** 个，`src/content/` 缺 **2** 个，
+  `src/components/` 缺 `hand/` 与 3 个 HUD 组件；而树上还写着**四个不存在的文件** ——
+  两个是**早已改掉 / 从未存在**（`services/asset-loader.ts` 早已拆成 `asset-url.ts` +
+  `asset-prefetch.ts`；`components/debug/ReplayExporter` 从未存在，职能由
+  `app/session-recorder.ts` + `core/session-replay.ts` 承担），
+  两个是**刻意不建**的（`content/loader.ts` —— 1.6 裁决 4；`app/router.ts` —— 1.15 裁决 5）。
+  ⇒ **指空的那一份最危险**（R-37）：读者以为那个路径仍然有效。
+  本次动作：① 目录树与模块表都刷新到仓库现状（`src/core/` 补 `hud.ts` 等 **14** 项，
+  模块表补 5 个系统行）；② 那四个不存在的文件从树上删掉，其中两个「刻意不建」的
+  改成**显式的 ⚠️ 注记**（写明「为什么没有它」，免得下一个人又照着旧树去建）；
+  ③ 新守卫 **G326**（`tests/scaffold/architecture-tree.test.ts`）三条判据：
+  树里写的每个文件路径都必须真实存在 / `src/` 下每个源文件都必须在树里被提到 /
+  模块表里的每个路径都必须真实存在 ⇒ **这棵树从此不会静默烂掉**。
+  变异 **M389**（树里加一个不存在的 `ghost.ts` ⇒ **1 红 / 那一支 7 条**）与
+  **M390**（树里删掉 `hud.ts` 那一行 ⇒ **2 红 / 那一支 7 条**）⇒ 两次都已复原。
+  ⚠️ **守卫自己踩过一个坑（M391 ⇒ 5 红 / 那一支 8 条）**：它原先用 `indexOf`
+  找这两个章节标题，而**本 note 里就正文明写了标题名** ⇒ 命中散文而不是标题
+  ⇒ 判据转去扫 frontmatter 之后的第一个围栏块（`tsconfig.core.json` 片段）
+  ⇒ **判据作用错对象 = 假绿**。现已改成**按行首匹配标题行**。
+  **为什么由 [DS] 改**（R-33 三条件全满足）：所描述的文件**已经存在且被守卫钉住**
+  （`core/hud.ts` 有 `tests/core/hud.test.ts`，`core/build.ts` / `core/session-replay.ts`
+  各自有测试）/ **另一侧没有选择**（改实现去迁就一份 2026-10-12 的设计快照才是真正的
+  设计变更）/ 升 revision + 追加本 note + 同步 `deferred-work.md`
+  （结清 **DF-036** 与 **DF-044** —— 同一个缺陷在两轮评审里各登记了一次）。
+  ⚠️ **本次只描述现状，不新增约定** —— 「树必须与仓库一致」这条约束由 **G326** 守着，
+  它的判据口径写在守卫自己的 JSDoc 里（**规则正文只写一份** —— R-37）。
 stepsCompleted: [1, 2, 3, 4, 5, 6, 7, 8, 9]
 status: 'complete'
 engine: 'none — Vue 3.5 + Vite 8 + TypeScript (no game engine)'
@@ -751,54 +782,83 @@ function applyAction(action: Action): void {
 ```
 plants-game/
 ├── src/
+│   ├── main.ts                   入口：挂载 App + 注册 Service Worker
+│   ├── App.vue                   根组件：按 view 条件渲染（不引路由）
+│   ├── vite-env.d.ts             Vite 环境类型声明
 │   ├── core/                    ← 纯逻辑。零 DOM、零 Vue、独立 tsconfig
 │   │   ├── types.ts             State / Action 类型定义
-│   │   ├── reducer.ts           reduce(state, action) —— 唯一状态变更点
 │   │   ├── actions.ts           Action 构造器（保证 type 字面量一致）
+│   │   ├── reducer.ts           reduce(state, action) —— 唯一状态变更点
 │   │   ├── balance.ts           平衡数值 —— 单一事实源
 │   │   ├── grid.ts              5×9 规格、僵尸行常量、坐标换算
 │   │   ├── combat.ts            射程判定 / 伤害结算 / 目标选择 / 减速刷新
 │   │   ├── turn.ts              回合流程编排（攻击 → 推进 → 判定胜负）
+│   │   ├── build.ts             建塔判据：能不能建 / 造价 / 手上有几张卡
+│   │   ├── deck-slice.ts        一局的题单切片（10 题）
+│   │   ├── hud.ts               HUD 四组判据（造价 / 阳光 / 心 / 进度）
+│   │   ├── session-replay.ts    会话回放：initialState + action 串 ⇒ 同一终态
+│   │   ├── placeholder.ts       词图加载失败时的内联 SVG 占位常量
 │   │   ├── effects.ts           runEffects(action, prev, next) —— 纯函数
 │   │   └── index.ts             barrel：唯一对外出口
 │   │
 │   ├── content/                 ← 内容 schema 与加载（无 DOM）
 │   │   ├── schema.ts            Zod schema
-│   │   ├── loader.ts            按单元加载
-│   │   └── index.ts
+│   │   ├── distribution.ts      卡型分布规则 —— 难度阶梯的唯一计算入口
+│   │   ├── option-count.ts      选项数递进规则 —— 唯一计算入口
+│   │   ├── units/               教材内容 JSON（unit-01.json ...）
+│   │   └── index.ts             内容加载 / 校验入口
+│   │                               ⚠️ 不建 `loader.ts` —— 这活儿在 `index.ts` 里（1.6 裁决 4）
 │   │
 │   ├── services/                ← 浏览器副作用（允许 DOM）
 │   │   ├── audio.ts             AudioContext 解锁、BGM、音效
 │   │   ├── pronunciation.ts     预生成录音主路 + 设备 TTS 降级
+│   │   ├── pronunciation-status.ts  朗读状态的可观察层
 │   │   ├── save.ts              localStorage 序列化 / 恢复
-│   │   └── asset-loader.ts      按单元预取图片
+│   │   ├── asset-url.ts         塔 / 僵尸图的 URL 出处
+│   │   ├── asset-prefetch.ts    单元图片的异步预取
+│   │   ├── asset-degradations.ts 内容资产降级登记
+│   │   └── sw-registration.ts   Service Worker 注册与状态观察
 │   │
 │   ├── app/                     ← Vue 绑定层
 │   │   ├── store.ts             持有 state 的 ref + applyAction
 │   │   ├── effects-runner.ts    执行 runEffects 的返回列表
-│   │   └── router.ts
+│   │   ├── audio-unlock.ts      音频解锁的三步同步块（不许出现 await）
+│   │   ├── session-recorder.ts  会话录制器：起始 state + action 串
+│   │   └── dev-adjust.ts        dev-only 状态补偿缝
+│   │                               ⚠️ 不建 `router.ts` —— 视图切换走 store 的最小 `view` 态（1.15 裁决 5）
 │   │
 │   ├── components/              ← Vue 组件
 │   │   ├── battle/              BattleField / Zombie / Tower / RangeOverlay
 │   │   ├── quiz/                QuestionCard / OptionCard / AnswerFeedback
-│   │   ├── hud/                 SunCounter / HeartRow / ProgressBar
-│   │   └── debug/               DebugPanel / ReplayExporter
+│   │   ├── hand/                HandDeck / HandCard
+│   │   ├── hud/                 SunCounter / HeartRow / ProgressBar / LevelOutcome / PronunciationOverlay / UpdateNotice
+│   │   └── debug/               DebugPanel
 │   │
 │   ├── views/                   ← StartView / LevelView
 │   │                               ⚠️ 不建 UnitSelectView —— 无选关自由（见下方说明）
-│   └── styles/                  ← 全局样式与动效 token
+│   └── styles/                  ← base.css / tokens.css / responsive.css
 │
-├── scripts/
+├── scripts/                     ← 工具链（不在应用的依赖方向里）
 │   ├── validate-content.ts      内容校验 CLI
-│   └── balance-sim.ts           平衡模拟 —— import 真实 core/
+│   ├── balance-sim.ts           平衡模拟 —— import 真实 core/
+│   ├── generate-voice.ts        批量生成朗读录音
+│   ├── verify-deploy.ts         部署产物核对
+│   ├── verify-portrait-layout.ts 竖屏布局实测
+│   ├── word-image-metrics.ts    词图度量
+│   ├── word-image-throughput.ts 词图产能
+│   ├── check-execution-drift.py 执行漂移检查
+│   ├── wiki-lint.py             词库 lint
+│   └── measure-viewports.txt    视口测量清单
 │
-├── src/content/units/           ← 教材内容 JSON（unit-01.json ...）
 ├── tests/                       ← 全部 Vitest 测试，按模块分文件
-├── public/assets/
-│   ├── words/unit-01/<词条id>.svg
-│   ├── towers/<塔型id>.svg
-│   ├── zombies/<僵尸id>.svg
-│   └── audio/{music,sfx,voice}/
+├── public/
+│   ├── favicon.svg
+│   ├── icons/                   PWA 图标（含 maskable）
+│   └── assets/
+│       ├── words/unit-01/<词条id>.svg
+│       ├── towers/<塔型id>.svg
+│       ├── zombies/<僵尸id>.svg
+│       └── audio/{music,sfx,voice}/
 ├── docs/                        ← 项目知识库
 └── _bmad-output/                ← BMAD 产出物
 ```
@@ -826,11 +886,16 @@ plants-game/
 | 回合状态机 | `core/turn.ts` | 回合流程编排 |
 | 战斗结算 | `core/combat.ts` | 射程判定 / 伤害 / 目标选择 / 减速刷新 |
 | 经济 | `core/reducer.ts` + `core/balance.ts` | 阳光与造价 |
-| 卡型与题单 | `core/reducer.ts` | 答题判定、重考循环 |
-| 内容 | `content/` | schema、加载、校验 |
-| TTS / 音频 | `services/` | 解锁、降级、播放 |
+| 卡型与题单 | `core/reducer.ts` + `core/deck-slice.ts` | 答题判定、重考循环、一局 10 题的切片 |
+| 建造判据 | `core/build.ts` | 能不能建 / 造价 / 手上有几张卡 |
+| HUD 判据 | `core/hud.ts` | 造价 / 阳光 / 心 / 进度四组判据 |
+| 会话回放 | `core/session-replay.ts` + `app/session-recorder.ts` | 起始 state + action 串 ⇒ 可复现的现场 |
+| 内容 | `content/` | schema、加载、校验、卡型分布与选项数规则 |
+| TTS / 音频 | `services/` | 解锁、降级、播放、朗读状态 |
 | 存档 | `services/save.ts` | state 序列化 / 恢复 |
-| 资源加载 | `services/asset-loader.ts` | 按单元预取 |
+| 资源加载 | `services/asset-url.ts` + `services/asset-prefetch.ts` | 塔 / 僵尸图 URL、按单元预取 |
+| 资源降级 | `services/asset-degradations.ts` | 内容资产降级登记 |
+| PWA / 离线 | `services/sw-registration.ts` | Service Worker 注册与状态观察 |
 | 副作用编排 | `core/effects.ts` + `app/effects-runner.ts` | 纯函数产出列表，运行时执行 |
 | 渲染 / UI | `components/` `views/` | 只渲染与转发 |
 

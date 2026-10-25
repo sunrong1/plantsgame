@@ -945,26 +945,6 @@ jsdom 没有布局引擎 ⇒ 测不出来。本轮给可源码化的那一半补
 
 > 来源：`## Deferred from: story-1-13-HUD-阳光-心与进度 `[DS]` (2026-10-16)` ｜ 旧编号 `§2（1.13 DS）` ｜ 详见 `archive/deferred/2026-10-16--ds-story-1-13.md` 的「分诊结论」
 
-## DF-036
-
-**状态**：待触发 · **归属**：Story 1.16 / 1.18 · **恢复条件**：下一次改架构文档（`[GA]`）时把 `core/hud.ts` 补进组件树/模块表
-
-**一句话**：`src/core/hud.ts` 仍未进 `game-architecture.md` 的 core/ 组件树，架构文档比代码少一模块
-
-### 原始论证
-
-### 4. 新增 `src/core/hud.ts`（架构组件树未列）—— 归 1.16/1.18 的架构回写
-
-- 架构文档的组件树里没有 `core/hud.ts`，本 story 沿用 1.12 `core/build.ts` 的先例新建。
-  ⇒ **架构文档现在比代码少一个模块**。判据全部零 DOM / 零 Vue / 零随机 / 零时间，
-  与 `turn.ts` / `combat.ts` 同纪律，这条是它能被架构接受的前提。
-  —
-  `docs/rules/architecture.md`, `src/core/hud.ts`
-  **恢复条件**：下一次改架构文档（`[GA]`）时把 `core/hud.ts` 补进组件树/模块表。
-
-
-> 来源：`## Deferred from: story-1-13-HUD-阳光-心与进度 `[DS]` (2026-10-16)` ｜ 旧编号 `§4（1.13 DS）` ｜ 详见 `archive/deferred/2026-10-16--ds-story-1-13.md` 的「分诊结论」
-
 ## DF-037
 
 **状态**：待触发 · **归属**：未指派 · **恢复条件**：若单元 2 的 JSON 换了 id 前缀形态，必须同步改 `progressDisplay` 并新增一条守卫，否则进度条会恒显示 0 而不报错
@@ -1152,26 +1132,6 @@ jsdom 没有布局引擎 ⇒ 测不出来。本轮给可源码化的那一半补
 
 
 > 来源：`## Deferred from: story-1-14-音效与-BGM-接入 `[DS]` (2026-10-16)` ｜ 旧编号 `§3（1.14 DS）` ｜ 详见 `archive/deferred/2026-10-16--ds-story-1-14.md` 的「分诊结论」
-
-## DF-044
-
-**状态**：待排期 · **归属**：Story 1.16 / 1.18 · **恢复条件**：下一次改 `game-architecture.md` 的组件树/模块表时，补上 `core/hud.ts`
-
-**一句话**：`core/hud.ts` 仍未列进 `game-architecture.md` 组件树/模块表；1.14 只确认 effects 两文件已列
-
-### 原始论证
-
-### 5. 1.13 遗留：`core/hud.ts` 架构组件树未列 —— **本 story 不代劳**
-
-- 逐条确认它**仍在 deferred 里**（本文件上一节第 4 条），归 1.16/1.18 的架构回写。
-  1.14 的 AC-H8 只确认「`game-architecture.md` **本来就列了** `core/effects.ts` 与
-  `app/effects-runner.ts`（`:748` / `:804`）⇒ 1.14 是「补实现」，**不需要 `[GA]` 回写**。
-  两件事别混：`effects` / `effects-runner` 已列，`hud.ts` 仍缺。
-  —
-  `_bmad-output/planning-artifacts/game-architecture.md`
-
-
-> 来源：`## Deferred from: story-1-14-音效与-BGM-接入 `[DS]` (2026-10-16)` ｜ 旧编号 `§5（1.14 DS）` ｜ 详见 `archive/deferred/2026-10-16--ds-story-1-14.md` 的「分诊结论」
 
 ## DF-045
 
