@@ -28,6 +28,10 @@
  *   本文件顺带补上它最硬的一半：`src/core/**` 源码里 `console.` **零出现**。
  *   （`services/` 与 `app/` 的那部分按 R-14 允许「带前缀且不在逐帧路径」，
  *   判据放不进「零出现」这一条，所以只守 core/。）
+ *   📎 **2026-10-26**：R-14 的**另一半**（前缀合规 + 不在逐帧路径）已由
+ *   `tests/scaffold/log-prefix-boundary.test.ts`（守卫 **G323**）补上 ⇒
+ *   R-14 现在**两半都有守卫**；本文件仍然只守 `core/` 那一半（两半的判据形态不同，
+ *   合成一条会把「零出现」与「带前缀」互相豁免）。
  */
 
 import { readFileSync, readdirSync } from 'node:fs'

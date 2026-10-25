@@ -199,8 +199,13 @@ Story 1.15 的 G96 写的是「推进确实落盘了」，那条判据在**整�
 
 **依据** 逐帧日志会拖垮低端平板的性能，而这类问题在开发机上看不出来。
 
-**守卫** ⚠️ **部分** —— `tests/scaffold/save-boundary.test.ts`（R-14 补卫）守住最硬的一半：`src/core/**` 逐文件**零 `console.`** 出现（`readdirSync` 扫整层，不是只看某几个文件；匹配前先 `stripComments`，否则注释里的 `console` 字样会误报）。
+**守卫** ✅ **两半都有** ——
+① **最硬的一半**：`tests/scaffold/save-boundary.test.ts`（R-14 补卫）—— `src/core/**` 逐文件**零 `console.`** 出现（`readdirSync` 扫整层，不是只看某几个文件；匹配前先 `stripComments`，否则注释里的 `console` 字样会误报）。
+② **另一半**：`tests/scaffold/log-prefix-boundary.test.ts`（守卫 **G323**）—— `src/services/**` / `src/app/**` / `src/components/**` 里每一条 `console.*` 都必须**带 `[模块前缀]`**（唯一例外走**例外清单**，且守卫会去核那个**生产者**仍带前缀 ⇒ 例外不会悄悄过期），且**不得落在** `requestAnimationFrame(...)` / `setInterval(...)` 的回调里。
 
-⚠️ **`services/` 与 `app/` 的那部分无守卫** —— R-14 允许那里「带模块前缀且不在逐帧路径」，判据（「前缀合规」+「不在逐帧」）放不进「零出现」这一条。`src/services/save.ts` 的四条日志目前是**人肉守**的：`tests/services/save.test.ts` 的 **G85** 逐字断言 INFO 与四条 WARN 都以 `[save]` 开头（变异 M98 改前缀 → **3 红**），但那是**存档这一个模块**的判据，不覆盖 R-14 全域。
+📎 **2026-10-26 补上第 ② 条**（结清 **DF-049**）—— 此前这里逐字写着「⚠️ **`services/` 与 `app/` 的那部分无守卫**」：
+那时 `src/services/save.ts` 的四条日志只是**人肉守**的（`tests/services/save.test.ts` 的 **G85** 逐字断言 INFO 与四条 WARN 都以 `[save]` 开头，变异 M98 改前缀 → **3 红**），那是**存档这一个模块**的判据；如今 `[audio]` / `[tts]` / `[sw]` / `[prefetch]` / `[pronunciation]` / `[content]` 六个前缀由 **G323** 统一守。
+⚠️ **实测**：带前缀的服务早就有 **6 个**（DF-049 的触发条件「累计到第三个」**早已成立**），此前只是没人去建那条通用守卫。
+⚠️ **变异验证**：M384 把 `src/services/audio.ts` 的前缀改成 `[Audio]` ⇒ **2 红**；M385 把那条日志塞进 `requestAnimationFrame` 回调 ⇒ **1 红**（两次都已复原，`git diff --stat` 为空）。
 
 **首现** Story 1.4

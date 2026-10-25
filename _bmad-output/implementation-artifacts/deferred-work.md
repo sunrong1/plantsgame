@@ -58,7 +58,6 @@
 | DF-046 | 待触发 | 未指派 | Story 1.16 若给 `Effect` 加上会抛的新成员（`TTS`），且把它排在 `SAVE` 之前，这一条立刻变成可构造 ⇒ 那时必须补上「前一条抛错、后一条仍执行」的正向用例 | `core/effects.ts` 里 SAVE 恒排末尾，`effects-runner` 写盘抛错后无后续条目可执行 | [`df-046`](./deferred-details.md#df-046) |
 | DF-047 | 待触发 | Story 1.16 / 1.17 | 1.16 / 1.17 每次给 `State` 加字段时，同一次改动里确认 `core/reducer.ts` 的 `assertInvariants` 覆盖了它（并在 story 文档里留一行） | `save.ts` 的 `parseSaveFile` 只查 progress 两键 + currentGame 是对象，State 新字段无拒绝判据 | [`df-047`](./deferred-details.md#df-047) |
 | DF-048 | 待触发 | 未指派 | 新增第二条进关路径的同一个 story 里，必须确认它走 `enterLevel()` 或显式调 `restoreFromSave()` | 读档只挂在 `store.enterLevel()`，新增进关路径若不经它就读不到存档 | [`df-048`](./deferred-details.md#df-048) |
-| DF-049 | 待排期 | 未指派 | 累计到第三个带前缀日志的服务时，把「前缀合规 + 不在逐帧路径」做成一条通用守卫 | R-14 只在 `tests/scaffold/save-boundary.test.ts` 扫 `src/core/**`，services/app 的带前缀日志无守卫 | [`df-049`](./deferred-details.md#df-049) |
 | DF-050 | 待触发 | 未指派 | 任何一个动 `assertInvariants` 或给 `State` 加存档字段的 story，同一次改动里补 `unitNumber` 校验，并把 G221 的第一条前置断言翻过来 | `reducer.ts` 的 `assertInvariants` 只查 unitNumber 形状，不查单元是否录入，`unitNumber: 99` 仍放行 | [`df-050`](./deferred-details.md#df-050) |
 | DF-051 | 待触发 | 未指派 | 任何要把 R-14 扩到组件 / 视图层的 story，顺带裁决「组件里哪些 console 是允许的、形状是什么」 | `LevelView.vue` 的 `unitTotal` computed 里 `console.warn`，R-14 只扫 `src/core/` | [`df-051`](./deferred-details.md#df-051) |
 | DF-052 | 待触发 | Story 1.17 | 1.17 的调试面板若要给每个键配专门文案，那时把六键逐条文案一并定稿 | `DebugPanel.vue` 仍按 `key=${item.key}` 通用渲染，六个 `SaveDegradationKey` 无逐键文案 | [`df-052`](./deferred-details.md#df-052) |

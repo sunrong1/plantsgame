@@ -1284,30 +1284,6 @@ jsdom 没有布局引擎 ⇒ 测不出来。本轮给可源码化的那一半补
 
 > 来源：`## Deferred from: story-1-15-存档与断点续学 `[DS]` (2026-10-17)` ｜ 旧编号 `DS1.15#4` ｜ 详见 `archive/deferred/2026-10-17--ds-story-1-15.md` 的「分诊结论」
 
-## DF-049
-
-**状态**：待排期 · **归属**：未指派 · **恢复条件**：累计到第三个带前缀日志的服务时，把「前缀合规 + 不在逐帧路径」做成一条通用守卫
-
-**一句话**：R-14 只在 `tests/scaffold/save-boundary.test.ts` 扫 `src/core/**`，services/app 的带前缀日志无守卫
-
-### 原始论证
-
-### 5. R-14 在 `services/` 与 `app/` 的那部分仍无守卫
-
-- **事实**：`tests/scaffold/save-boundary.test.ts` 的 R-14 补卫只扫 `src/core/**`
-  的「零 `console.`」。R-14 允许 `services/` / `app/` 「带模块前缀且不在逐帧路径」，
-  而那两条判据放不进「零出现」这一条形式。
-- **现状**：`[save]` 前缀由 **G85** 逐字断言（变异 M98 → 3 红），
-  但那是**存档这一个模块**的判据，不覆盖 R-14 全域。
-- **恢复条件**：累计到**第三个**带前缀日志的服务（`audio` / `save` / 第三个）时，
-  把「前缀合规 + 不在逐帧路径」做成一条通用守卫，而不是继续逐模块手写断言。
-  —
-  `docs/rules/architecture.md`, `tests/scaffold/save-boundary.test.ts`
-
-
-
-> 来源：`## Deferred from: story-1-15-存档与断点续学 `[DS]` (2026-10-17)` ｜ 旧编号 `DS1.15#5` ｜ 详见 `archive/deferred/2026-10-17--ds-story-1-15.md` 的「分诊结论」
-
 ## DF-050
 
 **状态**：待触发 · **归属**：未指派 · **恢复条件**：任何一个动 `assertInvariants` 或给 `State` 加存档字段的 story，同一次改动里补 `unitNumber` 校验，并把 G221 的第一条前置断言翻过来
