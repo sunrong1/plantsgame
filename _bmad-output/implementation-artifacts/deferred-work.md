@@ -140,7 +140,6 @@
 | DF-142 | 待裁决 | Story 1.19（或一次架构裁决） | 二选一 —— ① 把 `asset-degradations` 的读写搬进 `app/` 门面；② 或在架构文档里把例外范围写死成「组件只可直连无状态的 `services/` 模块」并加一条守卫 | 6 个组件直连 `services/`，其中 `asset-degradations.ts` 带模块级可变状态 | [`df-142`](./deferred-details.md#df-142) |
 | DF-144 | 待触发 | Story 1.12 | 词表定稿后把 `alt` / `aria-label` 换成孩子侧的说法，并加一条守卫：不得直接包含英文枚举字面量 | `src/components/battle/Tower.vue` 的 `alt` 用英文枚举 direct/sniper/area | [`df-144`](./deferred-details.md#df-144) |
 | DF-145 | 待触发 | Story 1.12 | 1.12 定下「可建 / 不可建 / 已选中 / 候选格」四态的视觉分工后，把 `is-buildable` 用上（或删掉这个类），并加一条守卫：模板里挂的每个状态类都必须有 CSS 规则 | `src/components/battle/BattleField.vue` 挂了 `is-buildable` 类但 CSS 无对应规则 | [`df-145`](./deferred-details.md#df-145) |
-| DF-146 | 待排期 | 未指派 | 把机制写进架构的「网格布局与坐标映射」一节，并明确「G14 管 N 与 COLS 同源 / G133 管轨道形态是 minmax」这条分工 | `minmax(0, 1fr)` 的 18px 机制只写在 `BattleField.vue` 样式注释里 | [`df-146`](./deferred-details.md#df-146) |
 | DF-147 | 待排期 | Story 1.17 | 把 key 换成 `cellKey → Set<towerId>`，就能同时回答「哪座塔盖的」与「盖了哪些格」 | `BattleField.vue` 的 `devTowerRangeKeys` 把所有塔覆盖格并成一个 Set | [`df-147`](./deferred-details.md#df-147) |
 | DF-148 | 待触发 | Story 1.2 / 1.14 | 下次动 `audio.ts` 的 `resume()` 调用点时 | `audio.ts` 的 `ensureContextRunning` 未兜 `ctx.resume()` 同步抛，会中止 `enterLevel()` | [`df-148`](./deferred-details.md#df-148) |
 | DF-149 | 待触发 | Story 1.14 | 下次动 `audio.ts` 的加载链时 | `audio.ts` 的 `fetchAudioBuffer` 无超时，BGM 卡在 `bgmLoading=true` 永久失声 | [`df-149`](./deferred-details.md#df-149) |

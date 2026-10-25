@@ -45,7 +45,7 @@ npm run balance-sim -- <单元号>   # 平衡模拟，import 真实 core/（不�
 
 | 主题 | ID 区间 | 何时必读 |
 |---|---|---|
-| [架构硬约束](docs/rules/architecture.md) | R-01..R-14 | **每次写代码前** |
+| [架构硬约束](docs/rules/architecture.md) | R-01..R-15 | **每次写代码前** |
 | [数值与平衡](docs/rules/range-and-balance.md) | R-20..R-24 | 碰任何数值时（⚠️ 改之前问人） |
 | [流程与文档](docs/rules/process.md) | R-30..R-41 | 记录 / 引用 / 作废约定时 |
 | [测试与守卫](docs/rules/testing.md) | R-50..R-61 | 写测试或守卫时（R-50 变异验证**按触发条件做**，默认不做） |

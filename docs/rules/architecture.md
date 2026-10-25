@@ -209,3 +209,21 @@ Story 1.15 的 G96 写的是「推进确实落盘了」，那条判据在**整�
 ⚠️ **变异验证**：M384 把 `src/services/audio.ts` 的前缀改成 `[Audio]` ⇒ **2 红**；M385 把那条日志塞进 `requestAnimationFrame` 回调 ⇒ **1 红**（两次都已复原，`git diff --stat` 为空）。
 
 **首现** Story 1.4
+
+---
+
+### R-15 战场列轨的轨道形态必须是 `minmax(0, 1fr)`
+
+**规则** 战场网格（`src/components/battle/BattleField.vue` 的 `.battle-grid`）的列定义必须写成 `repeat(<N>, minmax(0, 1fr))`：裸 `1fr` 会把 `gap` 的一半算进每条列轨的最小宽度，`<N>` 条列轨合计多出 `<N> × (gap / 2)` px ⇒ 容器横向溢出。**分工**：**G14 管「重复次数 N 与 `src/core/grid.ts` 的 `COLS` 同源」，G133 管「轨道形态是 `minmax(0, 1fr)`」** —— 两条各管一半，别指望一条覆盖两半。
+
+**依据** 机制：`1fr` 等价于 `minmax(auto, 1fr)`，而 `auto` 下限取内容的**最小贡献尺寸**，对 grid item 来说就是 `gap` 的那一半 ⇒ 每条列轨都比「容器宽 − (N−1) 条 gap」能分到的宽度多要一点，N 条加起来就把容器撑破。Story 1.18 / AC-D4 已把裸 `1fr` 改成 `minmax(0, 1fr)`（下限钉成 0 ⇒ `gap` 不再进入列宽计算，容器宽减去 N−1 条 gap 恰好被 N 条列轨分完）。
+
+⚠️ **两个数字不是一回事，别互相替**：`<N> × (gap / 2)` 是**机制推导**出来的「多出来的宽度之和」（`--space-grid-gap` 现值 4px ⇒ 9 条合计 18px，**随 token 变**）；**3px** 是 Story 1.10 在**当时更窄的容器**上**观测到**的溢出量（容器 453px 而轨道合计 456px）—— `aspect-ratio` 与 `content-box` 的交互让它取到别的值。**结论与数字不管，机制是同一条。**
+
+⚠️ **不能靠 `overflow: hidden` 盖掉溢出**：那会把最后一条列轨（第 9 列，入场格所在列）切掉一部分，而它正是僵尸入场的那一列。
+
+**守卫** ✅ **两半都有** ——
+① **G133**（`tests/components/portrait-layout.test.ts`）逐字断言 `grid-template-columns` 的值 === `repeat(${COLS}, minmax(0, 1fr))`；
+② **G14**（`tests/components/battle-field.test.ts`）断言 `repeat()` 的 N === `COLS`、`aspect-ratio` 的分母 === `ROWS`（变异 M42）。
+
+**首现** Story 1.18（AC-D4）

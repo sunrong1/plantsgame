@@ -4,6 +4,22 @@ project: 'plants-game'
 date: '2026-10-12'
 author: 'sunrong'
 version: '1.0'
+revision: 1
+revisionNote: |
+  rev 1 —— [DS] 追认事实（**不改任何设计决定**）。改了 §10「网格布局与坐标映射」三处：
+  ① 代码样本里的 `repeat(9, 1fr)` 改成 `repeat(9, minmax(0, 1fr))` —— Story 1.18 / AC-D4
+     已交付该形态，守卫 **G133**（`tests/components/portrait-layout.test.ts`）逐字钉住轨道形态、
+     **G14**（`tests/components/battle-field.test.ts`）钉住重复次数 N === `COLS`；
+  ② 「与 `core/grid.ts` 的关系」段里那句「CSS 的 `repeat(9, 1fr)` 是硬编码的重复次数…」
+     同步改成 `repeat(9, minmax(0, 1fr))` —— **引用原文句子**（R-31）：
+     `src/components/battle/BattleField.vue` 的注释引的就是这一句，原句一改、引用必须跟着改；
+  ③ 补一段「轨道形态（Story 1.18 / AC-D4 追认）」，把**机制、算式、以及
+     「G14 管 N 与 `COLS` 同源 / G133 管轨道形态是 minmax」这条分工**指向
+     `docs/rules/architecture.md` 的 **R-15**。
+  **为什么由 [DS] 改**（R-33 三条件全满足）：行为已交付且有守卫钉住（①/② 所列 G133 / G14）/
+  另一侧没有选择（改实现去迁就文档才是真正的设计变更，而 G133 会先红）/
+  升 revision + 追加本 note + 同步 `deferred-work.md`（结清 **DF-146**）。
+  ⚠️ **机制正文只写一份**（R-37）—— 本文档不复述它，只写 R-15 引用。
 stepsCompleted: [1, 2, 3, 4, 5, 6, 7, 8, 9]
 status: 'complete'
 engine: 'none — Vue 3.5 + Vite 8 + TypeScript (no game engine)'
@@ -486,7 +502,7 @@ Service Worker 引入一个新的失败模式：改了代码但孩子平板上�
 ```css
 .battle-grid {
   display: grid;
-  grid-template-columns: repeat(9, 1fr);   /* 9 列 —— 与 core/grid.ts 的 COLS 常量同源 */
+  grid-template-columns: repeat(9, minmax(0, 1fr));   /* 9 列 —— 与 core/grid.ts 的 COLS 常量同源 */
   gap: var(--space-grid-gap);
   padding-bottom: calc(var(--touch-min) + env(safe-area-inset-bottom, 0px));
   aspect-ratio: 9 / 5;                     /* 9 列 × 5 行，格子恒为正方形 */
@@ -512,8 +528,14 @@ canvas 每次射程变化都要重绘，且**文字渲染**会退回手工测量
 
 **与 `core/grid.ts` 的关系（架构硬约束）：** 网格尺寸在 `core/` 中是常量
 （`ROWS = 5` / `COLS = 9` / `ZOMBIE_ROW = 2`），**组件不得重定义**。
-CSS 的 `repeat(9, 1fr)` 是硬编码的重复次数，但**取值必须与常量一致** ——
+CSS 的 `repeat(9, minmax(0, 1fr))` 是硬编码的重复次数，但**取值必须与常量一致** ——
 `[DS]` 实现 Story 1.3 时须加断言：读 `COLS` 生成 Grid 模板字符串，或在测试中比对。
+
+**轨道形态（Story 1.18 / AC-D4 追认）：** 列定义是 `repeat(9, minmax(0, 1fr))`，
+**不是**裸 `1fr`。
+⚠️ **为什么必须是这个形态、那条机制怎么推出来的、以及「G14 管重复次数 N 与 `COLS` 同源 /
+G133 管轨道形态是 minmax」这条分工，见 `docs/rules/architecture.md` 的 **R-15** ——
+本仓库的约定正文只写一份（R-37），本节不复述它。
 
 **安全区：** 语音浮层（架构 §Cross-cutting）与底部手牌区各占一行，
 战场 `padding-bottom` 至少让出一个触控目标高度（`--touch-min`，见 §11）。
