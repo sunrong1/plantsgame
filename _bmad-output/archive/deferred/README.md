@@ -176,7 +176,7 @@ git log --oneline --follow -- _bmad-output/implementation-artifacts/deferred-wor
 | 2026-10-17--ds-story-1-15.md | 2 | DS1.15#2 | `readSave()` 成功时 `degraded.clear()` —— 会连带抹掉别的 key 的降级项 | — | 已结 |
 | 2026-10-17--ds-story-1-15.md | 3 | DS1.15#3 | `parseSaveFile` 只做底线形状校验 —— 对局的新字段没有对应的拒绝判据 | DF-047 | 开放 |
 | 2026-10-17--ds-story-1-15.md | 4 | DS1.15#4 | `enterLevel()` 是今天**唯一**的读档入口 —— 别的「进关」路径不会恢复 | DF-048 | 开放 |
-| 2026-10-17--ds-story-1-15.md | 5 | DS1.15#5 | R-14 在 `services/` 与 `app/` 的那部分仍无守卫 | DF-049 | 开放 |
+| 2026-10-17--ds-story-1-15.md | 5 | DS1.15#5 | R-14 在 `services/` 与 `app/` 的那部分仍无守卫 | DF-049 | 已结 |
 | 2026-10-21--cr-story-1-15.md | 1 | CR1.15#1 | 🔴 `assertInvariants()` 不检查 `state.unitNumber` —— 读档能放一份「不存在单元」的对局进 `state` | DF-050 | 开放 |
 | 2026-10-21--cr-story-1-15.md | 2 | CR1.15#2 | `LevelView.vue` 的 computed 里 `console.warn` —— R-14 只扫 `src/core/` | DF-051 | 开放 |
 | 2026-10-21--cr-story-1-15.md | 3 | CR1.15#3 | `SaveDegradationKey` 从 4 键长到 6 键，但没进本 story 的偏离表 | DF-052 | 开放 |
@@ -342,12 +342,12 @@ git log --oneline --follow -- _bmad-output/implementation-artifacts/deferred-wor
 | 2026-10-24--cr-story-2-4-选项措辞.md | 1 | — | 源码里五处「四个选项」的陈旧注释 | DF-194 | 已结 |
 | 2026-10-24--cr-story-2-4-校验器文件名核对.md | 1 | — | 单元文件名与 `unitNumber` 没有交叉核对 | DF-196 | 已结 |
 
-## 分诊统计（2026-10-22 这次治理；**2026-10-25 按实测重算**）
+## 分诊统计（2026-10-22 这次治理；**2026-10-25 按实测重算**；**2026-10-26 夜随 DF-049 结清重算**）
 
 | 结论 | 条数 |
 |---|---|
-| 开放 | 176 |
-| 已结 | 68 |
+| 开放 | 175 |
+| 已结 | 69 |
 | 作废 | 5 |
 | **合计（分诊单元）** | **249** |
 

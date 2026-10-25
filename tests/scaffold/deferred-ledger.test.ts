@@ -397,6 +397,125 @@ function checkCrossReferenceTable(readmeText: string, files: { name: string; tex
 }
 
 /**
+ * G324：归档 README「全量对照表」的「结论」列，必须与各归档文件「分诊结论」
+ * 小节的「结论」列**逐条一致**。
+ *
+ * ── 为什么需要这条 ────────────────────────────────────────────────────────
+ *   R-43 写的是「条目结清后，**三处**一起动」（归档 / 活账本 / 详情）——
+ *   而归档层的 README（**全量对照表** + **分诊统计**）是**第四处**，
+ *   R-43 的正文里**根本没提它**，也没有任何守卫核它。
+ *
+ *   ⇒ 后果实测过一次（**2026-10-26 夜结清 DF-049 时**）：改了归档文件里的
+ *     「结论」却漏改 README ⇒ 两层各说各话，而**所有守卫照绿**：
+ *     · G-g 只核**DF-ID 集合**（两边都列了 DF-049 ⇒ 集合相同 ⇒ 通过）；
+ *     · G296 只核 README 的「分诊统计」与 README **自己**的「全量对照表」
+ *       （两处都在 README 内部 ⇒ 互相自洽 ⇒ 通过）。
+ *   ⇒ 「归档了多少条 / 结清了多少条」从此变成传说，
+ *     而按号反查（`grep DF-049`）会指向**错的那一层**。
+ *
+ * ── 判据的口径（写清楚，免得下次各判各的）────────────────────────────────
+ *   · **定位键** = `(归档文件名, #)` —— 两侧的「第几行」是同一个编号。
+ *     ⚠️ **不用「旧编号」当键**：`2026-10-12--cr-story-1-2.md` 的旧编号全是 `-`，
+ *     不唯一 ⇒ 键会撞。
+ *   · **基线结论** = 结论格里**开头那个词**（`开放` / `已结` / `作废`）。
+ *     ⚠️ 归档侧允许写成 `**已结**（2026-10-25 夜）—— 依据见…`，
+ *     所以比的是**基线词**，不是整格逐字。
+ *   · **双向**：归档有而 README 没有 ⇒ 报；README 有而归档没有 ⇒ 报。
+ *     ⚠️ **只查一边的话，一层悄悄多出一行照样绿灯**（R-51 第 1 类的变体：
+ *     判据只覆盖了它要防的违规的一半形态）。
+ *
+ * ── 变异验证（R-50 触发条件 ②：判据靠正则拆 markdown 表格）─────────────────
+ *   · **M386**：把 README「全量对照表」里 DF-049 那行的「已结」改回「开放」
+ *     ⇒ `grep` 证实落盘 ⇒ **2 红 / 那一支 21 条**
+ *     （G324.1 报「结论不一致」+ G296 报计数对不上）；
+ *   · **M387**：把归档文件 `2026-10-17--ds-story-1-15.md` 的「分诊结论」第 5 行
+ *     的「已结」改成「开放」⇒ `grep` 证实落盘 ⇒ **1 红 / 那一支 21 条**
+ *     （只有 G324.1 报；G296 核的是 README 内部两处，此时仍自洽 ⇒ 正好证明
+ *     **新守卫与旧守卫守的不是同一件事**）。
+ *   ⇒ 两次都已复原（`git diff --stat` 逐字核对）。
+ */
+
+/** 取结论格里开头的基线结论（`开放` / `已结` / `作废`）；认不出 ⇒ 空串。 */
+export function baseVerdict(cell: string): string {
+  const bare = cell.replace(/\*/g, '').trim()
+  const m = /^(开放|已结|作废)/.exec(bare)
+  return m === null ? '' : m[1]
+}
+
+/** README 的「归档文件」格可能写成 markdown 链接 ⇒ 取回文件名本体。 */
+function fileNameOf(cell: string): string {
+  const link = /\[([^\]]*)\]\(([^)]*)\)/.exec(cell)
+  const raw = link === null ? cell : link[2]
+  return raw.replace(/^\.\//, '').trim()
+}
+
+/**
+ * 两侧各自扫到多少条（**正向对照**用）。
+ *
+ * ⚠️ R-51 第 1 类：一个**扫不到任何行**的判据会**恒绿**（判据在空集上成立）。
+ *   ⇒ 守卫必须先自证「真的扫到了行」，否则「没有违规」不可信。
+ */
+export function scannedUnitCounts(
+  readmeText: string,
+  files: { name: string; text: string }[],
+): { readme: number; archive: number } {
+  const readme = tableRows(readmeText.split('\n'), '## 全量对照表') ?? []
+  const archive = files.flatMap((f) => tableRows(f.text.split('\n'), '## 分诊结论') ?? [])
+  return { readme: readme.length, archive: archive.length }
+}
+
+/** 判据本体：返回**逐条**问题（空数组 = 两层的结论逐条一致）。 */
+export function checkVerdictConsistency(
+  readmeText: string,
+  files: { name: string; text: string }[],
+): string[] {
+  const problems: string[] = []
+
+  const readmeVerdicts = new Map<string, string>()
+  for (const row of tableRows(readmeText.split('\n'), '## 全量对照表') ?? []) {
+    const c = splitCells(row)
+    // 非六列的行由 G-g 负责报（同一处不重复刷屏）
+    if (c.length !== 6) continue
+    readmeVerdicts.set(`${fileNameOf(c[0])}#${c[1]}`, baseVerdict(c[5]))
+  }
+
+  const archiveVerdicts = new Map<string, string>()
+  for (const f of files) {
+    for (const row of tableRows(f.text.split('\n'), '## 分诊结论') ?? []) {
+      const c = splitCells(row)
+      if (c.length !== 6) continue
+      archiveVerdicts.set(`${f.name}#${c[0]}`, baseVerdict(c[4]))
+    }
+  }
+
+  for (const [key, archiveVerdict] of archiveVerdicts) {
+    const readmeVerdict = readmeVerdicts.get(key)
+    if (readmeVerdict === undefined) {
+      problems.push(
+        `${key}：归档的「分诊结论」里有这一条，README「全量对照表」里没有 —— ` +
+          '两层必须一一对应（结清条目时 README 那一行也要改）',
+      )
+      continue
+    }
+    if (readmeVerdict !== archiveVerdict) {
+      problems.push(
+        `${key}：结论不一致（归档「${archiveVerdict}」/ README「${readmeVerdict}」）—— ` +
+          'R-43 说结清条目时「三处一起动」，但归档 README 是**第四处**；漏改它，' +
+          '「结清了多少条」就只剩传说',
+      )
+    }
+  }
+  for (const key of readmeVerdicts.keys()) {
+    if (!archiveVerdicts.has(key)) {
+      problems.push(
+        `${key}：README「全量对照表」里有这一条，归档的「分诊结论」里没有 —— 两层必须一一对应`,
+      )
+    }
+  }
+  return problems
+}
+
+/**
  * G296：归档 README「分诊统计」表里写的计数必须等于**实测值**。
  *
  * ── 为什么需要这条 ────────────────────────────────────────────────────────
@@ -541,6 +660,64 @@ describe('R-43 延后账本三层形态 —— 详情层与归档层', () => {
   it('G296 归档 README「分诊统计」表的计数必须等于实测值', () => {
     const problems = checkArchiveCounts(readmeText, archiveFiles)
     expect(problems, `归档 README 的分诊计数与实测对不上：\n${problems.join('\n')}`).toEqual([])
+  })
+})
+
+describe('G324 —— 归档 README「全量对照表」的「结论」与各归档文件「分诊结论」逐条一致', () => {
+  it('G324.1 两层的结论逐条一致（结清条目时 README 那一行也要改）', () => {
+    // ⚠️ 正向对照（先自证「真的扫到了行」）——
+    //   一个扫不到任何行的判据会恒绿（R-51 第 1 类）。
+    const counts = scannedUnitCounts(readmeText, archiveFiles)
+    expect(
+      counts.readme,
+      '正向对照：README「全量对照表」一行都扫不到 ⇒ 判据在空集上成立，下面「没有违规」不可信',
+    ).toBeGreaterThan(200)
+    expect(
+      counts.archive,
+      '正向对照：各归档文件的「分诊结论」一行都扫不到 ⇒ 判据在空集上成立，下面「没有违规」不可信',
+    ).toBeGreaterThan(200)
+
+    const problems = checkVerdictConsistency(readmeText, archiveFiles)
+    expect(
+      problems,
+      `归档的两层对同一批条目各说各话：\n${problems.join('\n')}\n` +
+        '—— R-43 的「四处一起动」漏了归档 README 之外的那一处？（全量对照表 + 分诊统计）。',
+    ).toEqual([])
+  })
+
+  it('G324.2 反向自测：README 的「结论」改一个字，判据必须报出来', () => {
+    // ⚠️ 构造打的是**同一层内部的另一个字段**（README 的结论列），
+    //   而判据要比的是**跨层**的那个字段 ⇒ 不这样构造，判据可能只是在核自己。
+    const openRow = readmeText.match(/^\| [^|]+ \| \d+ \| [^|]+ \| [^|]* \| DF-\d{3} \| 开放 \|$/m)
+    expect(openRow, '构造失效：README「全量对照表」里已没有「开放」的行，反向自测失去目标').toBeDefined()
+
+    const mutated = readmeText.replace(
+      openRow?.[0] ?? '',
+      () => (openRow?.[0] ?? '').replace(/开放/, '已结'),
+    )
+    expect(mutated, '构造失效：没能把那一行的「开放」改成「已结」').not.toBe(readmeText)
+
+    const problems = checkVerdictConsistency(mutated, archiveFiles)
+    expect(
+      problems.some((p) => p.includes('结论不一致')),
+      `构造失效：把 README 那一行的「开放」改成「已结」没被判出来：\n${problems.join('\n')}`,
+    ).toBe(true)
+  })
+
+  it('G324.3 反向自测：删掉 README 的一行，判据必须报「归档有、README 没有」', () => {
+    // ⚠️ 这一条守的是**双向**的另一半：只查「结论不一致」的话，
+    //   一层悄悄少一行（或多一行）照样绿灯 —— 那是 R-51 第 1 类的变体。
+    const row = readmeText.match(/^\| [^|]+ \| \d+ \| [^|]+ \| [^|]* \| DF-\d{3} \| [^|]+ \|$/m)
+    expect(row, '构造失效：README「全量对照表」里已没有可删的行').toBeDefined()
+
+    const mutated = readmeText.replace(row?.[0] ?? '', '')
+    expect(mutated, '构造失效：没能删掉那一行').not.toBe(readmeText)
+
+    const problems = checkVerdictConsistency(mutated, archiveFiles)
+    expect(
+      problems.some((p) => p.includes('README「全量对照表」里没有')),
+      `构造失效：删掉 README 的一行没被判出来：\n${problems.join('\n')}`,
+    ).toBe(true)
   })
 })
 
