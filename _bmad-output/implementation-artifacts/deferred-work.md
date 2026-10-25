@@ -11,7 +11,6 @@
 
 | ID | 状态 | 归属 | 恢复条件 | 一句话 | 详情 |
 |----|------|------|---------|--------|------|
-| DF-001 | 待排期 | 未指派 | 给 `StartView` 的点击路径补一条组件测试，断言它调了 `unlockAudioSequence()` | `StartView` 点击 → `unlockAudioSequence()` 的接线仍无任何测试覆盖 | [`df-001`](./deferred-details.md#df-001) |
 | DF-002 | 待触发 | Story 1.18 | 真机上确认目标设备是否真的需要 `webkitAudioContext` 前缀；确认不需要就把它划掉，不要为了「完备」而加没人验证过的分支 | `services/audio.ts` 只读 `globalThis.AudioContext`，无 `webkitAudioContext` 前缀回退 | [`df-002`](./deferred-details.md#df-002) |
 | DF-003 | 待触发 | Story 1.2 / 3.4 | 要拿的只有两样：目标平板的 `speechSynthesis.getVoices()` 列表 + Chrome 版本号 | Story 1.2 AC-8 真机验收未做，`sprint-status.yaml` 里 1-2 仍是 review | [`df-003`](./deferred-details.md#df-003) |
 | DF-004 | 待触发 | 未指派 | 与上一条同一个 —— 拿到真机音色列表 | `pronunciation.ts` 的 `VOICE_PRIORITY` 英式优先修法仍冻着 | [`df-004`](./deferred-details.md#df-004) |

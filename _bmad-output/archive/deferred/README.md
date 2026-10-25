@@ -94,7 +94,7 @@ git log --oneline --follow -- _bmad-output/implementation-artifacts/deferred-wor
 |---------|---|--------|------|-------|------|
 | 2026-10-12--cr-story-1-2.md | 1 | - | `views/` 不得直接 import `services/` 零强制，且测试把这个缺口钉死了 | — | 已结 |
 | 2026-10-12--cr-story-1-2.md | 2 | - | ✅ **已修（Story 1.3 / AC-11，2026-10-13）** —— `vite.config.ts` 加 | — | 已结 |
-| 2026-10-12--cr-story-1-2.md | 3 | - | `StartView` 点击 → `unlockAudioSequence()` 这条接线无测试覆盖 | DF-001 | 开放 |
+| 2026-10-12--cr-story-1-2.md | 3 | - | `StartView` 点击 → `unlockAudioSequence()` 这条接线无测试覆盖 | DF-001 | 已结 |
 | 2026-10-12--cr-story-1-2.md | 4 | - | 五条「已处理但零测试覆盖」的分支 | — | 已结 |
 | 2026-10-12--cr-story-1-2.md | 5 | - | 无 `webkitAudioContext` 回退 | DF-002 | 开放 |
 | 2026-10-12--cr-story-1-2.md | 6 | - | ESLint「禁 await」守卫只拦 `AwaitExpression`，`.then()` 的等价逃逸放行 | — | 已结 |
@@ -346,8 +346,8 @@ git log --oneline --follow -- _bmad-output/implementation-artifacts/deferred-wor
 
 | 结论 | 条数 |
 |---|---|
-| 开放 | 178 |
-| 已结 | 66 |
+| 开放 | 177 |
+| 已结 | 67 |
 | 作废 | 5 |
 | **合计（分诊单元）** | **249** |
 

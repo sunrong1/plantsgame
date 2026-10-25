@@ -10,39 +10,6 @@
 > 原文逐字保留是硬要求（改动即篡改历史），所以**不改这些指针**；
 > 要定位旧条目，查 `_bmad-output/archive/deferred/README.md` 的**全量对照表**（旧编号 → DF-ID / 归档文件）。
 
-## DF-001
-
-**状态**：待排期 · **归属**：未指派 · **恢复条件**：给 `StartView` 的点击路径补一条组件测试，断言它调了 `unlockAudioSequence()`
-
-**一句话**：`StartView` 点击 → `unlockAudioSequence()` 的接线仍无任何测试覆盖
-
-### 原始论证
-
-- **`StartView` 点击 → `unlockAudioSequence()` 这条接线无测试覆盖** ——
-  删掉 `onStart` 里那行调用、或删掉模板的 `@click`，95 个测试全绿，
-  而 Android 音频从此永不解锁。AC-1 的用户可见那一半没有任何自动化覆盖。
-  **延后理由**：补组件测试要先装 DOM 测试环境 ——
-  `@vue/test-utils` 已在 devDependencies，但 `jsdom` 与 `happy-dom` **都没有**，
-  `vitest.config.ts` 的 `environment` 仍是 `'node'`（该文件已就此留了注记）。
-  装环境是项目级决定，不宜在 Story 1.2 顺手做。
-  ——
-  `src/views/StartView.vue`
-
-  > ⚠️ **2026-10-15 文档治理更正 —— 延后理由已失效，但缺口仍然开着。**
-  >
-  > 上面这段「`jsdom` 与 `happy-dom` 都没有」**已不成立**：`jsdom ^30.1.2` 早在
-  > Story 1.9 就装进了 devDependencies，且 `vitest.config.ts` 里那条「两个都没装」
-  > 的过期注释**已被 Story 1.11 更正**。全局 `environment` 保持 `'node'` 是对的，
-  > 组件测试逐个文件加 docblock 即可，见 [R-60](../../docs/rules/testing.md)。
-  >
-  > **所以：延后理由没了，这条缺口现在没有挡路的理由。** 实测确认
-  > `unlockAudioSequence()` 函数本身**有**测试（`tests/services/audio.test.ts`），
-  > 缺的是**接线** —— 没有任何测试渲染 `StartView.vue` 并点击。
-  > 下个 story 接手音频时可直接补，见 [R-41](../../docs/rules/process.md)。
-
-
-> 来源：`## Deferred from: code review of story-1-2-音频解锁与-tts-朗读 (2026-10-12)` ｜ 旧编号 `-` ｜ 详见 `archive/deferred/2026-10-12--cr-story-1-2.md` 的「分诊结论」
-
 ## DF-002
 
 **状态**：待触发 · **归属**：Story 1.18 · **恢复条件**：真机上确认目标设备是否真的需要 `webkitAudioContext` 前缀；确认不需要就把它划掉，不要为了「完备」而加没人验证过的分支
