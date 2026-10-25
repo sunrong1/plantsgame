@@ -97,30 +97,6 @@
 
 > 来源：`## Deferred from: code review of story-1-2-音频解锁与-tts-朗读 (2026-10-16)` ｜ 旧编号 `-` ｜ 详见 `archive/deferred/2026-10-16--cr-story-1-2.md` 的「分诊结论」
 
-## DF-006
-
-**状态**：待触发 · **归属**：未指派 · **恢复条件**：接手时对 `[...]` 加转义并补自测；或引入 minimatch 做交叉校验
-
-**一句话**：`audio-unlock-guard.test.ts` 的 `matchesGlob` 仍不认 `[...]`，save.ts 断言仍会假绿
-
-### 原始论证
-
-- **`matchesGlob` 不支持字符类 `[...]`，在「守卫不能覆盖 save.ts」这条断言上会假绿** ——
-  `tests/scaffold/audio-unlock-guard.test.ts` 里的转义集合把 `[` `]` 变成字面量，
-  于是 `src/services/[st]*.ts` 这类写法对它是**不可见**的。
-  实测：`minimatch('src/services/save.ts','src/services/[st]*.ts')` 为 true
-  （ESLint 真的覆盖了 save.ts），而 `matchesGlob` 返回 false（守卫说没覆盖）。
-  ⇒ 有人把守卫改成字符类写法时，`守卫不扩大到 src/services/ 的其他文件`
-  与 `wouldCoverSave` **两条同时假绿**，而 Story 1.14 的 `save.ts` 会被误伤。
-  **为什么本轮没修**：改 `matchesGlob` 会牵动它自己的 20 余条自测，
-  风险大于收益；且当前 `eslint.config.js` 里没有任何字符类写法。
-  **修法**：接手时对 `[...]` 加转义并补自测；或引入 minimatch 做交叉校验。
-  ——
-  `tests/scaffold/audio-unlock-guard.test.ts` 的 `matchesGlob`
-
-
-> 来源：`## Deferred from: code review of story-1-2-音频解锁与-tts-朗读 (2026-10-16)` ｜ 旧编号 `-` ｜ 详见 `archive/deferred/2026-10-16--cr-story-1-2.md` 的「分诊结论」
-
 ## DF-008
 
 **状态**：待排期 · **归属**：未指派 · **恢复条件**：下一次给 AC-9 的「不越界」禁令补守卫时（在那之前只能靠交付时人工复核）
@@ -1085,31 +1061,6 @@ jsdom 没有布局引擎 ⇒ 测不出来。本轮给可源码化的那一半补
 
 
 > 来源：`## Deferred from: story-1-13-HUD-阳光-心与进度 `[DS]` (2026-10-16)` ｜ 旧编号 `§12（1.13 DS）` ｜ 详见 `archive/deferred/2026-10-16--ds-story-1-13.md` 的「分诊结论」
-
-## DF-043
-
-**状态**：待触发 · **归属**：未指派 · **恢复条件**：下一个改 `eslint.config.js` 覆盖名单的 story，或引入 minimatch 时
-
-**一句话**：`tests/scaffold/audio-unlock-guard.test.ts` 的 `matchesGlob` 不支持 `[...]`，eslint 写 `src/{app,views}/**` 会静默判「没覆盖」
-
-### 原始论证
-
-### 3. `matchesGlob` 不支持字符类 `[...]`（AC-G7 一并到期，本 story 不修）
-
-- `deferred-work.md:170-179` 写「接手时对 `[...]` 加转义并补自测；或引入 minimatch 做交叉校验」。
-  1.14 新增了 `src/app/effects-runner.ts`（第 4 个探针文件），让这条判据的覆盖面又大了一圈。
-- **本 story 不修的理由**：`matchesGlob` 是 `tests/scaffold/audio-unlock-guard.test.ts` 的
-  判据**自身**的函数，而它的模式串里目前**没有任何字符类** ⇒ 修了也验不到自己，
-  得同时新增一条「模式串含 `[...]`」的探针，那是**为修 bug 而造 bug**。
-- **真实风险**：`eslint.config.js` 里一旦有人写 `src/{app,views}/**` 这种模式，
-  `matchesGlob` 会**匹配失败并静默判定「没覆盖」** ⇒ 守卫朝**假红**方向坏（安全侧），
-  而不是朝假绿 —— 这是本条可以继续压着的原因，但不该一直压着。
-- **恢复条件**：下一个改 `eslint.config.js` 覆盖名单的 story，或引入 minimatch 时。
-  —
-  `tests/scaffold/audio-unlock-guard.test.ts`, `eslint.config.js`
-
-
-> 来源：`## Deferred from: story-1-14-音效与-BGM-接入 `[DS]` (2026-10-16)` ｜ 旧编号 `§3（1.14 DS）` ｜ 详见 `archive/deferred/2026-10-16--ds-story-1-14.md` 的「分诊结论」
 
 ## DF-045
 

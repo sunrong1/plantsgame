@@ -15,7 +15,6 @@
 | DF-003 | 待触发 | Story 1.2 / 3.4 | 要拿的只有两样：目标平板的 `speechSynthesis.getVoices()` 列表 + Chrome 版本号 | Story 1.2 AC-8 真机验收未做，`sprint-status.yaml` 里 1-2 仍是 review | [`df-003`](./deferred-details.md#df-003) |
 | DF-004 | 待触发 | 未指派 | 与上一条同一个 —— 拿到真机音色列表 | `pronunciation.ts` 的 `VOICE_PRIORITY` 英式优先修法仍冻着 | [`df-004`](./deferred-details.md#df-004) |
 | DF-005 | 待触发 | 未指派 | 与 AC-8 真机验收同批做（拿到平板 + Chrome 后一起） | `playPronunciation` ≤500ms 起声零验证，需与 AC-8 真机验收同批真机做 | [`df-005`](./deferred-details.md#df-005) |
-| DF-006 | 待触发 | 未指派 | 接手时对 `[...]` 加转义并补自测；或引入 minimatch 做交叉校验 | `audio-unlock-guard.test.ts` 的 `matchesGlob` 仍不认 `[...]`，save.ts 断言仍会假绿 | [`df-006`](./deferred-details.md#df-006) |
 | DF-008 | 待排期 | 未指派 | 下一次给 AC-9 的「不越界」禁令补守卫时（在那之前只能靠交付时人工复核） | AC-9 七条「不越界」禁令仍零守卫，事后归因只能靠 git 历史 | [`df-008`](./deferred-details.md#df-008) |
 | DF-009 | 待触发 | 未指派 | 缺的是「真实浏览器上 `ended` 之后仍会派发 `error`」这一前提的实测 | `isEnglish` 仍只认 `/^en[-_]/`，`playRecording` 的 `ended` 不置 settled | [`df-009`](./deferred-details.md#df-009) |
 | DF-010 | 待触发 | Story 3.4（裁决 A 落地时） | 真的调了音色或语速、且 `--force` 仍无法免除手工 `rm` 时 ⇒ 裁决要不要让 `--force` 越指纹闸 | `generate-voice.ts` 已有 `--force`/`--help`，但 `--force` 不越闸 ⇒ 改参数后仍须手工删整个产物目录 | [`df-010`](./deferred-details.md#df-010) |
@@ -50,7 +49,6 @@
 | DF-040 | 待触发 | Story 1.18 / 1.19 | 1.18/1.19 真机录制里若「心碎了」看不见或拖沓，先调这里；只许改这一处，改完复跑 AC-G1 第 9 项 | `HeartRow.vue` 用 `--dur-slow`(400ms) 是本组件一次性判断，未在真机复核 | [`df-040`](./deferred-details.md#df-040) |
 | DF-041 | 待触发 | Story 1.18 | 1.18 部署 PWA 时加一个 favicon，这条自动闭合 | AC-G1 三件事：`.battle-grid` 3px 横向溢出、`/favicon.ico` 404 待 1.18 PWA 收口，③ HUD 不进 G20 已定 | [`df-041`](./deferred-details.md#df-041) |
 | DF-042 | 待触发 | 未指派 | 1.14 接上掉心音效后，那时可以用「同一 tick 内音效与 class 同时触发」把 G53 升级成行为守卫；在此之前不许把 G53 的源码守卫当成「已用行为证明过」 | G56/G57/G53 仍停在源码层；1.14 已接音效但结论是 G53 未升级 | [`df-042`](./deferred-details.md#df-042) |
-| DF-043 | 待触发 | 未指派 | 下一个改 `eslint.config.js` 覆盖名单的 story，或引入 minimatch 时 | `tests/scaffold/audio-unlock-guard.test.ts` 的 `matchesGlob` 不支持 `[...]`，eslint 写 `src/{app,views}/**` 会静默判「没覆盖」 | [`df-043`](./deferred-details.md#df-043) |
 | DF-045 | 待裁决 | 未指派 | Story 1.16 把 `Effect` 的 `TTS` 成员真正接上时，必须重新裁决这一点 | TTS 不在 `runEffects` 里产出，`store.speakQuestion()` 与 `QuestionCard.vue` 独立 watch 两处入口 | [`df-045`](./deferred-details.md#df-045) |
 | DF-046 | 待触发 | 未指派 | Story 1.16 若给 `Effect` 加上会抛的新成员（`TTS`），且把它排在 `SAVE` 之前，这一条立刻变成可构造 ⇒ 那时必须补上「前一条抛错、后一条仍执行」的正向用例 | `core/effects.ts` 里 SAVE 恒排末尾，`effects-runner` 写盘抛错后无后续条目可执行 | [`df-046`](./deferred-details.md#df-046) |
 | DF-047 | 待触发 | Story 1.16 / 1.17 | 1.16 / 1.17 每次给 `State` 加字段时，同一次改动里确认 `core/reducer.ts` 的 `assertInvariants` 覆盖了它（并在 story 文档里留一行） | `save.ts` 的 `parseSaveFile` 只查 progress 两键 + currentGame 是对象，State 新字段无拒绝判据 | [`df-047`](./deferred-details.md#df-047) |
