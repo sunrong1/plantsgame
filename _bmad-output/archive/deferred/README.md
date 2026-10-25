@@ -257,7 +257,7 @@ git log --oneline --follow -- _bmad-output/implementation-artifacts/deferred-wor
 | 2026-10-20--ds-story-2-2.md | 4 | 38 | 卡型分布规则**不**校验「整数化后与份额的误差」——口径已定，守卫仍缺 | DF-118 | 已结 |
 | 2026-10-20--ds-story-2-2.md | 5 | 39 | 🔥 R-36 的起号 `grep` 命令实测会漏号（`\b` 在 CJK 前不成立） | DF-119 | 已结 |
 | 2026-10-20--ds-story-2-2.md | 6 | 40 | 🔥 R-10 只拦得住**静态** import：动态 `import()` 两条守卫都放过（Story 2.2 `[CR]` 实测） | DF-120 | 已结 |
-| 2026-10-20--ds-story-2-2.md | 7 | 41 | `docs/card-distribution.md` §3 的逐单元表仍然**零守卫**（Story 2.2 `[CR]`） | DF-121 | 开放 |
+| 2026-10-20--ds-story-2-2.md | 7 | 41 | `docs/card-distribution.md` §3 的逐单元表仍然**零守卫**（Story 2.2 `[CR]`） | DF-121 | 已结 |
 | 2026-10-20--cr-story-1-18.md | 1 | W6 | W6. `LevelOutcome` 模态只把焦点移进浮层，没有把 Tab 键锁在浮层内（1.16 引入） | DF-122 | 开放 |
 | 2026-10-20--cr-story-1-18.md | 2 | W7 | W7. `LevelOutcome` 浮层的左右安全区（1.16 引入；`[CR]` 2026-10-20 **更正过原因**） | DF-123 | 开放 |
 | 2026-10-20--cr-story-1-18.md | 3 | W8 | W8. `pronunciation.ts` 的 `playing` 收敛点只有五处，发声路径提前 `return` 时没有统一兜底（1.2 引入） | DF-124 | 开放 |
@@ -346,8 +346,8 @@ git log --oneline --follow -- _bmad-output/implementation-artifacts/deferred-wor
 
 | 结论 | 条数 |
 |---|---|
-| 开放 | 177 |
-| 已结 | 67 |
+| 开放 | 176 |
+| 已结 | 68 |
 | 作废 | 5 |
 | **合计（分诊单元）** | **249** |
 

@@ -2672,34 +2672,6 @@ jsdom 没有布局引擎 ⇒ 测不出来。本轮给可源码化的那一半补
 > 来源：`## Deferred from: code review of story-2-1-词图产能验证 `[CR]` (2026-10-20)` ｜ 旧编号 `W5` ｜ 详见 `archive/deferred/2026-10-20--cr-story-2-1.md` 的「分诊结论」
 
 
-## DF-121
-
-**状态**：待排期 · **归属**：未指派 · **恢复条件**：加一条测试读 `docs/card-distribution.md` 的 §3 表，逐行解析后与 `targetCardDistribution` 的实算值比对（漂了就红）
-
-**一句话**：`docs/card-distribution.md` §3 逐单元表仍零守卫，interpolate 改 smoothstep 时 G187–G190 全绿
-
-### 原始论证
-
-### 41. `docs/card-distribution.md` §3 的逐单元表仍然**零守卫**（Story 2.2 `[CR]`）
-
-- **实测**：没有任何测试读这份 markdown（`grep -rn "card-distribution" tests/ scripts/`
-  只命中测试文件自己的注释）。而 §3 的 20 行 × 7 列是本规则**唯一**被当成「实算」的产物，
-  §4 的三个 Σ、§4.1 的四个批次数全部由它推出。
-- **放大它的洞**：`interpolate` 换成 smoothstep（端点/单调/步长 ≤ 0.03 全部照旧满足）
-  时 **G187 – G190 全绿**，但 §3 整表失效 —— 因为**没有任何东西把这张表和代码绑在一起**。
-  （Story 2.2 `[CR]` 已为「插值确实是线性的」补了 G192，那堵住了这一条具体的变异；
-  但**任何**别的让数值漂移的改动仍然无人拦。）
-- **`[CR]` 已做的**：把 §3 的「复算方法」从两行注释换成**可直接执行的 `npx tsx -e` 命令**
-  （实测可跑，逐字复现 §3 表与 §4 三个 Σ）。那是**人工**复算手段，不是自动守卫。
-- **恢复条件**：加一条测试读 `docs/card-distribution.md` 的 §3 表，逐行解析后与
-  `targetCardDistribution` 的实算值比对（漂了就红）。注意别把这变成 R-56 说的
-  「硬编码期望表」—— 期望值要从**真实实现**现算，文档只是被核对的那一方。
-  顺带把 §4 的三个 Σ 与 §4.1 的四个批次数一并核。
-
-
-
-> 来源：`## Deferred from: story-2-2-难度阶梯规则落地 `[DS]` (2026-10-20)` ｜ 旧编号 `41` ｜ 详见 `archive/deferred/2026-10-20--ds-story-2-2.md` 的「分诊结论」
-
 ## DF-122
 
 **状态**：待排期 · **归属**：未指派 · **恢复条件**：在 `LevelOutcome.vue` 里加一层 focus trap（捕获 Tab / Shift+Tab 在浮层内循环，Esc 关闭），并加一条守卫断言「浮层打开后连按 N 次 Tab，焦点仍在浮层内的可聚焦元素上」

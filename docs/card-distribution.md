@@ -5,11 +5,14 @@
 >
 > **机器实现**：`src/content/distribution.ts`（纯函数 `targetCardDistribution(unitNumber)`）。
 > 守卫：`tests/content/distribution.test.ts`（G187 – G189）+
-> `tests/content/unit-01.test.ts` 的 **G190**（规则与单元 1 真实内容一致）。
+> `tests/content/unit-01.test.ts` 的 **G190**（规则与单元 1 真实内容一致）+
+> 📎 **`tests/content/card-distribution-doc.test.ts` 的 G321**（**本文件**的数字 ↔ 实算值：
+> §3 逐单元表逐格、§4 的三个 Σ、§4.1 的四个批次数 —— 2026-10-26 结清 DF-121 时补上）。
 >
 > 🔥 **两者不一致时以 `src/content/distribution.ts` 为准，并必须回改本文件。**
-> 理由：守卫守的是代码，正文没有守卫 —— 一份与代码不符的正文会安静地误导所有读者，
-> 而它自己不会红。本文件的每个数字都必须能从代码复算出来（§3 给出了复算方法）。
+> 理由：规则的**定义**住在代码里，而**本文件的每个数字现在都有守卫盯着**
+> （G321：漂了就红）⇒ 一份与代码不符的正文**不会**再安静地误导所有读者。
+> 本文件的每个数字都必须能从代码复算出来（§3 给出了复算方法）。
 
 ---
 
@@ -185,8 +188,12 @@ console.log('Σw 1..20 =', s20, '×37 =', (s20 * E).toFixed(2))
 > targetCardDistribution(n)`），既不可执行也没有输出格式，而本文件抬头写着
 > 「本文件的每个数字都必须能从代码复算出来（§3 给出了复算方法）」——
 > 那句承诺当时兑现不了（真正的计算脚本在仓库外的 `/tmp/dist-calc.ts`，不提交）。
-> ⚠️ 即便如此，本表仍然**零守卫**：没有测试读它。上面的命令是人工复算手段，
-> 不是自动守卫；要真守住它需要一份测试来读这份 markdown（已登记 `deferred-work.md`）。
+> ⚠️ 即便如此，本表当时仍然**零守卫**：没有测试读它。上面的命令是人工复算手段，
+> 不是自动守卫。
+> 📎 **2026-10-26 已兑现**：本表现在**有守卫**了 —— `tests/content/card-distribution-doc.test.ts`
+> 的 **G321** 逐格读这张表，与 `targetCardDistribution` 的**实算值**比对（漂了就红），
+> §4 的三个 Σ 与 §4.1 的四个批次数一并核 ⇒ 结清了 `deferred-work.md` 的 **DF-121**。
+> 上面的命令是**人工**复算手段（守卫之外的第二条路），两者指向同一份实算。
 
 ---
 
@@ -375,5 +382,6 @@ console.log('Σw 1..20 =', s20, '×37 =', (s20 * E).toFixed(2))
 | `src/content/distribution.ts` | 机器实现（本文的权威来源） |
 | `tests/content/distribution.test.ts` | G187 – G189 |
 | `tests/content/unit-01.test.ts` | G190（规则 ↔ 单元 1 真实内容） |
+| `tests/content/card-distribution-doc.test.ts` | 📎 **G321**（**本文件** §3 / §4 / §4.1 的每个数字 ↔ 实算值；结清 DF-121，2026-10-26） |
 | `docs/word-image-throughput.md` §8.1.4 / §8.4 | 词图总数的**旧**基数（均匀 81.08% 口径）与决策表；§8.4 已加指针指向本文件 |
 | `_bmad-output/planning-artifacts/epics.md` Story 2.2 | AC 正文（story 的事实源，[R-32](rules/process.md)） |
