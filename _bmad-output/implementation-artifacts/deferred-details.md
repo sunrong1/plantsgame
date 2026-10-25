@@ -1476,36 +1476,6 @@ jsdom 没有布局引擎 ⇒ 测不出来。本轮给可源码化的那一半补
 
 > 来源：`## Deferred from: code review of story-1-15-存档与断点续学 (第二轮) (2026-10-21)` ｜ 旧编号 `CR1.15R2#2` ｜ 详见 `archive/deferred/2026-10-21--cr-story-1-15-r2.md` 的「分诊结论」
 
-## DF-057
-
-**状态**：待排期 · **归属**：Story 1.17 · **恢复条件**：任何要加「测试专用导出」或要动 `tests/scaffold/` 边界守卫的 story，同一次改动里补一条「`src/**` 不得 import 名字以 `ForTest` 结尾的导出」的守卫
-
-**一句话**：`save.ts` 的 `clearSaveDegradationsForTest` 与 `asset-degradations.ts` 的同名导出仍无「src 不得 import `*ForTest`」守卫
-
-### 原始论证
-
-### 3. `src/services/save.ts` 现在带一个**测试专用导出**，而**全仓没有**「生产代码不许 import `*ForTest`」的守卫
-
-- **事实**：第二轮给 `save.ts` 加了 `clearSaveDegradationsForTest()`
-  （与 `services/asset-degradations.ts` 的 `clearAssetDegradationsForTest()` 同款）。
-  ⚠️ **同款的缺口在 `asset-degradations.ts` 上早就存在** ——
-  **全仓没有任何一条守卫**拦着 `src/` 去 import 这两个 `*ForTest` 导出。
-  ⇒ 一旦有人图省事在生产代码里调 `clearSaveDegradationsForTest()`，
-  **降级登记表会被悄悄清空** ⇒ 面板对家长说「存档正常」，而孩子此后每一次落盘都在丢进度 ——
-  **和 G222 / G244 守的那两个缺陷完全同型**。
-- **为什么不在 1.15 修**：这是一条**跨文件**的规则（禁 `src/**` import 任何 `*ForTest` 导出），
-  属于 `tests/scaffold/` 的边界守卫家族，改动面比 1.15 大；
-  而且 `asset-degradations.ts` 那个同类缺口**不是 1.15 引入的** ——
-  1.15 只是**又添了一个同类**。
-- **恢复条件**：任何要加「测试专用导出」或要动 `tests/scaffold/` 边界守卫的 story，
-  同一次改动里补一条「`src/**` 不得 import 名字以 `ForTest` 结尾的导出」的守卫。
-  —
-  `src/services/save.ts`, `src/services/asset-degradations.ts`, `tests/scaffold/`
-
-
-
-> 来源：`## Deferred from: code review of story-1-15-存档与断点续学 (第二轮) (2026-10-21)` ｜ 旧编号 `CR1.15R2#3` ｜ 详见 `archive/deferred/2026-10-21--cr-story-1-15-r2.md` 的「分诊结论」
-
 ## DF-058
 
 **状态**：待触发 · **归属**：未指派 · **恢复条件**：出现第二条会切走 `QuestionCard` 的路径时（1.17 的调试面板、1.18 的暂停覆盖层、或任何把 `view` 从 `level` 切走的分支），必须先给 `pronunciation.ts` 补公开的 `stop`，再挂 `onBeforeUnmount`
@@ -3844,25 +3814,6 @@ jsdom 没有布局引擎 ⇒ 测不出来。本轮给可源码化的那一半补
 
 
 > 来源：`## Deferred from: code review of epic-1-集成层检视 (2026-10-22)` ｜ 旧编号 `E18` ｜ 详见 `archive/deferred/2026-10-22--cr-epic-1-集成层检视.md` 的「分诊结论」
-
-## DF-166
-
-**状态**：待触发 · **归属**：Story 1.17 · **恢复条件**：下次给 `*ForTest` 补守卫时（与 E5 同批）
-
-**一句话**：`asset-degradations.ts` 的第二个 `*ForTest` 导出未在账本登记
-
-### 原始论证
-
-### E19. 「测试专用导出」模式在第二个模块复制，而账本只登记了第一个
-
-- **事实**：`src/services/asset-degradations.ts` 与另一个模块各有一个 `*ForTest` 导出，
-  而账本只登记了第一个 ⇒ 下一个加 `*ForTest` 的人不知道该登记在哪。
-- **修法**：给 `*ForTest` 补一条守卫 + 在账本上登记全部。
-- **归属**：Story 1.17。
-- **恢复条件**：**下次给 `*ForTest` 补守卫时**（与 E5 同批）。
-
-
-> 来源：`## Deferred from: code review of epic-1-集成层检视 (2026-10-22)` ｜ 旧编号 `E19` ｜ 详见 `archive/deferred/2026-10-22--cr-epic-1-集成层检视.md` 的「分诊结论」
 
 ## DF-167
 

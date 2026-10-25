@@ -184,7 +184,7 @@ git log --oneline --follow -- _bmad-output/implementation-artifacts/deferred-wor
 | 2026-10-21--cr-story-1-15.md | 5 | CR1.15#5 | 存档边界的结构校验很浅：`parseSaveFile` + `isPlainObject(value): value is State` | DF-054 | 开放 |
 | 2026-10-21--cr-story-1-15-r2.md | 1 | CR1.15R2#1 | 🔴 `restoreNextUnit()` 的两条失败路径**只 `console.warn`，不登记降级项** | DF-055 | 开放 |
 | 2026-10-21--cr-story-1-15-r2.md | 2 | CR1.15R2#2 | 「一次成功的空读撤掉 `read` 降级」这条语义，**只对 `enterLevel` 这一个调用点**成立过 | DF-056 | 开放 |
-| 2026-10-21--cr-story-1-15-r2.md | 3 | CR1.15R2#3 | `src/services/save.ts` 现在带一个**测试专用导出**，而**全仓没有**「生产代码不许 import `*ForTest`」的守卫 | DF-057 | 开放 |
+| 2026-10-21--cr-story-1-15-r2.md | 3 | CR1.15R2#3 | `src/services/save.ts` 现在带一个**测试专用导出**，而**全仓没有**「生产代码不许 import `*ForTest`」的守卫 | DF-057 | 已结 |
 | 2026-10-17--ds-story-1-16.md | 1 | DS1.16#1 | ✅ 已关闭 —— 问答卡面的三个生命周期缺口（由 1.11 的 `[CR]` 移交给 1.16） | — | 已结 |
 | 2026-10-17--ds-story-1-16.md | 2 | DS1.16#2 | ✅ 已关闭 —— 「`enterLevel()` 是唯一读档入口」的**重打分支** | — | 已结 |
 | 2026-10-17--ds-story-1-16.md | 3 | DS1.16#3 | 🆕 `onBeforeUnmount` 暂不实现（裁决 9，R-41 要求显式记） | DF-058 | 开放 |
@@ -304,7 +304,7 @@ git log --oneline --follow -- _bmad-output/implementation-artifacts/deferred-wor
 | 2026-10-22--cr-epic-1-集成层检视.md | 16 | E16 | E16. 进关时只预取图片，mp3 录音一个都不进缓存 ⇒ 飞行模式下第一次听到某个词必然走设备 TTS | DF-163 | 开放 |
 | 2026-10-22--cr-epic-1-集成层检视.md | 17 | E17 | E17. 1.14 AC 点名的「可查询降级标志」在组件层不可达 | DF-164 | 开放 |
 | 2026-10-22--cr-epic-1-集成层检视.md | 18 | E18 | E18. 架构的日志前缀清单只有 4 个，代码实际用了 8 个 | DF-165 | 开放 |
-| 2026-10-22--cr-epic-1-集成层检视.md | 19 | E19 | E19. 「测试专用导出」模式在第二个模块复制，而账本只登记了第一个 | DF-166 | 开放 |
+| 2026-10-22--cr-epic-1-集成层检视.md | 19 | E19 | E19. 「测试专用导出」模式在第二个模块复制，而账本只登记了第一个 | DF-166 | 已结 |
 | 2026-10-22--cr-epic-1-集成层检视.md | 20 | E20 | E20. `src/core/deck-slice.ts` 的「穷举实测」数字在数学上是错的 | DF-167 | 开放 |
 | 2026-10-22--cr-epic-1-集成层检视.md | 21 | E21 | E21. `src/core/combat.ts` 的形状对照表仍写「放置预览 = 半径 3 的圆」 | DF-168 | 开放 |
 | 2026-10-22--cr-epic-1-集成层检视.md | 22 | E22 | E22. `src/core/turn.ts` 的注释仍写「塔可以种在任意空格（GDD）」 | DF-169 | 开放 |
@@ -346,8 +346,8 @@ git log --oneline --follow -- _bmad-output/implementation-artifacts/deferred-wor
 
 | 结论 | 条数 |
 |---|---|
-| 开放 | 175 |
-| 已结 | 69 |
+| 开放 | 173 |
+| 已结 | 71 |
 | 作废 | 5 |
 | **合计（分诊单元）** | **249** |
 

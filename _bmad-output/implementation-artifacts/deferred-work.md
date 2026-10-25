@@ -65,7 +65,6 @@
 | DF-054 | 待触发 | 未指派 | 与「`parseSaveFile` 只做底线形状校验」那条同一次处理 —— 任何动存档 schema 的 story，顺带定下「解析层拒什么、逻辑层抛什么」的清单 | `save.ts` 的 `isProgressShape` 只判 `typeof number`（NaN/-1 全放行），`isPlainObject` 是不健全谓词 | [`df-054`](./deferred-details.md#df-054) |
 | DF-055 | 待触发 | Story 1.17 | 任何要动 `restoreNextUnit` 或给 `SaveDegradationKey` 加键的 story，同一次改动里补上这两条路径的降级登记，并顺带把 1.17 的面板文案定稿 | `store.ts` 的 `restoreNextUnit` 两条失败分支只 `console.warn`，不调 `markRestoreDegraded` | [`df-055`](./deferred-details.md#df-055) |
 | DF-056 | 待触发 | 未指派 | 新增任何 `readSave()` 的调用点时，复核那一处是否也要「空读撤掉 `read`」；若不要，在那一处显式注释理由 | `readSave()` 的「空读撤掉 read 降级」语义只在 `store.ts` 这一个调用点成立 | [`df-056`](./deferred-details.md#df-056) |
-| DF-057 | 待排期 | Story 1.17 | 任何要加「测试专用导出」或要动 `tests/scaffold/` 边界守卫的 story，同一次改动里补一条「`src/**` 不得 import 名字以 `ForTest` 结尾的导出」的守卫 | `save.ts` 的 `clearSaveDegradationsForTest` 与 `asset-degradations.ts` 的同名导出仍无「src 不得 import `*ForTest`」守卫 | [`df-057`](./deferred-details.md#df-057) |
 | DF-058 | 待触发 | 未指派 | 出现第二条会切走 `QuestionCard` 的路径时（1.17 的调试面板、1.18 的暂停覆盖层、或任何把 `view` 从 `level` 切走的分支），必须先给 `pronunciation.ts` 补公开的 `stop`，再挂 `onBeforeUnmount` | `QuestionCard.vue` 无 `onBeforeUnmount`、`pronunciation.ts` 无公开 stop，卸载后朗读一路播到结束 | [`df-058`](./deferred-details.md#df-058) |
 | DF-060 | 待排期 | 未指派 | 下一次做文档治理（`/gds-correct-course` 或 QD 治理）时，把这条口径更正一次性回写进 1.13 的归档文档，并同步 `docs/rules/` 里与「落盘看到的进度」有关的任何表述 | 归档的 1-13 文档仍写「HUD 的进度只读内存里的进度」，与 1.16 裁决 11 的「这一次结算之后」口径不一致 | [`df-060`](./deferred-details.md#df-060) |
 | DF-061 | 待触发 | 未指派 | 出现第二条会切走 `QuestionCard` 的路径时（1.17 的调试面板、1.18 的暂停覆盖层、或任何把 `view` 从 `level` 切走的分支） | `QuestionCard.vue` 仍无 `onBeforeUnmount`，1.17 未新增会切走它的路径 | [`df-061`](./deferred-details.md#df-061) |
@@ -161,7 +160,6 @@
 | DF-163 | 待触发 | Story 1.18 | 下次动 `asset-prefetch.ts` 的 URL 集合时 | `asset-prefetch.ts` 的 `imageUrlsOfUnit` 只收图片 URL，mp3 录音一个都不进缓存 | [`df-163`](./deferred-details.md#df-163) |
 | DF-164 | 待触发 | Story 1.14 | 下次改 1.14 / 1.17 的 AC 措辞时 | 1.14 AC 的「组件可查询降级标志」被 ESLint 禁列挡在组件层之外 | [`df-164`](./deferred-details.md#df-164) |
 | DF-165 | 待触发 | 未指派 | 下次改架构文档时 | `game-architecture.md` 日志前缀清单只列 4 个，代码实际用了 8 个 | [`df-165`](./deferred-details.md#df-165) |
-| DF-166 | 待触发 | Story 1.17 | 下次给 `*ForTest` 补守卫时（与 E5 同批） | `asset-degradations.ts` 的第二个 `*ForTest` 导出未在账本登记 | [`df-166`](./deferred-details.md#df-166) |
 | DF-167 | 待触发 | Story 2.4 | 下次动 `deck-slice.ts` 时 | `core/deck-slice.ts` 注释写「穷举实测 59047/2」，实算为 13563/45486 | [`df-167`](./deferred-details.md#df-167) |
 | DF-168 | 待触发 | Story 1.12 | 与 E22 / E23 同批做（一次改干净同族的复制链） | `core/combat.ts` 形状对照表仍写「放置预览 = 半径 3 的圆」，与 FR38 冲突 | [`df-168`](./deferred-details.md#df-168) |
 | DF-169 | 待触发 | Story 1.5 | 与 E21 / E23 同批做 | `core/turn.ts` 注释仍写「塔可以种在任意空格（GDD）」，实现只有 7 格 | [`df-169`](./deferred-details.md#df-169) |
