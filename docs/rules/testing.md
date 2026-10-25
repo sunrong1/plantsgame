@@ -196,6 +196,14 @@ rm -rf node_modules/.vite && npx vitest run <file>
 
 **依据** 实测案例：`word-image-composition.test.ts` 写了 `Set<CompositionTier | 'null'>`，把真·空值写成了字符串 ⇒ vitest 765 全绿而 `npm run typecheck` 红。类型改坏时，vitest 一条都不会报。
 
+📎 **2026-10-26 更正（Story 3.5 `[CR]`）**：`npm run typecheck` 的脚本**原本**是
+`vue-tsc -b`（**增量**）⇒ 命中 `tsbuildinfo` 就跳过文件 ⇒ 这条规则曾要求
+「额外跑 `npx vue-tsc -b --force`」（`build` 早就是 `--force`，两条脚本自相矛盾）。
+⇒ **脚本已改成 `vue-tsc -b --force`** ⇒ 现在 `npm run typecheck` **本身就是全量检查**，
+这条规则**不需要**再手动补 `--force`。
+⚠️ 判据是「脚本内容」，不是「命令拼写」⇒ 改动 `package.json` 的 script 时，
+按 **DF-033** 的口径回头 grep `_bmad-output/` 与 `docs/` 并逐处登记。
+
 **首现** Story 1.1
 
 **守卫** ⚠️ **无守卫**（靠 `npm run typecheck` 在收尾时被执行，见 R-39）
