@@ -474,10 +474,33 @@ const TIMING_SCRIPT = `
   }
 
   // 📎 答题反馈：点击 \`.option-card\` 的时刻 → \`.answer-feedback\` 首次出现在 DOM
+  //   ⚠️⚠️ **必须先进关** —— \`.option-card\` 只在**答题相**存在，
+  //   而开始页上只有 \`.start-button\` ⇒ 直接找必然得到「本页没有 \`.option-card\`」。
+  //   ⇒ 这里先点开始按钮，再等 \`.option-card\` 出现。
   function answerFeedback() {
-    var card = document.querySelector('.option-card')
-    if (!card) {
-      out.notes.push('答题反馈：本页没有 \`.option-card\`')
+    var startBtn = document.querySelector('.start-button')
+    if (startBtn) startBtn.click()
+    var deadline = performance.now() + 8000
+    function tick() {
+      var card = document.querySelector('.option-card')
+      if (card) {
+        clickAndMeasure(card)
+        return
+      }
+      if (performance.now() > deadline) {
+        out.notes.push('答题反馈：点开始按钮后 8s 内没等到 \`.option-card\` 出现')
+        return post()
+      }
+      setTimeout(tick, 50)
+    }
+    tick()
+  }
+
+  function clickAndMeasure(card) {
+    // 📎 点击**之前** DOM 里不该已经有 \`.answer-feedback\`（第一题还没有）
+    //   ⇒ 若有，量到的就不是「这一次的反馈」⇒ 记「未测」，不报数。
+    if (document.querySelector('.answer-feedback')) {
+      out.notes.push('答题反馈：点击前 DOM 里已经有 \`.answer-feedback\` ⇒ 量不准，未测')
       return post()
     }
     var clickedAt = null
@@ -1039,7 +1062,13 @@ async function runBrowser(
       //   虚拟化（快进）⇒ `performance.now()` 的差值**不是真实耗时**。
       const args = [
         '--headless=new',
-        '--no-sandbox',
+        // 🔥 **只有 root 才加 `--no-sandbox`** ——
+        //   Chromium 逐字拒绝：「Running as root without --no-sandbox is not supported.」
+        //   ⇒ **非 root 跑的时候浏览器保留 sandbox**（安全开关在能开的时候是开着的；
+        //   只有 Chromium 自己拒绝以 root 身份带 sandbox 运行时才退让）。
+        //   📎 顺带解决「量测必须能以普通用户身份跑」这件事：容器里的 CI 镜像
+        //   常常是 root，而 sandbox 需要非 root ⇒ 这一条让**两种身份都能量**。
+        ...(typeof process.getuid === 'function' && process.getuid() === 0 ? ['--no-sandbox'] : []),
         '--disable-gpu',
         '--disable-dev-shm-usage',
         `--window-size=${width},${height}`,
@@ -1344,7 +1373,7 @@ async function main(): Promise<void> {
   console.log(
     `[portrait] 两个相位：答题相 ${measured.answer === null ? '未覆盖' : '已量'}、` +
       `建造相 ${measured.build === null ? '未覆盖' : '已量'}` +
-      (measured.diag.build_not_reached === null ? '' : `（${measured.diag.build_not_reached}）`),
+      (measured.diag.build_not_reached == null ? '' : `（${measured.diag.build_not_reached}）`),
   )
 
   let failed = 0

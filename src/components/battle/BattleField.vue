@@ -614,12 +614,24 @@ watch(selectedEntryId, () => {
    * ⚠️ **为什么战场格需要它**：全仓的触摸基线只给了 `button, .touch-target`
    *   （`src/styles/base.css` 的 `touch-action: manipulation`），
    *   而 45 个战场格是**裸 `<div>`** ⇒ **整个游戏里唯一的主触摸目标没有 `touch-action`**。
-   *   ⇒ 页面可滚（竖屏 `.level-view` 有 `overflow-y: auto`；横屏矮视口也溢出）时，
-   *   浏览器把手势判成滚动起点 ⇒ 派发 **`pointercancel` 而不是 `pointerup`**
+   *   ⇒ 页面可滚时，浏览器把手势判成滚动起点 ⇒ 派发
+   *     **`pointercancel` 而不是 `pointerup`**
    *   ⇒ `onCellPointerCancel` 清掉 `candidate` 与 `refusedKey`
    *   ⇒ **点按什么都没发生**：预览的绿光消失、没种塔、没有拒绝提示。
    *   ⇒ 对 4–8 岁孩子（手指精度有限）这读起来就是「游戏坏了」——
    *     与 1.19 CR 那条「假可点」同类。
+   *
+   * 📎 **2026-10-25（Story 3.5 `[DS]`）更正一处已过期的前提**：
+   *   这段注释原来写的是「竖屏 `.level-view` 有 `overflow-y: auto`」——
+   *   **那半句已不成立**：竖屏那条 `@media (max-height: 900px)` 块
+   *   已于 2026-10-20 由 Story 1.19 的 `[CR]` 整块删除
+   *   ⇒ 竖屏 `.level-view` **自身没有滚动容器**
+   *   （`base.css` 逐字：`html, body { height: 100% }` + `body { min-height: 100dvh }`）
+   *   ⇒ 内容超高时滚的是**页面**（body / 视口）；
+   *   **横屏矮视口**才有内部滚动容器。
+   *   ⚠️ **但「页面可滚」这件事本身没有变**（Story 3.5 `[DS]` 真浏览器实测：
+   *   竖屏 **768×1024 的建造相位**，内容底边在视口底边**以下 142px**
+   *   ⇒ 那个相位**页面确实能滚**）⇒ 下面那句结论**仍然成立**。
    *
    * ⚠️ **`none` 而不是 `manipulation`**：`manipulation` **允许**平移（滚动），
    *   也就**允许**浏览器把手势判成滚动 ⇒ `pointercancel` 照旧会发生。

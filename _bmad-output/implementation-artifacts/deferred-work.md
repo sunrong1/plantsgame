@@ -83,8 +83,7 @@
 | DF-071 | 待触发 | Story 1.19 | Story 1.19 真机试玩时验，结论回填本条 | AC-B8 离线、`--color-hud-panel`、`--dur-slow`、竖屏布局 4 项须真机验 | [`df-071`](./deferred-details.md#df-071) |
 | DF-073 | 待触发 | Story 3.5（及各自归属 story） | E 组 5 条观察项 1.19 只观察不改，分别落 3.5 / 1.10 / `[CC]` | E 组 5 条观察项 1.19 只观察不改，分别落 3.5 / 1.10 / `[CC]` | [`df-073`](./deferred-details.md#df-073) |
 | DF-074 | 待触发 | Story 1.19 | 真机飞行模式 | D1–D8 真机项全未验，未验则不应推进 Epic 2 | [`df-074`](./deferred-details.md#df-074) |
-| DF-075 | 待触发 | Story 3.5 | 出现下列任一情况即处理：真机（或 `min-aspect-ratio` 未覆盖的视口）实测出现「战场把题面推出视口」；Epic 3 的布局打磨开工 | `responsive.css` 的 `@media (max-height:900px)` 块未算 HUD 等四个兄弟节点高度 | [`df-075`](./deferred-details.md#df-075) |
-| DF-076 | 待触发 | Story 3.5 | Story 3.5 布局打磨时一并看；若真机试玩反馈「战场看着偏上」也提前处理 | 1280×800 下左栏底部余约 190px 空白，战场被宽度约束 | [`df-076`](./deferred-details.md#df-076) |
+| DF-076 | 待裁决 | Story 3.5 | 人裁决横屏左栏的战场高度占比（Story 3.5 `[DS]` 实测 1280×800：战场 848×519、手牌区 848×147、两者**不相交**、题卡 67~800 ⇒ 行高 733 ⇒ 战场与手牌区之间空隙 ≤ 67px）；裁决后写进新 story 实施，不许在本条里悄悄改列宽比例 | 1280×800 下战场被宽度约束，左栏底部余量实测 ≤67px（1.19 推算的 190px 已被实测推翻） | [`df-076`](./deferred-details.md#df-076) |
 | DF-077 | 待触发 | Story 1.19 | 1.19 真机试玩时把平板转成横屏对照一次（验「不能种植」是不是横屏独有） | 横屏是否就是平板「不能种植」的唯一原因仍未验，须真机旋转对照 | [`df-077`](./deferred-details.md#df-077) |
 | DF-078 | 待触发 | 未指派 | 存档降级路径重做时（与 M2 一并看） | `store.ts` 的 `restoreFromSave` catch 清零 `masteredWordIds`，代价变成「下局考哪 10 个词」 | [`df-078`](./deferred-details.md#df-078) |
 | DF-079 | 待触发 | 未指派 | 同 DF-078 一条（存档降级路径重做时，与 M2 一并看） | `parseSaveFile` 一个坏元素即判整份失败，同一失败信号两种结局 | [`df-079`](./deferred-details.md#df-079) |
@@ -94,7 +93,7 @@
 | DF-084 | 待触发 | 未指派 | 切片判据需要第二次落点时（那时应该改成 G161 扫 core + 追常量引用，而不是加字面量） | G160 只查字面量 `10` 且豁免 `src/core/`，G161 不扫 `src/core/`，第二份题数实现可过 | [`df-084`](./deferred-details.md#df-084) |
 | DF-085 | 待触发 | 未指派 | 给守卫补一个「判据范围」自测夹具时 | `tests/guards/deck-slice-boundaries.test.ts` 用 `indexOf('\n}\n', start)` 切函数体，缩进变则静默截断 | [`df-085`](./deferred-details.md#df-085) |
 | DF-086 | 待触发 | 未指派 | 支持矩阵扩到窄横屏（或出手机版）时 | `responsive.css` 的 `minmax(0,1fr) 25rem` 无宽度下界，窄横屏格子边长 < 48px | [`df-086`](./deferred-details.md#df-086) |
-| DF-087 | 待触发 | Story 3.5 | 横屏布局打磨时（与「战场偏上」那条一并看） | `battle-grid` 高度由 `aspect-ratio` 推出，1280×660 下溢出手牌行、孩子点不到卡 | [`df-087`](./deferred-details.md#df-087) |
+| DF-087 | 待裁决 | Story 3.5 | 人裁决横屏矮视口的战场尺寸策略（Story 3.5 `[DS]` 实测 1280×660 与 1280×713 的**建造相**「手牌区与战场相交」= **是** ⇒ 本条记的症状**已复现**；候选：战场改由可用高度定尺寸 / 允许滚动 / 缩窄题面栏）；裁决后写进新 story 实施 | `battle-grid` 高度由 `aspect-ratio` 推出，1280×660 下溢出手牌行、孩子点不到卡（Story 3.5 `[DS]` 真浏览器实测已复现） | [`df-087`](./deferred-details.md#df-087) |
 | DF-088 | 待触发 | Story 1.19 | 词图 404 率被真机验证之前；若真出现连续 404，先降级成「跳过全部 ⇒ 通关」而不是抛错 | `reducer.ts` 的 CONTINUE 分支 `next === null` 抛错，全跳时技术错误抛给孩子 | [`df-088`](./deferred-details.md#df-088) |
 | DF-089 | 待排期 | Story 1.19 | 本 story 的 patch 项落地时补齐（本条与 patch 组第 5 条是同一处，一起改） | `createUnitCompletedState` 空账使 `assertDeckRelations` 四条不变量真空成立 | [`df-089`](./deferred-details.md#df-089) |
 | DF-090 | 待触发 | Story 1.17 | 存档深层校验加固时（1.17 的降级面板已登记资产 / 存档降级项，那是同一处的自然落点） | `assertDeckRelations` 查 `deck` 唯一性却不查 `unlocked` 内部重复 | [`df-090`](./deferred-details.md#df-090) |
@@ -203,6 +202,7 @@
 | DF-213 | 待裁决 | 未指派 | 有人裁决辅通路四个常量的「现场调」归属（候选：Story 1.19 试玩校准 / 某个尚未存在的 story），并把 5 个文件里的 10 处口径一次改齐 | `pronunciation.ts` 的四个 rate/pitch 常量在 5 个文件 10 处写着两个归属（Epic 1 现场调 / Epic 3 现场调） | [`df-213`](./deferred-details.md#df-213) |
 | DF-214 | 待排期 | 未指派 | 下次动 `epics.md` 的 FR4 段或 `game-architecture.md` 的 Configuration 表时，先回读 Story 3.4 的 rev 3 note 与本条详情，核对那三处更正仍在 | Story 3.4 由 `[DS]` 直接更正了 `game-architecture.md` 的 `scripts/gen-voice.ts` 路径与「录音生成参数」字段列表，以及 `epics.md` FR4 的重复行 | [`df-214`](./deferred-details.md#df-214) |
 | DF-215 | 待触发 | Story 1.19 | Story 1.19 真机试玩那一批（与 Story 3.4 裁决 A 同场）里，把「音效 / BGM / 预生成录音」三者的响度配比问出结论并记进试玩记录 | GDD 的「音量 / 响度配比是否适合 4–8 岁孩子」至今无归属 story、无任何结论记录 | [`df-215`](./deferred-details.md#df-215) |
+| DF-216 | 待裁决 | 未指派 | 人裁决竖屏建造相位的取舍（缩战场 / 缩小题卡 / 允许滚动）后写进新 story 实施；实施后重量 16 个矩阵视口 × 两个相位，确认竖屏建造相位的「手牌卡在视口内」为是 | 竖屏 768×1024 的建造相位，`HandDeck.vue` 的手牌区整体落在折叠线以下 142px（Story 3.5 `[DS]` 实测），孩子够不到卡 | [`df-216`](./deferred-details.md#df-216) |
 
 ## 新增一条
 
