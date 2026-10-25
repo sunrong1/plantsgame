@@ -34,15 +34,15 @@ npm run build
 3. `postbuild` → `verify:deploy`：产物自检 **64 项**（⚠️ **这个数会随单元数增长** ——
    每个单元一项词图检查，见下）。
 
-### 实测产物形态（2026-10-23，Story 2.5 收尾时构建）
+### 实测产物形态（2026-10-25，Story 3.5 `[CR]` 重测；2026-10-23 Story 2.5 首测）
 
 ```
 dist/  3.3 MB  165 个文件
 dist/index.html                        3.44 kB │ gzip:   2.08 kB
-dist/assets/index-DFmTZkY5.js        242.45 kB │ gzip:  77.37 kB
-dist/assets/index-DR2TTpuc.css        15.44 kB │ gzip:   3.71 kB
+dist/assets/index-BeOGBe7j.js        242.48 kB │ gzip:  77.39 kB
+dist/assets/index-CrQA-fqh.css        15.44 kB │ gzip:   3.71 kB
 dist/manifest.webmanifest               0.76 kB
-dist/sw.js                              1.91 kB │ gzip:   0.95 kB
+dist/sw.js                              1.84 kB │ gzip:   0.91 kB
 ```
 
 ⚠️📎 **`[CR]` 2026-10-23（Story 2.5）整块重测** —— 原文写的
@@ -52,8 +52,17 @@ dist/sw.js                              1.91 kB │ gzip:   0.95 kB
 CSS 与 manifest 的字节数也差了一两个字节）。
 ⚠️ **gzip 口径**：本表的 gzip 列是 **`node -e` 的 `zlib.gzipSync`（默认 level 6）**，
 不是 `gzip -c`（后者对同样的文件会小几十字节）⇒ 两套数不可混用。
-⚠️ 「165 个文件」是**不含** `public/_voices-probe.html` 的数（那个本地调试探针被 Vite 复制进了 `dist/`，
-**不入库**，所以真部署是 165）。
+⚠️ 「165 个文件」在 2026-10-23 那次是**不含** `public/_voices-probe.html` 的数
+（那个本地调试探针被 Vite **原样复制**进了 `dist/`）⇒ **2026-10-25 探针页移出 `public/` 之后，
+这个数才第一次名副其实**（`dist/` 里真的就是 165 个文件）。
+⚠️📎 **`[CR]` 2026-10-25（Story 3.5）查出的根因** —— 那个本地调试页**不只是**多了一个文件：
+`vite-plugin-pwa` 的 `globPatterns: ['**/*.{html,js,css}']` 会把 `dist/` 里**任何 `.html`**
+扫进 precache 清单 ⇒ **一个本地调试页跟着上线**（`sw.js` 因此 **+75 B**：
+1912 B → 1837 B，precache 清单从 5 条回到 4 条）。
+⇒ **修法**：探针页**移出 `public/`**，改放 `tools/local-probes/`（`.gitignore` 忽略，
+要用时**手动拷进 `dist/`** 打开）⇒ 它**再也不进部署产物**。
+⚠️ **这条是「一个本地文件混进部署产物」的实例** —— 症状只有 **75 字节**，
+**不查 `dist/` 的文件清单与 precache 清单就发现不了**。
 ⚠️ **教训**：`sw.js` 的字节数**不是稳定值** —— 它是**手工维护**的（清单 + token），
 改动会变 ⇒ 引用它时必须写「**某一天实测**」并带上日期，否则就是一条会漂的记录。
 

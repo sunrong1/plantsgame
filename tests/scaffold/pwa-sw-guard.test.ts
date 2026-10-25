@@ -27,7 +27,7 @@
  * **调用形态**（`skipWaiting(` 这样的调用，而不是 `skipWaiting` 这个词出现过）。
  */
 
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -310,6 +310,72 @@ describe('G125 —— 缓存分层：precache 不含媒体（Story 1.18 / AC-B7�
           '不显式排除的话 45 个 mp3 + 34 张 svg 会被一次性预载',
       ).toContain(dir)
     }
+  })
+})
+
+// ── G320 —— `public/` 下不许有 `.html`（Story 3.5 `[CR]`）──────────────────
+
+/**
+ * G320 的**判据本体**（纯函数 ⇒ 可喂负向夹具）。
+ *
+ * 📎 **为什么需要这条**：Vite 把 `public/` **原样复制**进 `dist/`
+ *   ⇒ `public/` 里的 `.html` 会进部署产物；再叠上 `vite-plugin-pwa` 的
+ *   `globPatterns`（见 `vite.config.ts`，它收 `.html`）
+ *   ⇒ 它还会被**扫进 precache 清单** ⇒ **一个本地调试页跟着上线**。
+ *   Story 3.5 实测过这件事：`_voices-probe.html` 让 `sw.js` **+75 B**
+ *   （1837 → 1912），precache 清单从 4 条变 5 条。
+ *
+ * ⚠️ **本注释里刻意不写 glob 的字面量** —— 那串字面量里含 `*` 紧跟 `/`
+ *   ⇒ 在块注释里会**提前结束注释**（本仓库已踩过一次）。
+ *
+ * @param files `public/` 下的**相对路径**列表
+ */
+export function publicHtmlFiles(files: readonly string[]): string[] {
+  return files.filter((f) => f.toLowerCase().endsWith('.html'))
+}
+
+describe('G320 —— `public/` 下不许有 `.html`（本地调试页不许跟着上线）', () => {
+  it('`public/` 下零个 `.html` 文件', () => {
+    const files: string[] = []
+    const walk = (dir: string): void => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const path = join(dir, entry.name)
+        if (entry.isDirectory()) walk(path)
+        else files.push(path)
+      }
+    }
+    const publicDir = join(root, 'public')
+    if (!existsSync(publicDir)) return
+    walk(publicDir)
+    // ⚠️ 先断言「真的扫到了东西」—— 扫描面塌成一个文件时下面那条恒绿（R-51 第 1 类）。
+    expect(files.length).toBeGreaterThan(10)
+    const html = publicHtmlFiles(files)
+    expect(
+      html,
+      `public/ 下有 .html 文件：\n${html.join('\n')}\n` +
+        '  ⇒ Vite 会把它原样复制进 dist/，PWA 的 globPatterns 又会把它扫进 precache 清单\n' +
+        '  ⇒ 本地调试页会跟着上线（实测：sw.js +75 B）。\n' +
+        '  ⇒ 本地探针页请放 tools/local-probes/（.gitignore 忽略），要用时手动拷进 dist/。',
+    ).toEqual([])
+  })
+
+  it('反向自测：判据**认得出** `.html`（夹具里的那两个必须被报出来）', () => {
+    // 📎 **负向夹具**（R-50 的默认手段）：喂一份带 `.html` 的路径表
+    //   ⇒ 判据本体必须报出来 ⇒ 证明「上面那条恒绿」不是因为判据写坏了。
+    expect(publicHtmlFiles(['favicon.svg', 'probe.html', 'icons/icon.png'])).toEqual(['probe.html'])
+    expect(publicHtmlFiles(['favicon.svg', 'icons/icon.png'])).toEqual([])
+  })
+
+  it('precache 的 glob 确实会收 `.html`（上面那条守卫的前提是真的）', () => {
+    // ⚠️ **前提自证**：若哪天 globPatterns 不再收 `.html`，
+    //   那 `public/` 下放 `.html` 就只剩「多一个文件」的轻症 ⇒ 但**仍然**不该放
+    //   （`public/` 是部署产物的一部分，不是本地草稿箱）⇒ 上面那条**照旧有效**。
+    const patterns = pwaOptions.injectManifest?.globPatterns ?? []
+    expect(
+      patterns.some((p) => p.includes('html')),
+      `globPatterns（${patterns.join(', ')}）已经不收 .html 了 —— ` +
+        '请回头确认「public/ 下不许有 .html」这条是否还该按「跟着上线」那么严',
+    ).toBe(true)
   })
 })
 

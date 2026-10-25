@@ -121,7 +121,7 @@ const MEASURE_SCRIPT = `
   var TOUCH_SELECTORS = ${JSON.stringify(TOUCH_TARGET_SELECTORS)}
   var ANSWER_SETTLE_MS = 1500
   var BUILD_SETTLE_MS = 900
-  var out = { viewport: null, tokens: {}, diag: {}, answer: null, build: null }
+  var out = { viewport: null, tokens: {}, diag: {}, answer: null, build: null, start_touch_targets: null }
 
   function box(el) {
     if (!el) return null
@@ -144,14 +144,16 @@ const MEASURE_SCRIPT = `
   // 📎 **命中区清单的逐项量测**（B1.3）
   //   \`present\` = 该选择器在本相**存在**；\`rendered\` = 匹配到且**有渲染尺寸**的个数。
   //   ⚠️ \`count === 0\` 必须显式处理（不许静默当过）⇒ 记「本相不存在」并计入覆盖率。
-  function touchTargets() {
+  //   🔥 \`[CR]\` 2026-10-25：加 \`where\` ⇒ 记下这条**是在哪一相量到的**
+  //   （开始页量的 \`.start-button\` 要能看出来它不是关内量的）。
+  function touchTargets(where) {
     var list = []
     for (var i = 0; i < TOUCH_SELECTORS.length; i++) {
       var sel = TOUCH_SELECTORS[i]
       var els = qa(sel)
       if (els.length === 0) {
         list.push({ selector: sel, present: false, count: 0, rendered: 0,
-                    w: null, h: null, sizes: {}, note: '本相不存在' })
+                    w: null, h: null, sizes: {}, note: '本相不存在', measured_in: where })
         continue
       }
       var minW = null, minH = null, rendered = 0, sizes = {}
@@ -167,10 +169,35 @@ const MEASURE_SCRIPT = `
         sizes[key] = (sizes[key] || 0) + 1
       }
       list.push({ selector: sel, present: true, count: els.length, rendered: rendered,
-                  w: minW, h: minH, sizes: sizes,
+                  w: minW, h: minH, sizes: sizes, measured_in: where,
                   note: rendered === 0 ? '匹配到但都没有渲染尺寸（隐藏？）' : null })
     }
     return list
+  }
+
+  // 🔥 **\`[CR]\` 2026-10-25（B1.3 逐字要求）**：\`.start-button\` **必须在「点它之前」量** ——
+  //   它一被点就没了 ⇒ 落进关内量测就永远量不到它
+  //   ⇒ B1.3 逐字：「⚠️ **\`.start-button\` 必须在「点它之前」量**」。
+  //   ⇒ 做法：在**开始页**先量一遍整份清单，把**量到的那几条**并进各相的清单
+  //   （本相不存在的那条**换掉**，不是追加 ⇒ 覆盖率的分母仍是 7）。
+  function mergeStartTargets(p) {
+    if (!out.start_touch_targets) return
+    for (var j = 0; j < out.start_touch_targets.length; j++) {
+      var t = out.start_touch_targets[j]
+      if (!t.present) continue
+      var replaced = false
+      for (var i = 0; i < p.touch_targets.length; i++) {
+        if (p.touch_targets[i].selector === t.selector) {
+          if (!p.touch_targets[i].present) {
+            t.note = '本相不存在（已在开始页量到）'
+            p.touch_targets[i] = t
+          }
+          replaced = true
+          break
+        }
+      }
+      if (!replaced) p.touch_targets.push(t)
+    }
   }
 
   // 📎 \`.level-view\` 的**内容底边**（B1.4 的垂直余量）
@@ -203,6 +230,9 @@ const MEASURE_SCRIPT = `
 
   function measurePhase(phase) {
     var p = { phase: phase }
+    // 🔥 **\`[CR]\` 2026-10-25：本次量测里**由本函数合成**的那条提示条**
+    //   ⇒ 量完要**撤掉**（否则下一相会把它当成运行时的真实提示条）。
+    var forcedByUs = null
     var view = q('.level-view')
     var grid = q('.battle-grid')
     var card = q('.question-card')
@@ -231,10 +261,19 @@ const MEASURE_SCRIPT = `
         forced.textContent = '正在准备离线，下次启动生效'
         document.body.appendChild(forced)
         notice = forced
+        // 🔥 **\`[CR]\` 2026-10-25：标志必须**按相位**记** ——
+        //   原实现写在 \`out.diag\`（全局）⇒ 建造相那次会把它**覆盖成 false**
+        //   （因为建造相里那条合成提示条**还在**，走的是 else 分支）
+        //   ⇒ L1 判据读全局标志 ⇒ 「⚠️ 量的是合成的那条」**永远不会出现**。
+        p.notice_forced = true
         out.diag.notice_forced = true
         out.diag.notice_scope_attr = scope
+        // 📎 记下「这条是本函数合成的」⇒ 量完**必须撤掉**，
+        //   否则建造相会把它当成运行时的真实提示条（并把标志翻成 false）。
+        forcedByUs = forced
       }
     } else {
+      p.notice_forced = false
       out.diag.notice_forced = false
     }
 
@@ -336,7 +375,7 @@ const MEASURE_SCRIPT = `
       : null
     var cBottom = contentBottom(view)
     p.vertical_slack_px = cBottom === null ? null : Math.round(window.innerHeight - cBottom)
-    p.touch_targets = touchTargets()
+    p.touch_targets = touchTargets(phase)
 
     // ── 建造相专属（B8.4 / E3.2）──────────────────────────────────────────
     var handDeck = q('.hand-deck')
@@ -352,12 +391,26 @@ const MEASURE_SCRIPT = `
           return r.top >= 0 && r.bottom <= window.innerHeight &&
                  r.left >= 0 && r.right <= window.innerWidth
         })
+    // 🔥 **\`[CR]\` 2026-10-25：撤掉本函数合成的那条提示条** ——
+    //   不撤的话，建造相会看到它 ⇒ 走「运行时真实提示条」那条分支
+    //   ⇒ \`notice_forced\` 被翻成 false ⇒ L1 的「⚠️ 量的是合成的那条」永不出现。
+    if (forcedByUs && forcedByUs.parentNode) forcedByUs.parentNode.removeChild(forcedByUs)
     return p
   }
 
   function finish() {
     out.viewport = { w: window.innerWidth, h: window.innerHeight }
     out.tokens = { touch_min: touchMinPx() }
+    // 🔥 **\`[CR]\` 2026-10-25 补回四条诊断** ——
+    //   它们是「**为什么没量到**」的证据（白屏？类名不对？还是布局坏了？）
+    //   ⚠️ 原实现里这四条被删掉了，而**类型仍然声明它们是必填** ⇒
+    //   运行时是 \`undefined\`、类型却说有值 ⇒ 判据空跑时**看不出原因**。
+    out.diag.level_view = !!q('.level-view')
+    out.diag.body_classes = Array.prototype.slice.call(document.body.children, 0, 6).map(function (el) {
+      return el.tagName + '.' + (el.className || '(no class)')
+    })
+    out.diag.app_html_length = (q('#app') || document.body).innerHTML.length
+    out.diag.first_text = ((document.body.textContent || '').replace(/\\s+/g, ' ').trim()).slice(0, 80)
     var pre = document.createElement('pre')
     pre.id = '__measure'
     pre.textContent = JSON.stringify(out)
@@ -369,6 +422,8 @@ const MEASURE_SCRIPT = `
   //   ⇒ \`.hand-deck\` 整块出现 ⇒ 再量一遍。
   function afterAnswer() {
     out.answer = measurePhase('answer')
+    // 🔥 把**开始页**量到的命中区并进答题相（B1.3：\`.start-button\` 只在开始页存在）
+    mergeStartTargets(out.answer)
     var cards = qa('.option-card')
     var picked = null
     for (var i = 0; i < cards.length; i++) {
@@ -384,14 +439,23 @@ const MEASURE_SCRIPT = `
     out.diag.picked_option = pickedId
     picked.click()
     setTimeout(function () {
-      var again = pickedId === null
-        ? null
-        : document.querySelector('.option-card[data-option="' + pickedId + '"]')
+      // 🔥 **\`[CR]\` 2026-10-25**：**不许把 \`data-option\` 的值原样拼进 CSS 选择器**
+      //   —— 值里出现引号或方括号会让 \`querySelector\` **抛 DOMException**
+      //   ⇒ \`finish()\` 永远跑不到 ⇒ 量测挂到看门狗超时，报的还是「超时」。
+      //   ⇒ 改成**按属性值比较**。
+      var again = null
+      if (pickedId !== null) {
+        var all = qa('.option-card')
+        for (var k = 0; k < all.length; k++) {
+          if (all[k].getAttribute('data-option') === pickedId) { again = all[k]; break }
+        }
+      }
       out.diag.answer_correct = again ? again.classList.contains('is-right') : null
       out.diag.answer_wrong = again ? again.classList.contains('is-wrong') : null
       out.diag.hand_deck_present = !!q('.hand-deck')
       if (q('.hand-deck')) {
         out.build = measurePhase('build')
+        mergeStartTargets(out.build)
       } else {
         out.build = null
         out.diag.build_not_reached = '答完后没出现 \`.hand-deck\` ⇒ 建造相位未覆盖'
@@ -405,6 +469,10 @@ const MEASURE_SCRIPT = `
     out.diag.start_button = !!btn
     // 📎 \`.start-button\` **必须在点它之前量**（B1.3）—— 点掉就没了。
     out.diag.start_button_box = box(btn)
+    // 🔥 **\`[CR]\` 2026-10-25（B1.3 逐字要求）**：**开始页**也量一遍整份命中区清单
+    //   ⇒ \`.start-button\` 的渲染尺寸**进得了判据**（原来只进 \`diag\`，
+    //   B2.3 永远看不到它 ⇒ 覆盖率分母里有一项**任何相位都不可能出现**）。
+    out.start_touch_targets = touchTargets('start')
     if (btn) btn.click()
     setTimeout(afterAnswer, ANSWER_SETTLE_MS)
   }
@@ -437,10 +505,14 @@ const MEASURE_SCRIPT = `
  */
 const TIMING_SCRIPT = `
 ;(function () {
-  var out = { cold_start_ms: null, answer_feedback_ms: null, notes: [] }
+  var out = { cold_start_ms: null, answer_feedback_ms: null, notes: [], viewport: null }
 
   function post() {
     try {
+      // 🔥 **\`[CR]\` 2026-10-25**：把**实际量到的内视口**一并报回去 ——
+      //   计时通道的窗口尺寸**也要过视口补偿**（否则它量的根本不是 800×1280），
+      //   而报数**不写视口** ⇒ 人无从判断这两个数是在什么尺寸下量的。
+      out.viewport = { w: window.innerWidth, h: window.innerHeight }
       var xhr = new XMLHttpRequest()
       xhr.open('POST', '/__timing', true)
       xhr.setRequestHeader('Content-Type', 'application/json')
@@ -547,6 +619,11 @@ export type TouchTarget = {
   /** 同尺寸合并后的计数（`"宽x高" => 个数`）—— 免得 45 行同尺寸噪声。 */
   sizes: Record<string, number>
   note: string | null
+  /**
+   * 🔥 **`[CR]` 2026-10-25**：这一条**是在哪一相量到的**。
+   *   （`.start-button` 只在**开始页**存在 ⇒ 它会从开始页的量测并进各相。）
+   */
+  measured_in?: 'start' | 'answer' | 'build'
 }
 
 export type PhaseMeasured = {
@@ -560,6 +637,11 @@ export type PhaseMeasured = {
   hud: Box | null
   update_notice: Box | null
   notice_overlap_px: number | null
+  /**
+   * 🔥 **`[CR]` 2026-10-25**：本相的提示条**是不是合成的**。
+   *   （原实现只有一个全局 `diag.notice_forced` ⇒ 被下一相覆盖 ⇒ 警示永不出现。）
+   */
+  notice_forced: boolean
   containing_block: {
     level_view_left: number
     level_view_padding_left: string
@@ -631,6 +713,11 @@ export type Measured = {
   answer: PhaseMeasured | null
   /** 建造相（点掉选项卡之后量）；**没进成时为 `null`**。 */
   build: PhaseMeasured | null
+  /**
+   * 🔥 **`[CR]` 2026-10-25（B1.3 逐字要求）**：**开始页**量到的命中区清单
+   *   （`.start-button` 只在开始页存在 ⇒ 不单独量它就永远量不到）。
+   */
+  start_touch_targets?: TouchTarget[] | null
 }
 
 /* ── 三条新判据的判定结果 ───────────────────────────────────────────────────
@@ -762,9 +849,16 @@ export function touchTargetViolations(m: PhaseMeasured, touchMin: number): Judge
  */
 type Check = { name: string; proves: string; run: (m: Measured) => { ok: boolean; why: string } }
 
-/** 取出某个相位的量测；`null` 表示**这一相没进成**（例如建造相没量到）。 */
+/**
+ * 取出某个相位的量测；`null` 表示**这一相没进成**（例如建造相没量到）。
+ *
+ * 🔥 **`[CR]` 2026-10-25**：用 `?? null` 归一化 ——
+ *   原写法直接返回 `m.answer`，而载荷缺键时它是 `undefined`
+ *   ⇒ 下游一律用 `=== null` 判空 ⇒ **`undefined` 穿过去** ⇒
+ *   「判据空跑」变成一个看不懂的 `TypeError`。
+ */
 function phaseOf(m: Measured, phase: Phase): PhaseMeasured | null {
-  return phase === 'answer' ? m.answer : m.build
+  return (phase === 'answer' ? m.answer : m.build) ?? null
 }
 
 /**
@@ -772,6 +866,13 @@ function phaseOf(m: Measured, phase: Phase): PhaseMeasured | null {
  *
  * 📎 **建造相没进成时，它不参与本判据的成败** —— 但**必须出现在 `why` 里**
  *   （不许静默当过：R-51 第 11 条）。
+ *
+ * 🔥 **`[CR]` 2026-10-25 把口径写死**（原来只藏在实现里，读者看不出来）：
+ *   · 「**这一相没进成**」（`b === null`）⇒ **不参与本判据**，但**必须出现在 `why` 里**；
+ *   · 「**量到了但量不出数**」（`not-measured`）⇒ **判为不通过**（响亮失败）——
+ *     理由：量不到通常是**判据或环境坏了**，让它悄悄过去就是假绿（R-51 第 1 类）。
+ *   ⇒ 这条口径与 L2 层**不同**（L2 只收集 `fail`，`not-measured` 不算失败）：
+ *     **L1 是退出码层，宁可红**；L2 是量测层，只报数。
  */
 function combinePhases(label: string, a: Judgement, b: Judgement | null): { ok: boolean; why: string } {
   const parts = [`答题相 ${statusMark(a.status)}（${a.why}）`]
@@ -843,7 +944,7 @@ const CHECKS: Check[] = [
         return { ok: false, why: '既没渲染出提示条、也没合成出（scope 属性找不到）—— 判据空跑' }
       return {
         ok: a.notice_overlap_px <= 0,
-        why: `重叠 ${a.notice_overlap_px}px（应 ≤ 0）${m.diag.notice_forced ? '，⚠️ 量的是合成的那条' : ''}`,
+        why: `重叠 ${a.notice_overlap_px}px（应 ≤ 0）${a.notice_forced ? '，⚠️ 量的是合成的那条' : ''}`,
       }
     },
   },
@@ -953,6 +1054,8 @@ export type TimingPayload = {
   cold_start_ms: number | null
   answer_feedback_ms: number | null
   notes: string[]
+  /** 🔥 `[CR]` 2026-10-25：这次计时**实际量到的内视口**（窗口尺寸 ≠ 内视口）。 */
+  viewport?: { w: number; h: number } | null
 }
 
 /* ── 把产物复制一份、注入量测脚本、起服务器、跑一次浏览器 ────────────────────
@@ -1163,9 +1266,20 @@ export function parseMeasured(dump: string): Measured {
   const parsed = JSON.parse(text) as Partial<Measured>
   // ⚠️ **载荷形状自检** —— 旧版（单相位、字段平铺）的载荷会被误当成新版的
   //   「全部字段都 undefined」⇒ 症状是「判据空跑」这种看不懂的失败。
-  if (parsed.answer === undefined && parsed.build === undefined) {
+  // 🔥 **`[CR]` 2026-10-25 收紧**：原写法是「`answer` 与 `build` **都** undefined 才抛」，
+  //   ⇒ **半成形**载荷（只有 `build`、没有 `answer`）会**穿过**这道闸
+  //   ⇒ 下游 `phaseOf()` 返回 `undefined` 而代码用 `=== null` 判空
+  //   ⇒ 判据空跑变成一个看不懂的 `TypeError` ⇒ 还要单独防一句。
+  if (parsed.answer === undefined || parsed.build === undefined) {
     throw new Error(
-      '量测载荷里既没有 `answer` 也没有 `build` —— 量测脚本没注入成功，或产物里的脚本是旧版。\n' +
+      '量测载荷里缺 `answer` 或 `build` —— 量测脚本没注入成功，或产物里的脚本是旧版。\n' +
+        `收到的载荷前 400 字符：\n${text.slice(0, 400)}`,
+    )
+  }
+  // 🔥 `tokens` / `diag` 也是判据的输入 ⇒ 缺了要**响亮**说，别让下游拿到 `undefined`。
+  if (parsed.tokens === undefined || parsed.diag === undefined) {
+    throw new Error(
+      '量测载荷里缺 `tokens` 或 `diag` —— 量测脚本没跑完（或只跑了一半）。\n' +
         `收到的载荷前 400 字符：\n${text.slice(0, 400)}`,
     )
   }
@@ -1243,6 +1357,17 @@ async function measureAt(
       (await runBrowser(distDir, chromium, w + chromeDelta.dw, h + chromeDelta.dh, 'measure')).dom,
     )
   }
+  // 🔥 **`[CR]` 2026-10-25 补**：补偿**一次**之后仍然不匹配 ⇒ **响亮失败**。
+  //   原实现直接返回 ⇒ 表里那一行写着「请求视口 800×1280」，
+  //   而**量到的其实是另一个尺寸** ⇒ 数字被安在错误的设备头上
+  //   （这正是那份注释里警告的「拿它的数当设备数」）。
+  if (!viewportMatches({ w, h }, m.viewport)) {
+    throw new Error(
+      `视口补偿没收敛：请求 ${w}×${h}，量到的内视口是 ${m.viewport.w}×${m.viewport.h}` +
+        `（补偿量 dw=${chromeDelta.dw} dh=${chromeDelta.dh}）。\n` +
+        '  ⇒ 这一行的数字**不属于**它标着的那个设备 ⇒ 不许安静地当量到了。',
+    )
+  }
   return m
 }
 
@@ -1279,7 +1404,11 @@ function readViewportMatrix(file: string): { w: number; h: number }[] {
 
 /** 把一次量测压成一行摘要（表格用）。⚠️ 字段名与 story 文档的实测表逐字对齐。 */
 export function summaryOf(p: PhaseMeasured): Record<string, unknown> {
-  const present = p.touch_targets.filter((t) => t.present && t.rendered > 0)
+  // 🔥 **`[CR]` 2026-10-25**：与 `touchTargetViolations` 一样加 `?? []` ——
+  //   两个消费者对同一个字段的防御程度不一致 ⇒ 载荷形状不匹配时
+  //   一个报「量不到」、另一个抛 `TypeError`。
+  const targets = p.touch_targets ?? []
+  const present = targets.filter((t) => t.present && t.rendered > 0)
   const smallest = present.length === 0
     ? null
     : Math.min(...present.map((t) => Math.min(t.w ?? 0, t.h ?? 0)))
@@ -1302,7 +1431,7 @@ export function summaryOf(p: PhaseMeasured): Record<string, unknown> {
     '浮层↔战场间距': p.overlay_battle_gap_px,
     垂直余量: p.vertical_slack_px,
     命中区最小边: smallest,
-    命中区覆盖: `${present.length}/${p.touch_targets.length}`,
+    命中区覆盖: `${present.length}/${targets.length}`,
     手牌区: p.hand_deck === null ? null : `${p.hand_deck.w}×${p.hand_deck.h}`,
     手牌卡在视口内: p.hand_cards_in_viewport,
     手牌区与战场相交: p.hand_battle_intersect,
@@ -1310,9 +1439,44 @@ export function summaryOf(p: PhaseMeasured): Record<string, unknown> {
 }
 
 /**
- * L2 逐视口层：把三条新判据的结论打进表里（**不影响退出码**）。
+ * L2 逐视口层：**三条新判据的结论**（**唯一的一份决策**）。
+ *
+ * 🔥 **`[CR]` 2026-10-25 抽出**：原来「表里那三列」与「失败收集那三行」
+ *   是**两份**决策（`verdictColumns` 一份、L2 循环里又写一遍）⇒
+ *   迟早漂移（R-37）⇒ 而且原来的 L2 循环**整块**挂在
+ *   `touch_min !== null` 上 ⇒ **浮层判据（它根本不需要 token）被一起跳过**。
  *
  * 📎 **四种状态分开标**（B6）：✔ / ✘ / 不适用 / 量不到。
+ */
+export function l2Verdicts(
+  p: PhaseMeasured,
+  touchMin: number | null,
+  isPortrait: boolean,
+): { label: string; judgement: Judgement }[] {
+  const noToken: Judgement = {
+    status: 'not-measured',
+    why: '量不到 `--touch-min` 当期值',
+    value: null,
+  }
+  return [
+    {
+      label: '间距判据',
+      judgement: touchMin === null ? noToken : hudBattleGapVerdict(p, touchMin, isPortrait),
+    },
+    {
+      label: '浮层判据',
+      // ⚠️ 浮层判据**不依赖** `--touch-min` ⇒ 任何情况下都要**求值**。
+      judgement: overlayBattleGapVerdict(p),
+    },
+    {
+      label: '命中区判据',
+      judgement: touchMin === null ? noToken : touchTargetViolations(p, touchMin),
+    },
+  ]
+}
+
+/**
+ * L2 逐视口层：把三条新判据的结论打进表里（**不影响退出码**）。
  */
 export function verdictColumns(
   p: PhaseMeasured,
@@ -1324,15 +1488,10 @@ export function verdictColumns(
     if (j.status === 'not-applicable') return '不适用'
     return `${statusMark(j.status)} ${j.value ?? '-'}px`
   }
-  const gap =
-    touchMin === null
-      ? ({ status: 'not-measured', why: '量不到 `--touch-min` 当期值', value: null } satisfies Judgement)
-      : hudBattleGapVerdict(p, touchMin, isPortrait)
-  const overlay = overlayBattleGapVerdict(p)
-  const touch =
-    touchMin === null
-      ? ({ status: 'not-measured', why: '量不到 `--touch-min` 当期值', value: null } satisfies Judgement)
-      : touchTargetViolations(p, touchMin)
+  const byLabel = new Map(l2Verdicts(p, touchMin, isPortrait).map((v) => [v.label, v.judgement]))
+  const gap = byLabel.get('间距判据')!
+  const overlay = byLabel.get('浮层判据')!
+  const touch = byLabel.get('命中区判据')!
   return {
     '间距判据': cell(gap),
     '浮层判据': cell(overlay),
@@ -1371,8 +1530,8 @@ async function main(): Promise<void> {
       '（`--window-size` 设的是窗口，含工具栏 ⇒ 不补偿量到的视口会比请求值矮）',
   )
   console.log(
-    `[portrait] 两个相位：答题相 ${measured.answer === null ? '未覆盖' : '已量'}、` +
-      `建造相 ${measured.build === null ? '未覆盖' : '已量'}` +
+    `[portrait] 两个相位：答题相 ${measured.answer == null ? '未覆盖' : '已量'}、` +
+      `建造相 ${measured.build == null ? '未覆盖' : '已量'}` +
       (measured.diag.build_not_reached == null ? '' : `（${measured.diag.build_not_reached}）`),
   )
 
@@ -1402,9 +1561,10 @@ async function main(): Promise<void> {
       const isPortrait = m.viewport.h > m.viewport.w
       for (const phase of ['answer', 'build'] as const) {
         const p = phase === 'answer' ? m.answer : m.build
-        if (p === null) {
+        if (p == null) {
           rows.push({
             请求视口: `${vp.w}×${vp.h}`,
+            内视口: `${m.viewport.w}×${m.viewport.h}`,
             相位: phase,
             状态: '未覆盖',
             原因: m.diag.build_not_reached ?? '本相没量到',
@@ -1413,20 +1573,20 @@ async function main(): Promise<void> {
         }
         const row = {
           请求视口: `${vp.w}×${vp.h}`,
+          // 🔥 **`[CR]` 2026-10-25 补**：把**实际量到的内视口**也打进表里 ——
+          //   原表只有「请求视口」⇒ 补偿没生效时**看不出来**（数字被安在错误的设备头上）。
+          内视口: `${m.viewport.w}×${m.viewport.h}`,
           ...summaryOf(p),
           ...verdictColumns(p, m.tokens.touch_min, isPortrait),
         }
         rows.push(row)
         // ⚠️ **L2 的失败不许被静默**（B6）⇒ 逐条收集，打印出来，并要求写进 story 文档。
-        if (m.tokens.touch_min !== null) {
-          for (const [label, j] of [
-            ['间距判据', hudBattleGapVerdict(p, m.tokens.touch_min, isPortrait)],
-            ['浮层判据', overlayBattleGapVerdict(p)],
-            ['命中区判据', touchTargetViolations(p, m.tokens.touch_min)],
-          ] as const) {
-            if (j.status === 'fail') {
-              l2Failures.push(`${vp.w}×${vp.h} ${p.phase} ${label}：${j.why}`)
-            }
+        //   🔥 **`[CR]` 2026-10-25**：判据结论**只有一份**（`l2Verdicts`）
+        //   ⇒ ① 浮层判据不再被 `touch_min` 为空时整块跳过；
+        //      ② 表里那三列与这里用的是**同一份决策**（R-37）。
+        for (const { label, judgement } of l2Verdicts(p, m.tokens.touch_min, isPortrait)) {
+          if (judgement.status === 'fail') {
+            l2Failures.push(`${vp.w}×${vp.h} ${p.phase} ${label}：${judgement.why}`)
           }
         }
       }
@@ -1448,7 +1608,16 @@ async function main(): Promise<void> {
     '\n[portrait] 计时通道（**不带** `--virtual-time-budget` ⇒ 不是虚拟时间；' +
       '⚠️ 这些数**不进任何退出码判据**，且只是本机参考值，不是平板值）：',
   )
-  const timed = await runBrowser(distDir, chromium, width, height, 'timing')
+  // 🔥 **`[CR]` 2026-10-25**：计时通道**也要过视口补偿** ——
+  //   原实现直接传 `width, height` ⇒ 那个窗口的**内视口比 800×1280 矮 87px**
+  //   ⇒ 报出来的两个数**不是**在 800×1280 下量的（却和那张表并排放着）。
+  const timed = await runBrowser(
+    distDir,
+    chromium,
+    width + chromeDelta.dw,
+    height + chromeDelta.dh,
+    'timing',
+  )
   if (timed.timing === null) {
     console.log('  ⏱ 冷启动：**未测**（没收到 `POST /__timing` ⇒ 超时或页面没跑完）')
     console.log('  ⏱ 答题反馈：**未测**（同上）')
@@ -1462,6 +1631,13 @@ async function main(): Promise<void> {
         '（点 `.option-card` → `.answer-feedback` 首次出现）',
     )
     for (const note of timed.timing.notes) console.log(`     · ${note}`)
+    // 🔥 `[CR]` 2026-10-25：把**实际量到的内视口**打出来（数得对应上尺寸）。
+    if (timed.timing.viewport) {
+      console.log(
+        `     · 本次计时量到的内视口：${timed.timing.viewport.w}×${timed.timing.viewport.h}` +
+          `（请求 ${width}×${height}，已做浏览器外壳补偿 dw=${chromeDelta.dw} dh=${chromeDelta.dh}）`,
+      )
+    }
   }
 
   if (failed > 0) {

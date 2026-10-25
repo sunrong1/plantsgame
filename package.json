@@ -13,7 +13,7 @@
     "preview": "vite preview",
     "pretest": "npm run validate:content",
     "test": "vitest run",
-    "typecheck": "vue-tsc -b",
+    "typecheck": "vue-tsc -b --force",
     "lint": "eslint .",
     "lint:wiki": "python3 scripts/wiki-lint.py",
     "validate:content": "tsx scripts/validate-content.ts",

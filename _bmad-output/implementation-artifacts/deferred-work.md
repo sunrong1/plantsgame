@@ -202,7 +202,9 @@
 | DF-213 | 待裁决 | 未指派 | 有人裁决辅通路四个常量的「现场调」归属（候选：Story 1.19 试玩校准 / 某个尚未存在的 story），并把 5 个文件里的 10 处口径一次改齐 | `pronunciation.ts` 的四个 rate/pitch 常量在 5 个文件 10 处写着两个归属（Epic 1 现场调 / Epic 3 现场调） | [`df-213`](./deferred-details.md#df-213) |
 | DF-214 | 待排期 | 未指派 | 下次动 `epics.md` 的 FR4 段或 `game-architecture.md` 的 Configuration 表时，先回读 Story 3.4 的 rev 3 note 与本条详情，核对那三处更正仍在 | Story 3.4 由 `[DS]` 直接更正了 `game-architecture.md` 的 `scripts/gen-voice.ts` 路径与「录音生成参数」字段列表，以及 `epics.md` FR4 的重复行 | [`df-214`](./deferred-details.md#df-214) |
 | DF-215 | 待触发 | Story 1.19 | Story 1.19 真机试玩那一批（与 Story 3.4 裁决 A 同场）里，把「音效 / BGM / 预生成录音」三者的响度配比问出结论并记进试玩记录 | GDD 的「音量 / 响度配比是否适合 4–8 岁孩子」至今无归属 story、无任何结论记录 | [`df-215`](./deferred-details.md#df-215) |
-| DF-216 | 待裁决 | 未指派 | 人裁决竖屏建造相位的取舍（缩战场 / 缩小题卡 / 允许滚动）后写进新 story 实施；实施后重量 16 个矩阵视口 × 两个相位，确认竖屏建造相位的「手牌卡在视口内」为是 | 竖屏 768×1024 的建造相位，`HandDeck.vue` 的手牌区整体落在折叠线以下 142px（Story 3.5 `[DS]` 实测），孩子够不到卡 | [`df-216`](./deferred-details.md#df-216) |
+| DF-216 | 待裁决 | 未指派 | 人裁决竖屏建造相位的取舍（缩战场 / 缩小题卡 / 允许滚动）后写进新 story 实施；实施后重量 16 个矩阵视口 × 两个相位，确认竖屏建造相位的「手牌卡在视口内」为是 | 竖屏 768×1024 的建造相位，`HandDeck.vue` 的手牌区整体落在折叠线以下 142px（Story 3.5 `[DS]` 实测，`[CR]` 逐格复核）⇒ 孩子得先滑动页面才够得到卡 | [`df-216`](./deferred-details.md#df-216) |
+| DF-217 | 待触发 | 未指派 | 下次改布局 CSS（`responsive.css` / `LevelView.vue` 的 `.hud` / `BattleField.vue`）时，手工重跑 `scripts/verify-portrait-layout.ts`（16 视口 × 2 相位）并把 32 行逐格对进 story 文档的表；或把那套对账做成一条能跑真浏览器的守卫 | 文档里那张 32 行实测表**没有任何自动对账**（量测要真浏览器，CI 跑不了）⇒ 改布局后它会悄悄过期 | [`df-217`](./deferred-details.md#df-217) |
+| DF-218 | 待触发 | 未指派 | 要跑 `scripts/verify-portrait-layout.ts` 时，把 `scripts/` 与 `dist/` 拷到 `/tmp`（**不改仓库权限**），用**非 root** 用户执行并**保持 Chromium sandbox 开启**（不要加 `--no-sandbox`）；浏览器**用 snap 版 Chromium**（`/snap/chromium/current/usr/lib/chromium-browser/chrome`），**不要**用 Playwright 的 `headless_shell`（本机报「No usable sandbox!」） | 那条真浏览器量测在 root 机器上跑不了（Chromium 要 `--no-sandbox`，权限判定拦下） | [`df-218`](./deferred-details.md#df-218) |
 
 ## 新增一条
 

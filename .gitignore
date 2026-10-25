@@ -54,5 +54,10 @@ playwright/.cache/
 __pycache__/
 *.pyc
 
-# 真机环境探针（临时页，只在本地 public/ 里用，不入库）
-public/_voices-probe.html
+# 真机环境探针（临时页，只在本地用，不入库）
+# ⚠️ **必须放在 `public/` 之外** —— `public/` 下的文件会被 Vite **原样复制**进
+#   `dist/`（⇒ 混进部署产物），而 `dist/` 里的 `.html` 会被 PWA 插件的
+#   `globPatterns: ['**/*.{html,js,css}']` **扫进 precache 清单**
+#   （实测 `sw.js` 因此 +75 B）⇒ 一个本地调试页**跟着上线**。
+#   ⇒ 放在 `tools/local-probes/`：仓库里不入库，但要用时直接拷进 `dist/` 打开。
+tools/local-probes/

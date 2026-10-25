@@ -51,6 +51,7 @@ import {
 } from '../../src/core'
 import type { State, Tower as TowerEntity, Zombie as ZombieEntity } from '../../src/core'
 import { makeSyntheticDeck } from '../fixtures/synthetic-deck'
+import { vueSourceFiles } from '../helpers/vue-sources'
 import {
   optionsOf,
   patternStrings,
@@ -643,23 +644,16 @@ export function g19Violation(source: string): string | null {
  *
  * ⇒ 改成扫 `src/` 下全部 `.vue`。判据仍是同一份 `g19Violation`，
  *   只是被问到的文件集合从「手写的四个」变成「磁盘上真实存在的那些」。
+ *
+ * 🔥 **`[CR]` 2026-10-25（Story 3.5）**：本文件原来**自己写了一份**递归遍历
+ *   ⇒ 仓库里出现了**三份**「列出 `src/` 下全部 `.vue`」的实现
+ *   （本文件 / `tests/helpers/animation-rule.ts` / `tests/helpers/vue-sources.ts`）
+ *   ⇒ 漂移方向恰好是「判据静默变窄」（G138 的病根，第三次）。
+ *   ⇒ 收敛到**共享的那一份**（`tests/helpers/vue-sources.ts`），
+ *     本文件只保留**形状适配**（`it.each` 要的是元组）。
  */
-const allVueSources = (): Array<[string, string]> => {
-  const root = resolve(process.cwd(), 'src')
-  const found: Array<[string, string]> = []
-  const walk = (dir: string): void => {
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      const full = join(dir, entry.name)
-      if (entry.isDirectory()) {
-        walk(full)
-      } else if (entry.name.endsWith('.vue')) {
-        found.push([relative(process.cwd(), full), readFileSync(full, 'utf8')])
-      }
-    }
-  }
-  walk(root)
-  return found
-}
+const allVueSources = (): Array<[string, string]> =>
+  vueSourceFiles(process.cwd()).map((file) => [file.name, file.source] as [string, string])
 
 describe('G19 —— 组件里不出现血量算术', () => {
   it('src/ 下每个 .vue 的源码都不含裸的血量算术（扫真实目录，不是手写名单）', () => {

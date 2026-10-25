@@ -73,6 +73,7 @@ function target(over: Partial<TouchTarget> = {}): TouchTarget {
  * 而 CSS 轨道数是 **57**（800px 宽 + `repeat(auto-fit, minmax(0,1fr))` 的实测值）。
  */
 function fakePhase(phase: 'answer' | 'build'): PhaseMeasured {
+  const isBuild = phase === 'build'
   return {
     phase,
     level_view: { rect: null, scrollHeight: 1280, clientHeight: 1280 },
@@ -84,6 +85,8 @@ function fakePhase(phase: 'answer' | 'build'): PhaseMeasured {
     hud: { top: 16, bottom: 59, left: 16, right: 784, w: 768, h: 43 },
     update_notice: { top: 0, bottom: 16, left: 0, right: 800, w: 800, h: 16 },
     notice_overlap_px: 0,
+    // 🔥 **`[CR]` 2026-10-25**：按相位的「提示条是不是合成的」标志。
+    notice_forced: false,
     containing_block: {
       level_view_left: 0,
       level_view_padding_left: '16px',
@@ -114,18 +117,85 @@ function fakePhase(phase: 'answer' | 'build'): PhaseMeasured {
     hud_battle_gap_px: 48,
     overlay_battle_gap_px: 0,
     vertical_slack_px: 1280 - 1008,
+    // 📎 **清单 7 项**（与 `TOUCH_TARGET_SELECTORS` 逐项对齐）——
+    //   夹具原来只列了 4 项 ⇒ 「本相不存在」那条路径**从没被走到过**。
+    //
+    // 🔥 **`[CR]` 2026-10-25 再修一处**：夹具原来把 `.option-card` 与
+    //   `.question-card__tappable` 在**建造相**写成「本相不存在」，
+    //   而**真机实测里它们在建造相仍然在屏上**（答完不卸载，只是被标成
+    //   已选/已答）⇒ 真机建造相是 **6/7**，不是夹具的 4/7
+    //   ⇒ 夹具比真机**乐观**（少报了两个量得到的命中区）。
+    //   ⇒ 按真机实测改：建造相这两个**仍然 present**。
     touch_targets: [
-      target({ selector: '.start-button', w: 220, h: 56, sizes: { '220x56': 1 } }),
+      // 📎 `.start-button` 只在**开始页**存在 ⇒ 量测脚本会把它从开始页
+      //   **并进**每个相位（`mergeStartTargets`）⇒ 这里的值是**并进来之后**的。
+      target({
+        selector: '.start-button',
+        w: 220,
+        h: 56,
+        sizes: { '220x56': 1 },
+        note: '本相不存在（已在开始页量到）',
+      }),
       target({ selector: '.battle-cell', count: 45, rendered: 45, w: 60, h: 60, sizes: { '60x60': 45 } }),
-      target({ selector: '.option-card', count: 2, rendered: 2, w: 362, h: 362, sizes: { '362x362': 2 } }),
-      target({ selector: '.question-card__tappable', w: 700, h: 120, sizes: { '700x120': 1 } }),
+      target({
+        selector: '.option-card',
+        count: 2,
+        rendered: 2,
+        w: 362,
+        h: 362,
+        sizes: { '362x362': 2 },
+      }),
+      target({
+        selector: '.question-card__tappable',
+        count: 1,
+        rendered: 1,
+        w: 700,
+        h: 120,
+        sizes: { '700x120': 1 },
+      }),
+      target({
+        selector: '.hand-card',
+        present: isBuild,
+        count: isBuild ? 1 : 0,
+        rendered: isBuild ? 1 : 0,
+        w: isBuild ? 56 : null,
+        h: isBuild ? 56 : null,
+        sizes: isBuild ? { '56x56': 1 } : {},
+        note: isBuild ? null : '本相不存在',
+      }),
+      target({
+        selector: '.hand-deck__start',
+        present: isBuild,
+        count: isBuild ? 1 : 0,
+        rendered: isBuild ? 1 : 0,
+        w: isBuild ? 56 : null,
+        h: isBuild ? 56 : null,
+        sizes: isBuild ? { '56x56': 1 } : {},
+        note: isBuild ? null : '本相不存在',
+      }),
+      target({
+        selector: '.level-outcome__button',
+        present: false,
+        count: 0,
+        rendered: 0,
+        w: null,
+        h: null,
+        sizes: {},
+        note: '本相不存在',
+      }),
     ],
     // ── 建造相专属 ──────────────────────────────────────────────────────
-    hand_deck: null,
-    hand_card: null,
-    hand_cards: [],
-    hand_battle_intersect: null,
-    hand_cards_in_viewport: null,
+    // 🔥 **`[CR]` 2026-10-25**：夹具原来**两个相位的手牌几何都是空的**
+    //   （而 `diag.hand_deck_present` 却写着 `true` ⇒ 夹具自相矛盾）
+    //   ⇒ 端到端那条守卫（G292）只能证明「管线跑通」，**证明不了建造相真的量到了东西**。
+    //   ⇒ 现在建造相有**真实的手牌几何**。
+    hand_deck: isBuild ? { top: 1000, bottom: 1147, left: 16, right: 784, w: 768, h: 147 } : null,
+    hand_card: isBuild ? { top: 1000, bottom: 1147, left: 16, right: 784, w: 768, h: 147 } : null,
+    hand_cards: isBuild
+      ? [{ top: 1000, bottom: 1147, left: 16, right: 784, w: 768, h: 147 }]
+      : [],
+    hand_battle_intersect: isBuild ? false : null,
+    hand_cards_in_viewport: isBuild ? false : null,
   }
 }
 
@@ -155,6 +225,11 @@ function fakeMeasured(): Measured {
     },
     answer,
     build,
+    // 🔥 **`[CR]` 2026-10-25（B1.3）**：**开始页**量到的命中区清单
+    //   （`.start-button` 只在开始页存在 ⇒ 不单独量它就永远量不到）。
+    start_touch_targets: [
+      target({ selector: '.start-button', w: 220, h: 56, sizes: { '220x56': 1 } }),
+    ],
   }
 }
 
@@ -226,24 +301,64 @@ describe('G291 视口补偿的算术', () => {
   })
 })
 
+/**
+ * 写一个**假浏览器**：`--version` 报版本，其余时刻吐一份带 `<pre id="__measure">` 的 DOM。
+ *
+ * 🔥 **它必须回显「被请求的窗口尺寸」** —— 否则多视口矩阵那一层根本跑不起来：
+ *   `scripts/verify-portrait-layout.ts` 的 `measureAt` 会做**视口补偿**
+ *   （真浏览器的内视口比 `--window-size` 矮 87px 的工具栏），
+ *   补完必须**收敛**（收敛不上就抛错，不许把数字安在错误的设备头上）。
+ *   ⇒ 假浏览器把 `--window-size=W,H` 里的 W、H 读出来，
+ *     **扣掉 87px 外壳**当作内视口 ⇒ 与真浏览器同形 ⇒ 补偿一轮就收敛。
+ *
+ * ⚠️ **为什么不能一直吐同一个 800×1280**（旧夹具就是这样）：
+ *   那会让 L1 恰好蒙对，而 L2 每个视口都**收敛不了** ⇒ 端到端守卫**测不到**
+ *   补偿这条路径（测不到 = 等于没有这条守卫，R-51 第 1 类）。
+ */
+function writeFakeBrowser(dir: string): string {
+  const payloadPath = join(dir, 'payload.json')
+  const raw = JSON.stringify(fakeMeasured())
+  // 载荷里的视口换成占位符 ⇒ 假浏览器按被请求的窗口尺寸回填。
+  const patched = raw.replace(
+    '"viewport":{"w":800,"h":1280}',
+    '"viewport":{"w":__W__,"h":__IH__}',
+  )
+  if (patched === raw) {
+    throw new Error('夹具载荷的视口字段形状变了 ⇒ 占位符替换没生效（不许悄悄吐固定尺寸）')
+  }
+  writeFileSync(payloadPath, patched)
+
+  const fakeBin = join(dir, 'fake-browser.sh')
+  writeFileSync(
+    fakeBin,
+    [
+      '#!/bin/sh',
+      'if [ "$1" = "--version" ]; then echo "fake-browser 1.0"; exit 0; fi',
+      'W=800',
+      'H=1280',
+      'for arg in "$@"; do',
+      '  case "$arg" in',
+      '    --window-size=*) rest=${arg#--window-size=}; W=${rest%%,*}; H=${rest#*,} ;;',
+      '  esac',
+      'done',
+      '# 模拟浏览器外壳（工具栏）：内视口比窗口矮 87px',
+      'IH=$((H - 87))',
+      'printf \'<html><body><pre id="__measure">\'',
+      'sed -e "s/__W__/$W/g" -e "s/__IH__/$IH/g" "$(dirname "$0")/payload.json"',
+      'printf \'</pre></body></html>\'',
+      '',
+    ].join('\n'),
+    { mode: 0o755 },
+  )
+  return fakeBin
+}
+
 describe('G292 假浏览器端到端：管线跑通且列数不是轨道数', () => {
   it('G292.1 整条管线跑一遍，表里的「列数」是 2（不是 57），退出码 0', () => {
     const dir = mkdtempSync(join(tmpdir(), 'plantsgame-portrait-guard-'))
     try {
       // ① 假浏览器：`--version` 报版本，其余时刻吐一份带 <pre id="__measure"> 的 DOM
-      const fakeBin = join(dir, 'fake-browser.sh')
-      writeFileSync(
-        fakeBin,
-        [
-          '#!/bin/sh',
-          'if [ "$1" = "--version" ]; then echo "fake-browser 1.0"; exit 0; fi',
-          `cat <<'EOF'`,
-          `<html><body><pre id="__measure">${JSON.stringify(fakeMeasured())}</pre></body></html>`,
-          `EOF`,
-          '',
-        ].join('\n'),
-        { mode: 0o755 },
-      )
+      const fakeBin = writeFakeBrowser(dir)
 
       // ② 最小产物：脚本只要求 index.html 里有 `</body>`
       const dist = join(dir, 'dist')
@@ -264,6 +379,31 @@ describe('G292 假浏览器端到端：管线跑通且列数不是轨道数', ()
       // 矩阵表里的「列数」必须是 2；57 只允许出现在原始轨道字段里
       expect(out).toContain('"列数": 2')
       expect(out).not.toContain('"列数": 57')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('G292.4 建造相的**手牌几何**必须真的被量到（夹具原来两相都空 ⇒ 这条是空的）', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'plantsgame-portrait-guard-'))
+    try {
+      const fakeBin = writeFakeBrowser(dir)
+      const dist = join(dir, 'dist')
+      mkdirSync(dist)
+      writeFileSync(join(dist, 'index.html'), '<!doctype html><html><body></body></html>')
+
+      const out = execFileSync(
+        join(REPO_ROOT, 'node_modules', '.bin', 'tsx'),
+        [join(REPO_ROOT, 'scripts', 'verify-portrait-layout.ts'), dist],
+        { encoding: 'utf8', env: { ...process.env, CHROMIUM_BIN: fakeBin } },
+      )
+      // 🔥 建造相的列必须**有值** ⇒ 证明「建造相真的量到了东西」，
+      //   而不只是「管线跑完了」（夹具原来两相的手牌几何都是空的）。
+      expect(out).toContain('"手牌区": "768×147"')
+      expect(out).toContain('"手牌卡在视口内": false')
+      // 📎 命中区覆盖率：答题相 4/7、建造相 6/7（`.start-button` 从开始页并进来）
+      expect(out).toContain('"命中区覆盖": "4/7"')
+      expect(out).toContain('"命中区覆盖": "6/7"')
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
@@ -346,7 +486,8 @@ describe('G318 —— 三条新判据的纯函数', () => {
       expect(j.status).toBe('pass')
       // 最小的那一个 = `.start-button` 的 56px（min(220, 56)）
       expect(j.value).toBe(56)
-      expect(j.detail?.['coverage']).toBe('4/4')
+      // 📎 清单 7 项里答题相量到 4 项（其余三项「本相不存在」）
+      expect(j.detail?.['coverage']).toBe('4/7')
     })
 
     it('G318.9 有一个元素只有 30×30 ⇒ 不合格，且**要点名是哪一个**', () => {

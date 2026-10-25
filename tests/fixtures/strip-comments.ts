@@ -106,6 +106,13 @@ export function stripComments(source: string): string {
  *   把 `/*` 当成块注释起点 ⇒ 那样会把注释**后面**的真代码一起吃掉。
  *
  * 📎 同样保留换行 ⇒ 行号与逐行报告在剥之前后**保持一致**。
+ *
+ * 🔥 **`[CR]` 2026-10-25 补两条（Story 3.5 的三层对抗评审）**：
+ *   ① **`<script>` / `<style>` 块原样跳过** —— 块里的 `<!--`（例如字符串
+ *      字面量 `'<!--'`）会让原实现一路 blank 到下一个 `-->` ⇒ **整段真代码被吃掉**
+ *      ⇒ 依赖源码的判据（G38）**静默漏扫**却照样绿。
+ *   ② **没闭合的注释 ⇒ 抛错**（原实现 blank 到文件末尾）—— 那样扫描面会**整个归零**
+ *      ⇒ 「扫不到违规」被读成「没有违规」⇒ **假绿**（R-51 第 1 类）。
  */
 export function stripHtmlComments(source: string): string {
   const out = source.split('')
@@ -115,17 +122,53 @@ export function stripHtmlComments(source: string): string {
     }
   }
 
+  // 🔥 **`[CR]` 2026-10-25 补：`<script>` / `<style>` 块**不是 HTML** ⇒ 一律跳过。
+  //   为什么：块里出现 `<!--`（例如字符串字面量里的 `'<!--'`）时，
+  //   原实现会从那里一路 blank 到下一个 `-->` ⇒ **把整段真代码吃掉** ⇒
+  //   依赖「扫到的源码」的判据（G38）会**静默漏扫**却照样绿。
+  //   ⇒ 块内的内容**原样保留**，交给 `stripComments` 剥 JS 注释。
+  const skipRanges: Array<[number, number]> = []
+  const blockPattern = /<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi
+  let block: RegExpExecArray | null
+  while ((block = blockPattern.exec(source)) !== null) {
+    skipRanges.push([block.index, block.index + block[0].length])
+  }
+  const skippedBlockAt = (at: number): [number, number] | null =>
+    skipRanges.find(([from, to]) => at >= from && at < to) ?? null
+
   let i = 0
   while (i < source.length) {
+    const skip = skippedBlockAt(i)
+    if (skip !== null) {
+      i = skip[1]
+      continue
+    }
     // ⚠️ `<!-->` 是合法的**空注释** ⇒ 它的结束符不是 `-->`。
     if (source.startsWith('<!-->', i)) {
       blank(i, i + 5)
       i += 5
       continue
     }
+    // ⚠️ `<!--->`（HTML 规范里的另一种空注释）同上。
+    if (source.startsWith('<!--->', i)) {
+      blank(i, i + 6)
+      i += 6
+      continue
+    }
     if (source.startsWith('<!--', i)) {
       const close = source.indexOf('-->', i + 4)
-      const end = close < 0 ? source.length : close + 3
+      // 🔥 **`[CR]` 2026-10-25 补：没闭合 ⇒ 抛错，不许 blank 到文件末尾。**
+      //   原实现 `end = close < 0 ? source.length : close + 3` ⇒ 一个漏写的
+      //   `-->` 就会把**余下整个文件**换成空白 ⇒ 判据扫到 0 个字符 ⇒
+      //   「没有违规」⇒ **守卫照绿而扫描面已经死了**（R-51 第 1 类）。
+      //   ⇒ 响亮失败。
+      if (close < 0) {
+        throw new Error(
+          `未闭合的 HTML 注释（位置 ${i}）：${JSON.stringify(source.slice(i, i + 40))}\n` +
+            '  ⇒ 判据不许在扫描面塌掉时静默当绿；请补上 `-->`。',
+        )
+      }
+      const end = close + 3
       blank(i, end)
       i = end
       continue

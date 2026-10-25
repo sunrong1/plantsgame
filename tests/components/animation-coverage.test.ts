@@ -26,6 +26,7 @@ import { join, relative } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 import { allVueSources } from '../helpers/animation-rule'
+import { itBlocksOf, scanSurfaceProblems } from '../helpers/it-blocks'
 
 const root = process.cwd()
 
@@ -86,7 +87,61 @@ describe('G315 —— 动效判据的覆盖面不退化', () => {
   it('G315.3 扫描面的大小与实测一致（2026-10-25 实测 19 个 `.vue`）', () => {
     // 📎 **下限**而不是等值 ⇒ 将来新增 `.vue` 不会让这条守卫假红；
     //   真正的「等值」由 G315.1 的集合比对负责。
-    expect(allVueSources(root).length).toBeGreaterThanOrEqual(15)
+    //
+    // 🔥 **`[CR]` 2026-10-25 收紧：15 → 19**（实测值优先于文档值）。
+    //   原值 15 比实测的 19 **低 4** ⇒ 扫描面从 19 **悄悄缩到 15** 时这条照样绿
+    //   ⇒ 而「缩」的方向恰好是「判据扫到的文件变少」（G138 的病根）。
+    //   ⇒ 下限钉在**实测值**上 ⇒ 任何缩水的改动都会先在这里红。
+    //   ⚠️ 将来**删** `.vue` 会让这条红 —— 那是**故意的**：删除是一次
+    //   需要被看见的动作（改这个数字的人得知道扫描面变了）。
+    expect(allVueSources(root).length).toBeGreaterThanOrEqual(19)
+  })
+
+  it('G315.4 **G38 的调用点**必须用**共享扫描面**（钉住那个 `it` 块，不许它悄悄换回小名单）', () => {
+    // 🔥 **`[CR]` 2026-10-25 补**：G315.1 证明的是「**共享扫描面**覆盖全仓」，
+    //   但**没有任何东西钉住 G38 真的用了它** ⇒ 有人把 G38 那行改回
+    //   `animationViolations(COMPONENT_SOURCES)`（4 个文件的老名单），
+    //   **G315 全绿、G38 的覆盖面却缩回 4 个文件** ⇒ 判据静默变窄。
+    //   ⇒ 这条直接去看**调用点源码**。
+    //
+    // 📎 **为什么用 AST 而不是正则**（R-52 的同源理由）：
+    //   正则分不清注释与代码、也分不清「函数名出现在字符串里」；
+    //   本仓库的 `tests/helpers/describe-titles.ts` 已经用 TS 的解析器解决了同一类问题。
+    const handBuildPath = join(root, 'tests', 'components', 'hand-build.test.ts')
+    const source = readFileSync(handBuildPath, 'utf8')
+    const itBlocks = itBlocksOf(handBuildPath, source)
+
+    const problems = scanSurfaceProblems(itBlocks, 'G38')
+    expect(problems, problems.join('\n')).toEqual([])
+  })
+
+  it('G315.5 反向自测：把 G38 那个 it 块换成**老名单**（4 个文件）必须被报出来（**调用判据本体**）', () => {
+    // 📎 **负向夹具**（R-50 的默认手段）：造一份「G38 用老名单」的探针源码，
+    //   喂给**同一个判据函数** ⇒ 必须报出问题。
+    //   ⚠️ 这条**不依赖**真仓库里的 G38 长什么样 ⇒ 判据被改坏时它先红。
+    const probe = [
+      "describe('G38 —— 动效写 CSS', () => {",
+      "  it('真实源码通过 G38', () => {",
+      '    expect(animationViolations(COMPONENT_SOURCES)).toEqual([])',
+      '  })',
+      '})',
+    ].join('\n')
+    const problems = scanSurfaceProblems(itBlocksOf('probe.ts', probe), 'G38')
+    expect(problems.length).toBeGreaterThan(0)
+    expect(problems.join('\n')).toContain('COMPONENT_SOURCES')
+  })
+
+  it('G315.6 反向自测：判据被改坏（**扫面函数名被换掉**）时上面那条必须红', () => {
+    // 📎 造一份「用了**另一个**扫面函数」的探针 ⇒ 判据必须认出来。
+    const probe = [
+      "describe('G38 —— 动效写 CSS', () => {",
+      "  it('真实源码通过 G38', () => {",
+      '    expect(animationViolations(someOtherList())).toEqual([])',
+      '  })',
+      '})',
+    ].join('\n')
+    const problems = scanSurfaceProblems(itBlocksOf('probe.ts', probe), 'G38')
+    expect(problems.length).toBeGreaterThan(0)
   })
 })
 
