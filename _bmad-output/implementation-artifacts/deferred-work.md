@@ -40,7 +40,6 @@
 | DF-030 | 待触发 | 未指派 | 改动 G21 / G23 / G25 / G29 任一判据基线时，把 `tests/helpers/contrast.ts` 的 `stripComments` 换成 `tests/fixtures/strip-comments.ts` 里已存在的状态机版（它连行尾注释一起剥） | `tests/helpers/contrast.ts` 的 `stripComments` 仍只剥行首行注释，四条源码守卫仍认不出行尾注释 | [`df-030`](./deferred-details.md#df-030) |
 | DF-031 | 待触发 | 未指派 | 若将来 `src/components/` 里真的出现局部变量藏血量算术的写法，就该上值流分析（可从「单一导出 + 交叉断言」模式扩展） | G19 是词法守卫，`src/components/` 里用局部变量藏血量算术抓不到，堵它要值流分析 | [`df-031`](./deferred-details.md#df-031) |
 | DF-032 | 待触发 | Story 1.19 | 1.19 真机复核时若再出现战场撑破容器，需重新想一种能在 jsdom 或纯函数层表达这条约束的方式（或接受它只能靠真机核对） | `BattleField.vue`「列轨最小宽度=行高」这条约束 jsdom 无布局引擎，无任何测试能守 | [`df-032`](./deferred-details.md#df-032) |
-| DF-033 | 待排期 | 未指派 | 任何 `package.json` script 或 `scripts/` 下门禁的增删，都应回头 grep `_bmad-output/` 与 `docs/` 并逐处登记 | `check-doc-consistency.sh` 被换掉后 6 处旧文档仍列它为收尾命令，无工具能发现 | [`df-033`](./deferred-details.md#df-033) |
 | DF-034 | 待触发 | 未指派 | 若 typecheck 再出现整批、且错误内容与源码对不上的报错，先跑 `npx vue-tsc -b --force` 再下结论 | `npm run typecheck` 曾出 34 条指向 `node_modules/.tmp` 的假红，机制未复现 | [`df-034`](./deferred-details.md#df-034) |
 | DF-035 | 待触发 | Story 1.16 / 1.17 | 若 1.15 存档格式要求「本存档累计获得多少阳光」，或 1.17 的 DebugPanel 要显示它 ⇒ 走 `[CC]` 加字段，不要在 1.13 补 | `store.ts` 无 `sunEarned` 累计阳光字段，FR66「累计所得只增不减」只在 `masteredWordIds` 落地 | [`df-035`](./deferred-details.md#df-035) |
 | DF-037 | 待触发 | 未指派 | 若单元 2 的 JSON 换了 id 前缀形态，必须同步改 `progressDisplay` 并新增一条守卫，否则进度条会恒显示 0 而不报错 | `core/hud.ts` 的 `progressDisplay` 用 `startsWith('u'+unitNumber+'-')`，eslint 的 `src/core/**` 块不禁 `content`，无守卫 | [`df-037`](./deferred-details.md#df-037) |

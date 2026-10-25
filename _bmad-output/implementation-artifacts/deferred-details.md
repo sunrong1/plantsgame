@@ -783,48 +783,6 @@ jsdom 没有布局引擎 ⇒ 测不出来。本轮给可源码化的那一半补
 
 > 来源：`## Deferred from: story-1-10-战场渲染与网格 `[CR]` (2026-10-16)` ｜ 旧编号 `§2（1.10 CR）` ｜ 详见 `archive/deferred/2026-10-16--cr-story-1-10.md` 的「分诊结论」
 
-## DF-033
-
-**状态**：待排期 · **归属**：未指派 · **恢复条件**：任何 `package.json` script 或 `scripts/` 下门禁的增删，都应回头 grep `_bmad-output/` 与 `docs/` 并逐处登记
-
-**一句话**：`check-doc-consistency.sh` 被换掉后 6 处旧文档仍列它为收尾命令，无工具能发现
-
-### 原始论证
-
-### 4. `check-doc-consistency.sh` 被删时无人登记 —— 已在本 story 标注，根因未治
-
-`d353e62` 用 `scripts/check-execution-drift.py` 替换了
-`scripts/check-doc-consistency.sh`，但**没有任何 story 登记过这次删除**，
-而至少 6 处文档（含 Story 1.10 的 AC-1 / AC-16 与两份已归档的 1.8 / 1.9）
-仍把它列为收尾命令。本 story 已按「AC 正文不改、只标注」处理，
-但**根因是「新引入一条收尾命令时没有回头扫描既有文档」**。
-
-- 📎 恢复条件：任何 `package.json` script 或 `scripts/` 下门禁的增删，
-  都应回头 grep `_bmad-output/` 与 `docs/` 并逐处登记。
-- **注意**：`scripts/check-execution-drift.py` 自己是 pre-push 钩子，
-  **它只查 BMAD 产物与内容数据，不查「文档里写的命令还在不在」** ——
-  也就是说这个缺口**当前没有任何工具能自动发现**。
-
-### 📎 触发记录（2026-10-26，Story 3.5 `[CR]`）
-
-**触发原因**：本轮把 `package.json` 的 `typecheck` 脚本由 `vue-tsc -b` 改成
-`vue-tsc -b --force` ⇒ 命中了上面那条恢复条件 ⇒ 按它的口径回头 grep 并逐处登记。
-
-**grep 命中与处置**（命令：`grep -rn "vue-tsc -b\|run typecheck" docs/ _bmad-output/`）：
-
-| 落点 | 处置 |
-|---|---|
-| `docs/rules/testing.md` 的 R-54 | **改**：补「脚本已改成 `--force` ⇒ 这条规则不再需要手动补 `--force`」 |
-| `_bmad-output/implementation-artifacts/3-5-平板竖屏布局细节打磨.md`（Dev Notes H6 / 收尾门槛清单 / Task 8 H6 / `[DS]` 门槛块） | **改**：四处的「脚本本身是 `vue-tsc -b`（增量）」全部标注为**当时**的口径 |
-| `_bmad-output/implementation-artifacts/1-19-单元-1-首次试玩验证-epic-1-的生死线.md`（收尾门槛实测输出小节） | **改**：小节开头加一条口径更正（历史粘贴按原样保留） |
-| `_bmad-output/implementation-artifacts/deferred-ledger-restructure.md`、`epic-1-integration-review.md`、`spec-doc-governance.md` | **不用改**：本来就写的是 `--force` 或与本次改动无关 |
-| `_bmad-output/archive/*` 里列 `check-doc-consistency.sh` 的 6 处 | **不改**：归档件是历史记录（R-40），改它等于伪造历史 |
-
-⚠️ **本条仍然开放** —— 触发条件是**每次**改门禁脚本都会再成立一次；
-「无工具能自动发现」这个根因**没有**因为这一轮登记而消失。
-
-> 来源：`## Deferred from: story-1-10-战场渲染与网格 `[CR]` (2026-10-16)` ｜ 旧编号 `§4（1.10 CR）` ｜ 详见 `archive/deferred/2026-10-16--cr-story-1-10.md` 的「分诊结论」
-
 ## DF-034
 
 **状态**：待触发 · **归属**：未指派 · **恢复条件**：若 typecheck 再出现整批、且错误内容与源码对不上的报错，先跑 `npx vue-tsc -b --force` 再下结论

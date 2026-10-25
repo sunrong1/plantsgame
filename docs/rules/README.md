@@ -12,7 +12,7 @@
 |---|---|
 | 写代码前确认架构边界 | [architecture.md](architecture.md) R-01..R-15 |
 | 碰任何数值 | [range-and-balance.md](range-and-balance.md) R-20..R-24 ⚠️ 改之前先问人 |
-| 记录 / 引用 / 作废一条约定 | [process.md](process.md) R-30..R-43 |
+| 记录 / 引用 / 作废一条约定 | [process.md](process.md) R-30..R-44 |
 | 写测试或守卫 | [testing.md](testing.md) R-50..R-61 |
 | 画词图或写 SVG | [content.md](content.md) R-70..R-78 |
 
@@ -70,6 +70,7 @@
 | R-41 | 不做「无人守」的边界 | ❌ |
 | R-42 | `sprint-status.yaml` 只写状态，复盘一律进 story 文档 | ✅ |
 | R-43 | 延后账本只留开放条目（活账本 / 详情 / 归档三层） | ✅ |
+| R-44 | 文档里写的**可执行命令**必须真的能跑 | ✅（**G329** 扫活文档里的悬空命令引用） |
 
 ### 测试与守卫 → [testing.md](testing.md)
 

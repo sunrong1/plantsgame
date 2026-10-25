@@ -89,6 +89,7 @@ export const COMPLIANT_FILES: readonly string[] = [
   'tests/services/audio.test.ts',
   'tests/services/pronunciation.test.ts',
   'tests/scaffold/audio-unlock-guard.test.ts',
+  'tests/scaffold/doc-command-existence.test.ts',
   'tests/scaffold/r55-failure-message.test.ts',
   'tests/views/start-view.test.ts',
 ]

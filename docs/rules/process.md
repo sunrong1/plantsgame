@@ -318,3 +318,21 @@ DF-ID 层内唯一且「已分配编号」连续（**跨活账本与归档一起
 它守的正是上面那条「**第四处**」。
 
 **首现** 2026-10-22 延后账本治理（本次）
+
+### R-44 文档里写的**可执行命令**必须真的能跑
+
+**规则** 活文档（`docs/`、`_bmad-output/implementation-artifacts/`、`_bmad-output/planning-artifacts/`、`CLAUDE.md`）里凡是**命令形态**的引用，都必须指向**此刻真实存在**的东西：
+`npm run <name>` 的 `<name>` 必须是 `package.json` 的 `scripts` 里的一条；
+`<runner> scripts/<file>`（runner ∈ `bash` / `sh` / `python3` / `python` / `node` / `tsx` / `npx tsx`）的 `scripts/<file>` 必须在磁盘上存在。
+**裸路径不算命令**（历史引述里大量存在，逐条改它们等于伪造历史）；**归档件按 R-40 不扫**。
+⇒ 于是改门禁脚本（`package.json` 的 `scripts` 或 `scripts/` 下的文件）时，
+**不再依赖人工回头 grep** —— 活文档里的悬空引用会当场变红。
+
+**依据** `d353e62` 用 `scripts/check-execution-drift.py` 换掉了 `scripts/check-doc-consistency.sh`，
+**没有任何 story 登记过这次删除**，而至少 6 处文档仍把它列为收尾命令 ⇒ 照着文档跑的人必然 ENOENT。
+DF-033 把根因记成「**新引入一条收尾命令时没有回头扫描既有文档**」，
+并逐字指出「**无工具能自动发现**」—— 这一条把「人工回头」换成「每次都跑」。
+
+**守卫** `tests/scaffold/doc-command-existence.test.ts` —— 守卫 **G329**（活文档里没有悬空的命令引用）。
+
+**首现** 2026-10-26 夜（DF-033 结清时补入）
