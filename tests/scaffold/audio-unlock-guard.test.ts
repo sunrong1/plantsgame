@@ -93,7 +93,7 @@ describe('音频解锁链路禁 await（AC-10）', () => {
 
     expect(rule, `${file} 上没有 no-restricted-syntax 规则`).toBeDefined()
     // 'warn' 不会让 `npm run lint` 失败（没有 --max-warnings），等于没守
-    expect(severityOf(rule)).toBe('error')
+    expect(severityOf(rule), '严重级别必须是 error —— warn 不会让 `npm run lint` 失败，等于没守').toBe('error')
   })
 
   it('禁的正是 AwaitExpression（不是别的表达式，也不是空禁列）', async () => {
@@ -110,7 +110,9 @@ describe('音频解锁链路禁 await（AC-10）', () => {
   it('守卫刻意只覆盖这三个文件 —— 扩到 src/services/ 会挡住 Story 1.14 的 save.ts', () => {
     const guarded = guardedPatterns()
 
-    expect(guarded).toEqual(expect.arrayContaining(UNLOCK_CHAIN))
+    expect(guarded, '守卫名单必须含这三个文件 —— 少一个就有文件不受禁 await 保护').toEqual(
+      expect.arrayContaining(UNLOCK_CHAIN),
+    )
 
     // ⚠️ 用 glob 语义判定「有没有哪个模式会覆盖到 save.ts」，
     // 而不是去黑名单几个字面量 —— `'src/services/*'`、`'src/services/**'`、
@@ -139,7 +141,10 @@ describe('音频解锁链路禁 await（AC-10）', () => {
     // 覆盖名单是有意为之，不是遗漏。见 eslint.config.js 里那条注释。
     const guarded = guardedPatterns()
 
-    expect(guarded.some((glob) => String(glob).includes('views/'))).toBe(false)
+    expect(
+      guarded.some((glob) => String(glob).includes('views/')),
+      '守卫不得覆盖 views/ —— FR2 管的是「三步之间」，覆盖 views/ 会把无关代码一起禁掉',
+    ).toBe(false)
   })
 
   /**
@@ -220,27 +225,27 @@ describe('音频解锁链路禁 await（AC-10）', () => {
  */
 describe('matchesGlob 自测（P16）', () => {
   it('精确路径按相等匹配', () => {
-    expect(matchesGlob('src/services/audio.ts', 'src/services/audio.ts')).toBe(true)
-    expect(matchesGlob('src/services/audio.ts', 'src/services/save.ts')).toBe(false)
+    expect(matchesGlob('src/services/audio.ts', 'src/services/audio.ts'), '同一条路径必须命中 —— 不命中则守卫对这条文件形同虚设').toBe(true)
+    expect(matchesGlob('src/services/audio.ts', 'src/services/save.ts'), '不同路径必须不命中 —— 命中则 save.ts 会被误伤（1.14 的老账）').toBe(false)
   })
 
   it('* 不跨 /，** 跨 /', () => {
-    expect(matchesGlob('src/services/*', 'src/services/save.ts')).toBe(true)
-    expect(matchesGlob('src/services/*', 'src/services/deep/save.ts')).toBe(false)
-    expect(matchesGlob('src/services/**', 'src/services/deep/save.ts')).toBe(true)
+    expect(matchesGlob('src/services/*', 'src/services/save.ts'), '单层通配必须命中同目录文件').toBe(true)
+    expect(matchesGlob('src/services/*', 'src/services/deep/save.ts'), '单层通配不得跨目录 —— 跨了就误伤 save.ts').toBe(false)
+    expect(matchesGlob('src/services/**', 'src/services/deep/save.ts'), '双星通配必须跨目录').toBe(true)
   })
 
   it('**/ 可匹配零层目录', () => {
-    expect(matchesGlob('src/services/**/*.ts', 'src/services/save.ts')).toBe(true)
-    expect(matchesGlob('src/services/**/*.ts', 'src/services/deep/save.ts')).toBe(true)
-    expect(matchesGlob('src/services/**/*.ts', 'src/services/deep/deeper/save.ts')).toBe(true)
-    expect(matchesGlob('src/services/**/*.ts', 'src/app/save.ts')).toBe(false)
+    expect(matchesGlob('src/services/**/*.ts', 'src/services/save.ts'), '**/ 必须匹配零层目录 —— 少一层就误伤 save.ts').toBe(true)
+    expect(matchesGlob('src/services/**/*.ts', 'src/services/deep/save.ts'), '**/ 必须匹配一层目录').toBe(true)
+    expect(matchesGlob('src/services/**/*.ts', 'src/services/deep/deeper/save.ts'), '**/ 必须匹配多层目录').toBe(true)
+    expect(matchesGlob('src/services/**/*.ts', 'src/app/save.ts'), '**/ 不得跨出 services/ —— 跨了就误伤 app 层').toBe(false)
   })
 
   it('{a,b} 选择', () => {
-    expect(matchesGlob('src/services/*.{ts,vue}', 'src/services/save.ts')).toBe(true)
-    expect(matchesGlob('src/services/*.{ts,vue}', 'src/services/Panel.vue')).toBe(true)
-    expect(matchesGlob('src/services/*.{ts,vue}', 'src/services/notes.md')).toBe(false)
+    expect(matchesGlob('src/services/*.{ts,vue}', 'src/services/save.ts'), '花括号选择必须命中 .ts').toBe(true)
+    expect(matchesGlob('src/services/*.{ts,vue}', 'src/services/Panel.vue'), '花括号选择必须命中 .vue').toBe(true)
+    expect(matchesGlob('src/services/*.{ts,vue}', 'src/services/notes.md'), '花括号选择不得命中 .md —— 命中就误伤非代码文件').toBe(false)
   })
 
   it('点号按字面处理 —— `.` 是字面点，不是正则的任意字符', () => {
@@ -251,15 +256,15 @@ describe('matchesGlob 自测（P16）', () => {
     // 所以这里必须用**带通配符**的模式，逼它走转义路径：
     // 若 `.` 没被转义，`src/*/c.ts` 会把 `aXb` 也当成命中。
     expect(matchesGlob('src/*/c.ts', 'src/a.b/cXts'), '`.` 被当成了正则的任意字符').toBe(false)
-    expect(matchesGlob('src/*/c.ts', 'src/a.b/c.ts')).toBe(true)
+    expect(matchesGlob('src/*/c.ts', 'src/a.b/c.ts'), '转义后的点号必须仍匹配字面点 —— 不匹配则通配模式整体失灵').toBe(true)
 
     // 无通配符时的短路分支同样要有覆盖（精确路径按相等匹配）
-    expect(matchesGlob('src/a.b/c.ts', 'src/aXb/c.ts')).toBe(false)
-    expect(matchesGlob('src/a.b/c.ts', 'src/a.b/c.ts')).toBe(true)
+    expect(matchesGlob('src/a.b/c.ts', 'src/aXb/c.ts'), '短路分支必须按字面相等 —— 放行 `aXb` 就等于把点号当通配').toBe(false)
+    expect(matchesGlob('src/a.b/c.ts', 'src/a.b/c.ts'), '短路分支必须命中完全相同的路径').toBe(true)
   })
 
   it('真实配置里的三个精确路径互相不覆盖', () => {
-    expect(matchesGlob('src/services/audio.ts', 'src/services/pronunciation.ts')).toBe(false)
-    expect(matchesGlob('src/app/audio-unlock.ts', 'src/app/effects-runner.ts')).toBe(false)
+    expect(matchesGlob('src/services/audio.ts', 'src/services/pronunciation.ts'), 'audio.ts 的守卫不得覆盖 pronunciation.ts —— 否则 TTS 链路被误禁').toBe(false)
+    expect(matchesGlob('src/app/audio-unlock.ts', 'src/app/effects-runner.ts'), 'audio-unlock.ts 的守卫不得覆盖 effects-runner.ts —— 否则音效链被误禁').toBe(false)
   })
 })

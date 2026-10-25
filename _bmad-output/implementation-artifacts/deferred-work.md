@@ -16,7 +16,6 @@
 | DF-004 | 待触发 | 未指派 | 与上一条同一个 —— 拿到真机音色列表 | `pronunciation.ts` 的 `VOICE_PRIORITY` 英式优先修法仍冻着 | [`df-004`](./deferred-details.md#df-004) |
 | DF-005 | 待触发 | 未指派 | 与 AC-8 真机验收同批做（拿到平板 + Chrome 后一起） | `playPronunciation` ≤500ms 起声零验证，需与 AC-8 真机验收同批真机做 | [`df-005`](./deferred-details.md#df-005) |
 | DF-006 | 待触发 | 未指派 | 接手时对 `[...]` 加转义并补自测；或引入 minimatch 做交叉校验 | `audio-unlock-guard.test.ts` 的 `matchesGlob` 仍不认 `[...]`，save.ts 断言仍会假绿 | [`df-006`](./deferred-details.md#df-006) |
-| DF-007 | 待排期 | 未指派 | 下次改这三个测试文件时，把 `expect` 补上中文失败消息（R-55 的约定） | 三个测试文件的 `expect` 仍欠中文失败消息（实测 89 / 13 / 20 处） | [`df-007`](./deferred-details.md#df-007) |
 | DF-008 | 待排期 | 未指派 | 下一次给 AC-9 的「不越界」禁令补守卫时（在那之前只能靠交付时人工复核） | AC-9 七条「不越界」禁令仍零守卫，事后归因只能靠 git 历史 | [`df-008`](./deferred-details.md#df-008) |
 | DF-009 | 待触发 | 未指派 | 缺的是「真实浏览器上 `ended` 之后仍会派发 `error`」这一前提的实测 | `isEnglish` 仍只认 `/^en[-_]/`，`playRecording` 的 `ended` 不置 settled | [`df-009`](./deferred-details.md#df-009) |
 | DF-010 | 待触发 | Story 3.4（裁决 A 落地时） | 真的调了音色或语速、且 `--force` 仍无法免除手工 `rm` 时 ⇒ 裁决要不要让 `--force` 越指纹闸 | `generate-voice.ts` 已有 `--force`/`--help`，但 `--force` 不越闸 ⇒ 改参数后仍须手工删整个产物目录 | [`df-010`](./deferred-details.md#df-010) |
@@ -195,6 +194,7 @@
 | DF-216 | 待裁决 | 未指派 | 人裁决竖屏建造相位的取舍（缩战场 / 缩小题卡 / 允许滚动）后写进新 story 实施；实施后重量 16 个矩阵视口 × 两个相位，确认竖屏建造相位的「手牌卡在视口内」为是 | 竖屏 768×1024 的建造相位，`HandDeck.vue` 的手牌区整体落在折叠线以下 142px（Story 3.5 `[DS]` 实测，`[CR]` 逐格复核）⇒ 孩子得先滑动页面才够得到卡 | [`df-216`](./deferred-details.md#df-216) |
 | DF-217 | 待触发 | 未指派 | 下次改布局 CSS（`responsive.css` / `LevelView.vue` 的 `.hud` / `BattleField.vue`）时，手工重跑 `scripts/verify-portrait-layout.ts`（16 视口 × 2 相位）并把 32 行逐格对进 story 文档的表；或把那套对账做成一条能跑真浏览器的守卫 | 文档里那张 32 行实测表**没有任何自动对账**（量测要真浏览器，CI 跑不了）⇒ 改布局后它会悄悄过期 | [`df-217`](./deferred-details.md#df-217) |
 | DF-218 | 待触发 | 未指派 | 要跑 `scripts/verify-portrait-layout.ts` 时，把 `scripts/` 与 `dist/` 拷到 `/tmp`（**不改仓库权限**），用**非 root** 用户执行并**保持 Chromium sandbox 开启**（不要加 `--no-sandbox`）；浏览器**用 snap 版 Chromium**（`/snap/chromium/current/usr/lib/chromium-browser/chrome`），**不要**用 Playwright 的 `headless_shell`（本机报「No usable sandbox!」） | 那条真浏览器量测在 root 机器上跑不了（Chromium 要 `--no-sandbox`，权限判定拦下） | [`df-218`](./deferred-details.md#df-218) |
+| DF-219 | 待排期 | 未指派 | 下次改 `tests/` 下某个文件时，把该文件里缺中文失败消息的 `expect` 补上（R-55），并把该文件名加进 `tests/scaffold/r55-failure-message.test.ts` 的 `COMPLIANT_FILES` 名单 | `tests/` 下另有 63 个文件的 1131 条 `expect` 仍无中文失败消息（实测 2026-10-26 夜），G327 的名单制只覆盖 28 个文件 | [`df-219`](./deferred-details.md#df-219) |
 
 ## 新增一条
 

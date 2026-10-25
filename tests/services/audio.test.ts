@@ -49,7 +49,7 @@ describe('unlockAudioSession（AC-1 ①）', () => {
 
     unlockAudioSession()
 
-    expect(contexts).toHaveLength(1)
+    expect(contexts, '首次解锁必须恰好创建一个 AudioContext —— 少了没有音频通道，多了会耗尽设备音频资源').toHaveLength(1)
   })
 
   it('重复调用复用同一个 AudioContext，不新建（AC-8 反复点 5 次）', async () => {
@@ -61,7 +61,7 @@ describe('unlockAudioSession（AC-1 ①）', () => {
 
     expect(contexts, '每次点击都新建 context 会耗尽设备音频资源').toHaveLength(1)
     // resume 可以重复调用 —— 它是幂等的
-    expect(contexts[0]!.resumeCalls).toBe(3)
+    expect(contexts[0]!.resumeCalls, '三次点击应各调一次 resume() —— 少调会让自动播放策略下的音频仍停在 suspended').toBe(3)
   })
 
   it('resume() 的 Promise 被拒绝时只记日志，不向调用方抛', async () => {
@@ -71,22 +71,22 @@ describe('unlockAudioSession（AC-1 ①）', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const { unlockAudioSession } = await import('../../src/services/audio')
 
-    expect(() => unlockAudioSession()).not.toThrow()
+    expect(() => unlockAudioSession(), 'resume() 被拒绝不得冒到调用方 —— 异常会让「开始游戏」整条链路中断').not.toThrow()
 
     // 拒绝是异步落地的，让微任务队列跑一拍
     await Promise.resolve()
     await Promise.resolve()
 
-    expect(warn.mock.calls.some((call) => String(call[0]).startsWith('[audio]'))).toBe(true)
+    expect(warn.mock.calls.some((call) => String(call[0]).startsWith('[audio]')), 'resume 失败必须记一条 [audio] 前缀的警告 —— 否则真机上「没声音」没有任何线索').toBe(true)
     warn.mockRestore()
   })
 
   it('未解锁时 getAudioContext() 返回 null，解锁后返回该实例', async () => {
     const { getAudioContext, unlockAudioSession } = await import('../../src/services/audio')
 
-    expect(getAudioContext()).toBeNull()
+    expect(getAudioContext(), '未解锁时必须返回 null —— 提前返回会让音频在用户手势之前就启动').toBeNull()
     unlockAudioSession()
-    expect(getAudioContext()).toBe(contexts[0])
+    expect(getAudioContext(), '解锁后必须返回同一个实例 —— 另建实例会让已解码的缓冲区全部作废').toBe(contexts[0])
   })
 })
 
@@ -113,7 +113,7 @@ describe('prewarmBgm（AC-1 ③ / 决策 1 / AC-D6）', () => {
     }
     ctx.decodeAudioData = () => Promise.resolve({ fake: 'buffer' })
 
-    expect(() => audio.prewarmBgm()).not.toThrow()
+    expect(() => audio.prewarmBgm(), 'BGM 预热不得抛错 —— 抛错会打断解锁三步所在的同步块').not.toThrow()
     // ⚠️ fetch 必须**同步发起**（AC-D6）—— 在同一个手势同步块内，不是 await 之后。
     expect(fetchMock.mock.calls, 'prewarmBgm 必须同步发起 BGM 的 fetch').toHaveLength(1)
     expect(String(fetchMock.mock.calls[0]![0]), 'BGM URL 必须接 BASE_URL（AC-D3 / G65）').toContain(
@@ -169,7 +169,7 @@ describe('unlockAudioSequence（AC-1 三步同步块）', () => {
     unlockAudioSequence()
 
     expect(spoken, '重复点「开始游戏」会发出多条预热 utterance').toHaveLength(1)
-    expect(contexts).toHaveLength(1)
+    expect(contexts, '三次「开始游戏」只应复用一个 AudioContext —— 每次新建会耗尽设备音频资源').toHaveLength(1)
   })
 
   it('TTS 完全不可用时，解锁链路照样跑完不抛（AC-5）', async () => {
@@ -177,7 +177,7 @@ describe('unlockAudioSequence（AC-1 三步同步块）', () => {
     vi.stubGlobal('SpeechSynthesisUtterance', undefined)
     const { unlockAudioSequence } = await import('../../src/app/audio-unlock')
 
-    expect(() => unlockAudioSequence()).not.toThrow()
+    expect(() => unlockAudioSequence(), 'TTS 完全不可用时解锁链路不得抛错 —— 抛错会让整局开不起来').not.toThrow()
     expect(contexts, 'TTS 挂了不该拖住第①步').toHaveLength(1)
   })
 
@@ -192,8 +192,8 @@ describe('unlockAudioSequence（AC-1 三步同步块）', () => {
     })
     const { unlockAudioSequence } = await import('../../src/app/audio-unlock')
 
-    expect(() => unlockAudioSequence()).not.toThrow()
-    expect(contexts).toHaveLength(1)
+    expect(() => unlockAudioSequence(), 'getVoices 缺失 / 抛错时解锁链路不得抛错 —— 否则第③步 prewarmBgm 根本执行不到').not.toThrow()
+    expect(contexts, 'TTS 探针失败不该拖住第①步 Web Audio 解锁').toHaveLength(1)
   })
 
   // 📎 `[CR]` 2026-10-21 **补 AC-H6 ⑤** —— story 文档第 808 行逐字要求三条：
@@ -226,7 +226,7 @@ describe('unlockAudioSequence（AC-1 三步同步块）', () => {
     const { unlockAudioSequence } = await import('../../src/app/audio-unlock')
 
     // 若哪天有人把它改成 async，这里会拿到 Promise 而失败。
-    expect(unlockAudioSequence()).toBeUndefined()
+    expect(unlockAudioSequence(), '解锁三步必须同步返回 void —— 返回 Promise 会让调用方 await 它，手势上下文已被让出').toBeUndefined()
   })
 })
 

@@ -170,28 +170,28 @@ describe('音色优先级链（AC-4）', () => {
     withVoices(voices)
     const { selectVoice } = await import('../../src/services/pronunciation')
 
-    expect(selectVoice(synth.voices)?.name).toBe(expected)
+    expect(selectVoice(synth.voices)?.name, '优先级链必须命中这一档 —— 链序错位会让英式优先（AC-4）落空').toBe(expected)
   })
 
   it('六档全缺时回退到任意 en-US', async () => {
     withVoices([{ name: 'Some en-US Voice', lang: 'en-US' }])
     const { selectVoice } = await import('../../src/services/pronunciation')
 
-    expect(selectVoice(synth.voices)?.name).toBe('Some en-US Voice')
+    expect(selectVoice(synth.voices)?.name, '六档全缺时必须回退到任意 en-US 音色 —— 否则这台设备上一个音色都选不到').toBe('Some en-US Voice')
   })
 
   it('只有非 en-US 的 en 音色时回退到任意 en（末尾档）', async () => {
     withVoices([{ name: 'En-AU Voice', lang: 'en-AU' }])
     const { selectVoice } = await import('../../src/services/pronunciation')
 
-    expect(selectVoice(synth.voices)?.name).toBe('En-AU Voice')
+    expect(selectVoice(synth.voices)?.name, '只有非 en-US 的 en 音色时必须落到「任意 en」末尾档 —— 否则设备完全无声').toBe('En-AU Voice')
   })
 
   it('一个 en 音色都没有时返回 null，不抛错', async () => {
     withVoices([{ name: 'Ting-Ting', lang: 'zh-CN' }])
     const { selectVoice } = await import('../../src/services/pronunciation')
 
-    expect(selectVoice(synth.voices)).toBeNull()
+    expect(selectVoice(synth.voices), '一个 en 音色都没有时必须返回 null —— 硬选一个会把 utterance.voice 设成外语音色').toBeNull()
   })
 
   it('下划线形态的 lang（Android 常见 en_US）同样命中末尾档', async () => {
@@ -199,7 +199,10 @@ describe('音色优先级链（AC-4）', () => {
     withVoices([{ name: 'Android en_US Voice', lang: 'en_US' }])
     const { selectVoice } = await import('../../src/services/pronunciation')
 
-    expect(selectVoice(synth.voices)?.name).toBe('Android en_US Voice')
+    expect(
+      selectVoice(synth.voices)?.name,
+      `下划线形态的 lang（Android 常见的 en_US）必须同样命中末尾档 —— 判据写成 startsWith('en-US') 会落空`,
+    ).toBe('Android en_US Voice')
   })
 
   it('en_US 与 en-US 归一后属于同一档，先出现者胜出', async () => {
@@ -210,7 +213,7 @@ describe('音色优先级链（AC-4）', () => {
     ])
     const { selectVoice } = await import('../../src/services/pronunciation')
 
-    expect(selectVoice(synth.voices)?.name).toBe('US A')
+    expect(selectVoice(synth.voices)?.name, 'en_US 与 en-US 归一后属于同一档，先出现者胜出 —— 顺序不该被下划线形态打乱').toBe('US A')
   })
 })
 
@@ -219,7 +222,7 @@ describe('probeTts（AC-5 / AR35）', () => {
     vi.stubGlobal('speechSynthesis', undefined)
     const { probeTts } = await import('../../src/services/pronunciation')
 
-    expect(probeTts().state).toBe('unavailable')
+    expect(probeTts().state, 'speechSynthesis 不存在时必须报 unavailable —— 报成别的会让解锁链路以为 TTS 可用').toBe('unavailable')
   })
 
   it('有英文音色时返回 available 并给出音色数', async () => {
@@ -230,15 +233,15 @@ describe('probeTts（AC-5 / AR35）', () => {
     const { probeTts } = await import('../../src/services/pronunciation')
     const status = probeTts()
 
-    expect(status.state).toBe('available')
-    expect(status.voiceCount).toBe(2)
+    expect(status.state, '有英文音色时必须报 available —— 判据写错会让真机一直以为没有 TTS').toBe('available')
+    expect(status.voiceCount, '音色数必须如实报出 —— 少报会让「音色没到货」被误判成「设备不支持」').toBe(2)
   })
 
   it('存在 speechSynthesis 但无英文音色时返回 no-voice', async () => {
     withVoices([{ name: 'Ting-Ting', lang: 'zh-CN' }])
     const { probeTts } = await import('../../src/services/pronunciation')
 
-    expect(probeTts().state).toBe('no-voice')
+    expect(probeTts().state, '存在 speechSynthesis 但无英文音色时必须报 no-voice —— 报成 available 会让 TTS 被当成可用').toBe('no-voice')
   })
 
   it('首次调用后结果被缓存，不再重复 getVoices()', async () => {
@@ -250,7 +253,7 @@ describe('probeTts（AC-5 / AR35）', () => {
     probeTts()
     probeTts()
 
-    expect(synth.getVoicesCalls).toBe(afterFirst)
+    expect(synth.getVoicesCalls, '探测结果必须被缓存 —— 每次调用都重读设备会让首屏卡在同步阻塞上').toBe(afterFirst)
   })
 
   it('首次 getVoices() 返回空时订阅 voiceschanged，音色到达后可探到（AC-4 前置）', async () => {
@@ -258,7 +261,7 @@ describe('probeTts（AC-5 / AR35）', () => {
     withVoices([])
     const { probeTts } = await import('../../src/services/pronunciation')
 
-    expect(probeTts().state).toBe('no-voice')
+    expect(probeTts().state, '首次 getVoices() 返回空时必须报 no-voice —— 报成别的会让订阅 voiceschanged 这条路根本走不到').toBe('no-voice')
     expect(synth.onvoiceschanged, '没订阅 voiceschanged，语音系统懒加载时永远探不到音色').toBeTypeOf(
       'function',
     )
@@ -266,7 +269,7 @@ describe('probeTts（AC-5 / AR35）', () => {
     synth.voices = [{ name: 'Google UK English', lang: 'en-GB' }]
     synth.onvoiceschanged?.()
 
-    expect(probeTts().state).toBe('available')
+    expect(probeTts().state, 'voiceschanged 派发后必须立刻认出到货的英文音色 —— 否则懒加载设备永远探不到音色').toBe('available')
   })
 })
 
@@ -277,8 +280,8 @@ describe('speakSilentWarmup（AC-1 ② / AC-2）', () => {
 
     speakSilentWarmup()
 
-    expect(synth.spoken).toHaveLength(1)
-    expect(synth.spoken[0]!.volume).toBe(0)
+    expect(synth.spoken, '预热必须真的发出那条 utterance —— 少发就等于没解锁音频会话').toHaveLength(1)
+    expect(synth.spoken[0]!.volume, '预热 utterance 的音量必须是 0 —— 非 0 会让孩子听见一声莫名的噪音').toBe(0)
   })
 
   it('onend 触发即标记完成（AC-2）', async () => {
@@ -286,11 +289,11 @@ describe('speakSilentWarmup（AC-1 ② / AC-2）', () => {
     const { isPrewarmed, speakSilentWarmup } = await import('../../src/services/pronunciation')
 
     speakSilentWarmup()
-    expect(isPrewarmed()).toBe(false)
+    expect(isPrewarmed(), 'onend 还没触发时不得算已预热 —— 否则音频会话其实没解锁就放行了').toBe(false)
 
     synth.spoken[0]!.onend?.()
 
-    expect(isPrewarmed()).toBe(true)
+    expect(isPrewarmed(), 'onend 触发后必须标记完成（AC-2）—— 否则预热永远不算完成').toBe(true)
   })
 
   it('onerror 触发同样标记完成（Android 上空 utterance 常见 onerror）', async () => {
@@ -300,7 +303,7 @@ describe('speakSilentWarmup（AC-1 ② / AC-2）', () => {
     speakSilentWarmup()
     synth.spoken[0]!.onerror?.({ error: 'interrupted' })
 
-    expect(isPrewarmed()).toBe(true)
+    expect(isPrewarmed(), 'onerror 触发后同样必须标记完成 —— Android 上空 utterance 常见 onerror').toBe(true)
   })
 
   it('onend 与 onerror 都不触发时，超时后仍标记完成 —— 不得无限等待（AC-2 核心）', async () => {
@@ -325,7 +328,7 @@ describe('speakSilentWarmup（AC-1 ② / AC-2）', () => {
     speakSilentWarmup()
     speakSilentWarmup()
 
-    expect(synth.spoken).toHaveLength(1)
+    expect(synth.spoken, '连点「开始游戏」也不得重复预热 —— 重复的预热 utterance 会互相打断').toHaveLength(1)
   })
 
   it('发起时抛错不算已预热，允许下一次点击重试', async () => {
@@ -338,7 +341,7 @@ describe('speakSilentWarmup（AC-1 ② / AC-2）', () => {
     synth.speakError = null
     speakSilentWarmup()
 
-    expect(synth.spoken).toHaveLength(2)
+    expect(synth.spoken, '发起时抛错不算已预热，必须允许下一次点击重试 —— 焊死锁会让预热永远失败').toHaveLength(2)
     warn.mockRestore()
   })
 
@@ -346,8 +349,8 @@ describe('speakSilentWarmup（AC-1 ② / AC-2）', () => {
     vi.stubGlobal('speechSynthesis', undefined)
     const { speakSilentWarmup } = await import('../../src/services/pronunciation')
 
-    expect(() => speakSilentWarmup()).not.toThrow()
-    expect(synth.spoken).toHaveLength(0)
+    expect(() => speakSilentWarmup(), 'speechSynthesis 不存在时预热不得抛 —— 解锁三步会在这里断掉').not.toThrow()
+    expect(synth.spoken, 'speechSynthesis 不存在时不得发出任何 utterance —— 发了就等于在无语音引擎的设备上开口').toHaveLength(0)
   })
 })
 
@@ -369,8 +372,8 @@ describe('playPronunciation（AC-3 / AC-5 / AC-6 / AC-7）', () => {
 
     playPronunciation('sunflower')
 
-    expect(synth.spoken[0]!.rate).toBe(0.85)
-    expect(synth.spoken[0]!.pitch).toBe(1.05)
+    expect(synth.spoken[0]!.rate, '单词的朗读语速必须是 0.85（AC-6 起点值）—— 快了 4–8 岁孩子跟不上').toBe(0.85)
+    expect(synth.spoken[0]!.pitch, '单词的音高必须是 1.05 —— 太尖的发音对幼儿不友好').toBe(1.05)
   })
 
   it('长句用 rate 0.9 / pitch 1.0', async () => {
@@ -379,8 +382,8 @@ describe('playPronunciation（AC-3 / AC-5 / AC-6 / AC-7）', () => {
 
     playPronunciation('I have a ball for my dog.')
 
-    expect(synth.spoken[0]!.rate).toBe(0.9)
-    expect(synth.spoken[0]!.pitch).toBe(1.0)
+    expect(synth.spoken[0]!.rate, '长句的朗读语速必须是 0.9 —— 用单词档的语速读整句会拖到孩子走神').toBe(0.9)
+    expect(synth.spoken[0]!.pitch, '长句的音高必须是 1.0 —— 长句不需要单词档那个抬高的音高').toBe(1.0)
   })
 
   it('speaking === false 时绝不调用 cancel（AC-6 硬约束）', async () => {
@@ -390,7 +393,7 @@ describe('playPronunciation（AC-3 / AC-5 / AC-6 / AC-7）', () => {
 
     playPronunciation('ball')
 
-    expect(synth.cancelCalls).toBe(0)
+    expect(synth.cancelCalls, '空闲时绝不调用 cancel —— cancel 会把别的内容掐掉').toBe(0)
   })
 
   it('speaking === true 时调用 cancel 以避开 cancel→speak 竞争窗口', async () => {
@@ -400,7 +403,7 @@ describe('playPronunciation（AC-3 / AC-5 / AC-6 / AC-7）', () => {
 
     playPronunciation('ball')
 
-    expect(synth.cancelCalls).toBe(1)
+    expect(synth.cancelCalls, '在途时必须调用一次 cancel —— 不掐旧链就会与新内容竞争发声').toBe(1)
   })
 
   it('speak() 抛错时降级且绝不向调用方抛（AC-5）', async () => {
@@ -409,8 +412,8 @@ describe('playPronunciation（AC-3 / AC-5 / AC-6 / AC-7）', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const { playPronunciation } = await import('../../src/services/pronunciation')
 
-    expect(() => playPronunciation('ball')).not.toThrow()
-    expect(warn.mock.calls.some((call) => String(call[0]).startsWith('[tts]'))).toBe(true)
+    expect(() => playPronunciation('ball'), 'speak() 抛错时不得冒到调用方 —— store 是无保护直接调的').not.toThrow()
+    expect(warn.mock.calls.some((call) => String(call[0]).startsWith('[tts]')), '降级必须记一条 [tts] 前缀的 WARN —— 否则真机上「没声音」没有任何线索').toBe(true)
     warn.mockRestore()
   })
 
@@ -419,8 +422,8 @@ describe('playPronunciation（AC-3 / AC-5 / AC-6 / AC-7）', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const { playPronunciation } = await import('../../src/services/pronunciation')
 
-    expect(() => playPronunciation('I have a ball for my dog.')).not.toThrow()
-    expect(warn.mock.calls.some((call) => String(call[0]).startsWith('[tts]'))).toBe(true)
+    expect(() => playPronunciation('I have a ball for my dog.'), 'speechSynthesis 不可用时不得抛 —— 回合流转不能被音频打断').not.toThrow()
+    expect(warn.mock.calls.some((call) => String(call[0]).startsWith('[tts]')), '降级必须记一条 [tts] 前缀的 WARN —— 不记就是静默失败').toBe(true)
     warn.mockRestore()
   })
 
@@ -431,8 +434,8 @@ describe('playPronunciation（AC-3 / AC-5 / AC-6 / AC-7）', () => {
 
     playPronunciation('   ')
 
-    expect(synth.spoken).toHaveLength(0)
-    expect(warn).not.toHaveBeenCalled()
+    expect(synth.spoken, '空文本不得发声 —— 发声就是对着空白念了一句').toHaveLength(0)
+    expect(warn, '空文本不得记日志 —— 正常路径不该刷 WARN').not.toHaveBeenCalled()
     warn.mockRestore()
   })
 })
@@ -479,15 +482,15 @@ describe('打断与重入（[CR] P1 / P2 / P3）', () => {
     // 直接让在途 utterance 失败，不经过 cancel（模拟外部打断，如来电）
     synth.failInFlight('canceled')
 
-    expect(synth.spoken.length).toBe(before)
-    expect(warn.mock.calls.some((c) => String(c[0]).startsWith('[tts]'))).toBe(true)
+    expect(synth.spoken.length, '本链没被接管却收到 canceled 时不得推进下一块 —— 会被当成「念完了」').toBe(before)
+    expect(warn.mock.calls.some((c) => String(c[0]).startsWith('[tts]')), '外部打断必须记一条 [tts] WARN —— 不记就查不出为什么停了').toBe(true)
     warn.mockRestore()
   })
 
   it('新一次 playPronunciation 完整接管：孩子点的词立刻发声，不排在旧句子后面', async () => {
     const { playPronunciation } = await load()
     playPronunciation(LONG_TEXT)
-    expect(synth.spoken.length).toBe(1)
+    expect(synth.spoken.length, '长句只先发第 1 块 —— 后面的块要靠 onend 链推进').toBe(1)
 
     // 长句还在念第 1 块 —— 孩子点了另一张卡
     playPronunciation('Ball')
@@ -590,7 +593,7 @@ describe('打断与重入（[CR] P1 / P2 / P3）', () => {
     expect(synth.spoken.length, '发声失败后仍推进下一块 —— 音频已经坏了').toBe(before)
     const ttsLogs = warn.mock.calls.filter((c) => String(c[0]).startsWith('[tts]'))
     expect(ttsLogs.length, '发声失败没有记 [tts] WARN —— AC-5「不静默失败」被破').toBeGreaterThan(0)
-    expect(warn.mock.calls.some((c) => String(c[0]).includes('均失败'))).toBe(true)
+    expect(warn.mock.calls.some((c) => String(c[0]).includes('均失败')), '两条通路都失败必须记「均失败」—— 否则回合侧看不出只念了一半').toBe(true)
     warn.mockRestore()
   })
 })
@@ -620,9 +623,9 @@ describe('长文本分块（AC-7）', () => {
     playPronunciation(longText)
     drain()
 
-    expect(synth.spoken.length).toBeGreaterThan(1)
+    expect(synth.spoken.length, '超长文本必须被切成多块 —— 不切就会被 15 秒静默截断').toBeGreaterThan(1)
     for (const utterance of synth.spoken) {
-      expect(utterance.text.length).toBeLessThanOrEqual(200)
+      expect(utterance.text.length, '每块都不得超 200 字符 —— 超了同样会被静默截断').toBeLessThanOrEqual(200)
     }
   })
 
@@ -634,7 +637,7 @@ describe('长文本分块（AC-7）', () => {
     drain()
 
     const spoken = synth.spoken.map((u) => u.text).join(' ')
-    expect(spoken.split(/\s+/)).toHaveLength(longText.split(/\s+/).length)
+    expect(spoken.split(/\s+/), '分块不得丢词 —— 丢一个词孩子就少听一个词，而系统毫无提示').toHaveLength(longText.split(/\s+/).length)
   })
 
   it('按 onend 链式推进，而不是一次性把全部块塞进队列', async () => {
@@ -642,13 +645,13 @@ describe('长文本分块（AC-7）', () => {
     const { playPronunciation } = await import('../../src/services/pronunciation')
 
     playPronunciation(longText)
-    expect(synth.spoken).toHaveLength(1)
+    expect(synth.spoken, '同一时刻只应有一条在播 —— 一次性塞进队列会让多块同时开口').toHaveLength(1)
 
     synth.endInFlight()
-    expect(synth.spoken).toHaveLength(2)
+    expect(synth.spoken, '第一块结束后必须推进第二块 —— 不推进就等于只念了开头').toHaveLength(2)
 
     synth.endInFlight()
-    expect(synth.spoken).toHaveLength(3)
+    expect(synth.spoken, '第二块结束后必须推进第三块 —— 链式推进断在半路').toHaveLength(3)
   })
 
   it('某一块的 onend 不触发时，超时兜底仍推进到下一块（应用不得挂死）', async () => {
@@ -657,12 +660,12 @@ describe('长文本分块（AC-7）', () => {
     const { playPronunciation } = await import('../../src/services/pronunciation')
 
     playPronunciation(longText)
-    expect(synth.spoken).toHaveLength(1)
+    expect(synth.spoken, '先发出第一块 —— 没有它就无从测兜底').toHaveLength(1)
 
     // 第一块的 onend 永不触发 —— 模拟 15 秒静默截断
     vi.advanceTimersByTime(60_000)
 
-    expect(synth.spoken.length).toBeGreaterThan(1)
+    expect(synth.spoken.length, '某一块的 onend 不触发时，超时兜底必须推进 —— 不推进应用就挂在半句话上').toBeGreaterThan(1)
   })
 
   it('短句不分块（教材单元 1 的句子都在 200 字符内）', async () => {
@@ -671,8 +674,8 @@ describe('长文本分块（AC-7）', () => {
 
     playPronunciation('I have a ball for my dog.')
 
-    expect(synth.spoken).toHaveLength(1)
-    expect(synth.spoken[0]!.text).toBe('I have a ball for my dog.')
+    expect(synth.spoken, '短句不得被切块 —— 切了会让一句话被拆成两声').toHaveLength(1)
+    expect(synth.spoken[0]!.text, '短句必须原样发出 —— 切分会改写内容').toBe('I have a ball for my dog.')
   })
 
   it('单个超长词（无空格）也按上限切开', async () => {
@@ -683,9 +686,9 @@ describe('长文本分块（AC-7）', () => {
     drain()
 
     for (const utterance of synth.spoken) {
-      expect(utterance.text.length).toBeLessThanOrEqual(200)
+      expect(utterance.text.length, '单个超长词也必须按上限切开 —— 超长块会被静默截断').toBeLessThanOrEqual(200)
     }
-    expect(synth.spoken.length).toBe(3)
+    expect(synth.spoken.length, '450 个字符必须切成 3 块 —— 块数不对说明切分算法变了').toBe(3)
   })
 })
 
@@ -720,9 +723,9 @@ describe('切分的字符保真（[CR] P7 / P8 / P13）', () => {
     drain()
 
     const spoken = synth.spoken.map((u) => u.text).join(' ')
-    expect(synth.spoken.length).toBeGreaterThan(1)
+    expect(synth.spoken.length, '词切必须分出多块 —— 不切就没有「块间空格」可言').toBeGreaterThan(1)
     expect(spoken, '词切与下一句之间丢了空格').toContain('zz. Go!')
-    expect(spoken).not.toMatch(/[a-z]\.[A-Z]/)
+    expect(spoken, '不得出现「小写字母+点+大写字母」—— 那正是词与句之间丢了空格的表征').not.toMatch(/[a-z]\.[A-Z]/)
   })
 
   it('不以标点开头的文本不被吞掉首字符（P8）', async () => {
@@ -775,7 +778,7 @@ describe('探测的冷却重试（[CR] P11）', () => {
     const { probeTts } = await import('../../src/services/pronunciation')
     // 冷启动：音色还没到，且 onvoiceschanged 永远不派发
     synth.voices = []
-    expect(probeTts().state).toBe('no-voice')
+    expect(probeTts().state, '冷启动且事件不派发时必须报 no-voice —— 报成别的会掩盖「音色还没到货」').toBe('no-voice')
 
     // 冷却期内不重复打设备
     const callsInCooldown = synth.getVoicesCalls
@@ -900,8 +903,8 @@ describe('预生成录音主通路（架构决策 7）', () => {
 
     expect(synth.spoken.length, '录音可用时不该再走 TTS —— 主备顺序反了').toBe(0)
     expect(audioInstances.length, '没有创建 Audio 元素 —— 主通路没被执行').toBe(1)
-    expect(audioInstances[0]!.src).toBe(`${RECORDING_BASE_PATH}u1-dog.mp3`)
-    expect(audioInstances[0]!.playCount).toBe(1)
+    expect(audioInstances[0]!.src, '录音路径必须由词条 id 拼出 —— 拼错路径等于每次都 404').toBe(`${RECORDING_BASE_PATH}u1-dog.mp3`)
+    expect(audioInstances[0]!.playCount, '录音必须真的播放了一次 —— 只建元素不播等于没发声').toBe(1)
   })
 
   it('文件名 = 词条 id，路径不含单元分层（与词图共用同一个 id）', async () => {
@@ -909,9 +912,9 @@ describe('预生成录音主通路（架构决策 7）', () => {
     playPronunciation('dog', 'u1-dog')
     await flushMicrotasks()
 
-    expect(audioInstances[0]!.src).toBe(`${RECORDING_BASE_PATH}u1-dog.mp3`)
+    expect(audioInstances[0]!.src, '录音文件名必须等于词条 id —— 改名就得同步改内容表').toBe(`${RECORDING_BASE_PATH}u1-dog.mp3`)
     // 词图在 words/unit-01/u1-dog.svg，录音在 audio/voice/u1-dog.mp3 —— 同一个 id
-    expect(audioInstances[0]!.src).not.toContain('unit-01')
+    expect(audioInstances[0]!.src, '路径不得含单元分层 —— 词图与录音共用同一个 id，路径多一层就 404').not.toContain('unit-01')
   })
 
   it('没有词条 id 时直接走 TTS，不猜文件路径', async () => {
@@ -920,7 +923,7 @@ describe('预生成录音主通路（架构决策 7）', () => {
     await flushMicrotasks()
 
     expect(audioInstances.length, '没有 id 就去猜路径 —— 会把「不知道用哪个录音」变成 404').toBe(0)
-    expect(synth.spoken.length).toBe(1)
+    expect(synth.spoken.length, '没有词条 id 时必须走 TTS —— 且只能走一次').toBe(1)
   })
 
   it('录音 404（error 事件）→ 自动降级到设备 TTS，回合不中断', async () => {
@@ -932,7 +935,7 @@ describe('预生成录音主通路（架构决策 7）', () => {
     await flushMicrotasks()
 
     expect(synth.spoken.length, '录音缺失后没降级 —— 支柱 1 的唯一入口直接哑了（AR37）').toBe(1)
-    expect(synth.spoken[0]!.text).toBe('dog')
+    expect(synth.spoken[0]!.text, '降级后念的应当是同一个词 —— 念错词孩子就听到了错误示范').toBe('dog')
   })
 
   it('play() 被拒（autoplay 未解锁）→ 降级到 TTS，不留 unhandled rejection', async () => {
@@ -951,7 +954,7 @@ describe('预生成录音主通路（架构决策 7）', () => {
     await flushMicrotasks()
 
     expect(synth.spoken.length, 'autoplay 被拒后没降级').toBe(1)
-    expect(warn.mock.calls.some((c) => String(c[0]).includes('录音播放被拒'))).toBe(true)
+    expect(warn.mock.calls.some((c) => String(c[0]).includes('录音播放被拒')), 'autoplay 被拒必须记 WARN —— 不记就查不出「为什么没声音」').toBe(true)
     warn.mockRestore()
   })
 
@@ -962,9 +965,9 @@ describe('预生成录音主通路（架构决策 7）', () => {
     playPronunciation('cat', 'u1-cat')
     await flushMicrotasks()
 
-    expect(audioInstances.length).toBe(2)
+    expect(audioInstances.length, '两次重听必须建出两个 Audio 实例 —— 复用同一个就停不掉上一段').toBe(2)
     expect(audioInstances[0]!.pauseCount, '上一段录音没停 —— 点两下会同时响两个词').toBeGreaterThan(0)
-    expect(audioInstances[0]!.paused).toBe(true)
+    expect(audioInstances[0]!.paused, '旧录音必须处于暂停态 —— 没停就是两声重叠').toBe(true)
   })
 
   it('词条 id 含路径分隔符时拒绝拼接 —— 内容 JSON 是人工录入的', async () => {
@@ -996,10 +999,10 @@ describe('预生成录音主通路（架构决策 7）', () => {
     vi.stubGlobal('SpeechSynthesisUtterance', undefined)
 
     const { playPronunciation } = await load()
-    expect(() => playPronunciation('dog', 'u1-dog')).not.toThrow()
+    expect(() => playPronunciation('dog', 'u1-dog'), '两条通路都不可用时不得抛 —— 抛出去会打断答题流程').not.toThrow()
     await flushMicrotasks()
 
-    expect(warn.mock.calls.some((c) => String(c[0]).includes('均失败'))).toBe(true)
+    expect(warn.mock.calls.some((c) => String(c[0]).includes('均失败')), '两条都失败必须记「均失败」—— 静默失败在真机上无法排查').toBe(true)
     warn.mockRestore()
   })
 })
@@ -1028,7 +1031,7 @@ describe('发声权接管：录音↔TTS 的 2×2 交叉（[CR] 二轮 P1）', (
     await flushMicrotasks()
     const first = lastAudio()
     expect(first.playCount, '录音应当已经起声').toBe(1)
-    expect(first.paused).toBe(false)
+    expect(first.paused, '录音起声后不得处于暂停态 —— 暂停态就是没声音').toBe(false)
 
     // 无 entryId → 走 TTS 通路
     playPronunciation('cat')
@@ -1038,7 +1041,7 @@ describe('发声权接管：录音↔TTS 的 2×2 交叉（[CR] 二轮 P1）', (
       first.pauseCount,
       '录音换 TTS 时旧录音一次 pause 都没有，孩子会听到两声',
     ).toBeGreaterThan(0)
-    expect(first.paused).toBe(true)
+    expect(first.paused, '切到 TTS 后旧录音必须处于暂停态 —— 否则两句同时响').toBe(true)
     expect(synth.spoken.length, 'TTS 应当已经起声').toBe(1)
   })
 
@@ -1051,7 +1054,7 @@ describe('发声权接管：录音↔TTS 的 2×2 交叉（[CR] 二轮 P1）', (
 
     playPronunciation('cat')
     await flushMicrotasks()
-    expect(synth.spoken).toHaveLength(1)
+    expect(synth.spoken, 'TTS 必须先真的发出去 —— 否则「在途」这个前提不成立').toHaveLength(1)
     expect(synth.speaking, 'TTS 应当处于在途状态').toBe(true)
 
     playPronunciation('dog', 'u1-dog')
@@ -1076,9 +1079,9 @@ describe('发声权接管：录音↔TTS 的 2×2 交叉（[CR] 二轮 P1）', (
     playPronunciation('ball')
     await flushMicrotasks()
 
-    expect(cancel).toHaveBeenCalledTimes(1)
-    expect(synth.spoken).toHaveLength(2)
-    expect(synth.spoken[1]!.text).toBe('ball')
+    expect(cancel, 'TTS→TTS 只 cancel 一次 —— 多次 cancel 会掐掉刚发的新内容').toHaveBeenCalledTimes(1)
+    expect(synth.spoken, '第二次播放必须再发一条 —— 不发就是新内容被自己掐掉了').toHaveLength(2)
+    expect(synth.spoken[1]!.text, '新发的应当是 ball —— 内容错位会让孩子听到上一个词').toBe('ball')
   })
 
   it('录音 → 录音：新播放接管后旧录音必须已停', async () => {
@@ -1091,8 +1094,8 @@ describe('发声权接管：录音↔TTS 的 2×2 交叉（[CR] 二轮 P1）', (
     playPronunciation('cat', 'u1-cat')
     await flushMicrotasks()
 
-    expect(first.pauseCount).toBeGreaterThan(0)
-    expect(audioInstances).toHaveLength(2)
+    expect(first.pauseCount, '新录音接管后旧录音必须被暂停 —— 不停就是两声重叠').toBeGreaterThan(0)
+    expect(audioInstances, '两次重听必须建出两个 Audio 实例').toHaveLength(2)
   })
 })
 
@@ -1165,7 +1168,7 @@ describe('录音路径的代次隔离（[CR] 二轮 P2）', () => {
     // 孩子改主意，点了另一张卡
     playPronunciation('ball', 'u1-ball')
     await flushMicrotasks()
-    expect(audioInstances).toHaveLength(2)
+    expect(audioInstances, '孩子改点另一张卡必须建出第二个 Audio 实例 —— 复用旧的就会卡在上一段').toHaveLength(2)
     expect(audioInstances[1]!.playCount, '第二段录音应当正常起声').toBe(1)
     expect(synth.spoken, '此刻还不该有任何 TTS').toHaveLength(0)
 
@@ -1218,7 +1221,7 @@ describe('onerror 的 canceled 分支必须收敛（[CR] 二轮 P3）', () => {
 
     playPronunciation(longText)
     await flushMicrotasks()
-    expect(synth.spoken).toHaveLength(1)
+    expect(synth.spoken, '第一块必须先发出去 —— 没有它就无从测兜底').toHaveLength(1)
     synth.spoken[0]!.onerror?.({ error: 'interrupted' })
     vi.advanceTimersByTime(CHUNK_TIMEOUT_MS + 1)
 
@@ -1237,7 +1240,7 @@ describe('onerror 的 canceled 分支必须收敛（[CR] 二轮 P3）', () => {
 
     playPronunciation(longText)
     await flushMicrotasks()
-    expect(synth.spoken).toHaveLength(1)
+    expect(synth.spoken, '第一块必须先发出去 —— 没有它就无从测兜底推进').toHaveLength(1)
 
     vi.advanceTimersByTime(CHUNK_TIMEOUT_MS + 1)
 
@@ -1298,15 +1301,16 @@ describe('音色优先级链必须同时判 lang（[CR] 二轮 P5）', () => {
 
     // 单独放，否则会被优先级链上排在 Karen 前面的 Samantha 抢走
     // （VOICE_PRIORITY 里 Samantha 在 Karen 之前）。
-    expect(selectVoice([{ name: 'Karen', lang: 'en-AU' }])?.name).toBe('Karen')
+    expect(selectVoice([{ name: 'Karen', lang: 'en-AU' }])?.name, '名字命中且语种是英语时必须正常选中 —— 否则英式优先把英语音色全滤掉了').toBe('Karen')
     // 下划线形态同样认（Android 常返回 en_US）
-    expect(selectVoice([{ name: 'Karen', lang: 'en_US' }])?.name).toBe('Karen')
+    expect(selectVoice([{ name: 'Karen', lang: 'en_US' }])?.name, '下划线形态的英语语种同样必须命中 —— Android 常见 en_US').toBe('Karen')
     // 优先级链靠前的档位不受影响
     expect(
       selectVoice([
         { name: 'Samantha', lang: 'en-US' },
         { name: 'Karen', lang: 'en-AU' },
       ])?.name,
+      '优先级链靠前的档位不受影响 —— 链序错位会让英式优先落空',
     ).toBe('Samantha')
   })
 
@@ -1318,7 +1322,7 @@ describe('音色优先级链必须同时判 lang（[CR] 二轮 P5）', () => {
       { name: 'Some Generic', lang: 'en-US' },
     ])
 
-    expect(hit?.name).toBe('Some Generic')
+    expect(hit?.name, '链上有非英语音色但链下有英语音色时必须退到兜底档 —— 选中外语会让孩子听到外语').toBe('Some Generic')
   })
 })
 
@@ -1330,10 +1334,10 @@ describe('playPronunciation 的 entryId 契约（[CC] 裁决 a / AC-5 纠偏批�
     withVoices([])
     const { playPronunciation } = await import('../../src/services/pronunciation')
 
-    expect(() => playPronunciation('dog')).not.toThrow()
+    expect(() => playPronunciation('dog'), '没有 entryId 且 TTS 不可用时不得抛 —— 抛出去会打断答题流程').not.toThrow()
 
     expect(audioInstances.length, '没有 entryId 就不该猜文件路径去构造 Audio').toBe(0)
-    expect(warn.mock.calls.some((c) => String(c[0]).includes('均失败'))).toBe(true)
+    expect(warn.mock.calls.some((c) => String(c[0]).includes('均失败')), '两条都失败必须记「均失败」—— 不记就是无声失败').toBe(true)
     warn.mockRestore()
   })
 
@@ -1345,7 +1349,7 @@ describe('playPronunciation 的 entryId 契约（[CC] 裁决 a / AC-5 纠偏批�
     await flushMicrotasks()
 
     expect(audioInstances, '没有 entryId 就不该有任何录音请求').toHaveLength(0)
-    expect(synth.spoken).toHaveLength(1)
+    expect(synth.spoken, '没有 entryId 时必须只走 TTS —— 多发一条就是重复念').toHaveLength(1)
   })
 
   it('传了 entryId 且录音缺失 → 先试录音（404），再回落 TTS', async () => {
@@ -1468,7 +1472,7 @@ describe('零英文音色时的 utterance 参数（[CR] 2026-10-16）', () => {
 
     playPronunciation('ball')
 
-    expect(synth.spoken).toHaveLength(1)
+    expect(synth.spoken, '必须真的发出一条 utterance —— 没发就无从谈 utterance 参数').toHaveLength(1)
     expect(
       synth.spoken[0]!.lang,
       'Android 上 voice 可能被整个忽略，lang 是唯一指望 —— 没有音色时必须仍设 lang',
@@ -1482,7 +1486,7 @@ describe('零英文音色时的 utterance 参数（[CR] 2026-10-16）', () => {
 
     playPronunciation('ball')
 
-    expect(synth.spoken[0]!.lang).toBe('en-GB')
+    expect(synth.spoken[0]!.lang, '有音色时 lang 必须取该音色的 lang —— 取错就念成了别的口音').toBe('en-GB')
   })
 
   it('utterance.volume 必须是 1 —— 改成 0 就是「一个字都不发声」', async () => {
@@ -1506,11 +1510,11 @@ describe('零英文音色时的 utterance 参数（[CR] 2026-10-16）', () => {
     } = await import('../../src/services/pronunciation')
 
     playPronunciation('ball')
-    expect(synth.spoken[0]!.rate).toBe(SPEECH_RATE_WORD)
-    expect(synth.spoken[0]!.pitch).toBe(SPEECH_PITCH_WORD)
+    expect(synth.spoken[0]!.rate, '单词档的语速必须取 SPEECH_RATE_WORD —— 偏快孩子跟不上').toBe(SPEECH_RATE_WORD)
+    expect(synth.spoken[0]!.pitch, '单词档的音高必须取 SPEECH_PITCH_WORD').toBe(SPEECH_PITCH_WORD)
 
     playPronunciation('I have a ball for my dog.')
-    expect(synth.spoken[1]!.rate).toBe(SPEECH_RATE_SENTENCE)
+    expect(synth.spoken[1]!.rate, '长句档的语速必须取 SPEECH_RATE_SENTENCE —— 句子用单词语速会拖到走神').toBe(SPEECH_RATE_SENTENCE)
   })
 })
 
@@ -1546,7 +1550,7 @@ describe('常量与降级契约（[CR] 2026-10-16）', () => {
     // ⚠️ store.ts 的 speakQuestion() 刻意不加 try/catch，它逐字引用着
     // 本函数「绝不向调用方抛」的契约 —— 抛出去就是回合卡死。
     expect(() => playPronunciation('dog'), '构造抛错不得冒到调用方').not.toThrow()
-    expect(warn.mock.calls.some((c) => String(c[0]).startsWith('[tts]'))).toBe(true)
+    expect(warn.mock.calls.some((c) => String(c[0]).startsWith('[tts]')), '构造抛错必须记 [tts] WARN —— 不记就查不出「为什么没声音」').toBe(true)
     warn.mockRestore()
   })
 
@@ -1572,7 +1576,7 @@ describe('常量与降级契约（[CR] 2026-10-16）', () => {
     )
 
     speakSilentWarmup()
-    expect(synth.spoken).toHaveLength(1)
+    expect(synth.spoken, '预热必须真的发出 utterance —— 没发就没解锁').toHaveLength(1)
 
     // 孩子点卡面 → takeOverPlayback → cancel → 预热收到 error('canceled')
     playPronunciation('ball')
@@ -1606,7 +1610,7 @@ describe('常量与降级契约（[CR] 2026-10-16）', () => {
       'cancel 抛错必须记 WARN —— 否则真机上是一条无声的失败',
     ).toBe(true)
     // cancel 抛错后，新内容仍必须发声（不能连这一声都丢了）
-    expect(synth.spoken[synth.spoken.length - 1]!.text).toBe('ball')
+    expect(synth.spoken[synth.spoken.length - 1]!.text, 'cancel 抛错后新内容仍必须发声 —— 连这一声都丢了就是彻底无声').toBe('ball')
     warn.mockRestore()
   })
 })
