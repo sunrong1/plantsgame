@@ -125,7 +125,10 @@ Story 1.15 的 G96 写的是「推进确实落盘了」，那条判据在**整�
 
 **依据** `[GA]` 的模块分层。`core/` 不知道上层存在，所以它才可能被复用和被单独测试。
 
-**守卫** ⚠️ **部分** —— `tests/scaffold/core-boundary.test.ts` 只守了 core 那一端（core 不得 import vue 与 app/services/components）。**components→app→services→core 的次序与跨层反向无守卫**，`eslint.config.js` 里也没有对应块。
+**守卫** ⚠️ **部分** ——
+① `tests/scaffold/core-boundary.test.ts` 守 **core 那一端**（core 不得 import vue 与 app/services/components）—— 它求值 **ESLint 自己的配置**，守的是「**规则还在**」。
+② **G331**（`tests/scaffold/layer-direction.test.ts`）守**每一层的反向依赖** —— core / content / services / app / components / views 六层的「不许 import 哪一层」逐条钉住；判据落在**源码**（TypeScript 的 AST，静态 / 动态 / 重导出 / `require` 四种形态一次收齐），守的是「**代码真的没越界**」。与 ① **两道各管一半**（① 盯配置、② 盯代码）。
+⚠️ **「跨层直连」那半仍不守**：`components → services`（`asset-url` / `asset-degradations` / `sw-registration` / `pronunciation-status`）与 `components → core`（14 处）**现状合法**（ESLint 只禁 `components → core/balance` 那一条）⇒ 要连「跨层」一起守，得先改那 20 处 import，那是**另一个决定**（DF-189 的销账进度表里记着这一格）。
 
 **首现** Story 1.2
 
