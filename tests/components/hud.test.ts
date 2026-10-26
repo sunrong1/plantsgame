@@ -343,7 +343,9 @@ describe('AC-C2 / G44c —— HeartRow 的 DOM 逐位等于 heartSlots(state)', 
   it('[CR] 心行必须有一条可访问文本，且数字取自 heartSlots（不许在组件里另算）', async () => {
     // 🚨 失败场景：SunCounter 有可见文本、ProgressBar 有「第 N 单元 · x/y」，
     //   只有 HeartRow 一个字都没有，且唯一的形状被 aria-hidden ⇒ 读屏听到
-    //   「阳光 50，**空白**，第 1 单元 3/37」，心数那一段彻底不存在。
+    //   「阳光 50，**空白**，第 1 单元 3/6」，心数那一段彻底不存在。
+    //   ⚠️ 分母 6 = 换源后单元 1 的词条数（旧词表是 37）—— 这只是**举例**，
+    //   判据本身只看「心数那段是否存在」，不钉分母。
     reset({ hearts: 2 })
     const wrapper = mount(HeartRow)
     const label = wrapper.attributes('aria-label')
@@ -408,8 +410,8 @@ function heartSlotsOf(s: State): readonly boolean[] {
 
 describe('AC-C3 / G50 —— ProgressBar 的文本逐项等于 progressDisplay 的实算值', () => {
   it('G50：文本逐项等于「第 N 单元 · x/y」', async () => {
-    reset({ mastered: ['u1-hello', 'u1-goodbye'] })
-    progress.value = { currentUnitIndex: 0, masteredWordIds: ['u1-hello', 'u1-goodbye'] }
+    reset({ mastered: ['u1-morning', 'u1-afternoon'] })
+    progress.value = { currentUnitIndex: 0, masteredWordIds: ['u1-morning', 'u1-afternoon'] }
     const wrapper = mount(ProgressBar, { props: { unitTotal: REAL_DECK.length } })
 
     const shown = progressDisplay(progress.value, state.value.unitNumber, REAL_DECK.length)
@@ -424,7 +426,7 @@ describe('AC-C3 / G50 —— ProgressBar 的文本逐项等于 progressDisplay �
     const emptyText = empty.get('[data-testid="progress-label"]').text()
     const emptyWidth = empty.get('[data-testid="progress-fill"]').attributes('style')
 
-    progress.value = { currentUnitIndex: 0, masteredWordIds: ['u1-hello', 'u1-goodbye'] }
+    progress.value = { currentUnitIndex: 0, masteredWordIds: ['u1-morning', 'u1-afternoon'] }
     await nextTick()
     const some = mount(ProgressBar, { props: { unitTotal: REAL_DECK.length } })
     const someText = some.get('[data-testid="progress-label"]').text()
@@ -444,8 +446,8 @@ describe('AC-C3 / G50 —— ProgressBar 的文本逐项等于 progressDisplay �
     }
   })
 
-  it('分母由 props 传入：改 prop 文本跟着改（不在组件里写死 37）', async () => {
-    progress.value = { currentUnitIndex: 0, masteredWordIds: ['u1-hello'] }
+  it('分母由 props 传入：改 prop 文本跟着改（不在组件里写死词表条数）', async () => {
+    progress.value = { currentUnitIndex: 0, masteredWordIds: [ENTRY.entryId] }
     const wrapper = mount(ProgressBar, { props: { unitTotal: 5 } })
 
     expect(wrapper.get('[data-testid="progress-label"]').text()).toBe('第 1 单元 · 1/5')
@@ -479,12 +481,17 @@ describe('AC-B3 / G54 —— progress 只在真的有增量时才变', () => {
 
   it('G54：同一个词答两次，第二次 progress 不变（幂等）', async () => {
     reset({ sun: 200 })
-    progress.value = { currentUnitIndex: 0, masteredWordIds: ['u1-hello'] }
+    // ⚠️ **夹具必须用真实的 entryId**（Story 2.10 换源后的 `u1-morning`）：
+    //   `progress.masteredWordIds` 里若写一个**不存在**的 id（如旧词表残留的
+    //   `u1-hello`），这一份 progress 与 `state.masteredEntryIds` 就对不上 ⇒
+    //   答对 `ENTRY` 仍会被判成「新掌握」⇒ 本条断言**空转**。
+    //   判据的意图（幂等：同一词答两次，第二次 progress 不变）一字未改。
+    progress.value = { currentUnitIndex: 0, masteredWordIds: [ENTRY.entryId] }
     const seen = await countProgressChanges(() => applyAction(answer(CORRECT_OPTION!)))
 
     // fixture 的 ENTRY 已在 mastered 里 ⇒ 这一次没有增量
     expect(seen).toBe(0)
-    expect(progress.value.masteredWordIds).toEqual(['u1-hello'])
+    expect(progress.value.masteredWordIds).toEqual([ENTRY.entryId])
   })
 })
 

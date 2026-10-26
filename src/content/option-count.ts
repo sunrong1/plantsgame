@@ -43,11 +43,11 @@
  * ── 期望值来源与出处 ──────────────────────────────────────────────────────
  * · 规则正文：`docs/option-count.md`（本文件是它的机器可读实现，两者不一致时
  *   以本文件为准，正文需同步更新）
- * · 档 1 的三个数（2 / 3 / 3）是**实测值** —— 它们等于内容改完之后
+ * · 档 1 的三个数（2 / 2 / 3）是**实测值** —— 它们等于内容改完之后
  *   `src/content/units/unit-01.json` 的真实取值（守卫 G264 逐卡核对）。
  * · 档 2 / 档 3 的六个数（3/4/4、4/4/4）是**占位值** —— 没有内容可对，
  *   属**需要人审的产品数字**（R-20 的精神）：改它们 = 改难度曲线的一个点。
- * · 档位边界 1–4 / 5–10 / 11–20 = FR63 的阳光档位划分（全书唯一的分段口径）。
+ * · 档位边界 1–4 / 5–10 / 11–24 = FR63 的阳光档位划分（全书唯一的分段口径）。
  */
 
 import { FIRST_UNIT, LAST_UNIT } from './distribution'
@@ -74,14 +74,25 @@ export interface OptionCountTier {
  *
  * | 档 | 单元 | 单词 `word` | 关键词 `keyword` | 回应 `response` |
  * |---|---|---|---|---|
- * | 1 | 1–4 | **2** | **3** | **3** |
+ * | 1 | 1–4 | **2** | **2** | **3** |
  * | 2 | 5–10 | 3 | 4 | 4 |
- * | 3 | 11–20 | 4 | 4 | 4 |
+ * | 3 | 11–24 | 4 | 4 | 4 |
  *
  * ⚠️ **档 1 的三个数是实测值**：GDD 逐字写「早期关卡可从 **2 个选项**起步」，
- *   而单词卡是难度阶梯的起点（FR15，也是单元 1 里 37 张中的 30 张）⇒ 那个 2
+ *   而单词卡是难度阶梯的起点（FR15，也是单元 1 里 6 张中的 2 张）⇒ 那个 2
  *   必须真的出现在档 1 的单词卡上。三个卡型都落在「两三个」里（story 的用户价值句），
  *   沿 FR15 的难度阶梯递增（单词 ≤ 关键词 ≤ 回应）⇒ **档内卡型不降**。
+ *   ⚠️ **`keyword` 是 2 而不是 3**（Story 2.10 / 换源批次）：教材版单元 1 只有
+ *   **2 个教材词**（`morning` / `afternoon`），而关键词卡是「听句取词」——
+ *   干扰项**必须取自教材词表** ⇒ keyword 卡**最多只能有 2 个选项**。
+ *   硬凑第三个会撞上「干扰项不得凭空造词」的 AC（教材里根本没有第三个词可拿）。
+ *   ⚠️📎 **2026-10-26 实测更正（Story 2.10 收尾）**：本注释原先还写着
+ *   「`morning` 与 `afternoon` 归一化后编辑距离是 **3**，再塞一个近似词就撞
+ *   `option-near-duplicate`」—— **那个 3 是错的**（那是**旧内容** `ball` ~ `book` 的距离）。
+ *   按 `scripts/validate-content.ts` 的 `normalizeOptionText` + `editDistance` 实测，
+ *   `morning` ~ `afternoon` = **7**（`ball` ~ `book` 才是 3）⇒ **近邻阈值不是
+ *   keyword 降到 2 的理由**；理由只有上面那一条（教材只有 2 个词）。
+ *   ⇒ 阈值 2 现在**不由任何内容顶住**，是「比实测更保守」的取值（R-21：按实测写）。
  *   ⚠️ **档 2 / 档 3 的六个数没有试玩数据背书**，是「符合 GDD 方向、且保守」的占位。
  *   Story 2.9 的试玩验收与 Story 3.x 的调优才是它们的真值来源。
  *
@@ -93,7 +104,7 @@ export interface OptionCountTier {
 export const OPTION_COUNT_TIERS: readonly OptionCountTier[] = Object.freeze([
   Object.freeze({
     unitRange: Object.freeze([1, 4] as const),
-    counts: Object.freeze({ word: 2, keyword: 3, response: 3 }),
+    counts: Object.freeze({ word: 2, keyword: 2, response: 3 }),
   }),
   Object.freeze({
     unitRange: Object.freeze([5, 10] as const),

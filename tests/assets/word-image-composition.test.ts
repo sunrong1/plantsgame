@@ -25,7 +25,7 @@
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { tmpdir } from 'node:os'
-import { basename, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
@@ -47,6 +47,20 @@ import {
 const root = fileURLToPath(new URL('../../', import.meta.url))
 const wordsDir = join(root, 'public/assets/words')
 const unitDir = join(wordsDir, 'unit-01')
+const unit2Dir = join(wordsDir, 'unit-02')
+
+/**
+ * 词图的**黄金值夹具**目录 —— `[CR]` 钉死过实算值的 5 张旧词图搬到了这里。
+ *
+ * ⚠️ **为什么需要它**：Story 2.10 换源后，`public/assets/words/` 下只剩当前交付的
+ *   6 张（单元 1 两张 + 单元 2 四张），旧的 60 张自建词表词图已全部删除。
+ *   而变异用例需要一个**稳定的、可反复施加变异的底图**：
+ *   · 真实交付的那 6 张是**内容资产**，不该被变异用例「理所当然地」当成 playground；
+ *   · 但把变异全搬进夹具目录，又会**丢掉「守卫仍覆盖真实交付」这一层**。
+ *   ⇒ 两个来源都保留：`sourceDir` 参数决定读哪一个，
+ *     M31–M33 用夹具（黄金值稳定、形态已知），M34 / M35 用真实交付的那几张。
+ */
+const fixtureDir = join(root, 'tests/fixtures/word-images')
 
 /** §5.2 / §5.3 的下限换算成 px —— 从脚本里的百分比常量算，不写死像素值。 */
 const MIN_PADDING_PX = (MIN_PADDING_PERCENT / 100) * CANVAS_SIZE
@@ -113,9 +127,27 @@ function metricsOf(path: string): WordImageMetrics {
  *
  * ⚠️ 仓库磁盘绝不被写。这不是洁癖：vitest 并行跑同一批测试文件，
  *   真实磁盘上的临时状态会被别的断言读到，失败会指向一个和变异毫无关系的文件。
+ *
+ * ⚠️ **`sourceDir` 决定底图取自哪里**（Story 2.10 换源后）：
+ *   · 真实交付目录 `public/assets/words/unit-01`（单元 1）与 `unit-02`（单元 2）；
+ *   · 黄金值夹具目录 `tests/fixtures/word-images`（旧的 60 张词图删除后，
+ *     `[CR]` 钉死过实算值的 5 张搬到了那里）。
+ *   两个来源都必须能用 —— 守卫既要覆盖真实交付的那几张，
+ *   也要有**形态已知、golden 值稳定**的底图来施加变异。
+ *
+ * ⚠️ **新增的「变异不许是空操作」断言**：变异用例的失败模式有两种
+ *   ——「判据该红却没红」（守卫太松）与「变异根本没生效」（用例自己空转）。
+ *   后者更隐蔽：锚点一旦因为换源改了而失配，`mutate()` 会**原样返回**，
+ *   于是测的还是那张合规图，断言「它违规了」就会红 —— 报错指不到真正的问题。
+ *   ⇒ 这里显式断言变异后的文本与原文不同。
  */
-function withMutatedWordImage<T>(entryId: string, mutate: (source: string) => string, run: (path: string) => T): T {
-  const originalPath = join(unitDir, `${entryId}.svg`)
+function withMutatedWordImage<T>(
+  entryId: string,
+  mutate: (source: string) => string,
+  run: (path: string) => T,
+  sourceDir: string = unitDir,
+): T {
+  const originalPath = join(sourceDir, `${entryId}.svg`)
   const original = readFileSync(originalPath, 'utf8')
   const md5 = (text: string): string => createHash('md5').update(text).digest('hex')
   const before = md5(original)
@@ -125,7 +157,13 @@ function withMutatedWordImage<T>(entryId: string, mutate: (source: string) => st
     mkdirSync(join(scratch, 'unit-01'), { recursive: true })
     cpSync(originalPath, join(scratch, 'unit-01', `${entryId}.svg`))
     const mutatedPath = join(scratch, 'unit-01', `${entryId}.svg`)
-    writeFileSync(mutatedPath, mutate(original), 'utf8')
+    const mutated = mutate(original)
+    expect(
+      mutated,
+      `${entryId} 的变异是**空操作** —— 锚点没匹配上，文件内容一个字都没变。` +
+        '此时测的还是那张合规图，「它应该违规」的红报的是锚点失配，不是判据失效。',
+    ).not.toBe(original)
+    writeFileSync(mutatedPath, mutated, 'utf8')
     const result = run(mutatedPath)
     // 仓库磁盘逐字未动。
     // ⚠️ `[CR]` 2026-10-15：这条断言**在当前实现下不可能红** —— 所有写入都只发生在
@@ -225,6 +263,10 @@ describe('G11 —— §5.1 主体占画布比例按档位（60–75% / 70–85%�
   })
 
   it('M31：把 u1-dog 放大到顶格（主体撑满画布），G11 必须红', () => {
+    // ⚠️ 底图换成了**黄金值夹具** `tests/fixtures/word-images/u1-dog.svg`
+    //   （Story 2.10 换源后，旧的 60 张自建词图已从 `public/assets/words/` 全部删除）。
+    //   这张夹具的实算值（82.3% / 38px）是 `[CR]` 钉死的，内容一个字没动，
+    //   而它的身体椭圆正是下面这个锚点 —— 形态与原用例完全一致。
     withMutatedWordImage(
       'u1-dog',
       (source) =>
@@ -239,23 +281,35 @@ describe('G11 —— §5.1 主体占画布比例按档位（60–75% / 70–85%�
           `变异后 G11 仍然判这张图合规 —— 把主体撑到 512×512 必然超 85% 上限。实测：${String(hit)}`,
         ).toBe(true)
       },
+      fixtureDir,
     )
   })
 
-  it('M36：把 u1-chair 整组转 45°，G11 必须红（这条专治「<g> 上的 rotate 被丢掉」）', () => {
+  it('M36：把 u1-dog 整组转 45°，G11 必须红（这条专治「<g> 上的 rotate 被丢掉」）', () => {
     // ⚠️ M33 只验了 `<g>` 上的 **translate**。2026-10-15 实测发现同一条路上
     //   **rotate 被静默丢弃**（改角度，实测值一字不变），而方向是**偏大 = 假红**：
     //   pen 一度被算出 80.7%，真实值 67.1%。
-    // ⇒ M36 只有在「容器旋转真的被计入」时才会红：椅子 256×360 的框转 45° 后
-    //   外接盒变成约 435×435（85%），远超 geometric 档的 60%–75%。
-    //   如果哪天有人把矩阵改成只传 translate，这条会**直接失败**（变异变空操作），
-    //   那正是它要抓的东西。
+    // ⇒ M36 只有在「容器旋转真的被计入」时才会红。
+    //
+    // ⚠️ **Story 2.10 换源后选底图的两条硬要求**（2026-10-26 实测）：
+    //   ① **底图自身不能已经带着 rotate**，否则「rotate 被丢掉」时实测值会跳到
+    //      另一个值上，可能**仍然越界** ⇒ 变异测不出那个 bug（假绿）。
+    //      实测：`u2-pencil.svg` 自带 `rotate(-45)`，去掉所有 rotate 后实测 79.7%
+    //      （已越出 geometric 的 60%–75%）⇒ 用它当底图，M36 在「rotate 被丢掉」
+    //      时照样是绿的 ⇒ **不能用**。
+    //   ② **45° 之后必须真的越出档位区间**。实测：`u2-rubber.svg`（斜置 18° 的长方体）
+    //      转 45° 后实测 70.8%，**仍在 60%–75% 里** ⇒ 变异不出红 ⇒ **不能用**。
+    //   ⇒ 最终选 `tests/fixtures/word-images/u1-dog.svg`：它**没有任何 transform**
+    //      （唯一的 rotate 是耳朵椭圆上的元素级 `rotate(-26)`，落在外接盒内部，
+    //      丢掉它实测值几乎不变），且形状**非旋转对称**（有机曲线形体）。
+    //      实测：82.3% → 转 45° 后 90.6%，越出 organic 档的 70%–85% ⇒ 变异能红。
+    //      而「rotate 被丢掉」时实测仍是 82.3%（在带内）⇒ 变异仍能**区分**那个 bug。
     withMutatedWordImage(
-      'u1-chair',
+      'u1-dog',
       (source) => {
         const at = source.indexOf('  <g ')
         const end = source.lastIndexOf('</svg>')
-        if (at < 0 || end < 0) throw new Error('u1-chair 的结构与预期不符，变异锚点找不到')
+        if (at < 0 || end < 0) throw new Error('u1-dog 的结构与预期不符，变异锚点找不到')
         return (
           source.slice(0, at) +
           '  <g transform="rotate(45 256 256)">\n' +
@@ -268,9 +322,10 @@ describe('G11 —— §5.1 主体占画布比例按档位（60–75% / 70–85%�
         const hit = check('§5.1', path)
         expect(
           hit !== null,
-          `变异后 G11 仍然判这张图合规 —— 转 45° 后外接盒必然超出 60%–75%。实测：${String(hit)}`,
+          `变异后 G11 仍然判这张图合规 —— 转 45° 后外接盒必然超出 organic 档的 70%–85%。实测：${String(hit)}`,
         ).toBe(true)
       },
+      fixtureDir,
     )
   })
 })
@@ -288,6 +343,9 @@ describe('G12 —— §5.2 四边最小留白 ≥ 6%（31px）', () => {
   })
 
   it('M32：把 u1-ball 的描边加粗到撑破画布（外接盒被描边半宽顶出边界），G12 必须红', () => {
+    // ⚠️ 底图换成**黄金值夹具** `tests/fixtures/word-images/u1-ball.svg`
+    //   （换源后真实目录里已无此图）。锚点 `stroke-width="14"` 在该夹具里
+    //   **逐字存在**（球身那个 `<circle>`），且黄金留白 79px 与原用例一致。
     withMutatedWordImage(
       'u1-ball',
       (source) => source.replace('stroke-width="14"', 'stroke-width="200"'),
@@ -298,6 +356,7 @@ describe('G12 —— §5.2 四边最小留白 ≥ 6%（31px）', () => {
           `变异后 G12 仍然判这张图合规 —— 描边半宽 100px 会把 79px 的留白吃到负数。实测：${String(hit)}`,
         ).toBe(true)
       },
+      fixtureDir,
     )
   })
 })
@@ -314,6 +373,8 @@ describe('G13 —— §5.3 外接框重心落在画布中心 ±6%', () => {
   })
 
   it('M33：把 u1-three 整组上移 120px，重心必然出界，G13 必须红', () => {
+    // ⚠️ 底图换成**黄金值夹具** `tests/fixtures/word-images/u1-three.svg`
+    //   （换源后真实目录里已无此图；夹具内容与原用例逐字相同）。
     withMutatedWordImage(
       'u1-three',
       (source) => {
@@ -337,6 +398,7 @@ describe('G13 —— §5.3 外接框重心落在画布中心 ±6%', () => {
           `变异后 G13 仍然判这张图合规 —— 上移 120px 必然超出 ±30.7px。实测：${String(hit)}`,
         ).toBe(true)
       },
+      fixtureDir,
     )
   })
 })
@@ -344,7 +406,7 @@ describe('G13 —— §5.3 外接框重心落在画布中心 ±6%', () => {
 // ── AC-6 构图档位声明 ─────────────────────────────────────────────────────────
 
 describe('AC-6 —— 构图档位声明：读不到就报错，不许静默跳过', () => {
-  it('30 张词图全部声明了构图档位（漏一张即红）', () => {
+  it('每一张词图都声明了构图档位（漏一张即红）', () => {
     const files = wordImagesOnDisk()
     const missing: string[] = []
     for (const path of files) {
@@ -403,30 +465,48 @@ describe('AC-6 —— 构图档位声明：读不到就报错，不许静默跳�
     ).toBeNull()
   })
 
-  it('M34：把 u1-cat 的档位行改成未知取值，必须红（而不是静默跳过它）', () => {
+  it('M34：把 u2-rubber 的档位行改成未知取值，必须红（而不是静默跳过它）', () => {
+    // ⚠️ 底图换成**真实交付**的 `u2-rubber.svg`（Story 2.10 换源后旧的 `u1-cat` 已删除）。
+    //   锚点 `构图档位：geometric` 在该文件里逐字存在；
+    //   ⚠️ 改成 `geometricish` 之后 `readCompositionTier()` 必须读成 `null` ——
+    //   它的正则末尾有 `\b`，`geometric` 后面接字母**不构成词边界** ⇒ 不会误判成
+    //   `geometric`（这一条由下面「变异真的改了」的断言与「档位读成 null」共同保证）。
     withMutatedWordImage(
-      'u1-cat',
-      (source) => source.replace('构图档位：organic', '构图档位：organicish'),
+      'u2-rubber',
+      (source) => source.replace('构图档位：geometric', '构图档位：geometricish'),
       (path) => {
+        expect(
+          readCompositionTier(readFileSync(path, 'utf8')),
+          '档位写成未知取值后竟然还能被读出来 —— 变异没有真正生效，' +
+            '这条用例等于空转（下面那条「必须红」也就证明不了任何事）。',
+        ).toBeNull()
         expect(
           check('§5.1', path) !== null,
           '档位写成未知取值后没有红 —— 说明档位读取失败时被静默跳过了，' +
             '这张图从此不在任何构图守卫的覆盖面内，而守卫仍然全绿。',
         ).toBe(true)
       },
+      unit2Dir,
     )
   })
 
-  it('M35：删掉 u1-bird 的档位行，必须红', () => {
+  it('M35：删掉 u1-morning 的档位行，必须红', () => {
+    // ⚠️ 底图换成**真实交付**的 `u1-morning.svg`（旧的 `u1-bird` 已删除）。
+    //   这张图是单元 1 当前交付的两张之一，档位行在文件头注释里逐字存在。
     withMutatedWordImage(
-      'u1-bird',
+      'u1-morning',
       (source) => source.replace(/^\s*构图档位：[^\n]*\n/m, ''),
       (path) => {
         expect(
+          readCompositionTier(readFileSync(path, 'utf8')),
+          '删掉档位行后竟然还能读出档位 —— 变异没有真正生效，这条用例等于空转。',
+        ).toBeNull()
+        expect(
           check('§5.1', path) !== null,
-          '删掉档位行后没有红 —— 守卫会在剩下的 29 张上恒绿。',
+          '删掉档位行后没有红 —— 守卫会在剩下的图上恒绿。',
         ).toBe(true)
       },
+      unitDir,
     )
   })
 })
@@ -582,16 +662,25 @@ describe('scene 档的夹具 —— G11 取的是 scene 的区间，不是别的
 
 describe('脚本与守卫同源 —— 守卫不得自带第二份几何算法', () => {
   it('measureWordImageFile 与 measureWordImage 对同一张真实图给出一致的数', () => {
-    for (const entryId of ['u1-ball', 'u1-three', 'u1-happy', 'u1-teacher', 'u1-dog']) {
-      const byFile = measureWordImageFile(unitDir, entryId)
-      const byText = measureWordImage(entryId, readFileSync(join(unitDir, `${entryId}.svg`), 'utf8'))
+    // ⚠️ 覆盖面改成**磁盘上真实交付的每一张**（Story 2.10 换源后是单元 1 两张 +
+    //   单元 2 四张），不再写死旧批次的 5 个名字 ——
+    //   写死的名字在换源后要么指向不存在的文件（ENOENT），要么悄悄少覆盖几张。
+    const paths = wordImagesOnDisk()
+    expect(paths.length, '一张词图都没枚举到 —— 下面两条断言会在空集合上恒绿').toBeGreaterThan(0)
+    for (const path of paths) {
+      const entryId = basename(path, '.svg')
+      const byFile = measureWordImageFile(dirname(path), entryId)
+      const byText = measureWordImage(entryId, readFileSync(path, 'utf8'))
       expect(byText.edgePercent, `${entryId} 两条入口给出了不同的占比`).toBeCloseTo(byFile.edgePercent, 9)
     }
   })
 
   it('守卫读的档位与脚本读的档位是同一个来源', () => {
-    for (const entryId of ['u1-dog', 'u1-teacher', 'u1-three'] as const) {
-      const source = readFileSync(join(unitDir, `${entryId}.svg`), 'utf8')
+    const paths = wordImagesOnDisk()
+    expect(paths.length, '一张词图都没枚举到 —— 下面这条断言会在空集合上恒绿').toBeGreaterThan(0)
+    for (const path of paths) {
+      const entryId = basename(path, '.svg')
+      const source = readFileSync(path, 'utf8')
       expect(measureWordImage(entryId, source).tier).toBe(readCompositionTier(source))
     }
   })
@@ -743,10 +832,12 @@ describe('G286 —— 词图文件头里的「外沿实算」逐张等于工具�
 
   it('🚨 反向自测：把文件头的实算值改错 ⇒ 判据本体必须报出问题', () => {
     // ⚠️ R-51：反向自测**真的调用判据本体** ⇒ 判据被掏空时它照样红。
-    //   夹具用 `u2-doctor` 的**真实**文件与**真实**实算值，只把文件头里的
+    //   夹具用 `u2-ruler` 的**真实**文件与**真实**实算值，只把文件头里的
     //   三个数换成一组「看起来很合理但不是实算」的数 —— 那正是
-    //   `[CR]` 实测在 `u2-doctor` 上抓到的原样。
-    const entryId = 'u2-doctor'
+    //   `[CR]` 实测在旧批次（`u2-doctor`）上抓到的原样。
+    //   ⚠️ 底图随交付批次变（Story 2.10 换源后 `u2-doctor` 已不存在），
+    //     但**判据与夹具的形态不变**：真文件 + 真实算值 + 只改文件头。
+    const entryId = 'u2-ruler'
     const source = readFileSync(join(UNIT2_DIR, `${entryId}.svg`), 'utf8')
     const measured = measureWordImage(entryId, source)
     const violated = source.replace(
@@ -763,7 +854,7 @@ describe('G286 —— 词图文件头里的「外沿实算」逐张等于工具�
   })
 
   it('🚨 反向自测：文件头里没有实算记录 ⇒ 判据本体必须报出问题', () => {
-    const entryId = 'u2-doctor'
+    const entryId = 'u2-ruler'
     const source = readFileSync(join(UNIT2_DIR, `${entryId}.svg`), 'utf8')
     const measured = measureWordImage(entryId, source)
     const stripped = source.replace(

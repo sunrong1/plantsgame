@@ -25,11 +25,11 @@
 | DF-015 | 待触发 | 未指派 | 若将来引入「本回合已死但仍在场上」的中间态（例如溅射伤害链、复活机制），立刻给这条加断言 | `src/core/turn.ts` 的 `shoot()` 减速守卫仍是等价变异体，无测试 | [`df-015`](./deferred-details.md#df-015) |
 | DF-016 | 待触发 | Story 3.2（Epic 3） | Epic 3 战斗数值调优（3-2）时定夺方向 —— 给减速塔一个真实存在的优势，或承认单元 1 阶段它不该进题单 | `src/core/balance.ts` 的 `TOWER_STATS.slow` 仍被直射塔完全支配 | [`df-016`](./deferred-details.md#df-016) |
 | DF-017 | 待触发 | 未指派 | 出现能逼出「同回合抵达 ≥2 只」的局面时立刻补断言（三个候选触发点：建塔策略放宽 / 引入溅射复活 / 减速系数被调大） | `src/core/reducer.ts` 的 `applyResolve` 心数夹取仍无守卫 | [`df-017`](./deferred-details.md#df-017) |
-| DF-018 | 待触发 | Epic 2 | Epic 2 扩词池时，优先补「含池内词的句子」，并把本条改成回归守卫 | `src/content/units/unit-01.json` 仍只有 1 张 keyword 卡（37 条） | [`df-018`](./deferred-details.md#df-018) |
+| DF-018 | 待触发 | Epic 2 | Epic 2 扩词池时，优先补「含池内词的句子」，并把本条改成回归守卫 | `src/content/units/unit-01.json` 仍只有 1 张 keyword 卡（6 条） | [`df-018`](./deferred-details.md#df-018) |
 | DF-019 | 待触发 | 未指派 | `[CR]` 若判「必须换实现」，改法是让该条目不再有卡面 —— 但那会破坏「每条录音都有卡面」这条更强的不变量 | `unit-01.json` 的 `u1-s-good-morning` 回应卡仍是裁决而非共识 | [`df-019`](./deferred-details.md#df-019) |
 | DF-021 | 待触发 | 未指派 | 若单元文件增长到解析耗时可见，再合并为单次 | `scripts/validate-content.ts` 每单元仍跑两次 `UnitSchema.safeParse` | [`df-021`](./deferred-details.md#df-021) |
 | DF-022 | 待触发 | 未指派 | 若将来引入「一 entry 多卡」的模型，这行必须先拆开 | `scripts/validate-content.ts` 的 `cardCount` 仍直接等于 `entryCount` | [`df-022`](./deferred-details.md#df-022) |
-| DF-023 | 待触发 | 未指派 | 接入 formatter 时一并解决 | `src/styles/tokens.css` 仍缺文件尾换行（30 张词图已补） | [`df-023`](./deferred-details.md#df-023) |
+| DF-023 | 待触发 | 未指派 | 接入 formatter 时一并解决 | `src/styles/tokens.css` 仍缺文件尾换行（6 张词图已补） | [`df-023`](./deferred-details.md#df-023) |
 | DF-024 | 待触发 | 未指派 | 真出现「从工具导出且属性未加引号」的资产时再修 | `scripts/validate-content.ts` 的 `svgRootTag()` 仍可能返回 `null` | [`df-024`](./deferred-details.md#df-024) |
 | DF-025 | 待触发 | Story 1.18 | 真机飞行模式下打开一道**没有预录录音**的卡，确认回落到 `speechSynthesis` 且仍然发声；再断网确认静音也不阻断回合 | AC-B4/B5 的真机断网验收仍未做 | [`df-025`](./deferred-details.md#df-025) |
 | DF-026 | 待排期 | Story 1.19 / `[CC]` | 与 E21 同批：把**已归档的 Story 1.10 文档**里「② 支撑 AR43 的**两套形状**」那一条改成「横向 3 格条带」（⚠️ 活跃文档不点名归档文件名 —— R-40） | 裁决 1 的六处文档登记只剩第 6 条未改（1–5 已结） | [`df-026`](./deferred-details.md#df-026) |
@@ -43,7 +43,7 @@
 | DF-035 | 待触发 | Story 1.16 / 1.17 | 若 1.15 存档格式要求「本存档累计获得多少阳光」，或 1.17 的 DebugPanel 要显示它 ⇒ 走 `[CC]` 加字段，不要在 1.13 补 | `store.ts` 无 `sunEarned` 累计阳光字段，FR66「累计所得只增不减」只在 `masteredWordIds` 落地 | [`df-035`](./deferred-details.md#df-035) |
 | DF-037 | 待触发 | 未指派 | 若单元 2 的 JSON 换了 id 前缀形态，必须同步改 `progressDisplay` 并新增一条守卫，否则进度条会恒显示 0 而不报错 | `core/hud.ts` 的 `progressDisplay` 用 `startsWith('u'+unitNumber+'-')`，eslint 的 `src/core/**` 块不禁 `content`，无守卫 | [`df-037`](./deferred-details.md#df-037) |
 | DF-038 | 待触发 | Story 1.18 | 1.18 真机校准时复算三条对比度（阳光 / 心 / 白字）；若要改 `--color-heart` 或 `--color-sun` 的值，必须先跑 `palette.test.ts` | `tokens.css` 的 `--color-hud-panel: #1f2d11` 是推导值，未在 1.18 真机复算三条对比度 | [`df-038`](./deferred-details.md#df-038) |
-| DF-039 | 待触发 | 未指派 | 单元 2 或任何一条内容出现 `entryId !== wordId` 的词条时，立即走 `[CC]`：改字段名或引入映射表；不许继续把 `entryId` 塞进 `masteredWordIds` | `masteredWordIds` 存的是 `entryId`，单元 1 的 37/37 条恰好相等，单元 2 一分叉就得走 `[CC]` | [`df-039`](./deferred-details.md#df-039) |
+| DF-039 | 待触发 | 未指派 | 单元 2 或任何一条内容出现 `entryId !== wordId` 的词条时，立即走 `[CC]`：改字段名或引入映射表；不许继续把 `entryId` 塞进 `masteredWordIds` | `masteredWordIds` 存的是 `entryId`，单元 1 的 6/6 条恰好相等，单元 2 一分叉就得走 `[CC]` | [`df-039`](./deferred-details.md#df-039) |
 | DF-040 | 待触发 | Story 1.18 / 1.19 | 1.18/1.19 真机录制里若「心碎了」看不见或拖沓，先调这里；只许改这一处，改完复跑 AC-G1 第 9 项 | `HeartRow.vue` 用 `--dur-slow`(400ms) 是本组件一次性判断，未在真机复核 | [`df-040`](./deferred-details.md#df-040) |
 | DF-041 | 待触发 | Story 1.18 | 1.18 部署 PWA 时加一个 favicon，这条自动闭合 | AC-G1 三件事：`.battle-grid` 3px 横向溢出、`/favicon.ico` 404 待 1.18 PWA 收口，③ HUD 不进 G20 已定 | [`df-041`](./deferred-details.md#df-041) |
 | DF-042 | 待触发 | 未指派 | 1.14 接上掉心音效后，那时可以用「同一 tick 内音效与 class 同时触发」把 G53 升级成行为守卫；在此之前不许把 G53 的源码守卫当成「已用行为证明过」 | G56/G57/G53 仍停在源码层；1.14 已接音效但结论是 G53 未升级 | [`df-042`](./deferred-details.md#df-042) |
@@ -167,17 +167,14 @@
 | DF-191 | 待触发 | Story 1.19 | Story 1.19 试玩验收时人工复核视角；在出现「机器判视角」的手段前不得结清 | 单词卡**图片**选项的视角一致性机器判不了 —— `docs/art-direction.md` §5.4 台账是目视结论 | [`df-191`](./deferred-details.md#df-191) |
 | DF-192 | 待触发 | 未指派 | 横屏布局单开 story 改 `src/styles/responsive.css` 的 2×2 规则时（该规则被守卫 G169 钉死） | 横屏下选项网格被强制 2 列 ⇒ 3 个选项排成 **2 + 1 两行**；本 story 不动横屏布局 | [`df-192`](./deferred-details.md#df-192) |
 | DF-193 | 待裁决 | Story 2.9 | Story 2.9 试玩验收时决定 `NEAR_DUPLICATE_MAX_DISTANCE` 是否从 2 调高，或为 3–4 字母短词另立一条判据 | `scripts/validate-content.ts` 的 `NEAR_DUPLICATE_MAX_DISTANCE = 2` 会误杀「字面近、语义远」的 3–4 字母短词（如 `red` ~ `bed`） | [`df-193`](./deferred-details.md#df-193) |
-| DF-195 | 待裁决 | Story 1.19 / Story 2.9 | Story 1.19 或 2.9 试玩验收时决定是否打乱选项顺序（以及是否把「正确项位置」纳入内容校验）｜📎 **2026-10-23**：Story 1.19 的试玩模板已加「作答位置分布」前置栏 ⇒ 真机试玩会带回位置分布，届时据此裁决 | `src/content/units/unit-01.json` 全部 37 张卡的正确项都在第 0 位 ⇒「永远点最左边」100% 命中 | [`df-195`](./deferred-details.md#df-195) |
+| DF-195 | 待裁决 | Story 1.19 / Story 2.9 | Story 1.19 或 2.9 试玩验收时决定是否打乱选项顺序（以及是否把「正确项位置」纳入内容校验）｜📎 **2026-10-23**：Story 1.19 的试玩模板已加「作答位置分布」前置栏 ⇒ 真机试玩会带回位置分布，届时据此裁决 | `src/content/units/unit-01.json` 全部 6 张卡的正确项都在第 0 位 ⇒「永远点最左边」100% 命中 | [`df-195`](./deferred-details.md#df-195) |
 | DF-199 | 待触发 | Story 2.6 | Story 2.6 开工前，先枚举该单元在 `docs/card-distribution.md` §5.1.1 下的可行 N（可行集可能为空），再定词条数 | `docs/card-distribution.md` §5.1.1 的可行性对 N 敏感：实测单元 2 的 N=37 与 N=41 可行集为空、单元 3 的 N=36/37 也为空 | [`df-199`](./deferred-details.md#df-199) |
 | DF-200 | 待裁决 | Story 2.9 | Story 2.9 试玩验收时决定「跳过的词（词图加载失败）在单元推进后怎么办」：是否允许带缺口推进、要不要补一轮小测 | 推进判据改成「本单元全部已掌握」后，一张持续加载失败的词图会让该单元永远学不完（孩子卡在 N-1/N） | [`df-200`](./deferred-details.md#df-200) |
 | DF-202 | 待裁决 | Story 2.9 | Story 2.9 试玩验收前（或「最后一个单元」被录满时）设计「全书完成」画面；**至少**要有一条**不依赖新画面**的出路（提示「你已经读完所有已解锁的单元」＋ 不再把同一张通关卡推回给孩子） | 读完**最后一个已录入单元**后没有完成画面 —— `finished` 只换按钮字、动作仍是 `backToStart()`（不动 `state.value`）⇒ `回开始 → 开始游戏` 回到**同一张通关卡**，是死循环 | [`df-202`](./deferred-details.md#df-202) |
 | DF-203 | 待裁决 | Story 2.9 | Story 2.9 试玩验收时（或内容批次 3 开工前）裁决「回应卡的正确项该怎么选」这条**内容语义标准**；DF-019 归并到本条 | 回应卡的「正确项」**没有标准**，只有逐张裁决 —— 单元 1 的 `u1-s-thank-you` 题面「Thank you!」的正确项是「Goodbye」，单元 2 的 `u2-goodbye` 的正确项也是「Goodbye」 | [`df-203`](./deferred-details.md#df-203) |
 | DF-204 | 待触发 | Story 2.6 | Story 2.6 开工前（或 `food` 档的成员数再涨一倍时）用**全部**真实成员重算 `food` 档的区间；`scene` 档等 Story 2.6 有真实成员再定 | `food` 档的区间 **60%–80%** 只由 **2 个**样本定出来（现在有 6 个成员，实测跨度 62.1%–79.7%），`scene` 档则**一个真实成员都没有** | [`df-204`](./deferred-details.md#df-204) |
-| DF-205 | 待触发 | Story 2.6 | Story 2.6 开工时把「48px 读成了什么」补进 `docs/word-image-lab/versions-*.jsonl` 的每一条记录，并把本批 30 张按同一格式补齐 | 单元 2 的 **30 张**词图**没有逐版的 48px 判读留痕** —— `versions-u2.jsonl` 每张只有**一行最终态**，中间版本与判读依据一个字都没留 | [`df-205`](./deferred-details.md#df-205) |
-| DF-207 | 待触发 | Story 2.10 | Story 2.10 把单元 1–2 换成教材词表后，新 `N` 确定（教材版一关 3–25 条，均值约 14），重定 `docs/card-distribution.md` 的**首锚点与末锚点**并同步 `src/content/distribution.ts` | 卡型占比的两个锚点按 37 条/单元定（首锚点 30/1/6 = 81.08%），新实测单词卡份额只有 **28–46%** ⇒ 锚点全部失效 | [`df-207`](./deferred-details.md#df-207) |
-| DF-208 | 待触发 | Story 2.10 | Story 2.10 把 `LAST_UNIT` 改成 24 后，`docs/option-count.md` 的档 3 随 `src/content/option-count.ts` 同步上界到 24（21–24 关不再无档可用）；并按新 `N` 重算档 1 的选项数 | 选项数档位表只覆盖 1..20 关，**21–24 关无档可用**；档 1 = 2/3/3 又是按「一关 30 词」定的 | [`df-208`](./deferred-details.md#df-208) |
+| DF-205 | 待触发 | Story 2.6 | Story 2.6 开工时把「48px 读成了什么」补进 `docs/word-image-lab/versions-*.jsonl` 的每一条记录，并把本批 4 张按同一格式补齐 | 单元 2 的 **4 张**词图**没有逐版的 48px 判读留痕** —— `versions-u2.jsonl` 每张只有**一行最终态**，中间版本与判读依据一个字都没留 | [`df-205`](./deferred-details.md#df-205) |
 | DF-209 | 待裁决 | Story 1.19 | Story 1.19 真机试玩（Task 3）在**浏览器标签页**（非 PWA 全屏）模式下确认 768×1024 是否真裁；确认裁切 ⇒ 下一次动选项卡尺寸时裁决「选项卡高度是否受可用高度约束」 | `OptionCard.vue` 的 `.option-card__image` 是 `aspect-ratio: 1/1` ⇒ 选项卡高由宽度定 ⇒ 浏览器标签页（内视口矮 87px）下 768×1024 题卡超出视口 21px | [`df-209`](./deferred-details.md#df-209) |
-| DF-210 | 待触发 | Story 2.10 | Story 2.10 录完单元 1–2 后，按 24 关 / 新 `N` 重算 `docs/word-image-throughput.md` §8.1.3 与 §8.4 的参数表与决策表 | 该文档 §8 的 16–20 单元 / 480–600 张 / 66–133 h 全是旧口径；新口径下「口径 B 远超投入」这条结论**不成立** | [`df-210`](./deferred-details.md#df-210) |
 | DF-212 | 待触发 | Story 1.18 | Story 1.18 真机字号校准时，把 `src/styles/tokens.css` 字体阶梯的推导数按今天的实测容器宽 **736px** 重算（4 个选项 ⇒ 单卡 175px、内容盒 151px ⇒ 硬上限 28.8px、余量 23.6%） | 字体阶梯仍按 Story 1.11 的旧基线 768 / 183 / 159 推导；`--text-option: 22px` 取值**仍成立**，过期的是**推导数**与「余量 27.7%」 | [`df-212`](./deferred-details.md#df-212) |
 | DF-213 | 待裁决 | 未指派 | 有人裁决辅通路四个常量的「现场调」归属（候选：Story 1.19 试玩校准 / 某个尚未存在的 story），并把 5 个文件里的 10 处口径一次改齐 | `pronunciation.ts` 的四个 rate/pitch 常量在 5 个文件 10 处写着两个归属（Epic 1 现场调 / Epic 3 现场调） | [`df-213`](./deferred-details.md#df-213) |
 | DF-214 | 待排期 | 未指派 | 下次动 `epics.md` 的 FR4 段或 `game-architecture.md` 的 Configuration 表时，先回读 Story 3.4 的 rev 3 note 与本条详情，核对那三处更正仍在 | Story 3.4 由 `[DS]` 直接更正了 `game-architecture.md` 的 `scripts/gen-voice.ts` 路径与「录音生成参数」字段列表，以及 `epics.md` FR4 的重复行 | [`df-214`](./deferred-details.md#df-214) |
@@ -186,7 +183,6 @@
 | DF-217 | 待触发 | 未指派 | 下次改布局 CSS（`responsive.css` / `LevelView.vue` 的 `.hud` / `BattleField.vue`）时，手工重跑 `scripts/verify-portrait-layout.ts`（16 视口 × 2 相位）并把 32 行逐格对进 story 文档的表；或把那套对账做成一条能跑真浏览器的守卫 | 文档里那张 32 行实测表**没有任何自动对账**（量测要真浏览器，CI 跑不了）⇒ 改布局后它会悄悄过期 | [`df-217`](./deferred-details.md#df-217) |
 | DF-218 | 待触发 | 未指派 | 要跑 `scripts/verify-portrait-layout.ts` 时，把 `scripts/` 与 `dist/` 拷到 `/tmp`（**不改仓库权限**），用**非 root** 用户执行并**保持 Chromium sandbox 开启**（不要加 `--no-sandbox`）；浏览器**用 snap 版 Chromium**（`/snap/chromium/current/usr/lib/chromium-browser/chrome`），**不要**用 Playwright 的 `headless_shell`（本机报「No usable sandbox!」） | 那条真浏览器量测在 root 机器上跑不了（Chromium 要 `--no-sandbox`，权限判定拦下） | [`df-218`](./deferred-details.md#df-218) |
 | DF-219 | 待排期 | 未指派 | 下次改 `tests/` 下某个文件时，把该文件里缺中文失败消息的 `expect` 补上（R-55），并把该文件名加进 `tests/scaffold/r55-failure-message.test.ts` 的 `COMPLIANT_FILES` 名单 | `tests/` 下另有 63 个文件的 1131 条 `expect` 仍无中文失败消息（实测 2026-10-26 夜），G327 的名单制只覆盖 28 个文件 | [`df-219`](./deferred-details.md#df-219) |
-| DF-220 | 待裁决 | Story 2.8 | Story 2.8 开工前裁决 21–24 关的阳光档位：把档 3 的单元区间扩到 11–24（沿用现有数值、不新增档），还是新开一档（数值由该 story 的平衡模拟实测定） | `BALANCE_TIERS` 只填到单元 20 ⇒ `tierForUnit(21..24)` 抛「落在未填档位上」；档位结构与数值属数值裁决（R-20），不由 `[DS]` 代劳 | [`df-220`](./deferred-details.md#df-220) |
 
 ## 新增一条
 

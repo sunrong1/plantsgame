@@ -49,7 +49,7 @@
 #   epics.md 的销项说明处理。
 
 generated: 2026-10-12
-last_updated: 2026-10-26  # Story 3.5 `[CR]` 完成（三层对抗评审 31 条 patch 全修 + 变异 M379 + 新守卫 G319/G320；组 C 零改动，B2.1 保持红）
+last_updated: 2026-10-27  # Story 2.10 的 `[DS]` 已收尾（Status → `review`）：单元 1/2 按教材重录 + 三条规则重定 + 新守卫 G335–G338 + M410–M415 实测红 + 延后账本四处一起动（DF-207/208/210/220 结清）
 project: plants-game
 project_key: NOKEY
 tracking_system: file-system
@@ -94,7 +94,7 @@ development_status:
   2-7-内容批次-3-单元-8-13: backlog   # 教材 1A U8–U12 + 1B U1
   2-8-内容批次-4-单元-14-至末单元: backlog   # 教材 1B U2–U12
   2-9-全书通关与难度曲线试玩验收: backlog
-  2-10-内容批次-0-单元-1-2-换源: backlog   # 📎 2026-10-26 `[CC]` 新增：把单元 1/2 的自建词表换成教材词表 + 重定 N/选项档位；**执行顺序先于 2-6**
+  2-10-内容批次-0-单元-1-2-换源: review   # 📎 2026-10-27 `[DS]` 收尾（待 `[CR]`）：单元 1/2 按教材重录 + 三条规则重定 + G335–G338 + M410–M415 实测红 + 延后账本四处一起动（DF-207/208/210/220 结清）；细节见 story 文档
   2-retrospective: optional
   epic-3: in-progress   # 📎 2026-10-25 夜：Epic 3 提前开档（唯一 Given 成立的 3.4；其余 story 仍被真机 / DF-201 / 试玩数据挡住）
   3-1-试玩走查与问题清单: backlog

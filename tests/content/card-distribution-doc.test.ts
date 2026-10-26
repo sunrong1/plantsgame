@@ -3,9 +3,10 @@
  * （DF-121；守卫 **G321**）。
  *
  * ── 这个文件守什么 ────────────────────────────────────────────────────────
- *   ① **§3 逐单元表**（20 行 × 6 列）逐格 === `targetCardDistribution` 的实算值
- *   ② **§4 的三个 Σ**（1..16 / 1..18 / 1..20）与那张三行表（新值 / 旧值 / 下修率）
- *   ③ **§4.1 的四个批次数**（2.5 实测 / 2.6 – 2.8 实算）与合计行（437.21 / 467.21）
+ *   ① **§3 逐单元表**（24 行 × 6 列）逐格 === `targetCardDistribution` 的实算值
+ *   ② **§4 的三个 Σ**（1..16 / 1..18 / 1..24）+ **教材 census 表**（1A / 1B / 合计）
+ *      + **外推对照表**（16 / 18 / 24 单元的外推值 vs census 精确值 vs 差）
+ *   ③ **§4.1 的四个批次数**（2.10 / 2.6 / 2.7 / 2.8，**教材逐单元词数之和**）与合计行
  *   ④ §3 的「复算方法」代码块仍在，且指向**真实实现**（文档承诺「任何人都能重跑」）
  *
  * ── 为什么这条洞值得堵（DF-121 的原委）────────────────────────────────────
@@ -16,6 +17,23 @@
  *   而 §3 的表是本规则**唯一**被当成「实算」的产物，§4 与 §4.1 的数字又全部由它推出
  *   ⇒ 一处漂移，三处一起错。
  *   症状是静默的：读者照着「下修约 22%」排产，而按 16 单元算只有 17.6%。
+ *
+ * ── 📎 2026-10-26（Story 2.10 换源批次）判据换口径 ────────────────────────
+ *   单元 1–2 换成教材词表后，**§4 与 §4.1 的口径整个换了**：
+ *   旧的「每单元 37 词条 × 单词份额 × 单元数 = 480/540/600 张」**外推**作废，
+ *   新的唯一口径是**教材 census**（`docs/textbook-oxford-shanghai/` 的
+ *   `Look and learn` 逐单元词数之和 = **97 张**）。
+ *   ⇒ §4 / §4.1 的期望值**不再由 `sumWordShare × E` 推出**，而是由
+ *     **教材逐单元词数**（`tests/helpers/textbook-corpus.ts` 的 `textbookWordCount`）
+ *     现算。
+ *   ⚠️ **判据只换了期望值的来源，纪律一条没松**：
+ *     ① 期望值**仍然现算**，不在测试里抄一份词表（R-56）；
+ *     ② **仍然逐字比**（§4 的三个 Σ 逐字、census 表逐单元逐条）；
+ *     ③ **负向夹具全部重做**（旧夹具打的是已作废的三行表），
+ *        每一条都先断言「夹具真的把文档改坏了」。
+ *   ⚠️ **变严的地方**：旧判据只比「文档写的估算值」；新判据还要求
+ *     **§4.1 的批次数之和 === 教材 census 的全书总数** ⇒
+ *     **少写一行批次**（例如把 2.8 那行删掉）会红，而旧判据对此**零反应**。
  *
  * ── 为什么期望值**现算**而不是抄成表（R-56）────────────────────────────────
  *   DF-121 逐字：「注意别把这变成 R-56 说的『硬编码期望表』——
@@ -41,6 +59,7 @@ import { describe, expect, it } from 'vitest'
 
 import { getUnit } from '../../src/content'
 import { FIRST_UNIT, LAST_UNIT, targetCardDistribution } from '../../src/content/distribution'
+import { textbookUnitOf, textbookWordCount } from '../helpers/textbook-corpus'
 
 /** 文档路径（相对仓库根）。 */
 const DOC_PATH = 'docs/card-distribution.md'
@@ -49,14 +68,14 @@ const DOC_PATH = 'docs/card-distribution.md'
 const root = process.cwd()
 
 /**
- * 估算基数 E = **单元 1 的实测词条数**（不是写死的 37）。
+ * 估算基数 E = **单元 1 的实测词条数**（不是写死的字面量）。
  *
- * 文档 §1.1 / §3 的「37 词条」是「单元 1 的实测值外推」⇒ 事实源是
+ * 文档 §3 的「E 词条里的单词卡」那两列是「单元 1 的实测值外推」⇒ 事实源是
  * `unit-01.json`，不是本文档也不是一个写死的字面量。
  */
 const E = getUnit(FIRST_UNIT).entries.length
 
-/** 规则覆盖的单元数（1..20）。 */
+/** 规则覆盖的单元数（1..24）。 */
 const UNIT_COUNT = LAST_UNIT - FIRST_UNIT + 1
 
 /**
@@ -70,9 +89,25 @@ function sumWordShare(from: number, to: number): number {
   return sum
 }
 
-/** 某单元的**单词卡**条数（词图只跟单词卡走 ⇒ 词图数 = 单词卡数）。 */
-function wordCardCount(unitNumber: number): number {
-  return getUnit(unitNumber).entries.filter((entry) => entry.card.kind === 'word').length
+/**
+ * 真实内容里某段单元的单词卡总数；**该段里有单元尚未录入时返回 `null`**。
+ *
+ * ⚠️ `getUnit` 对未录入的单元**抛错**（内容层不静默回退）⇒ 这里捕获它，
+ *   把「这段还没有内容」与「这段的词图数对不上」区分开 ——
+ *   前者不该报错（2.6 – 2.8 的批次还没有内容），后者必须报。
+ */
+function contentWordCardCount(from: number, to: number): number | null {
+  let sum = 0
+  for (let n = from; n <= to; n += 1) {
+    let entries
+    try {
+      entries = getUnit(n).entries
+    } catch {
+      return null
+    }
+    sum += entries.filter((entry) => entry.card.kind === 'word').length
+  }
+  return sum
 }
 
 /** 一处漂移。 */
@@ -202,12 +237,21 @@ function checkSection3(raw: string): Drift[] {
   return drift
 }
 
-/** §4：三个 Σ + 三行表（新值 / 旧值 / 下修率）。 */
+/**
+ * §4：三个 Σ + **教材 census 表** + **外推对照表**。
+ *
+ * ⚠️ **口径已换**（Story 2.10 换源批次，2026-10-26）：§4 的「全书词图总数」
+ *   不再是「每单元 37 词条 × 单词份额 × 单元数」的外推，而是**教材 census** ——
+ *   教材 24 个单元 `Look and learn` 的**逐单元词数之和**（精确值）。
+ *   ⇒ 期望值的来源从 `sumWordShare × E` 换成 `textbookWordCount`
+ *     （事实源 = `docs/textbook-oxford-shanghai/`，解析器 = `tests/helpers/textbook-corpus.ts`）。
+ *   ⇒ **旧的三行表（新值 / 旧值 / 下修率）整块作废**，本判据不再看它。
+ */
 function checkSection4(raw: string): Drift[] {
   const drift: Drift[] = []
   const section = sectionOf(raw, '## 4.')
   if (section === '') {
-    drift.push({ where: '§4', detail: '找不到「## 4.」小节 —— 词图总数下修的实算不在文档里了' })
+    drift.push({ where: '§4', detail: '找不到「## 4.」小节 —— 词图总数的实算不在文档里了' })
     return drift
   }
 
@@ -241,56 +285,138 @@ function checkSection4(raw: string): Drift[] {
     }
   }
 
-  // ── 三行表 ──────────────────────────────────────────────────────────────
   const rows = tableRows(section)
-  const dataRows = rows.filter((cells) => /^\d+\s*单元/.test(plain(cells[0])))
-  if (dataRows.length === 0) {
-    drift.push({ where: '§4', detail: '找不到「N 单元 × 37 词条」形式的表行' })
-    return drift
+
+  // ── 教材 census 表（1A / 1B 两行 + 合计行）──────────────────────────────
+  const censusRows = rows.filter((cells) => /^(1A|1B)$/.test(plain(cells[0])))
+  if (censusRows.length !== 2) {
+    drift.push({
+      where: '§4 · 教材 census 表',
+      detail: `census 表有 ${censusRows.length} 行册次数据，应为 2 行（1A / 1B）—— ` +
+        '§4 的唯一口径是教材逐单元词数之和，这张表不在文档里就等于没有口径',
+    })
   }
-  for (const cells of dataRows) {
+  for (const cells of censusRows) {
+    const book = plain(cells[0])
+    // 游戏单元 ↔ 教材单元的映射：1–12 → 1A，13–24 → 1B（G338 独立钉住这条映射）。
+    const from = book === '1A' ? FIRST_UNIT : 13
+    const to = book === '1A' ? 12 : LAST_UNIT
+
+    // 逐单元词数列：一格一个数，逐格与教材比。
+    const listCell = plain(cells[2] ?? '')
+    const documented = listCell
+      .split(/[,，、]/)
+      .map((piece) => Number(piece.trim()))
+      .filter((n) => Number.isFinite(n))
+    const expected: number[] = []
+    for (let n = from; n <= to; n += 1) {
+      expected.push(textbookUnitOf(n).unit.vocabulary.length)
+    }
+    if (documented.length !== expected.length || documented.some((v, i) => v !== expected[i])) {
+      drift.push({
+        where: `§4 · 教材 census 表 · ${book} 逐单元词数`,
+        detail:
+          `文档写 [${documented.join(', ')}]，教材实算 [${expected.join(', ')}]` +
+          `（教材单元 ${from}–${to} 的 \`Look and learn\` 词数）`,
+      })
+    }
+
+    // 小计列。
+    const subtotal = /(\d+)\s*张/.exec(plain(cells[3] ?? ''))
+    const expectedSubtotal = textbookWordCount(from, to)
+    if (subtotal === null) {
+      drift.push({ where: `§4 · 教材 census 表 · ${book}`, detail: '解析不出小计张数' })
+    } else if (Number(subtotal[1]) !== expectedSubtotal) {
+      drift.push({
+        where: `§4 · 教材 census 表 · ${book} 小计`,
+        detail: `文档写 ${subtotal[1]} 张，教材实算 ${expectedSubtotal} 张`,
+      })
+    }
+  }
+
+  // 合计行 = 全书 census。
+  const censusTotalRow = rows.find((cells) => plain(cells[0]).includes('合计'))
+  if (censusTotalRow === undefined) {
+    drift.push({ where: '§4 · 教材 census 表', detail: '找不到合计行' })
+  } else {
+    const total = /(\d+)\s*张/.exec(plain(censusTotalRow[3] ?? ''))
+    const expectedTotal = textbookWordCount(FIRST_UNIT, LAST_UNIT)
+    if (total === null) {
+      drift.push({ where: '§4 · 教材 census 表 · 合计', detail: '解析不出合计张数' })
+    } else if (Number(total[1]) !== expectedTotal) {
+      drift.push({
+        where: '§4 · 教材 census 表 · 合计',
+        detail: `文档写 ${total[1]} 张，教材实算 ${expectedTotal} 张（全书 24 个教材单元的词数之和）`,
+      })
+    }
+  }
+
+  // ── 外推对照表（16 / 18 / 24 单元：外推口径 vs census 精确值 vs 差）──────
+  const compareRows = rows.filter((cells) => /^\d+\s*单元$/.test(plain(cells[0])))
+  if (compareRows.length === 0) {
+    drift.push({
+      where: '§4 · 外推对照表',
+      detail: '找不到「N 单元」形式的对照表行 —— 「为什么不再用份额外推」那段没有对照数据',
+    })
+  }
+  for (const cells of compareRows) {
     const label = plain(cells[0])
-    const units = Number(/^(\d+)\s*单元/.exec(label)?.[1])
-    const oldMatch = /(\d+)\s*张/.exec(plain(cells[1] ?? ''))
-    const newMatch = /（([0-9.]+)）/.exec(plain(cells[2] ?? ''))
-    const dropMatch = /([0-9.]+)%/.exec(plain(cells[3] ?? ''))
-    if (oldMatch === null || newMatch === null || dropMatch === null) {
-      drift.push({ where: `§4 表行「${label}」`, detail: '这一行的三列（旧 / 新 / 下修）没解析全' })
-      continue
-    }
-    const oldCount = Number(oldMatch[1])
-    const newCount = Number(newMatch[1])
-    const drop = Number(dropMatch[1])
+    const units = Number(/^(\d+)/.exec(label)?.[1])
+    if (!Number.isFinite(units)) continue
 
-    // 旧口径 = 每单元按**单元 1 的单词卡条数**外推（16 × 30 = 480、18 × 30 = 540、20 × 30 = 600）。
-    const expectedOld = wordCardCount(FIRST_UNIT) * units
-    if (oldCount !== expectedOld) {
+    // 外推口径 = Σw × E（文档保留它是为了说明「它错得有多离谱」）。
+    const extrapolated = /([\d.]+)\s*张/.exec(plain(cells[1] ?? ''))
+    const expectedExtrapolated = sumWordShare(FIRST_UNIT, units) * E
+    if (extrapolated === null) {
+      drift.push({ where: `§4 对照表「${label}」· 外推`, detail: '解析不出外推张数' })
+    } else if (Number(extrapolated[1]) !== Number(expectedExtrapolated.toFixed(2))) {
       drift.push({
-        where: `§4 表行「${label}」· 旧`,
-        detail: `文档写 ${oldCount} 张，实算 ${expectedOld} 张（单元 ${FIRST_UNIT} 的单词卡 ${wordCardCount(FIRST_UNIT)} 张 × ${units} 单元）`,
+        where: `§4 对照表「${label}」· 外推`,
+        detail: `文档写 ${extrapolated[1]}，实算 ${expectedExtrapolated.toFixed(2)}（Σw(${FIRST_UNIT}..${units}) × ${E}）`,
       })
     }
 
-    const expectedNew = sumWordShare(FIRST_UNIT, units) * E
-    if (newCount !== Number(expectedNew.toFixed(2))) {
+    // census 精确值 = 教材前 N 个单元的词数之和。
+    const census = /(\d+)\s*张/.exec(plain(cells[2] ?? ''))
+    const expectedCensus = textbookWordCount(FIRST_UNIT, units)
+    if (census === null) {
+      drift.push({ where: `§4 对照表「${label}」· census`, detail: '解析不出 census 张数' })
+    } else if (Number(census[1]) !== expectedCensus) {
       drift.push({
-        where: `§4 表行「${label}」· 新`,
-        detail: `文档写 ${newCount}，实算 ${expectedNew.toFixed(2)}`,
+        where: `§4 对照表「${label}」· census`,
+        detail: `文档写 ${census[1]} 张，教材实算 ${expectedCensus} 张`,
       })
     }
 
-    const expectedDrop = ((expectedOld - expectedNew) / expectedOld) * 100
-    if (drop !== Number(expectedDrop.toFixed(1))) {
+    // 差 = 外推 ÷ census 的百分比。
+    // ⚠️ **用 §3 复算命令打印出来的那个两位小数**做分子（`32.67`），不是全精度 ——
+    //   文档 §4 的对照表与 §3 的复算输出是同一口径（两边都显示两位小数），
+    //   拿全精度算会与文档差 0.1 个百分点（32.6739 / 74 = 44.1539 → 44.2%，
+    //   而 32.67 / 74 = 44.1486 → 44.1%）。
+    const ratio = /([\d.]+)%/.exec(plain(cells[3] ?? ''))
+    const expectedRatio = (Number(expectedExtrapolated.toFixed(2)) / expectedCensus) * 100
+    if (ratio === null) {
+      drift.push({ where: `§4 对照表「${label}」· 差`, detail: '解析不出差值百分比' })
+    } else if (Number(ratio[1]) !== Number(expectedRatio.toFixed(1))) {
       drift.push({
-        where: `§4 表行「${label}」· 下修`,
-        detail: `文档写 ${drop}%，实算 ${expectedDrop.toFixed(1)}%`,
+        where: `§4 对照表「${label}」· 差`,
+        detail: `文档写 ${ratio[1]}%，实算 ${expectedRatio.toFixed(1)}%（外推 ${expectedExtrapolated.toFixed(2)} ÷ census ${expectedCensus}）`,
       })
     }
   }
   return drift
 }
 
-/** §4.1：四个批次数 + 合计行。 */
+/**
+ * §4.1：四个批次数 + 合计行（**教材逐单元词数之和**，精确值，不是估算）。
+ *
+ * ⚠️ **口径已换**（Story 2.10 换源批次，2026-10-26）：
+ *   旧判据算的是「Σw(区间) × E」的**估算值**（2.5 / 2.6 / 2.7 / 2.8），
+ *   新口径下每一批的张数是**教材逐单元词数的精确和** ⇒ 期望值来自
+ *   `textbookWordCount(from, to)`，**不再有「取整张数」这个概念**（精确值本身就是整数）。
+ *   ⚠️ **批次行的正则必须能匹配两位小数**（`2.10`）—— 旧正则 `/^2\.\d$/` 匹配不上
+ *   ⇒ 那一行**静默**不在覆盖面里（旧判据对它的零反应就是这个形态）。
+ */
 function checkSection41(raw: string): Drift[] {
   const drift: Drift[] = []
   const section = sectionOf(raw, '### 4.1')
@@ -300,10 +426,10 @@ function checkSection41(raw: string): Drift[] {
   }
 
   const rows = tableRows(section)
-  /** 批次行（首列是 `2.5` 这种 story 号）。 */
-  const batchRows = rows.filter((cells) => /^2\.\d$/.test(plain(cells[0])))
+  /** 批次行（首列是 `2.5` / `2.10` 这种 story 号 —— **必须能匹配两位小数**）。 */
+  const batchRows = rows.filter((cells) => /^2\.\d{1,2}$/.test(plain(cells[0])))
   if (batchRows.length === 0) {
-    drift.push({ where: '§4.1', detail: '找不到「2.5 / 2.6 / 2.7 / 2.8」形式的批次行' })
+    drift.push({ where: '§4.1', detail: '找不到「2.6 / 2.7 / 2.8 / 2.10」形式的批次行' })
     return drift
   }
 
@@ -323,59 +449,32 @@ function checkSection41(raw: string): Drift[] {
       continue
     }
 
-    if (story === '2.5') {
-      // 2.5 是**实测**（单元 2 的真实单词卡数），不是估算。
-      const measured = wordCardCount(2)
-      const headline = /(\d+)\s*张/.exec(valueCell)
-      if (headline === null) {
-        drift.push({ where: '§4.1 2.5', detail: '解析不出实测张数' })
-        continue
-      }
-      if (Number(headline[1]) !== measured) {
-        drift.push({
-          where: '§4.1 2.5 · 实测',
-          detail: `文档写 ${headline[1]} 张，实测 ${measured} 张（单元 2 的单词卡条数）`,
-        })
-      }
-      // 估算值 = Σw(2) × E，文档把它写在括号里（与实测值不同口径）。
-      const estimate = /（([0-9.]+)）/.exec(valueCell)
-      const expectedEstimate = sumWordShare(from, to) * E
-      if (estimate === null) {
-        drift.push({ where: '§4.1 2.5 · 估算值', detail: '括号里找不到估算值' })
-      } else if (Number(estimate[1]) !== Number(expectedEstimate.toFixed(2))) {
-        drift.push({
-          where: '§4.1 2.5 · 估算值',
-          detail: `文档写 ${estimate[1]}，实算 ${expectedEstimate.toFixed(2)}（Σw(${from}..${to}) × ${E}）`,
-        })
-      }
-      batchValues.set(story, measured)
+    // 批次数 = 教材逐单元词数之和（**精确值**，不是估算）。
+    const expected = textbookWordCount(from, to)
+    const headline = /(\d+)\s*张/.exec(valueCell)
+    if (headline === null) {
+      drift.push({ where: `§4.1 ${story}`, detail: '解析不出批次数' })
       continue
     }
-
-    // 2.6 – 2.8：估算值 = Σw(区间) × E；标题上的「≈ N 张」是它的取整。
-    const precise = /（([0-9.]+)）/.exec(valueCell)
-    const expectedPrecise = sumWordShare(from, to) * E
-    if (precise === null) {
-      drift.push({ where: `§4.1 ${story}`, detail: '括号里找不到精确值' })
-      continue
-    }
-    if (Number(precise[1]) !== Number(expectedPrecise.toFixed(2))) {
+    if (Number(headline[1]) !== expected) {
       drift.push({
         where: `§4.1 ${story} · 批次数`,
-        detail: `文档写 ${precise[1]}，实算 ${expectedPrecise.toFixed(2)}（Σw(${from}..${to}) × ${E}）`,
+        detail: `文档写 ${headline[1]} 张，教材实算 ${expected} 张（单元 ${from}–${to} 的 \`Look and learn\` 词数之和）`,
       })
     }
-    const headline = /(\d+)\s*张/.exec(valueCell)
-    const expectedHeadline = Math.round(expectedPrecise)
-    if (headline === null) {
-      drift.push({ where: `§4.1 ${story}`, detail: '解析不出标题上的取整张数' })
-    } else if (Number(headline[1]) !== expectedHeadline) {
+
+    // 该批的单元**已经录进内容**时，再与真实内容的单词卡数对一次（文档 ↔ 内容 ↔ 教材 三方一致）。
+    const fromContent = contentWordCardCount(from, to)
+    if (fromContent !== null && fromContent !== expected) {
       drift.push({
-        where: `§4.1 ${story} · 取整张数`,
-        detail: `文档写 ${headline[1]} 张，实算 ${expectedHeadline} 张（${expectedPrecise.toFixed(2)} 取整）`,
+        where: `§4.1 ${story} · 与真实内容一致`,
+        detail:
+          `文档写 ${headline[1]} 张，真实内容里单元 ${from}–${to} 的单词卡是 ${fromContent} 张 —— ` +
+          '内容与教材不一致时，先改内容再回改本文件',
       })
     }
-    batchValues.set(story, Number(expectedPrecise.toFixed(2)))
+
+    batchValues.set(story, expected)
   }
 
   // ── 合计行 ──────────────────────────────────────────────────────────────
@@ -385,29 +484,35 @@ function checkSection41(raw: string): Drift[] {
     return drift
   }
   const totalCell = plain(totalRow[2] ?? '')
-  const totalMatch = /^\s*([0-9.]+)/.exec(totalCell)
-  const withUnit1 = /=\s*([0-9.]+)/.exec(totalCell)
-  if (totalMatch === null || withUnit1 === null) {
-    drift.push({ where: '§4.1 合计行', detail: '解析不出合计数或「+ 单元 1」的合计数' })
+  const totalMatch = /(\d+)\s*张/.exec(totalCell)
+  if (totalMatch === null) {
+    drift.push({ where: '§4.1 合计行', detail: '解析不出合计张数' })
     return drift
   }
 
-  // 合计 = 四个批次数**相加**（文档自己写的教训：「改了一行就重算合计」）。
-  // ⚠️ 加的是各批的**显示值**（两位小数）—— 文档 §4.1 自己的算式逐字是
-  //   「30 + 135.95 + 139.95 + 131.31 = 437.21」⇒ 同一个口径。
+  // 合计 = 各批**相加**（文档自己写的教训：「改了一行就重算合计」）。
   const total = [...batchValues.values()].reduce((a, b) => a + b, 0)
-  const expectedTotal = Number(total.toFixed(2))
-  if (Number(totalMatch[1]) !== expectedTotal) {
+  if (Number(totalMatch[1]) !== total) {
     drift.push({
       where: '§4.1 合计行',
-      detail: `文档写 ${totalMatch[1]}，实算 ${expectedTotal}（四个批次数相加）`,
+      detail: `文档写 ${totalMatch[1]} 张，各批实算相加 = ${total} 张`,
     })
   }
-  const expectedWithUnit1 = Number((total + wordCardCount(FIRST_UNIT)).toFixed(2))
-  if (Number(withUnit1[1]) !== expectedWithUnit1) {
+
+  // ⚠️ **合计还必须等于全书 census** —— 这一条是旧判据没有的：
+  //   旧判据只比「文档写的合计 vs 各批相加」，**少一行批次**时两边一起变小 ⇒ 恒绿。
+  //   现在多一个锚：合计 === 教材 24 个单元的词数之和 ⇒ 少写一行立刻红。
+  const expectedBookTotal = textbookWordCount(FIRST_UNIT, LAST_UNIT)
+  if (total !== expectedBookTotal) {
     drift.push({
-      where: '§4.1 合计行 · + 单元 1',
-      detail: `文档写 ${withUnit1[1]}，实算 ${expectedWithUnit1}（合计 + 单元 ${FIRST_UNIT} 的 ${wordCardCount(FIRST_UNIT)} 张）`,
+      where: '§4.1 合计行 · 全书 census',
+      detail: `各批实算相加 = ${total} 张，全书 census 实算 = ${expectedBookTotal} 张 —— 批次行少了或多了`,
+    })
+  }
+  if (Number(totalMatch[1]) !== expectedBookTotal) {
+    drift.push({
+      where: '§4.1 合计行',
+      detail: `文档写 ${totalMatch[1]} 张，全书 census 实算 = ${expectedBookTotal} 张`,
     })
   }
   return drift
@@ -452,7 +557,7 @@ function checkRecomputeBlock(raw: string): Drift[] {
 const docText = readFileSync(join(root, DOC_PATH), 'utf8')
 
 describe('G321 —— `docs/card-distribution.md` 的每个数字都要能从代码复算出来（DF-121）', () => {
-  it('§3 逐单元表（20 行 × 6 列）逐格等于 `targetCardDistribution` 的实算值', () => {
+  it('§3 逐单元表（24 行 × 6 列）逐格等于 `targetCardDistribution` 的实算值', () => {
     expect(
       checkSection3(docText),
       '§3 逐单元表与 `src/content/distribution.ts` 的实算值不一致 —— ' +
@@ -462,21 +567,22 @@ describe('G321 —— `docs/card-distribution.md` 的每个数字都要能从代
     ).toEqual([])
   })
 
-  it('§4 的三个 Σ 与三行表（新值 / 旧值 / 下修率）都等于实算值', () => {
+  it('§4 的三个 Σ、教材 census 表与外推对照表都等于实算值', () => {
     expect(
       checkSection4(docText),
-      '§4 的实算与代码不一致 —— 以 `src/content/distribution.ts` 为准，回改本文件。\n' +
-        '⚠️ 「下修约 22%」这个说法只在 20 单元那一端成立；16 单元是 17.6%、18 单元是 19.9% —— ' +
-        '引用时必须带上单元结构。',
+      '§4 的实算与代码/教材不一致 —— 回改本文件。\n' +
+        '⚠️ §4 的唯一口径是**教材 census**（24 个教材单元的 `Look and learn` 词数之和 = 97 张）；' +
+        '「每单元 37 词条 × 份额 × 单元数」的外推口径（480/540/600 张）**已整块作废** —— ' +
+        '引用它时必须带「旧口径 / 已作废」标记。',
     ).toEqual([])
   })
 
   it('§4.1 的四个批次数与合计行都等于实算值', () => {
     expect(
       checkSection41(docText),
-      '§4.1 的逐批次规模与代码/真实内容不一致 —— 回改本文件。\n' +
+      '§4.1 的逐批次规模与教材/真实内容不一致 —— 回改本文件。\n' +
         '⚠️ 文档自己记着的教训：「改了一行就重算合计」是同一处编辑的一部分 —— ' +
-        '本条会同时盯住批次行与合计行。',
+        '本条会同时盯住批次行与合计行，且合计必须等于全书 census（少写一行批次会红）。',
     ).toEqual([])
   })
 
@@ -549,11 +655,6 @@ function patchCell(
   return doc.replace(line, () => cells.join('|'))
 }
 
-/** 把全角括号里的那个数加 0.01（「（395.68）」→「（395.69）」）。 */
-function bumpParenNumber(cell: string): string {
-  return cell.replace(/（([\d.]+)）/, (_match, num: string) => `（${(Number(num) + 0.01).toFixed(2)}）`)
-}
-
 /** 把单元格里的「N 张」加 1 张。 */
 function bumpCardCount(cell: string): string {
   return cell.replace(/(\d+)\s*张/, (_match, num: string) => `${Number(num) + 1} 张`)
@@ -562,6 +663,11 @@ function bumpCardCount(cell: string): string {
 /** 把单元格里的第一个两位小数加 0.01。 */
 function bumpTwoDecimals(cell: string): string {
   return cell.replace(/(\d+\.\d+)/, (_match, num: string) => (Number(num) + 0.01).toFixed(2))
+}
+
+/** 把「逐单元词数」那个列表里的**第一个数**加 1（「2, 4, 5」⇒「3, 4, 5」）。 */
+function bumpFirstNumberInList(cell: string): string {
+  return cell.replace(/(\d+)/, (_match, num: string) => `${Number(num) + 1}`)
 }
 
 /** 把 §4 的第一个 Σ 的**最后一位**改掉（改一位，不改量级）。 */
@@ -600,7 +706,7 @@ const NEGATIVE_CASES: readonly NegativeCase[] = [
   {
     name: '§3 的「E 词条里的单词卡」那一列改一位',
     breakDoc: (doc) => bumpUnitDecimal(doc, 20, 0),
-    expectWhere: /§3 单元 20 · 37 词条里的单词卡/,
+    expectWhere: new RegExp(`§3 单元 20 · ${E} 词条里的单词卡`),
   },
   {
     name: '§4 的一个 Σ 改最后一位',
@@ -608,55 +714,69 @@ const NEGATIVE_CASES: readonly NegativeCase[] = [
     expectWhere: /§4 Σ w\(1\.\.16\)/,
   },
   {
-    name: '§4 表的「新」那一列改一位',
-    breakDoc: (doc) => patchCell(doc, /^\|\s*\*{0,2}16 单元/, 3, bumpParenNumber),
-    expectWhere: /§4 表行「16 单元 × 37 词条」· 新/,
+    name: '§4 教材 census 表的「逐单元词数」改一位',
+    breakDoc: (doc) => patchCell(doc, /^\|\s*1A\s*\|/, 3, bumpFirstNumberInList),
+    expectWhere: /§4 · 教材 census 表 · 1A 逐单元词数/,
   },
   {
-    name: '§4 表的「下修」那一列改一位',
+    name: '§4 教材 census 表的「小计」改一位',
+    breakDoc: (doc) => patchCell(doc, /^\|\s*1A\s*\|/, 4, bumpCardCount),
+    expectWhere: /§4 · 教材 census 表 · 1A 小计/,
+  },
+  {
+    name: '§4 教材 census 表的「合计」改一位',
+    breakDoc: (doc) => patchCell(doc, /^\|\s*\*?\*?合计/, 4, bumpCardCount),
+    expectWhere: /§4 · 教材 census 表 · 合计/,
+  },
+  {
+    name: '§4 外推对照表的「外推口径」那一列改一位',
+    breakDoc: (doc) => patchCell(doc, /^\|\s*16 单元\s*\|/, 2, bumpTwoDecimals),
+    expectWhere: /§4 对照表「16 单元」· 外推/,
+  },
+  {
+    name: '§4 外推对照表的「census」那一列改一位',
+    breakDoc: (doc) => patchCell(doc, /^\|\s*16 单元\s*\|/, 3, bumpCardCount),
+    expectWhere: /§4 对照表「16 单元」· census/,
+  },
+  {
+    name: '§4 外推对照表的「差」那一列改一位',
     breakDoc: (doc) =>
       patchCell(
         doc,
-        /^\|\s*\*{0,2}16 单元/,
+        /^\|\s*16 单元\s*\|/,
         4,
         (cell) => cell.replace(/([\d.]+)%/, (_match, num: string) => `${(Number(num) + 0.1).toFixed(1)}%`),
       ),
-    expectWhere: /§4 表行「16 单元 × 37 词条」· 下修/,
+    expectWhere: /§4 对照表「16 单元」· 差/,
   },
   {
     name: '§4.1 某一批的批次数改一位',
-    breakDoc: (doc) => patchCell(doc, /^\|\s*2\.6\s*\|/, 3, bumpParenNumber),
+    breakDoc: (doc) => patchCell(doc, /^\|\s*2\.6\s*\|/, 3, bumpCardCount),
     expectWhere: /§4\.1 2\.6 · 批次数/,
   },
   {
-    name: '§4.1 某一批的取整张数改一位',
-    breakDoc: (doc) => patchCell(doc, /^\|\s*2\.7\s*\|/, 3, bumpCardCount),
-    expectWhere: /§4\.1 2\.7 · 取整张数/,
+    name: '§4.1 某一批的单元区间改一位',
+    breakDoc: (doc) => patchCell(doc, /^\|\s*2\.7\s*\|/, 2, (cell) => cell.replace('13', '12')),
+    expectWhere: /§4\.1 2\.7 · 批次数/,
   },
   {
-    name: '§4.1 的 2.5 实测值改一位',
-    breakDoc: (doc) => patchCell(doc, /^\|\s*2\.5\s*\|/, 3, bumpCardCount),
-    expectWhere: /§4\.1 2\.5 · 实测/,
+    name: '§4.1 的 2.10 实测值改一位',
+    breakDoc: (doc) => patchCell(doc, /^\|\s*2\.10\s*\|/, 3, bumpCardCount),
+    expectWhere: /§4\.1 2\.10 · 批次数/,
   },
   {
     name: '§4.1 的合计改一位（批次行没跟着改）',
-    breakDoc: (doc) => patchCell(doc, /^\|\s*四批合计\s*\|/, 3, bumpTwoDecimals),
+    breakDoc: (doc) => patchCell(doc, /^\|\s*四批合计\s*\|/, 3, bumpCardCount),
     expectWhere: /§4\.1 合计行/,
   },
   {
-    name: '§4.1 的「+ 单元 1」合计改一位',
+    name: '§4.1 少写一行批次（删掉 2.8 那行）⇒ 合计必须被报出来',
     breakDoc: (doc) =>
-      patchCell(
-        doc,
-        /^\|\s*四批合计\s*\|/,
-        3,
-        (cell) =>
-          cell.replace(
-            /=\s*\*\*(\d+\.\d+)\*\*/,
-            (_match, num: string) => `= **${(Number(num) + 0.01).toFixed(2)}**`,
-          ),
-      ),
-    expectWhere: /§4\.1 合计行 · \+ 单元 1/,
+      doc
+        .split('\n')
+        .filter((line) => !/^\|\s*2\.8\s*\|/.test(line))
+        .join('\n'),
+    expectWhere: /§4\.1 合计行/,
   },
   {
     name: '§3 的复算方法代码块被删掉',

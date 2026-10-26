@@ -40,7 +40,7 @@
  * |---|---|---|---|---|
  * | 1-4   | 1    | 0 + 50 = 50    | 1 | 连错 3 通关 / 连错 4 失败 |
  * | 5-10  | 5    | 50 + 75 = 125  | 1 | 连错 3 通关 / 连错 4 失败 |
- * | 11-20 | 11   | 100 + 100 = 200| **2** | **连错 4 通关 / 连错 5 失败** |
+ * | 11-24 | 11   | 100 + 100 = 200| **2** | **连错 4 通关 / 连错 5 失败** |
  *
  * ⚠️ **档位 3 的门槛比档位 1-2 宽一问**（更宽容，**不是**更难）。
  * 机制：`sunPerCorrect === 最低塔造价` 的 1:1 比例在**三档都成立**（G226 已钉住），
@@ -71,8 +71,15 @@ import { stripComments } from '../fixtures/strip-comments'
 
 const root = fileURLToPath(new URL('../../', import.meta.url))
 
-/** 全部 20 个单元 —— 逐个验，不抽样。 */
-const ALL_UNITS = Array.from({ length: 20 }, (_, index) => index + 1)
+/**
+ * 全部单元 —— 逐个验，不抽样。
+ *
+ * ⚠️ **2026-10-26 换源批次（Story 2.10）**：`src/core/balance.ts` 的档 3 区间
+ *   从 `[11, 20]` 改成了 `[11, 24]`（两册各 12 个教材 Unit）⇒
+ *   「全部单元」从 20 个变成 **24** 个 ⇒ 逐个验的范围也必须是 24，
+ *   否则「全部」这个词会说谎（单元 21–24 没人验）。
+ */
+const ALL_UNITS = Array.from({ length: 24 }, (_, index) => index + 1)
 
 /** 三档的起始单元（FR63 的档位起点）。 */
 const TIER_STARTS = [1, 5, 11] as const
@@ -131,6 +138,8 @@ describe('G228 —— 命令行单元号解析（AC-D1）', () => {
     expect(parseUnitNumber('5'), '合法单元号 5 必须原样透传').toBe(5)
     expect(parseUnitNumber('11'), '合法单元号 11 必须原样透传').toBe(11)
     expect(parseUnitNumber('20'), '合法单元号 20 必须原样透传').toBe(20)
+    // ⚠️ 2026-10-26 换源批次：`LAST_UNIT` 现在是 24 ⇒ 末单元号也要被认。
+    expect(parseUnitNumber('24'), '合法单元号 24 必须原样透传').toBe(24)
   })
 
   it('非法值一律抛错，不静默回退到 1', () => {
@@ -185,7 +194,7 @@ describe('G232 —— 第一次答对能建几座塔（AC-D2，GDD 点名的变�
     }
   })
 
-  it('全部 20 个单元：塔数与「(初始阳光 + 答对增量) ÷ 最低造价」逐档吻合', () => {
+  it('全部 24 个单元：塔数与「(初始阳光 + 答对增量) ÷ 最低造价」逐档吻合', () => {
     // ⚠️ 这条把**机制**写死：塔数由这两个量决定，不是玄学。
     //   档位 3 与档位 1-2 的差别**全部**来自初始阳光这一项。
     for (const unit of ALL_UNITS) {
@@ -317,7 +326,7 @@ describe('G233 —— CLI 端到端（AC-D1 / Task 3.4）', () => {
     )
 
     const out11 = runCli(['11'])
-    expect(out11, '必须报出单元 11').toContain('[balance] 模拟单元：11（档位 11-20）')
+    expect(out11, '必须报出单元 11').toContain('[balance] 模拟单元：11（档位 11-24）')
     expect(out11, '档位 3 的造价必须是 100/150').toContain(
       '[balance] 塔型选择：已解锁卡中造价最低者（direct/slow 100，aoe 150）',
     )

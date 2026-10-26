@@ -2,7 +2,8 @@
  * 单元推进语义的守卫（Story 2.5 / Task 5.3 / 5.4 / 5.5 / 5.6；AC-5.1–AC-5.7）。
  *
  * ── 这个文件守什么 ──────────────────────────────────────────────────────────
- * 1.19 之后**一个单元要打好几局**（单元 1 = 4 局：10/10/10/7）⇒
+ * 1.19 之后**一个单元要打好几局**（📎 **2026-10-26 换源批次**：单元 1 = **1 局：6 题**、
+ *   单元 2 = **2 局：10 / 1**）⇒
  * 「打完一局」与「读完一个单元」**不是同一件事**。
  * 2.5 之前 store 的推进判据是「本局打完了 ∧ 下一个单元录了没有」
  * ⇒ 单元 2 一录进来，**打完单元 1 的第一局**就会把孩子推进到单元 2，
@@ -72,36 +73,60 @@ function nextLevel(): void {
 // ══════════════════════════════════════════════════════════════════════════════
 
 describe('AC-5.2 / Task 5.6 —— 本单元没学完时**不得**推进到下一个单元', () => {
-  it('打完单元 1 的第一局（10/37）⇒ currentUnitIndex 仍然是 0', () => {
-    startUnit(1)
+  // ⚠️📎 **2026-10-26 换源批次：这一组从「单元 1」换到了「单元 2」。**
+  //   单元 1 从 37 条缩到 **6 条** ⇒ 它**一局就打完了整个单元**
+  //   （`QUESTIONS_PER_LEVEL = 10` > 6 ⇒ 一局切完 6 条）⇒
+  //   「打完单元 1 的第一局时本单元**还没学完**」这个构造**今天造不出来**了。
+  //   ⇒ 改用**单元 2**（11 条 ⇒ 第一局 10 条、还剩 1 条）—— 它才是今天
+  //     唯一能造出「本单元没学完」的单元。
+  //   ⚠️ **但单元 2 的后面没有单元 3** ⇒ 单看 `currentUnitIndex` 是**弱判据**
+  //   （「下一个单元没录」也会挡住推进 ⇒ 那条断言恒成立）。
+  //   ⇒ 真正的判据是 `levelOutcomeKind()`：它**只**读「本单元学完没有」，
+  //     通关 ∧ 本单元**没**学完 ⇒ 必须算出 `'continue'`（留在本单元打下一局）；
+  //     若实现误判成「学完了」，它会算出 `'finished'` ⇒ 这条当场红。
+
+  it('打完单元 2 的第一局（10/11）⇒ currentUnitIndex 仍然是 1', () => {
+    startUnit(2)
 
     driveStoreLevel()
 
     expect(
       progress.value.currentUnitIndex,
-      '打完一局就推进 ⇒ 剩下 27 个词**永久学不到**（DF-072）',
-    ).toBe(0)
+      '打完一局就推进 ⇒ 剩下那个词**永远学不到**（DF-072）',
+    ).toBe(1)
   })
 
-  it('进度仍显示「第 1 单元 · 10/37」—— 判据读的是**合并后**的掌握集合', () => {
-    startUnit(1)
+  it('🔴 按钮种类必须是「继续」而不是别的 —— 判据读的是**本单元学完没有**', () => {
+    startUnit(2)
 
     driveStoreLevel()
 
-    const display = progressDisplay(progress.value, 1, entriesOf(1).length)
+    expect(
+      levelOutcomeKind(),
+      '🔴 通关但本单元**还没学完** ⇒ 按钮种类必须是 `continue`（留在本单元打下一局）—— ' +
+        '判成 `finished`/`next-unit` 就是「打完一局就当整个单元学完了」那个 DF-072 的形态。',
+    ).toBe('continue')
+  })
+
+  it('进度仍显示「第 2 单元 · 10/11」—— 判据读的是**合并后**的掌握集合', () => {
+    startUnit(2)
+
+    driveStoreLevel()
+
+    const display = progressDisplay(progress.value, 2, entriesOf(2).length)
     expect(display.mastered, '第一局答对 10 个词').toBe(10)
-    expect(display.total, '单元 1 共 37 条').toBe(37)
-    expect(display.ratio).toBeCloseTo(10 / 37, 10)
+    expect(display.total, '单元 2 共 11 条').toBe(11)
+    expect(display.ratio).toBeCloseTo(10 / 11, 10)
   })
 
   it('🚨 判据自检：这份「没学完」的构造真的**没学完**（否则上面两条是恒绿）', () => {
-    startUnit(1)
+    startUnit(2)
     driveStoreLevel()
 
-    const remaining = sliceDeckForLevel(entriesOf(1), progress.value.masteredWordIds).length
+    const remaining = sliceDeckForLevel(entriesOf(2), progress.value.masteredWordIds).length
     expect(
       remaining,
-      '前置：第一局之后单元 1 必须**还剩着词**（= 还没学完）—— 否则「不得推进」是恒真',
+      '前置：第一局之后单元 2 必须**还剩着词**（= 还没学完）—— 否则「不得推进」是恒真',
     ).toBeGreaterThan(0)
   })
 })
@@ -110,32 +135,28 @@ describe('AC-5.2 / Task 5.6 —— 本单元没学完时**不得**推进到下�
 // AC-5.3 —— 读完单元 1 ⇒ 推进到单元 2
 // ══════════════════════════════════════════════════════════════════════════════
 
-describe('AC-5.3 —— 读完单元 1（4 局：10/10/10/7）⇒ 推进到单元 2', () => {
-  it('单元 1 确实是 4 局，且**第四局之后**才推进', () => {
+describe('AC-5.3 —— 读完单元 1（📎 换源批次：**1 局：6 题**）⇒ 推进到单元 2', () => {
+  it('单元 1 确实是 1 局，且**这一局之后**才推进', () => {
     startUnit(1)
 
     const deckSizes: number[] = []
     const indexAfterEachLevel: number[] = []
-    for (let level = 1; level <= 4; level += 1) {
+    for (let level = 1; level <= 1; level += 1) {
       deckSizes.push(state.value.deck.length)
       driveStoreLevel()
       indexAfterEachLevel.push(progress.value.currentUnitIndex)
-      if (level < 4) nextLevel()
     }
 
-    expect(deckSizes, '单元 1 = 37 条 ⇒ 每局 10 条，最后一局 7 条').toEqual([10, 10, 10, 7])
+    expect(deckSizes, '单元 1 = 6 条 ⇒ 不足一局 10 题 ⇒ 一局就切完').toEqual([6])
     expect(
       indexAfterEachLevel,
-      '前三局不许推进，第四局（读完整个单元）才推进',
-    ).toEqual([0, 0, 0, 1])
+      '读完整个单元 1 之后才推进',
+    ).toEqual([1])
   })
 
   it('推进之后进关 ⇒ 战场是**单元 2**（`progress.currentUnitIndex + 1`）', () => {
     startUnit(1)
-    for (let level = 1; level <= 4; level += 1) {
-      driveStoreLevel()
-      if (level < 4) nextLevel()
-    }
+    driveStoreLevel()
 
     nextLevel()
 
@@ -151,16 +172,25 @@ describe('AC-5.3 —— 读完单元 1（4 局：10/10/10/7）⇒ 推进到单�
 // AC-5.4 —— 不引入选关自由
 // ══════════════════════════════════════════════════════════════════════════════
 
-describe('AC-5.4 —— 玩家不能自己跳到单元 2（FR59）', () => {
-  it('单元 1 没读完时进关 ⇒ 进的仍是单元 1', () => {
-    // ⚠️ **「跳单元」只有一条可能的路**：把 `progress.currentUnitIndex` 推到 1。
+describe('AC-5.4 —— 玩家不能自己跳单元（FR59）', () => {
+  it('单元 2 没读完时进关 ⇒ 进的仍是单元 2，而且题单是**剩下那个词**', () => {
+    // ⚠️ **「跳单元」只有一条可能的路**：把 `progress.currentUnitIndex` 推到下一站。
     //   所以判据是「孩子走不到那一步」⇒ 用**只打完第一局**的进度去进关。
-    startUnit(1)
+    // 📎 **2026-10-26 换源批次**：这组从「单元 1」换到了「单元 2」——
+    //   单元 1 现在一局就打完了整个单元 ⇒「只打完第一局」的构造在它身上**造不出来**。
+    startUnit(2)
     driveStoreLevel()
 
     nextLevel()
 
-    expect(state.value.unitNumber, '只读完第一局 ⇒ 进关仍是单元 1，不许跳到单元 2').toBe(1)
+    expect(state.value.unitNumber, '只读完第一局 ⇒ 进关仍是单元 2，不许跳到单元 3').toBe(2)
+    // ⚠️ **光看 `unitNumber` 是弱判据**：单元 3 根本没录 ⇒ 即便被跳了也进不去。
+    // ⇒ 强判据是**题单**：单元 2 剩下的那个词必须还在题单里
+    //   （若真被跳到单元 3，进关会停在「单元 3 未录入」那一份状态，题单是旧的 10 条）。
+    expect(
+      state.value.deck.map((entry) => entry.entryId),
+      '下一局必须是单元 2 剩下的那个词 —— 跳单元的话这里会是上一局那 10 条',
+    ).toEqual([entriesOf(2)[10].entryId])
   })
 })
 
@@ -169,26 +199,34 @@ describe('AC-5.4 —— 玩家不能自己跳到单元 2（FR59）', () => {
 // ══════════════════════════════════════════════════════════════════════════════
 
 describe('AC-5.5 —— 单元 2 通关后**不**推进（单元 3 不存在）', () => {
-  it('单元 2 的 38 条学完后，currentUnitIndex 仍是 1，进关仍是单元 2', () => {
+  it('单元 2 的 11 条学完后，currentUnitIndex 仍是 1，进关仍是单元 2', () => {
     const unit1WordIds = entriesOf(1).map((entry) => entry.entryId)
     startUnit(2, unit1WordIds)
 
     const deckSizes: number[] = []
-    for (let level = 1; level <= 4; level += 1) {
+    for (let level = 1; level <= 2; level += 1) {
       deckSizes.push(state.value.deck.length)
       driveStoreLevel()
-      if (level < 4) nextLevel()
+      if (level < 2) nextLevel()
     }
 
-    expect(deckSizes, '单元 2 = 38 条 ⇒ 10/10/10/8').toEqual([10, 10, 10, 8])
+    expect(deckSizes, '单元 2 = 11 条 ⇒ 10/1').toEqual([10, 1])
     expect(
       progress.value.currentUnitIndex,
       '单元 3 不存在 ⇒ **不推进**（推进到一个没录的单元 = 静默丢数据）',
     ).toBe(1)
 
     const display = progressDisplay(progress.value, 2, entriesOf(2).length)
-    expect(display.mastered, '单元 2 的 38 条都学完了').toBe(38)
-    expect(display.total).toBe(38)
+    expect(display.mastered, '单元 2 的 11 条都学完了').toBe(11)
+    expect(display.total).toBe(11)
+    // ⚠️📎 **补一条按钮种类的判据**（`levelOutcomeKind` 的第四个取值 `'finished'`）：
+    //   「本单元学完 ∧ 下一个单元没录」⇒ 按钮必须承诺「没有下一局」，
+    //   而不是又许一个「下一单元」让孩子点进一个不存在的单元（AC-5.5 / 裁决 5）。
+    //   📎 这条在换源之前**没有** ⇒ 现在补上（判据比原来严，不放松）。
+    expect(
+      levelOutcomeKind(),
+      '本单元学完但没有下一个单元 ⇒ 按钮种类必须是 `finished`（不是 `next-unit`）',
+    ).toBe('finished')
   })
 })
 
@@ -212,11 +250,9 @@ describe('AC-5.5 —— 单元 2 通关后**不**推进（单元 3 不存在）'
  */
 describe('G287 —— goToNextUnit 只在终态换战场（误调用必须原地不动）', () => {
   it('正向：读完单元 1（终态 ∧ 本单元学完 ∧ 单元 2 录了）⇒ 按钮种类是 next-unit，换战场成功', () => {
+    // 📎 **2026-10-26 换源批次**：单元 1 现在**一局**就打完 ⇒ 循环从 4 局改成 1 局。
     startUnit(1)
-    for (let level = 1; level <= 4; level += 1) {
-      driveStoreLevel()
-      if (level < 4) nextLevel()
-    }
+    driveStoreLevel()
 
     expect(state.value.phase.kind, '前置：此刻是终态').toBe('level-complete')
     expect(levelOutcomeKind(), '读完单元 1 ⇒ 按钮的种类是「下一单元」').toBe('next-unit')

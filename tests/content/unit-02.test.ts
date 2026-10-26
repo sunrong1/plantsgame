@@ -2,7 +2,7 @@
  * 单元 2 真实内容的守卫（Story 2.5 / Task 6.1；AC-6.1）。
  *
  * ── 守什么 ────────────────────────────────────────────────────────────────
- * 单元 2 是**第一个非锚点**的单元（锚点是单元 1 与单元 20）⇒
+ * 单元 2 是**第一个非锚点**的单元（锚点是单元 1 与单元 24）⇒
  * 它的内容是「规则落到地上」的第一处实测：
  *   · **G278** 卡型配比符合 `docs/card-distribution.md` §5.1.1 的**两条判据**
  *     （总量守恒 + 逐族误差 ≤ 0.5 张）—— **内容层与校验器都不守这一条**；
@@ -98,27 +98,43 @@ function assertDistributionMatchesShare(
   }
 }
 
-describe('G278 —— 卡型配比符合 §5.1.1 的两条判据（单元 2 = 38 条：30 / 1 / 7）', () => {
+describe('G278 —— 卡型配比符合 §5.1.1 的两条判据（单元 2 = 11 条：4 / 2 / 5）', () => {
+  it('单元 2 恰有 11 条词条，构成 4 词 + 2 关键词 + 5 回应', () => {
+    // ⚠️ 2026-10-26（Story 2.10 换源批次）：38 → 11。
+    //   单元 2 的内容**整体换成教材**（一起版 1A Unit 2 `My classmates`）——
+    //   `Look and learn` 只有 **4 个词**（`book` / `ruler` / `pencil` / `rubber`），
+    //   `Say and act` 有 **7 个不同句子**（`Here you are.` 与 `Thank you.` 各列两次）
+    //   ⇒ 词条 = 4 单词卡 + 2 关键词卡（句中带词的 `Give me a rubber, please.` /
+    //   `Give me a ruler, please.`）+ 5 回应卡 = **11 条**，教材 7 句**一句不剩**。
+    expect(entries.length, '词条数变了 —— 教材该单元是 4 词 + 7 句，换源后规模就是 11').toBe(11)
+
+    const counts = countsByKind(entries)
+    expect(counts.word, '教材 1A Unit 2 的 `Look and learn` 有 4 个词，一词不落').toBe(4)
+    expect(counts.keyword, '教材该单元只有 2 句句中带词（rubber / ruler）').toBe(2)
+    expect(counts.response, '教材该单元 7 句里 2 句当关键词卡、5 句当回应卡').toBe(5)
+  })
+
   it('总量守恒 + 逐族误差 ≤ 0.5 张', () => {
     assertDistributionMatchesShare(countsByKind(entries), 2, entries.length)
   })
 
   it('🚨 反向自测：把一张单词卡挪成关键词卡 ⇒ 判据本体必须红', () => {
     // ⚠️ R-51：判据必须真能咬住它要防的违规。
-    //   违规夹具 = { word: 29, keyword: 2, response: 7 }（总量守恒，但逐族误差 1.09 > 0.5）。
-    const violated = { word: 29, keyword: 2, response: 7 }
+    //   违规夹具 = { word: 3, keyword: 3, response: 5 }（总量守恒 = 11，
+    //   但 word 族误差 |3 − 3.6268| = 0.6268 > 0.5 ⇒ 逐族误差那条必须炸）。
+    const violated = { word: 3, keyword: 3, response: 5 }
 
     expect(
-      () => assertDistributionMatchesShare(violated, 2, 38),
+      () => assertDistributionMatchesShare(violated, 2, 11),
       '判据在「逐族误差 > 0.5 张」的违规夹具上没红 ⇒ 判据本身失效（它可能恒真）',
     ).toThrow('逐族误差超过 0.5 张')
   })
 
   it('🚨 反向自测：少录一条 ⇒ 总量守恒那条必须红', () => {
-    const violated = { word: 30, keyword: 1, response: 6 }
+    const violated = { word: 4, keyword: 2, response: 4 }
 
     expect(
-      () => assertDistributionMatchesShare(violated, 2, 38),
+      () => assertDistributionMatchesShare(violated, 2, 11),
       '判据在「总量不守恒」的违规夹具上没红 ⇒ 总量那条判据失效',
     ).toThrow('总量不守恒')
   })

@@ -92,11 +92,22 @@ const stripComments = sharedStripComments
 // ── 测试用的 state 组装 ──────────────────────────────────────────────────────
 
 const REAL_DECK = entriesOf(1)
-/** 每种塔型各挑一个真词条 —— 造价与卡面文字都要走真实内容（FR70）。 */
+/**
+ * 每种塔型各挑一个真词条 —— 造价与卡面文字都要走真实内容（FR70）。
+ *
+ * ⚠️ **换源后重选**（Story 2.10 / DF-201，2026-10-26）：旧的
+ *   `u1-hello` / `u1-goodbye` / `u1-teacher` 三条自建词表已**全部作废并删除**。
+ *   ⇒ 改用单元 1 现存的 6 条里的对应三条：
+ *   `u1-morning`（direct / word 卡）、`u1-afternoon`（slow / word 卡）、
+ *   `u1-s-good-morning`（aoe / keyword 卡）。
+ *   ⚠️ **id 必须与塔型对得上**：夹具里 id 与塔型一错，`handCards` 会按**题单里的**
+ *   塔型给造价 ⇒ 「造价 50 / 50 / 75」的期望值当场失配，
+ *   而几十条用例会一起红成一个看不懂的谜。下面「夹具自检」那条会把这件事当场喊出来。
+ */
 const ENTRY_OF: Record<TowerType, string> = {
-  direct: 'u1-hello',
-  slow: 'u1-goodbye',
-  aoe: 'u1-teacher',
+  direct: 'u1-morning',
+  slow: 'u1-afternoon',
+  aoe: 'u1-s-good-morning',
 }
 const COST_OF: Record<TowerType, number> = { direct: 50, slow: 50, aoe: 75 }
 
@@ -277,12 +288,43 @@ function mountField(): VueWrapper {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
+// 夹具自检 —— ENTRY_OF 三条必须在题单里，且塔型与键对得上
+// ══════════════════════════════════════════════════════════════════════════════
+
+describe('夹具自检 —— ENTRY_OF 的 id 与塔型', () => {
+  it('三条 entryId 都在单元 1 题单里，且塔型与键一致', () => {
+    // ⚠️ 这条不是「内容规模的钉子」，而是**夹具本身的自检**：
+    //   换源（Story 2.10）删掉了旧的三条 id 之后，本文件里几十条用例会一起红，
+    //   报错却指向「选中态」「射程覆盖」这些毫不相干的地方 ⇒ 排查成本极高。
+    //   ⇒ 把「id 还在不在」「塔型还对不对」单独立一条，让换源失败**当场喊出来**。
+    for (const towerType of ['direct', 'slow', 'aoe'] as const) {
+      const entryId = ENTRY_OF[towerType]
+      const entry = REAL_DECK.find((item) => item.entryId === entryId)
+      expect(entry, `题单里没有 ${entryId} —— 换源后请更新 ENTRY_OF`).toBeDefined()
+      expect(entry!.towerType, `${entryId} 的塔型与夹具键 ${towerType} 对不上`).toBe(towerType)
+    }
+  })
+})
+
+// ══════════════════════════════════════════════════════════════════════════════
 // G40 —— 手牌渲染顺序 === state.unlocked（裁决 2：不排序、不分组）
 // ══════════════════════════════════════════════════════════════════════════════
 
 describe('G40 —— 手牌渲染顺序 === state.unlocked 顺序', () => {
+  /**
+   * 三张卡的解锁顺序 —— ⚠️ **刻意与塔型序错开**（`direct → aoe → slow`）。
+   *
+   * 📎 **2026-10-26 换源批次查出的空转夹具**：旧夹具写的是 `[aoe, direct, slow]`，
+   *   而那**恰好就是按塔型排序的结果**（`'aoe' < 'direct' < 'slow'`）⇒
+   *   「`handCards` 被按塔型排序」这个变异（M72）在旧夹具下**根本不会改变顺序**
+   *   ⇒ 改坏了实现，断言照样绿 —— **M72 实测红不了**（假绿）。
+   *   ⇒ 新夹具的顺序与塔型序**故意错开**，让 M72 真能红。
+   *   ⚠️ 判据的**意图一字未改**：G40 守的仍然是「渲染顺序 === 解锁顺序」。
+   */
+  const THREE_UNLOCKED = [ENTRY_OF.direct, ENTRY_OF.aoe, ENTRY_OF.slow]
+
   it('三条不同塔型的卡按解锁顺序渲染', () => {
-    const unlocked = [ENTRY_OF.aoe, ENTRY_OF.direct, ENTRY_OF.slow]
+    const unlocked = THREE_UNLOCKED
     reset({ unlocked })
     const hand = mountHandDeck()
     const rendered = hand.findAllComponents(HandCard).map((node) => node.props('card').entryId)
@@ -292,12 +334,29 @@ describe('G40 —— 手牌渲染顺序 === state.unlocked 顺序', () => {
   it('M72：把 handCards 按塔型排序（不再按解锁顺序）必须红', () => {
     // 反向夹具：**不改** core，只把「顺序 === 解锁顺序」这条判据反过来用 ——
     // 期望顺序改成排序后的顺序，真守卫就应当报它不匹配。
-    const unlocked = [ENTRY_OF.aoe, ENTRY_OF.direct, ENTRY_OF.slow]
+    //
+    // ⚠️ **必须按「塔型」排，而不是按 entryId 字典序排**：本条的标题与故事
+    //   （1.12 的 M72）说的变异就是「按塔型排序」。按字典序排只能证明
+    //   「渲染顺序不是字典序」，**证明不了「不是按塔型排」** ⇒ 判据比它要防的
+    //   违规更粗（变异 0 红）。⇒ 下面把**两种**排序形态都摆出来对照。
+    const unlocked = THREE_UNLOCKED
     reset({ unlocked })
     const hand = mountHandDeck()
-    const rendered = hand.findAllComponents(HandCard).map((node) => node.props('card').entryId)
-    const sortedByTowerType = [...rendered].sort()
-    expect(rendered).not.toEqual(sortedByTowerType)
+    const cards = hand.findAllComponents(HandCard).map((node) => node.props('card'))
+    const rendered = cards.map((c) => c.entryId)
+
+    // 变异形态一：按**塔型**排序（故事里 M72 的字面表述）。
+    const sortedByTowerType = [...cards]
+      .sort((a, b) => a.towerType.localeCompare(b.towerType))
+      .map((c) => c.entryId)
+    expect(
+      rendered,
+      'handCards 若被按塔型排序，本夹具就必须红 —— 否则这条反向夹具是恒真的（M72 空转）',
+    ).not.toEqual(sortedByTowerType)
+
+    // 变异形态二：按 **entryId 字典序**排序（另一种「排序」实现）。
+    const sortedByEntryId = [...rendered].sort()
+    expect(rendered, 'handCards 若被按 entryId 排序，本夹具就必须红').not.toEqual(sortedByEntryId)
   })
 
   it('未解锁的卡不渲染', () => {
@@ -332,12 +391,17 @@ describe('AC-C2 —— 手牌卡显示三样，缺一不可', () => {
 
   it('label 是 promptText 全文，不是 slug（裁决 5）', () => {
     reset()
-    const entry = REAL_DECK.find((item) => item.entryId === 'u1-s-i-have-a-ball-for-my-dog')
+    // ⚠️ **换源后重选**（Story 2.10 / DF-201）：旧的 `u1-s-i-have-a-ball-for-my-dog`
+    //   （题面 `I have a ball for my dog.`）已作废并删除 ⇒ 改用单元 1 现存的
+    //   keyword 卡 `u1-s-good-morning`（题面 `Good morning.`）。
+    //   判据的**意图一字未改**：label 必须是 promptText 全文，且**不含 `-`**
+    //   （含 `-` 就是走了被否掉的 slug 路线）。
+    const entry = REAL_DECK.find((item) => item.entryId === 'u1-s-good-morning')
     expect(entry).toBeDefined()
     const card = mount(HandCard, {
       props: {
         card: {
-          entryId: 'u1-s-i-have-a-ball-for-my-dog',
+          entryId: 'u1-s-good-morning',
           towerType: entry!.towerType,
           label: entry!.card.promptText,
           cost: 50,
@@ -346,7 +410,7 @@ describe('AC-C2 —— 手牌卡显示三样，缺一不可', () => {
         selected: false,
       },
     })
-    expect(card.get('.hand-card__label').text()).toBe('I have a ball for my dog.')
+    expect(card.get('.hand-card__label').text()).toBe('Good morning.')
     expect(card.get('.hand-card__label').text()).not.toContain('-')
   })
 
@@ -474,14 +538,28 @@ describe('G35 —— 阳光不足 ⇒ 变灰且不可点', () => {
   })
 
   it('M67：去掉 disabled 属性（只留变灰）必须红', () => {
-    // 反向夹具：判据写成「只看变灰 class」时，真实 DOM 里两张卡的确不同 ——
-    // 所以这条夹具要抓的是**别的**形态：把 affordable 判据反过来用。
-    reset({ sun: 1000 })
+    // 反向夹具：**两测**（买不起的卡有 / 买得起的卡没有），把「disabled 属性
+    // 是不是真的在按 affordability 决定」这件事夹成**不可恒真**。
+    //
+    // ⚠️ **为什么必须是两测**（2026-10-26 换源批次补强）：旧版只测了
+    //   「买得起的卡没有 disabled」那**一半** ⇒ 「去掉 disabled 属性」
+    //   （本条标题里的那个变异）根本**碰不到**这一半 ⇒ 本条在标题所述的变异下
+    //   **不会红**（假绿）。⇒ 现在把另一半（买不起的卡**必须**有 disabled）
+    //   也补上：两个变异方向都会把本条打红 ——
+    //   ① `:disabled="!card.affordable"` → `:disabled="false"`（去掉 disabled）
+    //   ② `:disabled="!card.affordable"` → `:disabled="true"`（无脑写死）
+    reset({ sun: 50, unlocked: [ENTRY_OF.aoe, ENTRY_OF.direct] })
     const hand = mountHandDeck()
-    const rich = hand.findAllComponents(HandCard)[0]!
-    expect(rich.props('card').affordable).toBe(true)
+    const [poor, rich] = hand.findAllComponents(HandCard)
+
+    // ① 买不起的卡：**必须**有 disabled。去掉它 ⇒ 本条红。
+    expect(poor!.props('card').affordable, '夹具前提：aoe 造价 75 > 阳光 50 ⇒ 买不起').toBe(false)
+    expect(poor!.get('button').attributes('disabled'), '买不起的卡必须带 disabled 属性').toBeDefined()
+
+    // ② 买得起的卡：**必须**没有 disabled。无脑写死 ⇒ 本条红。
+    expect(rich!.props('card').affordable).toBe(true)
     // 「不可点」判据对买得起的卡**不成立** ⇒ 放宽成「有 is-unaffordable 或没有」就是恒真
-    expect(rich.get('button').attributes('disabled')).toBeUndefined()
+    expect(rich!.get('button').attributes('disabled')).toBeUndefined()
   })
 })
 

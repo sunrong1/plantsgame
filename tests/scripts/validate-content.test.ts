@@ -255,16 +255,19 @@ describe('AC-14 / AC-19 —— 真实内容当前通过校验', () => {
 describe('AC-11 第 1 类 —— 词图缺失或命名不符（脚本侧）', () => {
   it('缺一张词图被抓出，报错含词条 id、期望路径、实际找到的文件', () => {
     const unit = unitCopy()
-    const images = allReferencedImages(unit).filter((name) => name !== 'u1-cat.svg')
+    // ⚠️ 2026-10-26 换源批次（Story 2.10）：单元 1 现在只有 **2 张**词图
+    //   （`u1-morning.svg` / `u1-afternoon.svg`），旧夹具里的 `u1-cat.svg`
+    //   已被作废 ⇒ 改成抽掉 `u1-afternoon.svg`（它仍被两张单词卡引用着）。
+    const images = allReferencedImages(unit).filter((name) => name !== 'u1-afternoon.svg')
     const { problems, exitCode } = run([unit], fakeImages(images.map((n) => `/fake/words/unit-01/${n}`)))
 
     const problem = problems.find((p) => p.category === 'word-image')
 
     expect(problem, '缺词图没有被报出来 ⇒ 「词图缺失」这一类形同虚设').toBeDefined()
-    expect(problem?.optionId, '报错没定位到具体词条（选项 id 就是词条 id）').toBe('u1-cat')
-    expect(problem?.message).toContain('/fake/words/unit-01/u1-cat.svg')
+    expect(problem?.optionId, '报错没定位到具体词条（选项 id 就是词条 id）').toBe('u1-afternoon')
+    expect(problem?.message).toContain('/fake/words/unit-01/u1-afternoon.svg')
     expect(problem?.message, '报错没列出该目录下实际找到了什么 ⇒ 录入者无从判断是漏画还是改名')
-      .toContain('u1-dog.svg')
+      .toContain('u1-morning.svg')
     expect(exitCode, '缺词图却退 0 ⇒ 「跑过了 validate:content」又变成一句空话').toBe(1)
   })
 
@@ -350,14 +353,24 @@ describe('AC-11 第 3 类 —— 选项中混入其他单元的词条', () => {
 describe('AC-11 第 4 类 —— 卡型与选项形态不符', () => {
   it('单词卡配文字选项被拒，报错含卡型与选项 id', () => {
     const unit = unitCopy()
-    unit.entries[10].card.options[2] = { id: 'u1-rabbit', text: 'rabbit', correct: false }
+    // ⚠️ 2026-10-26 换源批次（Story 2.10）：单元 1 只剩 6 条词条
+    //   （旧夹具里的 `unit.entries[10]` 与 `u1-rabbit` 都已作废）⇒
+    //   ① 卡片改为**按卡型找**（`kind === 'word'`），不再写死下标；
+    //   ② 被塞进去的文字选项的 id 改用单元 1 里**真实存在**的词条
+    //     （`u1-s-goodbye`）—— 否则会顺带报一条「选项指向不存在的词条」，
+    //     一个用例坏两处就分不清是哪个判据在响。
+    //   ③ 替换的是那张卡的**干扰项**（原来那张图片选项），不是新增一项 ——
+    //     单词卡的选项数仍是 2（档 1 的期望值），本条负例**只**坏在「卡型与形态不符」。
+    const wordCard = unit.entries.find((e) => e.card.kind === 'word')
+    if (wordCard === undefined) throw new Error('单元 1 里没有单词卡 —— 夹具失效')
+    wordCard.card.options[1] = { id: 'u1-s-goodbye', text: 'Goodbye!', correct: false }
     const { problems, exitCode } = run([unit], greenDeps())
 
     const problem = problems.find((p) => p.category === 'kind-option-mismatch')
 
     expect(problem, '单词卡配文字选项没被抓出 ⇒ 渲染层会画出图片卡里的文字按钮').toBeDefined()
     expect(problem?.message).toContain('word')
-    expect(problem?.optionId).toBe('u1-rabbit')
+    expect(problem?.optionId).toBe('u1-s-goodbye')
     expect(exitCode).toBe(1)
   })
 
@@ -401,13 +414,17 @@ describe('AC-11 —— 五类错误一次全报出来（不 early return）', ()
   it('五类各注入一处，五类全部出现在同一次输出里', () => {
     const unit = unitCopy()
     // 1 词图缺失 —— 靠 deps 少给一张图
-    const images = allReferencedImages(unit).filter((n) => n !== 'u1-cat.svg')
+    //   ⚠️ 2026-10-26 换源批次：单元 1 现在只有 2 张词图 ⇒ 抽掉的是
+    //   `u1-afternoon.svg`（旧夹具抽的是已作废的 `u1-cat.svg`）。
+    const images = allReferencedImages(unit).filter((n) => n !== 'u1-afternoon.svg')
     // 2 塔型
     unit.entries[0].towerType = 'laser'
-    // 4 卡型与形态
-    unit.entries[10].card.options[2] = { id: 'u1-rabbit', text: 'rabbit', correct: false }
-    // 5 空卡面
-    unit.entries[20].card.promptText = ''
+    // 4 卡型与形态 —— 落在**另一张**单词卡上（单元 1 只剩 6 条，
+    //   旧下标 `entries[10]` 已不存在）；被塞进去的 id 取单元里真实存在的词条，
+    //   好让这一处只坏在「卡型与形态」上。
+    unit.entries[1].card.options[1] = { id: 'u1-s-goodbye', text: 'Goodbye!', correct: false }
+    // 5 空卡面（单元 1 的第三张卡 = 关键词卡 `u1-s-good-morning`）
+    unit.entries[2].card.promptText = ''
     // 3 跨单元选项 —— 放在**另一个**单元里。
     //    ⚠️ 为什么不能也塞进单元 1：Zod 的 `superRefine` 在**同一层 shape 解析失败时不会执行**，
     //    而单元 1 已经有 2/4/5 三处 shape 错误 ⇒ 单元级 refinement（跨单元选项那条）
@@ -424,7 +441,7 @@ describe('AC-11 —— 五类错误一次全报出来（不 early return）', ()
             kind: 'response',
             promptText: 'How are you?',
             options: [
-              { id: 'u1-cat', text: 'cat', correct: true },
+              { id: 'u1-morning', text: 'morning', correct: true },
               { id: 'u2-s-good-morning', text: 'Good morning!', correct: false },
             ],
           },
@@ -761,12 +778,18 @@ describe('G267 —— 选项数不符被抓出（Story 2.4 / AC-B3、AC-C3）', 
   it('给一张单词卡多塞一个选项 ⇒ 报 option-count，且说清期望值与实际值', () => {
     // ⚠️ 注入的是**一张真实单词卡**（多一个合法 id 的合法图片选项），
     //   所以这一条红的原因只有「选项数」—— 词图、id 形态、卡型都还是合法的。
+    // ⚠️ 2026-10-26 换源批次（Story 2.10）：单元 1 只有 **2 个教材词**
+    //   （`morning` / `afternoon`），而两张单词卡**各自**都已经把这两个词用上了
+    //   ⇒ 词表里**没有第三个单词 id** 可借（旧夹具找的「备用单词 id」因此失效）。
+    //   ⇒ 备用 id 改取单元 1 里真实存在的**另一个词条**（`u1-s-good-morning`）：
+    //   它满足「选项必须指向本单元存在的词条」⇒ 这条负例仍然**只**坏在
+    //   「选项数」这一处（借一个不存在的 id 会顺带报一条 dangling-option）。
     const unit = unitCopy()
     const target = unit.entries.find((e) => e.card.kind === 'word')
     if (target === undefined) throw new Error('单元 1 里没有单词卡 —— 夹具失效')
-    const wordIds = new Set(unit.entries.filter((e) => e.card.kind === 'word').map((e) => e.entryId))
-    const spare = [...wordIds].find((id) => !target.card.options.some((o) => o.id === id))
-    if (spare === undefined) throw new Error('没有可用的备用单词 id —— 夹具失效')
+    const used = new Set(target.card.options.map((o) => o.id))
+    const spare = unit.entries.map((e) => e.entryId).find((id) => !used.has(id))
+    if (spare === undefined) throw new Error('没有可用的备用词条 id —— 夹具失效')
     target.card.options.push({
       id: spare,
       imageSrc: `/assets/words/unit-01/${spare}.svg`,
@@ -801,20 +824,28 @@ describe('G267 —— 选项数不符被抓出（Story 2.4 / AC-B3、AC-C3）', 
 describe('G268 —— 卡内选项近邻被抓出（Story 2.4 / AC-B4）', () => {
   it('两个文字选项只差一个字母 ⇒ 报 option-near-duplicate', () => {
     const unit = unitCopy()
-    // ⚠️ **注入的是「加一个几乎一样的选项」**，不是「把某个选项改成另一个的副本」——
+    // ⚠️ **注入的是「把某个选项改成几乎一样的那个」**，不是「把某选项改成副本」——
     //   后者会把「要比较的那一对」里的一个换掉，判据就无从比较了
     //   （第一稿就栽在这里：把「Goodbye」改成「Goodby」之后，卡里已经**没有**「Goodbye」了）。
     //   近邻判据比的是**同一张卡里两个都在**的选项之间的距离 ⇒ 必须让那一对同时存在。
-    // 「Helo」与「Hello」归一化后编辑距离 = 1 ⇒ 落在阈值 2 内。
-    // ⚠️ 这一对**故意不是前缀关系**（`helo` 不是 `hello` 的前缀）：
+    // ⚠️ 2026-10-26 换源批次（Story 2.10）：单元 1 的回应卡 `u1-s-hello` 上的三个选项是
+    //   `Good morning.` / `Good afternoon!` / `Goodbye!` —— 旧夹具找的那张带
+    //   「Hello」选项的卡（`u1-s-good-morning`）现在**是关键词卡**，上面没有「Hello」。
+    //   ⇒ 改用 `u1-s-hello` 这张回应卡，并把**干扰项** `Good afternoon!` 改成手误形态
+    //   `Good morming.`（正确项 `Good morning.` 保持不动 ⇒ 要比较的那一对同时存在）。
+    // 「Good morming.」与「Good morning.」归一化后编辑距离 = 1 ⇒ 落在阈值 2 内。
+    // ⚠️ 这一对**故意不是前缀关系**（`good morming` 不是 `good morning` 的前缀）：
     //   判据里那条「互为前缀」的分支是**冗余**的（前缀对的编辑距离恰好等于长度差），
     //   若注入的恰好是前缀对，那条分支会替它兜住 ⇒ 判据里那半条坏掉时用例仍然绿。
-    const card = unit.entries.find((e) => e.entryId === 'u1-s-good-morning')
-    if (card === undefined) throw new Error('单元 1 里没有 u1-s-good-morning 这张卡 —— 夹具失效')
-    if (!card.card.options.some((o) => o.text === 'Hello')) throw new Error('夹具失效：该卡上找不到「Hello」选项')
+    // ⚠️ 选项数不变（仍是 3 张 = 档 1 的期望值）⇒ 本条负例**只**坏在「文本距离」上。
+    const card = unit.entries.find((e) => e.entryId === 'u1-s-hello')
+    if (card === undefined) throw new Error('单元 1 里没有 u1-s-hello 这张卡 —— 夹具失效')
+    if (!card.card.options.some((o) => o.text === 'Good morning.')) {
+      throw new Error('夹具失效：该卡上找不到「Good morning.」选项')
+    }
     // ⚠️ 这个选项的 id 指向本单元真实存在的词条（校验器的「选项必须指向本单元存在的词条」
-    //   那条要绿），而**文本**是「Hello」的手误形态 —— 本条要验的是文本距离。
-    card.card.options.push({ id: 'u1-dog', text: 'Helo', correct: false })
+    //   那条要绿），而**文本**是「Good morning.」的手误形态 —— 本条要验的是文本距离。
+    card.card.options[1] = { id: 'u1-s-good-afternoon', text: 'Good morming.', correct: false }
 
     const { problems, exitCode } = run([unit], greenDeps(unit))
 
@@ -824,8 +855,8 @@ describe('G268 —— 卡内选项近邻被抓出（Story 2.4 / AC-B4）', () =>
       '只差一个字母的两个选项没有被报出来 ⇒ 孩子要逐字辨认才能分辨两个按钮，' +
         '而校验器本该在录入那一刻就拦下来',
     ).toBeDefined()
-    expect(problem?.message, '报错没指出是哪两个选项 ⇒ 录入者无从下手').toContain('Helo')
-    expect(problem?.message, '报错没指出另一个选项 ⇒ 录入者无从下手').toContain('Hello')
+    expect(problem?.message, '报错没指出是哪两个选项 ⇒ 录入者无从下手').toContain('Good morming.')
+    expect(problem?.message, '报错没指出另一个选项 ⇒ 录入者无从下手').toContain('Good morning.')
     expect(exitCode, '近邻选项却退 0 ⇒ 这一类错误静默通过').toBe(1)
   })
 
@@ -840,9 +871,12 @@ describe('G268 —— 卡内选项近邻被抓出（Story 2.4 / AC-B4）', () =>
 })
 
 describe('G269 —— 规则范围外的单元号不崩，只报一条能定位的问题（Story 2.4 / AC-C3）', () => {
-  it('unitNumber 21 ⇒ 退出码非 0，报出一条能定位的问题，不是堆栈', () => {
+  it('unitNumber 25 ⇒ 退出码非 0，报出一条能定位的问题，不是堆栈', () => {
+    // ⚠️ 2026-10-26 换源批次：`LAST_UNIT` 从 20 改成了 **24**（两册各 12 个教材 Unit）
+    //   ⇒ 旧夹具的越界样例 `21` **落在覆盖范围内了**（它会被当成档 3 逐卡报选项数不符，
+    //   而不是报「规则不覆盖」）⇒ 越界样例改成 **25**（= LAST_UNIT + 1）。
     const unit = unitCopy()
-    unit.unitNumber = 21
+    unit.unitNumber = 25
 
     const { problems, exitCode } = run([unit], greenDeps(unit))
 
@@ -850,12 +884,12 @@ describe('G269 —— 规则范围外的单元号不崩，只报一条能定位�
     expect(
       optionCountProblems.length,
       `规则不覆盖的单元没有报 option-count 问题（实际报了 ${optionCountProblems.length} 条）—— ` +
-        '要么静默放过（内容在规则范围外却没人管），要么报了一堆（37 张卡报 37 遍同一条原因是噪声）',
+        '要么静默放过（内容在规则范围外却没人管），要么报了一堆（每张卡报一遍同一条原因是噪声）',
     ).toBe(1)
     expect(
       optionCountProblems[0].message,
       '报错里没有单元号 ⇒ 录入者不知道是哪个单元越界了',
-    ).toContain('21')
+    ).toContain('25')
     expect(
       optionCountProblems[0].message,
       '报错没说是「规则不覆盖」⇒ 录入者会以为是自己选项数写错了',
@@ -863,15 +897,19 @@ describe('G269 —— 规则范围外的单元号不崩，只报一条能定位�
     expect(exitCode, '越界单元却退 0 ⇒ 规则范围外的单元被静默放行').toBe(1)
   })
 
-  it('反向自测：单元号 20（仍在覆盖内）⇒ 不报这条', () => {
+  it('反向自测：单元号 24（仍在覆盖内）⇒ 不报这条', () => {
+    // ⚠️ 24 = `LAST_UNIT`（覆盖范围的上界）—— 越界样例是 25 ⇒ 这条是它的**边界对照**：
+    //   「规则覆盖内的最后一个单元」不得被报成「不覆盖」。
+    //   （它**会**报选项数不符 —— 档 3 是 4/4/4，而单元 1 的内容是 2/2/3 ——
+    //     但那是另一条判据、另一个类别，与「不覆盖」无关。）
     const unit = unitCopy()
-    unit.unitNumber = 20
+    unit.unitNumber = 24
 
     const { problems } = run([unit], greenDeps(unit))
 
     expect(
       problems.filter((p) => p.category === 'option-count' && p.message.includes('不覆盖')),
-      '单元 20 在规则覆盖内却被报成「不覆盖」⇒ 规则的覆盖范围与它自己声明的不一致',
+      '单元 24 在规则覆盖内却被报成「不覆盖」⇒ 规则的覆盖范围与它自己声明的不一致',
     ).toEqual([])
   })
 })
@@ -1010,31 +1048,39 @@ describe('G276 —— 单元号不是整数 ⇒ 报「不是整数」，不是�
 })
 
 describe('T6.6 —— 近邻阈值的那条反向自测（阈值真的在起作用，且上界被数据卡住）', () => {
-  it('把阈值临时改成 3 ⇒ 关键词卡那张（ball ~ book）必须被报出来', () => {
+  it('把阈值临时改成 7 ⇒ 关键词卡那张（morning ~ afternoon）必须被报出来', () => {
     // ⚠️ **光有「现有内容不报错」那条断言是不够的** ——
     //   那条在阈值被放宽到 99 时照样绿 ⇒ 它证明不了阈值在起作用。
-    //   这条从另一头证明：阈值一旦真的动到 3，**确定会**报出一对。
-    //   报出来的那一对是关键词卡的 `ball` ~ `book`（归一化后编辑距离 = 3）。
-    const problems = optionNearDuplicateProblems(realUnit, 3)
+    //   这条从另一头证明：阈值一旦真的动到 7，**确定会**报出一对。
+    // ⚠️ **2026-10-26 换源批次（Story 2.10）改口径**：单元 1 的内容换成了教材版
+    //   （6 条词条），旧夹具那一对（关键词卡的 `ball` ~ `book`，距离 3）**已作废**。
+    //   实测新内容里卡内最小编辑距离 = **7**（关键词卡 `morning` ~ `afternoon`；
+    //   ⚠️ 不是 3 —— `morning` 与 `afternoon` 归一化后的编辑距离实测是 7）⇒
+    //   阈值必须取到 7 才第一次报出这一对。
+    //   ⇒ 产品裁决的 `NEAR_DUPLICATE_MAX_DISTANCE = 2` **一个字未改**，
+    //     改的只是这条守卫里「临时改成几」的探针值（它要证明的是「阈值真的接进计算」）。
+    const problems = optionNearDuplicateProblems(realUnit, 7)
 
-    const hit = problems.find((p) => p.entryId === 'u1-s-i-have-a-ball-for-my-dog')
+    const hit = problems.find((p) => p.entryId === 'u1-s-good-morning')
     expect(
       hit,
-      '阈值改成 3 之后关键词卡没有被报出来 ⇒ 阈值根本没在起作用（' +
+      '阈值改成 7 之后关键词卡没有被报出来 ⇒ 阈值根本没在起作用（' +
         `实际报出 ${problems.length} 条：${problems.map((p) => p.entryId).join('/')}）`,
     ).toBeDefined()
-    expect(hit?.message, '报错里没有那两个选项 ⇒ 定位不到是哪一对').toContain('ball')
-    expect(hit?.message, '报错里没有那两个选项 ⇒ 定位不到是哪一对').toContain('book')
+    expect(hit?.message, '报错里没有那两个选项 ⇒ 定位不到是哪一对').toContain('morning')
+    expect(hit?.message, '报错里没有那两个选项 ⇒ 定位不到是哪一对').toContain('afternoon')
   })
 
   it('阈值 = 2（当期值）⇒ 那对合格干扰项**不**被报（阈值 ≤ 2 的上界是被数据卡住的）', () => {
-    // ⚠️ 这是「上界被数据卡住」那一半：`ball` ~ `book` 语义上完全可分
-    //   （球 vs 书），阈值取 3 就会把一个**合格**的干扰项判坏 ⇒ 阈值必须 ≤ 2。
+    // ⚠️ 这是「上界被数据卡住」那一半：`morning` ~ `afternoon` 语义上完全可分
+    //   （早晨 vs 下午），阈值取 7 就会把一个**合格**的干扰项判坏 ⇒ 阈值必须远小于 7。
+    //   （换源后实测的最小距离是 7，比旧内容那对的 3 宽 ⇒ 上界比从前更松，
+    //     但产品裁决仍是 2 —— 这里只钉「当前值下这一对不被报」这个事实。）
     const problems = optionNearDuplicateProblems(realUnit, NEAR_DUPLICATE_MAX_DISTANCE)
 
     expect(
-      problems.filter((p) => p.entryId === 'u1-s-i-have-a-ball-for-my-dog'),
-      '阈值 2 下把 `ball` ~ `book` 判坏了 —— 球与书对孩子完全可分，' +
+      problems.filter((p) => p.entryId === 'u1-s-good-morning'),
+      '阈值 2 下把 `morning` ~ `afternoon` 判坏了 —— 早晨与下午对孩子完全可分，' +
         '把它们判成近邻会让内容作者删掉一个正确的干扰项',
     ).toEqual([])
   })
@@ -1113,8 +1159,16 @@ describe('G284 —— `validate:content` 逐单元打印卡型配比与逐族余
   })
 
   it('⚠️ 反向自测：换一个卡型配比 ⇒ 误差必须跟着变（证明它读的是输入）', () => {
-    const a = unitDistributionOf(2, { word: 30, keyword: 1, response: 7 })
-    const b = unitDistributionOf(2, { word: 28, keyword: 1, response: 7 })
+    // ⚠️ 2026-10-26 换源批次（Story 2.10）：`LAST_UNIT` 从 20 改成 **24**，
+    //   首/末锚点也换成 (2/6, 1/6, 3/6) 与 (0.25, 0.25, 0.50) ⇒ 单元 2 的
+    //   `word` 目标份额从 0.79 掉到 **0.3297**。
+    //   ⇒ 旧夹具（`word: 30` → `word: 28`，N 从 38 掉到 36）**不再**满足
+    //     「少两张单词卡 ⇒ 误差变大」：在 0.33 的份额下，30 张单词卡**远远超标**，
+    //     少两张反而让误差**变小**（16.13 < 17.47）⇒ 那条断言红得莫名其妙。
+    //   ⇒ 换一组数：**把 N 固定住**（两张单词卡挪给关键词卡），只让单词卡**变少** ——
+    //     于是「误差变大」只有一个可能的原因：单词卡离目标份额更远了。
+    const a = unitDistributionOf(2, { word: 12, keyword: 9, response: 17 })
+    const b = unitDistributionOf(2, { word: 10, keyword: 11, response: 17 })
 
     expect(a!.familyErrors.word).not.toBe(b!.familyErrors.word)
     expect(b!.familyErrors.word, '少了两张单词卡而误差没变 ⇒ 判据没读输入').toBeGreaterThan(
@@ -1123,9 +1177,10 @@ describe('G284 —— `validate:content` 逐单元打印卡型配比与逐族余
   })
 
   it('规则未覆盖的单元号 ⇒ 返回 `null`（不外推、不记一条假问题）', () => {
+    // ⚠️ 2026-10-26 换源批次：`LAST_UNIT` 现在是 **24** ⇒ 越界样例从 21 改成 **25**。
     expect(
-      unitDistributionOf(21, { word: 1, keyword: 1, response: 1 }),
-      '单元 21 落在规则覆盖范围外却算出了份额 ⇒ 规则在静默外推',
+      unitDistributionOf(25, { word: 1, keyword: 1, response: 1 }),
+      '单元 25 落在规则覆盖范围外却算出了份额 ⇒ 规则在静默外推',
     ).toBeNull()
   })
 
@@ -1171,23 +1226,25 @@ describe('G284 —— `validate:content` 逐单元打印卡型配比与逐族余
  */
 describe('G288 —— 规则未覆盖的单元在输出里被逐个点名', () => {
   /**
-   * 一份**落在规则覆盖范围外**的单元（单元 21）——
+   * 一份**落在规则覆盖范围外**的单元（单元 25）——
    * ⚠️ **必须整体改写 id**（`entryId` / `wordId` / 选项 `id` / `imageSrc`），
    *   否则 schema 的 superRefine 会因「选项指向别的单元的词条」而失败
    *   ⇒ `safeParse` 不通过 ⇒ 那个单元**在统计之前就被 continue 掉了**，
    *   根本走不到 `unitDistributionOf` ⇒ 本守卫会变成恒绿。
+   * ⚠️ **2026-10-26 换源批次**：`LAST_UNIT` 从 20 改成 **24** ⇒ 越界样例
+   *   从 21 改成 **25**（21 现在**落在覆盖范围内**，拿它当越界样例会变成恒绿）。
    */
   function unitOutsideRule(): RawUnit {
     const unit = unitCopy() as RawUnit
-    unit.unitNumber = 21
-    const rename = (id: string): string => `u21-${id.slice(id.indexOf('-') + 1)}`
+    unit.unitNumber = 25
+    const rename = (id: string): string => `u25-${id.slice(id.indexOf('-') + 1)}`
     for (const entry of unit.entries) {
       entry.entryId = rename(entry.entryId)
       entry.wordId = entry.entryId
       for (const option of entry.card.options) {
         option.id = rename(option.id)
         if (option.imageSrc !== undefined) {
-          option.imageSrc = expectedImageUrl(21, option.id)
+          option.imageSrc = expectedImageUrl(25, option.id)
         }
       }
     }
@@ -1196,22 +1253,22 @@ describe('G288 —— 规则未覆盖的单元在输出里被逐个点名', () =
 
   it('统计里被跳过的单元号被记下来（不是一个被吞掉的空缺）', () => {
     const outside = unitOutsideRule()
-    // ⚠️ **词图要放在单元 21 自己的目录里** —— `greenDeps` 把图放在 `unit-01`，
-    //   而单元 21 的图按规范路径查的是 `unit-21` ⇒ 不改的话这份夹具会**顺带**
-    //   报一堆「词图缺失」，让「单元 21 只因规则越界而被跳过」这件事被噪音盖住。
+    // ⚠️ **词图要放在单元 25 自己的目录里** —— `greenDeps` 把图放在 `unit-01`，
+    //   而单元 25 的图按规范路径查的是 `unit-25` ⇒ 不改的话这份夹具会**顺带**
+    //   报一堆「词图缺失」，让「单元 25 只因规则越界而被跳过」这件事被噪音盖住。
     const deps = greenAssetDeps(
-      fakeImages(allReferencedImages(outside).map((name) => `/fake/words/unit-21/${name}`)),
+      fakeImages(allReferencedImages(outside).map((name) => `/fake/words/unit-25/${name}`)),
     )
     const { stats } = validateContent([realUnit, outside], deps)
 
     expect(
       stats.unitsWithoutRule,
-      '规则未覆盖的单元 21 没有被记进 unitsWithoutRule ⇒ 它从统计里彻底消失了',
-    ).toContain(21)
+      '规则未覆盖的单元 25 没有被记进 unitsWithoutRule ⇒ 它从统计里彻底消失了',
+    ).toContain(25)
     expect(
       stats.unitDistributions.map((unit) => unit.unitNumber),
-      '单元 21 不该出现在逐单元统计里（规则不外推）',
-    ).not.toContain(21)
+      '单元 25 不该出现在逐单元统计里（规则不外推）',
+    ).not.toContain(25)
   })
 
   it('打印函数把「规则未覆盖」的单元**逐个点名**', () => {
@@ -1231,7 +1288,7 @@ describe('G288 —— 规则未覆盖的单元在输出里被逐个点名', () =
             familyErrors: { word: 0.089, keyword: 0.373, response: 0.462 },
           },
         ],
-        unitsWithoutRule: [21],
+        unitsWithoutRule: [25],
       },
       (line) => lines.push(line),
     )
@@ -1241,7 +1298,7 @@ describe('G288 —— 规则未覆盖的单元在输出里被逐个点名', () =
       '打印函数没有输出「规则未覆盖」这一行 ⇒ 被跳过的单元从输出里消失了（没人知道它没被查）',
     ).toBe(true)
     expect(
-      lines.some((line) => line.includes('单元 21')),
+      lines.some((line) => line.includes('单元 25')),
       '「规则未覆盖」那一行没有点名是哪个单元 ⇒ 读的人不知道该去查什么',
     ).toBe(true)
     expect(

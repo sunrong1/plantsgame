@@ -17,6 +17,10 @@
  * · **G184** —— §8 里「估算基数」与「实测基数」**同时在场**，且估算那条**被显式标为作废**。
  *   [CR] P9/P10：判据改「加粗前缀计数相等」（堵变体拼写绕过）与「作废条目**自身切片**内
  *   点名 200-400 张」（此前是两个互相独立的全文 includes，GDD 引文就能顶替）。
+ *   📎 **2026-10-27（Story 2.10 换源批次）**：替代值**改为按 `unit-01.json` 实算**
+ *   （R-21 / R-56）—— 换源后单元 1 的实测配图比例从 81.08% 变成 **33.33%**，
+ *   写死旧值会变成**假绿**（旧值此时只以「旧口径留档」的形态活在同一条目里，判据照样命中）。
+ *   并加一条「条目里**任何不是当前值**的百分比都必须与「旧口径」标记同行」。
  * · **§8 切片锚定行首标题、切到下一个行首一级标题为止，不假设 §8 是最后一节**
  *   （[CR] P2/B13：原 `raw.indexOf('# §8')` + `slice(at)` 在未来出现 §9 后可被 §9 文字满足）。
  *
@@ -945,7 +949,7 @@ describe('G184 —— §8 里估算基数与实测基数同时在场，估算那
     ).toBeGreaterThan(0)
   })
 
-  it('作废条目**自身**点名「200-400 张」，实测基数条目**自身**给出实测替代值', () => {
+  it('作废条目**自身**点名「200-400 张」，实测基数条目**自身**给出**按当前内容实算**的替代值', () => {
     const raw = readFileSync(DOC_PATH, 'utf8')
     const section = section8(raw)
     // [CR] P10（E12）：原用例是两个**互相独立**的全文 includes —— §8.1.2 的 GDD 引文
@@ -957,10 +961,44 @@ describe('G184 —— §8 里估算基数与实测基数同时在场，估算那
       '作废条目自身没有点名「200-400 张」—— 作废的是哪一个估算说不清楚' +
         '（GDD 引文里的出现不算，它不是作废条目）',
     ).toBe(true)
+
+    // ⚠️📎 **R-21 / R-56（Story 2.10 换源批次）**：替代值**必须按当前内容实算**，
+    //   **不许写死**。换源后单元 1 从「37 词条 / 30 张单词卡」变成「6 词条 / 2 张单词卡」
+    //   ⇒ 实测配图比例从 81.08% 变成 33.33%。
+    //   ⚠️ 写死旧值的后果是**假绿**：旧值此时只以「旧口径留档」的形态活在同一条目里，
+    //   判据照样能命中 ⇒ 守卫变成在给「已作废的值」背书，而不是在守现行值。
+    const unit = JSON.parse(readFileSync(UNIT_JSON_PATH, 'utf8')) as {
+      entries?: { card?: { kind?: string } }[]
+    }
+    const entries = unit.entries ?? []
+    const wordCards = entries.filter((entry) => entry.card?.kind === 'word').length
+    const total = entries.length
+    expect(
+      total,
+      '单元 1 读出 0 条词条 —— 路径指错了，这条守卫会拿 0/0 当比例',
+    ).toBeGreaterThan(0)
+    const percent = ((wordCards / total) * 100).toFixed(2)
+    const currentRatio = `${wordCards} / ${total} = ${percent}%`
+
     const measured = bulletOf(section, '**实测基数**')
     expect(
-      measured.includes('81.08%'),
-      '实测基数条目自身没有给出实测比例 81.08% —— 作废了估算却没有给替代值，读者无从接手',
+      measured.includes(currentRatio),
+      `实测基数条目自身没有给出按当前内容实算的替代值 "${currentRatio}" —— ` +
+        '作废了估算却没有给替代值，读者无从接手',
     ).toBe(true)
+
+    // ⚠️ **判据落在后果上**：条目里**任何一个不是当前值的百分比**，
+    //   都必须与「旧口径」标记同行 —— 否则读者会把已作废的比例当成现行结论。
+    //   （不写死 81.08%：那是旧词表的历史常数，写死它就等于把判据钉在一个具体旧值上。）
+    const measuredLines = measured.split('\n')
+    const unmarkedStale = measuredLines.filter(
+      (line) =>
+        !line.includes(currentRatio) && line.includes('%') && !line.includes('旧口径'),
+    )
+    expect(
+      unmarkedStale,
+      '实测基数条目里有没标「旧口径」的其它百分比 —— 已作废的值被摆成了现行结论：' +
+        unmarkedStale.join(' / '),
+    ).toEqual([])
   })
 })

@@ -9,6 +9,8 @@
  *     而进度条已经显示 12/37 —— 两块 HUD 自相矛盾，无报错
  *   · 读了、喂了 `state`，但**没喂 `progress`** ⇒ 进度条肉眼可见回退，
  *     而 `ProgressBar.vue` 的文件头逐字写着「若出现回退，那不是动画该掩盖的事」
+ *     （📎 2026-10-26 换源批次：这里的 `12/37` 那个例子今天应是 `12/6` ——
+ *     单元 1 只剩 6 条；它只是举例，不参与任何断言）
  * ⇒ 本文件把「两样都喂」钉死。
  *
  * ⚠️📎 **`[CR]` 2026-10-21 删掉「与喂的顺序」这半句** —— 它是**文件头声称的覆盖
@@ -69,7 +71,12 @@ function advancedState(): State {
   const correct = q.card.options.find((o) => o.correct)
   if (correct === undefined) throw new Error('题上没有正确项')
   const answered = core.reduce(base, core.answer(correct.id))
-  return core.reduce(answered, core.placeTower('u1-hello', core.cellKey(core.ZOMBIE_ROW, 1)))
+  // ⚠️ **建的是「刚答对的那道题」对应的塔卡**（`q.entryId`）——
+  //   `placeTowerIn` 只允许种**已解锁**的卡，而解锁的正是刚答对的那条。
+  //   📎 **2026-10-26 换源批次**：原先写死 `u1-hello`，而那条词条**已随单元 1
+  //   换源作废并删除** ⇒ `placeTower` 当场抛「塔卡 u1-hello 尚未解锁，不能建造」。
+  //   ⇒ 改成从**题面**上取 id：夹具不再钉死具体词条（它验的是「对局完整」，不是「哪条词」）。
+  return core.reduce(answered, core.placeTower(q.entryId, core.cellKey(core.ZOMBIE_ROW, 1)))
 }
 
 /** 直接往 fake 里塞一份存档（绕过写盘，测的是**读**这一侧）。 */
@@ -85,7 +92,14 @@ function seedSave(progress: Progress, currentGame: State | null): void {
   )
 }
 
-const busyProgress: Progress = { currentUnitIndex: 2, masteredWordIds: ['u1-hello', 'u1-cat'] }
+/**
+ * 一份「有进度」的存档进度。
+ *
+ * 📎 **2026-10-26 换源批次**：`masteredWordIds` 原先是 `u1-hello` / `u1-cat`，
+ *   那两条**已随单元 1 换源作废并删除** ⇒ 换成今天真实存在的
+ *   `u1-morning` / `u1-afternoon`（单元 1 现有 6 条）。
+ */
+const busyProgress: Progress = { currentUnitIndex: 2, masteredWordIds: ['u1-morning', 'u1-afternoon'] }
 
 beforeEach(async () => {
   // ⚠️ **先装 fake 再 import**：虽然 `save.ts` 是惰性读 `localStorage`，

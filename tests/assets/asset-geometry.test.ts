@@ -7,7 +7,7 @@
  * · G3 主体填充色 === `tokens.css` 里对应 token 的**字面字符串** —— AC-4
  * · G4 SVG 内不出现 token 之外的 hex —— AC-4 / AC-13
  * · G5 **三塔结构签名两两不等** —— AC-5（本文件存在的主要理由）
- * · G6 30 张词图的几何规格 —— 补 `docs/art-direction.md` §1 的假绿
+ * · G6 全部词图的几何规格 —— 补 `docs/art-direction.md` §1 的假绿
  * · G9 §3 的适用范围（`[CC]` 2026-10-14 裁决：**§3.2–§3.7 只约束塔与僵尸，
  *   词图只受 §3.1**）—— 变异 M12 / M13 / M14
  * · §3.4 留白 ≥ 8% 画布边长、§3.5 重心 ±6%、§3.6 描边统一 16px —— AC-8
@@ -16,7 +16,7 @@
  *
  * ── 三条「这里最容易写出假绿」的纪律 ────────────────────────────────────────
  *
- * 1. **剥注释是所有匹配的前置**（AC-15）。`u1-dog.svg` 的文件头注释里逐字写着
+ * 1. **剥注释是所有匹配的前置**（AC-15）。`u1-morning.svg` 的文件头注释里逐字写着
  *    `viewBox 0 0 512 512`。不对注释做剥离就匹配，任何守卫都会在**所有文件**上恒绿 ——
  *    那不是「守卫不严」，是守卫恒等于真。本文件所有读 SVG 的地方都先过
  *    `stripXmlComments()`，且 Task 5 的 M8 会把删掉剥离后的行为跑一遍来验证。
@@ -1017,7 +1017,7 @@ function commentDefects(source: string): string[] {
 }
 
 /**
- * G8 的覆盖面 —— **塔与僵尸 + 全部 30 张词图**（`[DS]` Story 1.8 / AC-2 扩）。
+ * G8 的覆盖面 —— **塔与僵尸 + 全部词图**（`[DS]` Story 1.8 / AC-2 扩）。
  *
  * ⚠️ 扩之前词图**一张都没进过 G8**。而词图恰恰是中文注释的高发区 ——
  *   Story 1.7 真的踩过：三张塔图因为注释里写了 `--color-tower-shooter` 而
@@ -1107,7 +1107,12 @@ describe('G8 —— 注释良构性：正文不出现连续双短横 + 不留未
     //   断言撞上这个临时状态，红的原因与它自己无关，报错指不到真正坏的地方。
     //   ⇒ 取一份**真实的词图原文**注入违规注释，再喂给同一个谓词。
     //   这样既证明了词图走的是同一条判定路径，又不碰仓库磁盘。
-    const real = readAsset(join(wordsDir, 'unit-01', 'u1-cat.svg'))
+    //
+    // ⚠️ **目标文件随交付批次变**（Story 2.10 换源后旧的 60 张自建词图已全部删除）：
+    //   这里取 `u1-morning.svg` —— 它是**当前真实交付**的词图之一，
+    //   文件头是中文注释（正是本条要守的高发区），且自身注释是良构的
+    //   （下面第一条断言会验这一点 ⇒ 「真实词图自己就带违例」不成立）。
+    const real = readAsset(join(wordsDir, 'unit-01', 'u1-morning.svg'))
 
     expect(
       commentDefects(real),
@@ -1116,6 +1121,7 @@ describe('G8 —— 注释良构性：正文不出现连续双短横 + 不留未
 
     const mutated = real.replace('</svg>', '  <!-- 色板：#9aa0a6 = tokens.css 的 --color-word-stroke -->\n</svg>')
 
+    expect(mutated, '变异是空操作 —— 锚点（</svg>）没匹配上，注入的违规注释根本没进文件').not.toBe(real)
     expect(
       commentDefects(mutated),
       '往真实词图的注释里塞了 -- 却没被抓到 —— G8 扩到词图是形式上的，' +
@@ -1124,9 +1130,10 @@ describe('G8 —— 注释良构性：正文不出现连续双短横 + 不留未
   })
 
   it('M20：真实的词图同样怕「未闭合的 <!--」—— 中文注释是高发区', () => {
-    const real = readAsset(join(wordsDir, 'unit-01', 'u1-cat.svg'))
+    const real = readAsset(join(wordsDir, 'unit-01', 'u1-morning.svg'))
     const mutated = real.replace('</svg>', '  <!-- 忘了写结束符\n</svg>')
 
+    expect(mutated, '变异是空操作 —— 锚点（</svg>）没匹配上，注入的未闭合注释根本没进文件').not.toBe(real)
     expect(commentDefects(mutated).join('\n')).toContain('未闭合')
   })
 
@@ -1194,11 +1201,11 @@ describe('G8 —— 注释良构性：正文不出现连续双短横 + 不留未
 })
 
 // ══════════════════════════════════════════════════════════════════════════
-// G6 —— 30 张词图的几何规格（补 art-direction §1 的假绿）
+// G6 —— 全部词图的几何规格（补 art-direction §1 的假绿）
 // ══════════════════════════════════════════════════════════════════════════
 
 describe('G6 —— 词图的几何规格也合规（AC-14.2 词图侧）', () => {
-  it('30 张占位词图逐张打开读几何，没有一条 svg-geometry 报错', () => {
+  it('每一张词图逐张打开读几何，没有一条 svg-geometry 报错', () => {
     const units = loadUnitFiles(join(root, 'src/content/units'))
     const result = validateContent(
       units.map((u) => u.raw),
@@ -1215,13 +1222,33 @@ describe('G6 —— 词图的几何规格也合规（AC-14.2 词图侧）', () =
   })
 
   it('每张词图都真的被打开读过（不是「列表非空就算过」）', () => {
-    const dir = join(assetRoot, 'words', 'unit-01')
-    const files = readdirSync(dir).filter((n) => n.endsWith('.svg'))
+    // ⚠️ 原来这里是 `expect(files.length).toBe(30)` —— **写死的张数**。
+    //   Story 2.10 换源后交付的词图换了批、张数变了，它就红，
+    //   而它守的东西（每张词图都被真的打开读过）一个字都没变
+    //   ⇒ 那是一条**过期**的守卫，不是一条被违反的守卫。
+    //   ⇒ 改成数据驱动，且**比原来更严**：
+    //     ① 张数与「递归枚举」`wordImageFiles()` 必须一致（两套互不相干的枚举）；
+    //     ② 张数不许为 0（空集合会让下面的循环空过）；
+    //     ③ 每一张都要被真的打开、读出 viewBox。
+    const dirs = readdirSync(wordsDir, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => join(wordsDir, entry.name))
+      .sort()
+    const files = dirs.flatMap((dir) =>
+      readdirSync(dir)
+        .filter((n) => n.endsWith('.svg'))
+        .map((n) => join(dir, n)),
+    )
 
-    expect(files.length).toBe(30)
-    for (const name of files) {
-      const geo = readSvgGeometry(readFileSync(join(dir, name), 'utf8'))
-      expect(geo.viewBox, `${name} 的 viewBox 不是 0 0 512 512`).toBe('0 0 512 512')
+    expect(files.length, '一个词图都没枚举到 —— 下面的循环会在空集合上空过').toBeGreaterThan(0)
+    expect(
+      files.length,
+      '「逐单元目录枚举」与「递归枚举」给出的张数不一致 —— 有一张词图没被打开读过，' +
+        '而 G6 恰好是那种「少读几张就在剩下的图上恒绿」的守卫。',
+    ).toBe(wordImageFiles().length)
+    for (const path of files) {
+      const geo = readSvgGeometry(readFileSync(path, 'utf8'))
+      expect(geo.viewBox, `${path} 的 viewBox 不是 0 0 512 512`).toBe('0 0 512 512')
     }
   })
 })

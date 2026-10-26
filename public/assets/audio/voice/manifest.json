@@ -3,368 +3,79 @@
     "model": "speech-2.8-hd",
     "voice_id": "English_LovelyGirl",
     "speed": 0.9,
-    "format": "mp3"
+    "format": "mp3",
+    "pitch": 0
   },
   "entries": {
-    "u1-hello": {
-      "text": "Hello",
-      "sha256": "7d8d4278ad76c18fdbf623017b702ccba4fceb7edea11901aace2997116c75db",
-      "bytes": 21300
+    "u1-morning": {
+      "text": "morning",
+      "sha256": "4672e836f709f79f15d431c1563ab78be3dc83daf8303248a3df3e00bdf47da7",
+      "bytes": 19572
     },
-    "u1-goodbye": {
-      "text": "Goodbye",
-      "sha256": "37dbd65384e2f7c7afc73141343b9ce71ca290d22afab29cc169b54a37bc1a5d",
-      "bytes": 18996
-    },
-    "u1-teacher": {
-      "text": "teacher",
-      "sha256": "2d8716aa224b7b314dc609c6398946edd9f55b3c3646ee8b5eb7b11f8c9d0f2b",
-      "bytes": 20724
-    },
-    "u1-student": {
-      "text": "student",
-      "sha256": "e0294c41b1b384ae7c2272a2b8b70f777acb23e47b693010c641785131e9cc29",
+    "u1-afternoon": {
+      "text": "afternoon",
+      "sha256": "cd0057a0aa2509b13793d119e198379641dd0d650c3e21abea2691407845e902",
       "bytes": 24756
-    },
-    "u1-friend": {
-      "text": "friend",
-      "sha256": "718c81e2ea40ffa1af5a0c15eb444b3519942358dd77223adf13c4c7ed537517",
-      "bytes": 19572
-    },
-    "u1-father": {
-      "text": "father",
-      "sha256": "aacb749703594f6f7bd1d2850cdc8def9a8eeaf093c483b77f7073e2e6938985",
-      "bytes": 16692
-    },
-    "u1-mother": {
-      "text": "mother",
-      "sha256": "0140bebdcdbb97d19d57bc70f0a138c8246f93a2fabb12ecd07f71bcda78d710",
-      "bytes": 17844
-    },
-    "u1-brother": {
-      "text": "brother",
-      "sha256": "58178e41171023397cc64d697595882dd6310bf78fd10bfd2f2696beb8152434",
-      "bytes": 18996
-    },
-    "u1-sister": {
-      "text": "sister",
-      "sha256": "566ce4f846417427904a871a51333ea4616f7a68a46f5a3f5db6ca4f314313ec",
-      "bytes": 23028
-    },
-    "u1-cat": {
-      "text": "cat",
-      "sha256": "c964564fbc4ac2b21dc472ab383618f48541f3f2a9d006b1fb0262269c2cd3fb",
-      "bytes": 15540
-    },
-    "u1-dog": {
-      "text": "dog",
-      "sha256": "3a5f0a360268c330156300b9fbd229dc4b9852dbc787c2ff9b6ec3c133fbaab5",
-      "bytes": 18420
-    },
-    "u1-rabbit": {
-      "text": "rabbit",
-      "sha256": "47aad978291f6cb9062ab4991e9c96996f6fa0951fe1453aa8b7e5923c5ac49d",
-      "bytes": 18420
-    },
-    "u1-panda": {
-      "text": "panda",
-      "sha256": "972e7473e6e00f5fcea4627bdbd93884d08b7fce25629fe057542f999f54ce2f",
-      "bytes": 35700
-    },
-    "u1-bird": {
-      "text": "bird",
-      "sha256": "9c57652e9a4b2314b2623ec0af0286b8547ead50e3c3bf6f552f0e6de65b7cb7",
-      "bytes": 18996
-    },
-    "u1-fish": {
-      "text": "fish",
-      "sha256": "8b2b4e2d3835589c0ddefca6263a4602fbbe6ca89d9cc47f8fa2ea6b568992a0",
-      "bytes": 19572
-    },
-    "u1-ball": {
-      "text": "ball",
-      "sha256": "0bfc8a2367234d12cadbc007061653d4f84f129491d793a0094a0de2e7306b19",
-      "bytes": 18996
-    },
-    "u1-book": {
-      "text": "book",
-      "sha256": "c9b48ac40dc881b813a81798c44daad4792e0cd64a65a1b467b11f7345bc4de4",
-      "bytes": 16692
-    },
-    "u1-pen": {
-      "text": "pen",
-      "sha256": "10b2b448145eaf11c36976e1cdacfcb57e917a10ae110243e5f930bc5ea8e2a8",
-      "bytes": 19572
-    },
-    "u1-pencil": {
-      "text": "pencil",
-      "sha256": "ec9ceb16c739d377686a9565aa0fa0ab765e6b4fce57e41260b98d20e877951b",
-      "bytes": 20724
-    },
-    "u1-bag": {
-      "text": "bag",
-      "sha256": "a0439ac9fca824e0786e3f9ce4ddabc26a3ff0ca614836ef35017c3983ec4b70",
-      "bytes": 21300
-    },
-    "u1-desk": {
-      "text": "desk",
-      "sha256": "4c4a683dfdcb5977bf4eb7389fe97a1e3614548491e4dab7852e15a9c3915d5f",
-      "bytes": 23028
-    },
-    "u1-chair": {
-      "text": "chair",
-      "sha256": "f3229d0e67da68557449e87eb7088ed9252289c9935c92f7745f0f28b64ed9f3",
-      "bytes": 21300
-    },
-    "u1-red": {
-      "text": "red",
-      "sha256": "8eee38c46d88a551904b042411d2a075e28642e0a7ef05658c76d151d958905c",
-      "bytes": 16116
-    },
-    "u1-blue": {
-      "text": "blue",
-      "sha256": "e019bdaa15868fed831b62a3b5544fb116af4f91a37e2a38d46da76cab6e47aa",
-      "bytes": 22452
-    },
-    "u1-yellow": {
-      "text": "yellow",
-      "sha256": "282902b4750e8e92da3c4cece65d3c2d9c831ee7ddf8dab1405a0dd616ad93ff",
-      "bytes": 25908
-    },
-    "u1-one": {
-      "text": "one",
-      "sha256": "5f6725a36d1efa14a5ecedb9d465d8bd655ab901bca792f60d5886aaa82f1bd8",
-      "bytes": 24756
-    },
-    "u1-two": {
-      "text": "two",
-      "sha256": "87cff6241b1a6378389f6dce29021d9765bd713263dbacaef95d0a4af43e91ae",
-      "bytes": 19572
-    },
-    "u1-three": {
-      "text": "three",
-      "sha256": "80948ef9e8bb8c632fa46cc4e16c5510f102c37b7a9af3d4f13536b6bfc8e83d",
-      "bytes": 17844
-    },
-    "u1-beautiful": {
-      "text": "beautiful",
-      "sha256": "917b132b812343a06b47d78edff4690b9170dd7d7fc1ded6fd670b33f025c268",
-      "bytes": 23604
-    },
-    "u1-happy": {
-      "text": "happy",
-      "sha256": "2070b504ef4f2352c573e2c7ab0043e27f2f440f56f8aaac08a5a829b4c3a7c3",
-      "bytes": 17844
-    },
-    "u1-s-i-have-a-ball-for-my-dog": {
-      "text": "I have a ball for my dog.",
-      "sha256": "dbfa9aa00c9e6cf48426cdd94703dc495e3e1ff85b1875ae2cdbfb47afde75a8",
-      "bytes": 62196
-    },
-    "u1-s-how-are-you": {
-      "text": "How are you?",
-      "sha256": "633573b2484abb70b52fc580d527bc534b58420a9ff1de979a67c71d236fdda4",
-      "bytes": 23604
-    },
-    "u1-s-i-am-fine": {
-      "text": "I am fine, thank you.",
-      "sha256": "2c97fb68684c2cc750dc6d1442b186404a0ec6772f03b6ee8cded6c24ca9dea8",
-      "bytes": 48948
     },
     "u1-s-good-morning": {
-      "text": "Good morning!",
-      "sha256": "5be389e3faeab4973009de04a30a80c820b2d464821176569ea715b6942e9606",
-      "bytes": 30516
+      "text": "Good morning.",
+      "sha256": "d87ce80c17d83f4c6d9dc4313a5ee5f96b2a3c544470a7ae491729be60ba3280",
+      "bytes": 21300
+    },
+    "u1-s-hello": {
+      "text": "Hello!",
+      "sha256": "b505ca019073a3b2a3e4ac5e94390d572fc2cf00bd1833ef83d75c35c580bdc6",
+      "bytes": 19572
     },
     "u1-s-good-afternoon": {
       "text": "Good afternoon!",
       "sha256": "01bba696c640e78917815738400cabc1ddd6c31137a5df46fa136e18da97a75d",
       "bytes": 27636
     },
-    "u1-s-nice-to-meet-you": {
-      "text": "Nice to meet you.",
-      "sha256": "42cdedb061a53a392f0592a07cd9327fdb2b523a5e2e29405fbccb17a51b053e",
-      "bytes": 28212
-    },
-    "u1-s-thank-you": {
-      "text": "Thank you!",
-      "sha256": "4c5794cc40432b69fd7cc3f821710638b754bdba4a037fd0166706ea1bdaea8c",
-      "bytes": 21300
-    },
-    "u2-tiger": {
-      "text": "tiger",
-      "sha256": "86fdf3d3483344d0527ec29503b12d43a743ab59c629604772f1357751c3927c",
-      "bytes": 24756
-    },
-    "u2-monkey": {
-      "text": "monkey",
-      "sha256": "416c40b680e38811faaa7f4ab78f02d17d9f0c54a698ccd41d024b4138e27391",
-      "bytes": 23604
-    },
-    "u2-duck": {
-      "text": "duck",
-      "sha256": "b84b813c195558561731fdefb3c915ab3882215edc4a42052792d2f9975432c1",
+    "u1-s-goodbye": {
+      "text": "Goodbye!",
+      "sha256": "1b35492dd95c674cce3148bf04ea4af9b28f15be5d2e1fba07427cd000c698ba",
       "bytes": 18996
     },
-    "u2-pig": {
-      "text": "pig",
-      "sha256": "e89fb9b04dac41d46ff3f43e300a51432fbc76afd1eb769ca9ef87c8c076618b",
+    "u2-book": {
+      "text": "book",
+      "sha256": "4abf991f7bc84b2668f930dd30128e26b345c97779ae44ab295ca3c1ba307116",
       "bytes": 18996
-    },
-    "u2-cow": {
-      "text": "cow",
-      "sha256": "6fdb10c1e2047c4f95ccb71ca4fe7bf6327a764a8d4248b402a521db05ad12d0",
-      "bytes": 18996
-    },
-    "u2-bear": {
-      "text": "bear",
-      "sha256": "e79412e60c5498fb73c95d033617a277b9131abc916db66b4ce87ce2731a949a",
-      "bytes": 18996
-    },
-    "u2-elephant": {
-      "text": "elephant",
-      "sha256": "daf431c20c5512cac096b96fe7b0677675c00c996375905d8255757477b2fe07",
-      "bytes": 24756
-    },
-    "u2-lion": {
-      "text": "lion",
-      "sha256": "c3af2837e1c194acf86a592f46793b0c035e42962a9936652c3a53e81e9bc4dd",
-      "bytes": 20724
-    },
-    "u2-giraffe": {
-      "text": "giraffe",
-      "sha256": "4a4ff23100d545bae48b191259a086afb49a19f9f0f556be67faf07b777833e3",
-      "bytes": 35124
-    },
-    "u2-frog": {
-      "text": "frog",
-      "sha256": "8f55c8a7a0dafb5c9a4609d5a2425a30144b9b5b2ff372c3cbc4d92840d2277c",
-      "bytes": 25908
-    },
-    "u2-mouse": {
-      "text": "mouse",
-      "sha256": "427ffeb7fb2bf51d24e027a2a967d96f3688b4922605d56aec168017aeeb7bd4",
-      "bytes": 23604
-    },
-    "u2-egg": {
-      "text": "egg",
-      "sha256": "9cc4e971eeb7e257766c7e19857ce190f65b9962cd89a4bf2c1f4f7018ef5dab",
-      "bytes": 15540
-    },
-    "u2-ice-cream": {
-      "text": "ice cream",
-      "sha256": "d0c655b37b9785317f7cd4c1ca314da5abdf5cbf6b2ca2d251e5551495b9f0d9",
-      "bytes": 25908
-    },
-    "u2-apple": {
-      "text": "apple",
-      "sha256": "db30de8afccf14a9cdf739ab3a12351b31c2fa08036e0760009ded290e732f85",
-      "bytes": 18996
-    },
-    "u2-banana": {
-      "text": "banana",
-      "sha256": "afd8fc0bed099ab2ab249c31cc5995a6e027ef4ecfa65ec8e3f4135c4809426c",
-      "bytes": 21300
-    },
-    "u2-bread": {
-      "text": "bread",
-      "sha256": "9faedc13057dbe9dca6874a90867aee6c83dd798a0f88a2fe0b908c764919c93",
-      "bytes": 18996
-    },
-    "u2-milk": {
-      "text": "milk",
-      "sha256": "2bc27d07b731aed53fb2bc69beaac07edcb33aacab5f838c298d7feac3e73a15",
-      "bytes": 23604
-    },
-    "u2-kite": {
-      "text": "kite",
-      "sha256": "f70d0ddbf5df0b455d51e642d96ba7e60874913c072a38e292127f704cbc91cb",
-      "bytes": 17844
-    },
-    "u2-balloon": {
-      "text": "balloon",
-      "sha256": "94d8fde140c0cd4c1c7005782c3c2ff677fc2c51e2468b7c586b23badd79fd52",
-      "bytes": 23604
-    },
-    "u2-clock": {
-      "text": "clock",
-      "sha256": "2e5a2579788efb4eb0e5dd1c3eb25cd1794ce540854470d4d79d6af151bba5b8",
-      "bytes": 17844
-    },
-    "u2-drum": {
-      "text": "drum",
-      "sha256": "1e7602b96357ed983aa71b2a8dfe4eb05fd221863ecd0af2fb4b8d03930579b9",
-      "bytes": 23604
     },
     "u2-ruler": {
       "text": "ruler",
       "sha256": "e07bdd8900e02fea63f25ac5e824bf80b7898495a90427cef626acf00d101713",
       "bytes": 28212
     },
-    "u2-crayon": {
-      "text": "crayon",
-      "sha256": "73899763cef79c3688f489feee4e1cbe7761c2132a843ca3e20d786ef84e5fd7",
-      "bytes": 45492
-    },
-    "u2-sun": {
-      "text": "sun",
-      "sha256": "16e78ca4c88db5a3933429d2be44654048a283fc77804dbba08bbe23ae2e5f29",
-      "bytes": 20724
-    },
-    "u2-green": {
-      "text": "green",
-      "sha256": "d020d47852852a4fd656dfac256725313cbe2ae9f3dc308da8e5fe7d3de5fccf",
+    "u2-pencil": {
+      "text": "pencil",
+      "sha256": "6c9fc3d96f649f01dcb41d1542d132504c4df49cf608f6bf0096cd2fe7e7cd44",
       "bytes": 18996
     },
-    "u2-pink": {
-      "text": "pink",
-      "sha256": "b50c73a4b8429967c4184bc50c7f1a87641878908dd161e61c108be36225843b",
-      "bytes": 18996
-    },
-    "u2-four": {
-      "text": "four",
-      "sha256": "368e7fcba8e0f27b1771bcd69322014f5c84fe6adf41bdc271acaea64880b170",
-      "bytes": 35124
-    },
-    "u2-doctor": {
-      "text": "doctor",
-      "sha256": "f4f7beb214a397a442e2b722d24333165c8a25bc2e7c5163d1fea5a6d1792b50",
-      "bytes": 25332
-    },
-    "u2-driver": {
-      "text": "driver",
-      "sha256": "83189267f11e596476daa55cd7b7f01c42efe00aa640736e15c1c9750ce70c6d",
+    "u2-rubber": {
+      "text": "rubber",
+      "sha256": "b5abb7864d00183205f291b6a24c05eaf996e17c4130e431e16fd187560caabe",
       "bytes": 25908
     },
-    "u2-goodbye": {
-      "text": "Goodbye",
-      "sha256": "017dca8f5c84af864c3e39a9019d579b89c051542ec381b58eef4ec887e6dc68",
-      "bytes": 18996
+    "u2-s-give-me-a-rubber-please": {
+      "text": "Give me a rubber, please.",
+      "sha256": "46619226fe027b06279ffe1b028cefc7fbe38f00fbfc126f28eda4a85a81f0a3",
+      "bytes": 37428
     },
-    "u2-s-i-see-a-tiger-and-a-dog": {
-      "text": "I see a tiger and a dog.",
-      "sha256": "91610f31c918a2ce025f8d0b25a70eac442d16a30ca82ef284811b7a6b93e07c",
-      "bytes": 71412
+    "u2-s-give-me-a-ruler-please": {
+      "text": "Give me a ruler, please.",
+      "sha256": "eb2caa0945e68a87949145108867f6316ccb931a7ebe3a2d6d22f76641f43def",
+      "bytes": 48948
     },
-    "u2-s-what-is-it": {
-      "text": "What is it?",
-      "sha256": "3721d6307c8136ed6bba86fc7e263d56c3ff226932cb71d40d43ef2a92722327",
-      "bytes": 18996
+    "u2-s-good-afternoon-kitty": {
+      "text": "Good afternoon, Kitty.",
+      "sha256": "6aebfd832cb072898042fc0ce17cdbbab416aba86f4e04f37ab8dd919e82c43e",
+      "bytes": 30516
     },
-    "u2-s-it-is-a-tiger": {
-      "text": "It is a tiger.",
-      "sha256": "ee92eb69d022e5c34f654994c1cd8e6340f4b3b97e0ccb9faf95227088a99a00",
-      "bytes": 27636
-    },
-    "u2-s-how-nice": {
-      "text": "How nice!",
-      "sha256": "fec4d0b2398d651e65837fb0a6e604a4ac7c97107ced7c78cfc141aea2baf70b",
-      "bytes": 35124
-    },
-    "u2-s-i-am-hungry": {
-      "text": "I am hungry.",
-      "sha256": "1231a120a5762c6da7defd080f78084e97fce92ae6bb39bf0cd9d57879600d19",
-      "bytes": 36852
+    "u2-s-good-afternoon-alice": {
+      "text": "Good afternoon, Alice.",
+      "sha256": "33cceec9906bd73bdc8bf954bd6f3c4536246245dbe0d597ab909df9010e6fe1",
+      "bytes": 35700
     },
     "u2-s-here-you-are": {
       "text": "Here you are.",
@@ -372,14 +83,14 @@
       "bytes": 21300
     },
     "u2-s-thank-you": {
-      "text": "Thank you!",
-      "sha256": "e35c395077c3d79a9f0e3d2ab157256dd0fb3bfff017b44eddd6806d5b859c03",
-      "bytes": 21300
+      "text": "Thank you.",
+      "sha256": "13c4ef4e7e7c488564465dd21aa8aac4f21336c2e9c4f05344074c4687c19ae4",
+      "bytes": 16692
     },
-    "u2-s-you-are-welcome": {
-      "text": "You are welcome.",
-      "sha256": "a8c7b6e1066522a01c917cdf4d0a92d3a253f3351a67739aa4d97a054518cf7b",
-      "bytes": 51252
+    "u2-s-how-nice": {
+      "text": "How nice!",
+      "sha256": "fec4d0b2398d651e65837fb0a6e604a4ac7c97107ced7c78cfc141aea2baf70b",
+      "bytes": 35124
     }
   }
 }

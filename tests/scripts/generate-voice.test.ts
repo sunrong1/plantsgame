@@ -168,10 +168,17 @@ describe('词表 id 与运行时契约的对齐（AC-2）', () => {
     const sentences = texts.filter((t) => t.includes(' '))
     expect(words.length, '没有单词卡题面 —— 三型链路少一型').toBeGreaterThan(0)
     expect(sentences.length, '没有长句题面 —— 关键词卡无法试听').toBeGreaterThan(0)
-    expect(
-      texts.some((t) => t.includes('?')),
-      '没有问句 —— 回应卡的题面无法试听',
-    ).toBe(true)
+    // ⚠️ **2026-10-26 换源批次（Story 2.10）改判据**：教材版单元 1/2 的回应卡题面是
+    //   **感叹句**（`Hello!` / `Goodbye!` / `How nice!`），整份词表里**一个问号都没有** ⇒
+    //   原来那条「文本里必须含 `?`」的代理判据，红在一个**已经不存在的事实**上
+    //   （它守的是「旧自建词表里有问句」，不是「三型都有录音」）。
+    //   ⇒ 改成直接判**卡型覆盖**（判据本体 = 内容层的 `kind` 字段）：三型中任一型
+    //     缺席都会红，而且**不再依赖题面的标点** —— 比原来的文本启发式**更严**
+    //     （旧判据只要求「有一个问句」，新判据要求「三型都在」）。
+    const kinds = new Set(UNITS.flatMap((u) => u.entries.map((e) => e.card.kind)))
+    for (const kind of ['word', 'keyword', 'response'] as const) {
+      expect(kinds.has(kind), `词表里没有 ${kind} 卡的题面 —— 这一型没有录音`).toBe(true)
+    }
   })
 
   it('entriesFromContent 对跨单元同名的 id 抛错（deferred-work 117-125 的正面回击）', () => {
@@ -1075,7 +1082,11 @@ describe('--only 的取值校验（[CR] P4）', () => {
   })
 
   it('合法前缀仍然可用', async () => {
-    expect(await main(['--only', 'u1-d', '--dry'], {})).toBe(0)
+    // ⚠️ 2026-10-26 换源批次：单元 1 的词条换成了教材版
+    //   （`u1-morning` / `u1-afternoon` / `u1-s-good-morning` / `u1-s-hello` …），
+    //   旧前缀 `u1-d` 已经**匹配不到任何词条**（`--only` 匹配不到就退 1）⇒
+    //   改用仍然存在的 `u1-m`（命中 `u1-morning`）。
+    expect(await main(['--only', 'u1-m', '--dry'], {})).toBe(0)
   })
 })
 
@@ -1283,7 +1294,7 @@ describe('G311 —— 指纹闸：参数变了 ⇒ 脚本拒绝运行（AC-7）'
     writeManifest({ ...currentFingerprint(), speed: 1.2 })
     const before = readFileSync(repoManifestPath, 'utf8')
 
-    const code = await main(['--only', 'u1-dog'], { MINIMAX_API_KEY: 'sk-test' }, { outputDir: dir })
+    const code = await main(['--only', 'u1-morning'], { MINIMAX_API_KEY: 'sk-test' }, { outputDir: dir })
 
     expect(
       code,
@@ -1315,7 +1326,7 @@ describe('G311 —— 指纹闸：参数变了 ⇒ 脚本拒绝运行（AC-7）'
       format: 'mp3',
     })
 
-    const code = await main(['--only', 'u1-dog'], { MINIMAX_API_KEY: 'sk-test' }, { outputDir: dir })
+    const code = await main(['--only', 'u1-morning'], { MINIMAX_API_KEY: 'sk-test' }, { outputDir: dir })
 
     expect(
       code,
@@ -1333,7 +1344,7 @@ describe('G311 —— 指纹闸：参数变了 ⇒ 脚本拒绝运行（AC-7）'
     //   fingerprint 判成「结构不对」而提前吞掉、也不会让闸失效。
     writeManifest({ ...currentFingerprint(), extra_key: 1 })
 
-    const code = await main(['--only', 'u1-dog'], { MINIMAX_API_KEY: 'sk-test' }, { outputDir: dir })
+    const code = await main(['--only', 'u1-morning'], { MINIMAX_API_KEY: 'sk-test' }, { outputDir: dir })
 
     expect(
       code,
@@ -1347,7 +1358,7 @@ describe('G311 —— 指纹闸：参数变了 ⇒ 脚本拒绝运行（AC-7）'
     writeManifest({ ...currentFingerprint(), speed: 1.2 })
 
     const code = await main(
-      ['--force', '--only', 'u1-dog'],
+      ['--force', '--only', 'u1-morning'],
       { MINIMAX_API_KEY: 'sk-test' },
       { outputDir: dir },
     )
@@ -1363,9 +1374,14 @@ describe('G311 —— 指纹闸：参数变了 ⇒ 脚本拒绝运行（AC-7）'
     // 这条是「只删 manifest、不删 mp3」那条绕过整道闸的路径：
     // 闸**只在 manifest 存在时**才生效 ⇒ manifest 一没，旧参数录音就会被
     // `decideSkip` 的 `unrecorded` 分支登记进**新指纹**的 manifest ⇒ 混批被盖章。
-    writeFileSync(join(dir, 'u1-dog.mp3'), 'ID3-fake-audio')
+    // ⚠️ 2026-10-26 换源批次（Story 2.10）：盘上那个「来源不明的孤儿 mp3」要叫
+    //   一个**真实存在**的词条 id —— 旧夹具用的 `u1-dog` 已作废（单元 1 换成了教材版），
+    //   而 `--only u1-dog` 在 `--only` 匹配阶段就会退 1（`--only` 匹配不到任何词条），
+    //   **根本走不到**那道「没有 manifest 却盘上有 mp3 ⇒ 拒跑」的闸 ⇒ 守卫会变成恒绿。
+    //   ⇒ 词条 id 与 `--only` 前缀都改成仍然存在的 `u1-morning`。
+    writeFileSync(join(dir, 'u1-morning.mp3'), 'ID3-fake-audio')
 
-    const code = await main(['--only', 'u1-dog'], { MINIMAX_API_KEY: 'sk-test' }, { outputDir: dir })
+    const code = await main(['--only', 'u1-morning'], { MINIMAX_API_KEY: 'sk-test' }, { outputDir: dir })
 
     expect(
       code,
@@ -1376,7 +1392,7 @@ describe('G311 —— 指纹闸：参数变了 ⇒ 脚本拒绝运行（AC-7）'
   })
 
   it('产物目录空且没有 manifest ⇒ 照常跑（一次性首跑不受那条拒绝影响）', async () => {
-    const code = await main(['--only', 'u1-dog'], { MINIMAX_API_KEY: 'sk-test' }, { outputDir: dir })
+    const code = await main(['--only', 'u1-morning'], { MINIMAX_API_KEY: 'sk-test' }, { outputDir: dir })
 
     expect(code, '一次性首跑被拒 —— 脚本在空目录上跑不起来').toBe(0)
     expect(fetchCalls, '首跑没有生成任何录音').toBe(1)

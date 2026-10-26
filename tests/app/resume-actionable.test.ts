@@ -130,6 +130,29 @@ function startFreshGame(): void {
   store.progress.value = { currentUnitIndex: 0, masteredWordIds: [] }
 }
 
+/**
+ * 「已经学了一部分」的跨局 id 清单 —— 本文件所有脏存档夹具共用。
+ *
+ * ⚠️🔥 **2026-10-26 换源批次（这个夹具整条重造的原因）**：
+ *   单元 1 从 37 条缩到 **6 条** ⇒ 旧夹具里的 `entriesOf(1).slice(0, 21)`
+ *   今天等于「**整个单元都掌握了**」⇒ 降级后按进度重切出来的题单必然是
+ *   **空数组** ⇒ 「降级后题单不能是空的」那条判据当场失效（实测报的就是它）。
+ *   ⇒ 改成「**留有未掌握**」的前 3 条：掌握 3 条 ⇒ 还剩 3 条可切，
+ *     于是「降级后题单非空 ∧ 与已掌握集合零交集」这两条判据**都还有意义**。
+ *
+ * ⚠️ **为什么必须是「部分」而不是「全部」**：`progress.masteredWordIds` 覆盖
+ *   整个单元 ⇒ `sliceDeckForLevel` 切出空题单 ⇒ `buildStateFor` 走
+ *   「本单元已学完」那一支 ⇒ 降级后孩子拿到的是**通关卡**，
+ *   而那份通关卡**恰好没有题单** ⇒ 判据「降级后题单非空」永远为假。
+ */
+function partiallyLearnedIds(count = 3): string[] {
+  const ids = entriesOf(1).slice(0, count).map((entry) => entry.entryId)
+  if (ids.length !== count) {
+    throw new Error(`夹具坏了：单元 1 只有 ${entriesOf(1).length} 条，取不出 ${count} 条`)
+  }
+  return ids
+}
+
 /** 答对当前那道题（**必须**在 dispatch 之前取 id —— 之后相位就变了）。 */
 function answerCorrectly(): void {
   const phase = store.state.value.phase
@@ -596,7 +619,7 @@ describe('G175 —— 存档对局不合法时**只丢这一局，不丢跨局�
   }
 
   it('脏对局 ⇒ 那一局退回开局，但 **`progress` 整个对象逐字不变**', () => {
-    const learned = entriesOf(1).slice(0, 21).map((e) => e.entryId)
+    const learned = partiallyLearnedIds()
     // ⚠️ `currentUnitIndex` 取 **2** 而不是 0 —— `[CR]` 第七轮：首版把它钉成 0，
     //   于是「catch 里把 `progress.value.currentUnitIndex = 0` 加回去」这条变异
     //   改成的值**恰好等于夹具值** ⇒ 断言分辨不出来。
@@ -615,7 +638,7 @@ describe('G175 —— 存档对局不合法时**只丢这一局，不丢跨局�
   })
 
   it('同一次降级之后，界面是一个**能接着玩**的状态，不是技术错误', () => {
-    seedDirtyGameWithProgress(entriesOf(1).slice(0, 5).map((e) => e.entryId))
+    seedDirtyGameWithProgress(partiallyLearnedIds())
 
     store.enterLevel()
 
@@ -633,7 +656,7 @@ describe('G175 —— 存档对局不合法时**只丢这一局，不丢跨局�
     // 加回 catch 里，**1952 条测试全绿**。
     // ⇒ 「这条判据真的会因为那个改动而红」这件事本身要被写下来，
     //   否则下一次有人清理那段代码时会以为它没有作用。
-    const learned = entriesOf(1).slice(0, 21).map((e) => e.entryId)
+    const learned = partiallyLearnedIds()
     const source = readFileSync(
       join(process.cwd(), 'src/app/store.ts'),
       'utf8',
@@ -706,7 +729,11 @@ describe('G175 —— 存档对局不合法时**只丢这一局，不丢跨局�
   })
 
   it('🔴 降级后的题单必须与 `masteredWordIds` **零交集**（AC-B8 —— 第七轮补）', () => {
-    const learned = entriesOf(1).slice(0, 21).map((e) => e.entryId)
+    // ⚠️ **2026-10-26 换源批次**：旧夹具用 `slice(0, 21)`（单元 1 的 21 条）
+    //   ⇒ 今天的单元 1 只有 6 条 ⇒ 21 条 = **全部** ⇒ 降级后重切出的是**空题单**
+    //   ⇒ 「降级后题单不能是空的」当场红（实测报的就是它）。
+    //   ⇒ 改成**部分掌握**（前 3 条）⇒ 还剩 3 条可切 ⇒ 下面两条判据都重新有意义。
+    const learned = partiallyLearnedIds()
     seedDirtyGameWithProgress(learned, 2)
 
     store.enterLevel()
@@ -716,6 +743,9 @@ describe('G175 —— 存档对局不合法时**只丢这一局，不丢跨局�
     //   **模块求值期**那份切片 —— 那是在 `progress` 还是空的时候切的。
     //   ⇒ 孩子被喂的是单元 1 的前 10 条，而那 10 条**全都在 `learned` 里**：
     //     进度条写 21/37，重打这几道**答对了也不推进**（它们已被判为掌握）。
+    //   📎 **2026-10-26 换源批次**：单元 1 现在只有 6 条 ⇒ 这段话里的数字
+    //     变成「6/6」与「前 6 条」—— **判据本身没变**（题单非空 ∧ 与已掌握零交集），
+    //     变的是它能在新内容下**造得出来**（夹具见 {@link partiallyLearnedIds}）。
     const deckIds = store.state.value.deck.map((e) => e.entryId)
     expect(
       deckIds.filter((id) => store.progress.value.masteredWordIds.includes(id)),
@@ -765,7 +795,7 @@ describe('G176 —— 读档**不抛穿**：存档里的单元号未填档位时
     //   ② 它的 `next === null` 分支调 `createUnitCompletedState(state.unitNumber)`；
     //   ③ `parseSaveFile` 逐字写着 `currentGame` **只校验「是对象或 null」**，
     //      而 `state.unitNumber` 直接来自存档 ⇒ **不受信任的值直达 `tierForUnit`**。
-    const learned = entriesOf(1).slice(0, 21).map((e) => e.entryId)
+    const learned = partiallyLearnedIds()
     storage.data.set(
       saveApi.SAVE_KEY,
       JSON.stringify({

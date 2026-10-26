@@ -41,7 +41,7 @@ export interface BalanceTier {
  * |---|---|---|---|---|
  * | 1–4  | 0  | +50  | 50 / 50 / 75  | 1 : 1 |
  * | 5–10 | 50 | +75  | 75 / 75 / 110 | 1 : 1 |
- * | 11–20| 100| +100 | 100 / 100 / 150| 1 : 1 |
+ * | 11–24| 100| +100 | 100 / 100 / 150| 1 : 1 |
  *
  * 比例恒为 1:1 的含义：**单次答对所得阳光恰好等于最低塔造价**（FR64 的等号取法）。
  * 「恰好」不是巧合 —— 比例取等时，**答对增量本身**恰好够买一座塔。
@@ -82,7 +82,13 @@ export const BALANCE_TIERS: readonly BalanceTier[] = Object.freeze([
     towerCost: Object.freeze({ direct: 75, slow: 75, aoe: 110 }),
   }),
   Object.freeze({
-    unitRange: Object.freeze([11, 20] as const),
+    // ⚠️ **上界从 20 抬到 24**（Story 2.10 / DF-220）：2026-10-23 用户裁决
+    //   「1 关 = 1 教材 Unit」⇒ 24 关（两册各 12 个 Unit）⇒ 档 3 若只填到 20，
+    //   `tierForUnit(21..24)` 会抛「落在未填档位上」，**最后 4 关跑不起来**。
+    //   ⇒ 扩档 3（沿用现有数值、不新增档），**本档的数值一个都没动**
+    //   （`initialSun` / `sunPerCorrect` / `towerCost` 全部保持 Story 2.3 的取值）——
+    //   改数值是产品裁决（R-20），用户 2026-10-26 拍板的是「扩区间」，不是「改数值」。
+    unitRange: Object.freeze([11, 24] as const),
     initialSun: 100,
     sunPerCorrect: 100,
     towerCost: Object.freeze({ direct: 100, slow: 100, aoe: 150 }),

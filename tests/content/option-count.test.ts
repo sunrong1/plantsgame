@@ -2,8 +2,8 @@
  * 选项数递进规则的守卫（Story 2.4 / AC-A2、A3、B1、B2、B3；守卫 **G262 – G266**）。
  *
  * ── 守什么 ────────────────────────────────────────────────────────────────
- * · **G262（可计算 + 覆盖，AC-A2）** —— `targetOptionCount(unitNumber, kind)` 对 1..20
- *   每个单元、每个卡型都得出合法值（整数、∈ [2,4]）；`0` / `21` / 非整数一律抛错；
+ * · **G262（可计算 + 覆盖，AC-A2）** —— `targetOptionCount(unitNumber, kind)` 对 1..24
+ *   每个单元、每个卡型都得出合法值（整数、∈ [2,4]）；`0` / `25` / 非整数一律抛错；
  *   档位表的键集合 === `CardKindSchema` 的取值集合。
  * · **G263（三条性质，AC-B1 / B2）** —— ① 逐档**单调不降**（每个卡型）；
  *   ② 档内**同值**（同一档内所有单元同值）；③ 档内**卡型不降**（`word ≤ keyword ≤ response`）。
@@ -40,7 +40,7 @@
  * ── 期望值来源与出处 ──────────────────────────────────────────────────────
  * · 规则与三条性质：`src/content/option-count.ts` 的文件头 + `docs/option-count.md`
  * · 「档内所有单元同值」「越靠后的单元选项数越多」：Story 2.4 AC 组 A / B
- * · 档位边界 1–4 / 5–10 / 11–20 = FR63 的阳光档位划分（`src/core/balance.ts` 的 `BALANCE_TIERS`）
+ * · 档位边界 1–4 / 5–10 / 11–24 = FR63 的阳光档位划分（`src/core/balance.ts` 的 `BALANCE_TIERS`）
  */
 
 import { describe, expect, it } from 'vitest'
@@ -56,7 +56,7 @@ import { FIRST_UNIT, LAST_UNIT } from '../../src/content/distribution'
 import { CardKindSchema } from '../../src/content/schema'
 import { BALANCE_TIERS } from '../../src/core/balance'
 
-/** 规则覆盖的全部单元号（1..20）。 */
+/** 规则覆盖的全部单元号（1..24）。 */
 const ALL_UNITS: readonly number[] = Array.from(
   { length: LAST_UNIT - FIRST_UNIT + 1 },
   (_, i) => FIRST_UNIT + i,
@@ -80,7 +80,7 @@ function tier(from: number, to: number, word: number, keyword: number, response:
 // G262 —— 可计算 + 覆盖 1..20
 // ══════════════════════════════════════════════════════════════════════════════
 
-describe('G262 —— 规则可计算 + 覆盖 1..20（AC-A2）', () => {
+describe('G262 —— 规则可计算 + 覆盖 1..24（AC-A2）', () => {
   it('每个单元、每个卡型都得出合法值（整数且 ∈ [2,4]）', () => {
     for (const unit of ALL_UNITS) {
       for (const kind of CARD_KINDS) {
@@ -115,11 +115,14 @@ describe('G262 —— 规则可计算 + 覆盖 1..20（AC-A2）', () => {
     }
   })
 
-  it('越界（0 / 21 / -1）与非整数（2.5 / NaN / Infinity）一律抛错，且消息说清覆盖范围', () => {
-    for (const bad of [0, 21, -1, 2.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+  it('越界（0 / 25 / -1）与非整数（2.5 / NaN / Infinity）一律抛错，且消息说清覆盖范围', () => {
+    // ⚠️ **越界样例从 21 改成 25**（Story 2.10）：`LAST_UNIT` 从 20 抬到 24 之后，
+    //   单元 21 **已经落在规则范围内**了 ⇒ 拿它当「越界」样例会得到一条恒红的断言，
+    //   而它守的东西（越界必须抛错）一个字都没变。
+    for (const bad of [0, 25, -1, 2.5, Number.NaN, Number.POSITIVE_INFINITY]) {
       expect(
         () => targetOptionCount(bad, 'word'),
-        `单元号 ${bad} 没有抛错 —— 静默外推会让「单元结构扩到 20 以上」这件事在这里被吞掉，` +
+        `单元号 ${bad} 没有抛错 —— 静默外推会让「单元结构扩到 24 以上」这件事在这里被吞掉，` +
           '而难度曲线在没人看的地方偏出去，且没有任何报错指向它',
       ).toThrowError(/覆盖范围外|单元号必须是整数/)
     }
@@ -148,9 +151,9 @@ describe('G262 —— 规则可计算 + 覆盖 1..20（AC-A2）', () => {
       if (!Number.isInteger(unitNumber)) throw new Error('单元号必须是整数')
       return OPTION_COUNT_TIERS[0].counts[kind] // ← 越界时静默回退首档
     }
-    expect(() => withoutRangeCheck(21, 'word'), '假实现竟然抛错了 ⇒ 反向自测本身失效').not.toThrow()
+    expect(() => withoutRangeCheck(25, 'word'), '假实现竟然抛错了 ⇒ 反向自测本身失效').not.toThrow()
     expect(
-      () => targetOptionCount(21, 'word'),
+      () => targetOptionCount(25, 'word'),
       '真实现对越界单元号不抛错 ⇒ 越界判据没了',
     ).toThrowError(/覆盖范围外/)
   })
@@ -187,9 +190,9 @@ function assertMonotonicPerKind(tiers: readonly OptionCountTier[]): void {
  * ⚠️⚠️ **「同值」这一半在数据形状上恒真**（`[CR]` 2026-10-23 记）：
  *   档位表里**每档只有一份 `counts`** ⇒ 同一档内的所有单元查到的必然是同一个值。
  *   ⇒ 「同值」那条断言**没有鉴别力**（它永远不会红）。如实记下来，别把它当防线。
- *   ⇒ 这条判据真正的鉴别力在**覆盖**那一半：每个单元 1..20 都必须命中某个档位，
+ *   ⇒ 这条判据真正的鉴别力在**覆盖**那一半：每个单元 1..24 都必须命中某个档位，
  *     命中不到时 `optionCountTierForUnit` **抛错**（fail-fast）——
- *     而原来的写法只遍历「已声明区间里的单元」，档位表中间**留个洞**（如 1–4 / 6–20）
+ *     而原来的写法只遍历「已声明区间里的单元」，档位表中间**留个洞**（如 1–4 / 6–24）
  *     它照样全绿。
  */
 function assertSameWithinTierAndCovered(tiers: readonly OptionCountTier[]): void {
@@ -271,11 +274,11 @@ describe('G263 —— 三条性质：逐档不降 / 档内同值 / 档内卡型�
       () => assertKindNonDecreasingWithinTier(broken),
       '③「档内卡型不降」在「word > keyword」的假表上没红 ⇒ 判据本身失效',
     ).toThrow()
-    // ② 覆盖：档位表中间留个洞（1–4 / 6–20）⇒ 单元 5 命中不到 ⇒ 判据抛错。
-    const holed = [tier(1, 4, 2, 3, 3), tier(6, 20, 4, 4, 4)]
+    // ② 覆盖：档位表中间留个洞（1–4 / 6–24）⇒ 单元 5 命中不到 ⇒ 判据抛错。
+    const holed = [tier(1, 4, 2, 3, 3), tier(6, 24, 4, 4, 4)]
     expect(
       () => assertSameWithinTierAndCovered(holed),
-      '②「每个单元都命中某个档位」在「1–4 / 6–20」留洞的假表上没红 ⇒ 判据本身失效',
+      '②「每个单元都命中某个档位」在「1–4 / 6–24」留洞的假表上没红 ⇒ 判据本身失效',
     ).toThrow()
     // 真表必须满足这两条（否则上面两条性质断言是恒假的）。
     expect(OPTION_COUNT_TIERS[1].counts.keyword).toBeGreaterThanOrEqual(
@@ -320,7 +323,7 @@ describe('G265 —— 内容层的档位边界 === core 的 BALANCE_TIERS（AC-B
     assertTiersMatchCore(OPTION_COUNT_TIERS)
   })
 
-  it('每一档的单元区间逐字相等（1–4 / 5–10 / 11–20）', () => {
+  it('每一档的单元区间逐字相等（1–4 / 5–10 / 11–24）', () => {
     assertTiersMatchCore(OPTION_COUNT_TIERS)
   })
 
@@ -375,7 +378,7 @@ describe('G266 —— 档位表结构：空表 / 倒置 / 重叠一律抛错，�
     // 合法表逐档命中正确：
     expect(optionCountTierForUnit(1).unitRange).toEqual([1, 4])
     expect(optionCountTierForUnit(5).unitRange).toEqual([5, 10])
-    expect(optionCountTierForUnit(20).unitRange).toEqual([11, 20])
+    expect(optionCountTierForUnit(24).unitRange).toEqual([11, 24])
   })
 
   it('档位表逐层冻结（运行期唯一防线就是它）', () => {

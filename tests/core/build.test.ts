@@ -482,7 +482,15 @@ describe('AC-B4 —— handCards 的顺序 / 造价 / 可买性边界', () => {
 })
 
 describe('AC-B4 / 裁决 5 —— label = promptText 全文，三类卡各取一条 fixture', () => {
-  /** 真实单元 1 题单（37 词条）。裁决 5 的三类 fixture 都出自这里。 */
+  /**
+   * 真实单元 1 题单。裁决 5 的三类 fixture 都出自这里。
+   *
+   * ⚠️ **规模随换源变**（Story 2.10 / DF-201，2026-10-26）：旧的 37 条自建词表
+   *   已全部作废并删除，单元 1 现在是 **6 条**（2 张 word 卡 + 1 张 keyword 卡
+   *   + 3 张 response 卡）。本文件里所有「钉内容规模」的断言都跟着走这条数，
+   *   而「钉行为契约」的断言（label === promptText 全文、造价由 core 给、
+   *   被否方案的 label 确实含 `-`）**一条都不许放宽**。
+   */
   const REAL = entriesOf(1)
 
   /** 造一份「单卡已解锁」的 state，题单用**真实**单元 1。 */
@@ -490,32 +498,38 @@ describe('AC-B4 / 裁决 5 —— label = promptText 全文，三类卡各取一
     return baseBuildState(sun, [entryId], REAL)
   }
 
-  it('word 卡：u1-hello ⇒ Hello', () => {
-    const card = handCards(stateWithOne('u1-hello', 9999))[0]
-    expect(card.label).toBe('Hello')
-    expect(card.label).toBe(REAL.find((e) => e.entryId === 'u1-hello')?.card.promptText)
+  it('word 卡：u1-morning ⇒ morning', () => {
+    const card = handCards(stateWithOne('u1-morning', 9999))[0]
+    expect(card.label).toBe('morning')
+    expect(card.label).toBe(REAL.find((e) => e.entryId === 'u1-morning')?.card.promptText)
   })
 
-  it('response 卡：u1-s-good-morning ⇒ Good morning!', () => {
+  it('response 卡：u1-s-good-afternoon ⇒ Good afternoon!（15 字符）', () => {
+    const card = handCards(stateWithOne('u1-s-good-afternoon', 9999))[0]
+    expect(card.label).toBe('Good afternoon!')
+    expect(card.label.length).toBe(15)
+    // 守住「**最坏情况**」这个性质：这条 fixture 必须是单元 1 里**最长**的题面。
+    //   少了这一行，fixture 哪天被换成一条短句，「按最坏情况推导卡宽」这件事
+    //   就悄悄没人守了 —— 而断言本身仍然全绿（假绿）。
+    const longestPrompt = REAL.reduce((a, b) => (b.card.promptText.length > a.card.promptText.length ? b : a))
+    expect(card.label.length).toBe(longestPrompt.card.promptText.length)
+  })
+
+  it('keyword 卡：u1-s-good-morning ⇒ Good morning.（13 字符）', () => {
     const card = handCards(stateWithOne('u1-s-good-morning', 9999))[0]
-    expect(card.label).toBe('Good morning!')
+    expect(card.label).toBe('Good morning.')
+    // 这个字面量是 AC-C3 宽度推导的**最坏情况**之一，注释里引用的就是它。
+    expect(card.label.length).toBe(13)
   })
 
-  it('keyword 卡：u1-s-i-have-a-ball-for-my-dog ⇒ I have a ball for my dog.（25 字符）', () => {
-    const card = handCards(stateWithOne('u1-s-i-have-a-ball-for-my-dog', 9999))[0]
-    expect(card.label).toBe('I have a ball for my dog.')
-    // 这个字面量是 AC-C3 宽度推导的**最坏情况**，注释里引用的就是它。
-    expect(card.label.length).toBe(25)
-  })
-
-  it('🚨 全部 37 张的 label 里没有一个含 `-`（被否掉的 slug 路线的反向夹具）', () => {
+  it('🚨 全部 6 张的 label 里没有一个含 `-`（被否掉的 slug 路线的反向夹具）', () => {
     // 被否掉的那条路是 `wordId` 去掉 `u1-` 前缀。它在单词卡上恰好等于
     // `promptText`，在 response / keyword 卡上却是句子 slug
-    // （`s-i-have-a-ball-for-my-dog` 26 字符，是最长单词 `beautiful` 的 2.9 倍）。
+    // （`s-good-afternoon` 16 字符，比单元 1 最长的题面 `Good afternoon!` 还长）。
     // ⇒ 「label 含 `-`」正是那条路留下的痕迹，一条就足以把整批卡否掉。
     const cards = handCards(baseBuildState(999_999, REAL.map((e) => e.entryId), REAL))
 
-    expect(cards).toHaveLength(37)
+    expect(cards).toHaveLength(6)
     const withHyphen = cards.filter((c) => c.label.includes('-'))
     expect(withHyphen.map((c) => `${c.entryId} ⇒ ${c.label}`)).toEqual([])
   })
@@ -539,11 +553,15 @@ describe('AC-B4 / 裁决 5 —— label = promptText 全文，三类卡各取一
     }))
 
     const offenders = slugRoute.filter((c) => c.label.includes('-'))
-    expect(offenders.map((c) => `${c.entryId} ⇒ ${c.label}`)).toContain('u1-s-i-have-a-ball-for-my-dog ⇒ s-i-have-a-ball-for-my-dog')
-    // 最长的一条：26 字符，是最长单词 `beautiful`（9 字符）的 2.9 倍。
+    expect(offenders.map((c) => `${c.entryId} ⇒ ${c.label}`)).toContain('u1-s-good-morning ⇒ s-good-morning')
+    // 最长的一条：16 字符（`s-good-afternoon`）—— 比单元 1 最长的题面
+    // `Good afternoon!`（15 字符）**还长** ⇒ 走 slug 路线的卡面宽度推导会
+    // 建立在一条比真实最坏情况还长的字面量上，这正是裁决 5 否掉它的原因。
     const longest = slugRoute.reduce((a, b) => (a.label.length >= b.label.length ? a : b))
-    expect(longest.label).toBe('s-i-have-a-ball-for-my-dog')
-    expect(longest.label.length).toBe(26)
+    expect(longest.label).toBe('s-good-afternoon')
+    expect(longest.label.length).toBe(16)
+    const longestReal = REAL.reduce((a, b) => (b.card.promptText.length > a.card.promptText.length ? b : a))
+    expect(longest.label.length).toBeGreaterThan(longestReal.card.promptText.length)
   })
 })
 

@@ -33,7 +33,20 @@ import {
 } from '../../scripts/word-image-metrics'
 
 const root = fileURLToPath(new URL('../../', import.meta.url))
-const WORD_DIR = `${root}public/assets/words/unit-01`
+
+/**
+ * **黄金值夹具目录** —— `[CR]` 那 5 组黄金值对应的那 5 张词图。
+ *
+ * ⚠️ **2026-10-26 换源批次（Story 2.10）**：这 5 张图（`u1-ball` / `u1-three` /
+ *   `u1-happy` / `u1-teacher` / `u1-dog`）在交付目录 `public/assets/words/unit-01/`
+ *   里**已被换源删掉**（那儿现在只剩教材版的 `u1-morning.svg` / `u1-afternoon.svg`），
+ *   五张图被搬进了 `tests/fixtures/word-images/`。
+ * ⇒ 本文件**只改「从哪儿读」，黄金值一个数字都不许改**（69.1 / 79 等是 `[CR]` 钉死的），
+ *   否则就变成「拿新数字重新定义黄金值」，那不是守卫了。
+ * ⇒ 夹具目录里的图**必须与 `[CR]` 那次一次性脚本算的是同一批字节** —— 若哪天有人
+ *   重画了这 5 张里的任何一张，这条会当场红（那正是 AC-10 条件 b 的信号）。
+ */
+const GOLDEN_DIR = `${root}tests/fixtures/word-images`
 
 /** AC-4 的黄金值。出处：`docs/art-direction.md:540-546`。容差：0.5pt / 2px。 */
 const GOLDEN = [
@@ -48,7 +61,7 @@ describe('AC-4 —— 黄金值对齐门（口径必须复现 [CR] 那 5 组值�
   it.each(GOLDEN)(
     '$entryId 的 §5.1 主体占比复现黄金值 $edgePercent%',
     ({ entryId, edgePercent }) => {
-      const metrics = measureWordImageFile(WORD_DIR, entryId)
+      const metrics = measureWordImageFile(GOLDEN_DIR, entryId)
       expect(Math.abs(metrics.edgePercent - edgePercent)).toBeLessThanOrEqual(0.5)
     },
   )
@@ -56,14 +69,14 @@ describe('AC-4 —— 黄金值对齐门（口径必须复现 [CR] 那 5 组值�
   it.each(GOLDEN)(
     '$entryId 的 §5.2 最小留白复现黄金值 $minPaddingPx px',
     ({ entryId, minPaddingPx }) => {
-      const metrics = measureWordImageFile(WORD_DIR, entryId)
+      const metrics = measureWordImageFile(GOLDEN_DIR, entryId)
       expect(Math.abs(metrics.minPaddingPx - minPaddingPx)).toBeLessThanOrEqual(2)
     },
   )
 
   it('黄金值不是「碰巧接近」—— 5 张的偏差加起来仍远小于容差', () => {
     const total = GOLDEN.reduce((sum, golden) => {
-      const metrics = measureWordImageFile(WORD_DIR, golden.entryId)
+      const metrics = measureWordImageFile(GOLDEN_DIR, golden.entryId)
       return sum + Math.abs(metrics.edgePercent - golden.edgePercent)
     }, 0)
     expect(total).toBeLessThan(2.5)
@@ -72,12 +85,12 @@ describe('AC-4 —— 黄金值对齐门（口径必须复现 [CR] 那 5 组值�
 
 describe('AC-4 附注 —— 黄金口径与对照口径的差是已知的宽松偏差，方向被钉住', () => {
   it.each(GOLDEN)('$entryId：own 口径的占比不大于 full 口径（宽松方向恒成立）', ({ entryId }) => {
-    const metrics = measureWordImageFile(WORD_DIR, entryId)
+    const metrics = measureWordImageFile(GOLDEN_DIR, entryId)
     expect(metrics.edgePercent).toBeLessThanOrEqual(metrics.edgePercentFull + 0.05)
   })
 
   it('u1-dog：两口径一致 —— 它的描边写在元素自身，不走 `<g>` 继承', () => {
-    const metrics = measureWordImageFile(WORD_DIR, 'u1-dog')
+    const metrics = measureWordImageFile(GOLDEN_DIR, 'u1-dog')
     // 尾巴 stroke-width=48 写在元素自身 ⇒ 两口径一致。
     // ⚠️ 用例名原来写「继承口径把占比抬高」，但断言的是两者相等（差 ≤ 0.05）——
     //   名字与断言相反，会让下一个人以为这里有差额。按断言改名字。
@@ -88,7 +101,7 @@ describe('AC-4 附注 —— 黄金口径与对照口径的差是已知的宽松
   })
 
   it('u1-three：g 上的 stroke-width 不计入黄金口径 —— 这是与 AC-3 字面冲突的已知取舍', () => {
-    const metrics = measureWordImageFile(WORD_DIR, 'u1-three')
+    const metrics = measureWordImageFile(GOLDEN_DIR, 'u1-three')
     expect(metrics.edgePercent).toBeCloseTo(67.2, 1)
     expect(metrics.edgePercentFull).toBeCloseTo(69.5, 1)
   })

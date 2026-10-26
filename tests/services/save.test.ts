@@ -65,9 +65,18 @@ function freshProgress(): Progress {
   return { currentUnitIndex: 0, masteredWordIds: [] }
 }
 
-/** 一份非空进度 —— 用它才能验「progress 被原样搬过去」。 */
+/**
+ * 一份非空进度 —— 用它才能验「progress 被原样搬过去」。
+ *
+ * 📎 **2026-10-26 换源批次**：里面的 `masteredWordIds` 原先写的是
+ *   `u1-hello` / `u1-cat` —— 那两条词条**已随单元 1 换源作废并删除**
+ *   （今天的单元 1 只有 6 条：`u1-morning` / `u1-afternoon` /
+ *   `u1-s-good-morning` / `u1-s-hello` / `u1-s-good-afternoon` / `u1-s-goodbye`）。
+ *   ⇒ 换成**今天真实存在**的 id：存档里的 `masteredWordIds` 必须指向
+ *   **内容层认得的**词条，否则这份夹具验的是一份「谁都不认的存档」。
+ */
 function busyProgress(): Progress {
-  return { currentUnitIndex: 2, masteredWordIds: ['u1-hello', 'u1-cat'] }
+  return { currentUnitIndex: 2, masteredWordIds: ['u1-morning', 'u1-afternoon'] }
 }
 
 /** 一份结构合法的初始对局（`deck` 用真实内容，保证 `reduce` 能跑）。 */
@@ -93,7 +102,13 @@ function stateWithTower(): State {
   if (answered.phase.kind !== 'awaiting-build') {
     throw new Error(`答完应在 awaiting-build，实际 ${answered.phase.kind}`)
   }
-  return core.reduce(answered, core.placeTower('u1-hello', core.cellKey(core.ZOMBIE_ROW, 1)))
+  // ⚠️ **建的是「刚答对的那道题」对应的塔卡**（`question.entryId`）——
+  //   `placeTowerIn` 逐字只允许种**已解锁**的卡，而解锁的正是刚答对的那条。
+  //   📎 **2026-10-26 换源批次**：这里原先写死了 `u1-hello`，而那条词条
+  //   **已随单元 1 换源作废** ⇒ `placeTower` 直接抛「塔卡 u1-hello 尚未解锁」。
+  //   ⇒ 改成从**题面**上取 id：夹具不再钉死任何一条具体词条，
+  //     内容再换源也不会让这份夹具当场失效（它验的是「存下来的局面完整」，不是「哪条词」）。
+  return core.reduce(answered, core.placeTower(question.entryId, core.cellKey(core.ZOMBIE_ROW, 1)))
 }
 
 /** 只留下 `SAVE` 那一条；多于一条或零条都当场报错（构造失效不留后手）。 */
@@ -355,7 +370,10 @@ describe('AC-C2 / G79 —— 写盘点表逐行钉死，含一条负向', () => 
       makePhase: (base) => ({
         kind: 'awaiting-build',
         question: base.deck[0],
-        unlocked: ['u1-hello'],
+        // ⚠️ **2026-10-26 换源批次**：`u1-hello` 已作废 ⇒ 换成单元 1 今天的第一条
+        //   （`u1-morning`）。这里钉的是「建造期相位里带哪些字段」，不是「哪条词」——
+        //   但那条 id 必须是**内容层真实存在**的，否则这份夹具已经脱离真机形态。
+        unlocked: [base.deck[0].entryId],
         sun: 50,
       }),
       shouldWrite: true,
