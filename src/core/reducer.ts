@@ -468,7 +468,7 @@ function placeTowerIn(state: State, entryId: string, cell: string): State {
   return withBuildPhase(next)
 }
 
-// ── resolving ─────────────────────────────────────────────────────────────
+// ── resolving（结算相位）───────────────────────────────────────────────────
 
 /** 结算阶段：只有 `RESOLVE_ROUND` 合法。 */
 function applyResolve(state: State, action: Action): State {

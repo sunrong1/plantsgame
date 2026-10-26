@@ -91,7 +91,7 @@ export function runEffectsFromStore(
  * ⚠️ **`assertNeverEffect` 刻意放在 try/catch 之外**：它是**编译期穷尽性**的最后一道，
  *   被 try 吞掉就退化成静默 warn —— 那正是本仓库记过的「断言允许了它要防的违规」。
  *   `switch` 漏掉 `Effect` 的某个成员时，TypeScript 会在这里报
- *   「argument of type … is not assignable to parameter of type 'never'」，
+ *   「`argument of type … is not assignable to parameter of type 'never'`」，
  *   与 `core/actions.ts` 的 `actionName` 同款；查表做不到这一点。
  *
  * ⚠️ `try/catch` 只包住**真正的执行**（`playSfx`）。分支选择本身不会抛，
@@ -111,7 +111,7 @@ function runOne(effect: Effect, progress: Progress): void {
 
   // ⚠️ 上面已经把 `SFX` 用早返回处理掉了 —— 这里**不能再写 `case 'SFX'`**：
   //   TypeScript 已把 `effect` 收窄到剩下三个成员，再比一次会报 TS2678
-  //   （`'SFX'` is not comparable to `'ANIMATION' | 'TTS' | 'SAVE'`）。
+  //   （`'SFX' is not comparable to 'ANIMATION' | 'TTS' | 'SAVE'`）。
   //   而恰恰是这个收窄让下面的 `default` 拿到 `never` —— 穷尽性的机制就是它。
   switch (effect.kind) {
     case 'ANIMATION':

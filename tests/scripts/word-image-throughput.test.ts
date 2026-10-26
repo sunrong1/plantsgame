@@ -384,7 +384,7 @@ describe('G180 —— 产能日志：字段齐全 / 单图记录 mtime 单调不
       expect(bad.tier, '同上，违规图的 tier 也应从原文注释读出').toBe('geometric')
 
       // [CR] P28：countElements 黄金口径 =「含 <g>、不含 <svg>」（§1.2）。
-      //   grouped = svg > g > rect ⇒ 2（g + rect）。
+      //   `grouped = svg > g > rect` ⇒ 2（`g` + `rect`）。
       expect(
         grouped.elementCount,
         '元素数不是 2（g + rect，不含 svg）—— §1.2 的黄金口径漂了（改成不含 <g> 会得 1，含 <svg> 会得 3）',

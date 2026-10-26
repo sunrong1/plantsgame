@@ -1453,7 +1453,7 @@ describe('G168 —— 宽屏下每个面板都被排了版（Story 1.19 / AC-H1�
     //   G168 只判「这个面板**有**一条带 `grid-area` 的规则」。
     //   **两者都没说「面板 A 的 `grid-area` 名字」必须是「模板里存在、且没有别的面板在用」的。**
     //   ⇒ 实测变异（子代理跑过，51/51 全绿）：
-    //       .level-view .hand-deck { grid-area: field; }
+    //       `.level-view .hand-deck { grid-area: field; }`
     //     手牌与战场抢同一格 —— 战场不见了，界面上没有任何报错，而全套守卫绿灯。
     //   ⇒ 同形态还有 `grid-area: nonexistent`：模板里没这个名字 ⇒ 浏览器整条忽略
     //     ⇒ 面板落回自动布局、互相压盖 ⇒ 同样全绿。

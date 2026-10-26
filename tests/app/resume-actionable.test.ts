@@ -146,7 +146,7 @@ function answerCorrectly(): void {
  *   在收窄之后**一直**当成那个字面量 —— 哪怕中间隔着一次 `applyAction()`。
  *   本文件里前面刚判过 `=== 'awaiting-answer'`，于是后面读到的相位会被
  *   错认成 `awaiting-answer` 变体，`=== 'awaiting-build'` 直接编译报错
- *   （TS2367: no overlap）。
+ *   （TS2367: `no overlap`）。
  *   ⚠️ 这里**不用 `as` 强转** —— 强转会把「类型说不是」盖成「类型说是」，
  *   判据从此说谎。
  */

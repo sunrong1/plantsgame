@@ -26,7 +26,7 @@
  * ── 架构硬约束 4：副作用只在 `app/effects-runner.ts` 执行 ─────────────────
  * `applyAction` 的四步顺序里第 3 步就是给它的。顺序本身是架构的一部分
  * （架构 `:660-668`），**不是可以随手调换的样板**：
- *   prev = state.value → next = reduce(prev, action) → runEffects(...) → state.value = next
+ *   `prev = state.value → next = reduce(prev, action) → runEffects(...) → state.value = next`
  * `runEffects` 必须在 `state.value` 赋值**之前**跑 —— 它读的是 prev/next 两个快照，
  * 若放在赋值之后，prev 就已经取不到了。
  */

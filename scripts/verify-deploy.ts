@@ -231,7 +231,7 @@ export function verifyDeploy(fs: DeployFs): DeployReport {
       '部署在子路径下 404 ⇒ manifest 整个失效（本仓库已因此丢过主屏图标）',
   )
 
-  // ── ② manifest（AC-B1 / AC-B2）────────────────────────────────────────
+  // ── ② 清单文件 manifest（AC-B1 / AC-B2）───────────────────────────────
   const manifestRaw = fs.read('manifest.webmanifest')
   add('manifest-exists', manifestRaw !== null, '`dist/manifest.webmanifest` 不存在 —— 加不到主屏')
   const manifest = parseJson(manifestRaw)

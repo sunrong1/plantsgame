@@ -5,7 +5,7 @@
  * 活文档（`docs/`、`_bmad-output/implementation-artifacts/`、
  * `_bmad-output/planning-artifacts/`、`CLAUDE.md`）里凡是**命令形态**的引用：
  *   ① `npm run <name>` —— `<name>` 必须是 `package.json` 的 `scripts` 里的一条；
- *   ② `<runner> scripts/<file>`（runner ∈ `bash` / `sh` / `python3` / `python` /
+ *   ② `<runner> scripts/<file>`（`runner` ∈ `bash` / `sh` / `python3` / `python` /
  *      `node` / `tsx` / `npx tsx`）—— `scripts/<file>` 必须在磁盘上真实存在。
  * 有一个不成立 ⇒ 报红，并点名**文件与行号**。
  *

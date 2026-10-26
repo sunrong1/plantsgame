@@ -31,7 +31,7 @@
  * ⚠️ **原注释写着「1.15 偏离 4 就是为它加的第 4 个键」—— 那是悬空引用**：
  *   1.15 偏离表第 4 条是「改动 1.14 的 `SAVE` 成员」，与降级键毫无关系。
  *   降级键的增补记在 `src/services/save.ts` 的 `SaveDegradationKey` 注释与
- *   `deferred-work.md`「Deferred from: code review of story-1-15」。
+ *   `deferred-work.md`「`Deferred from: code review of story-1-15`」。
  *
  * ⚠️ **不做的事**（都是「看起来更真、实际让守卫失去鉴别力」的假增强）：
  *   · 不实现容量上限 —— 配额抛错由 `throwOnSet` 开关直接给，比模拟字节数可靠；

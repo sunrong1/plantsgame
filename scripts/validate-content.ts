@@ -797,13 +797,13 @@ function isOpaqueFill(fill: string | null): boolean {
   if (v === 'currentcolor') return true
   if (v.startsWith('#')) {
     const h = v.slice(1)
-    if (/^[0-9a-f]{8}$/.test(h)) return h.slice(6) === 'ff' // #rrggbbaa
+    if (/^[0-9a-f]{8}$/.test(h)) return h.slice(6) === 'ff' // `#rrggbbaa`
     // ⚠️ **3 位与 4 位必须分开判。** `[CR]` 2026-10-14：旧代码把
     // `#rgb`（3 位）与 `#rgba`（4 位）合在一行取 `h[3]`，而 3 位 hex
     // 根本没有第 4 个字符 —— `h[3]` 是 `undefined`，`undefined === 'f'`
     // 恒为 `false`，于是 `fill="#fff"` 被判成半透明放行。
     // `#fff` 是写 SVG 最常见的写法，这条分支漏掉的正是最可能的那一种。
-    if (/^[0-9a-f]{4}$/.test(h)) return h[3] === 'f' // #rgba
+    if (/^[0-9a-f]{4}$/.test(h)) return h[3] === 'f' // `#rgba`
     return true // #rgb / #rrggbb —— 没有 alpha 通道，就是不透明
   }
   const fn = /^rgba?\(([^)]*)\)$/.exec(v)

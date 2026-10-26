@@ -468,7 +468,7 @@ function matrixOf(node: Node): Matrix {
       const sin = Math.sin(rad)
       const cx = args[1] ?? 0
       const cy = args[2] ?? 0
-      // rotate(deg cx cy) = translate(cx cy) · rotate(deg) · translate(-cx -cy)
+      // 绕点旋转公式：`rotate(deg cx cy) = translate(cx cy) · rotate(deg) · translate(-cx -cy)`
       out = multiply(
         out,
         multiply(

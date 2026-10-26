@@ -162,7 +162,7 @@ export function countElements(source: string): number {
   return Math.max(0, tags.length - 1)
 }
 
-// ── snapshot ────────────────────────────────────────────────────────────────
+// ── 快照 snapshot ───────────────────────────────────────────────────────────
 
 /**
  * 列出目录下的 `.svg` 文件名（排序，保证确定性）。**非递归** —— 子目录
@@ -372,7 +372,7 @@ export function appendSnapshot(
   return { appended: lines.length, skipped, failed }
 }
 
-// ── report ──────────────────────────────────────────────────────────────────
+// ── 报告 report ─────────────────────────────────────────────────────────────
 
 /**
  * 分位数（**线性插值法**，即 R-7 / numpy 默认）。

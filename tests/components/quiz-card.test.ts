@@ -1722,8 +1722,8 @@ function checkPhaseCondition(condition: string): { ok: boolean; reason: string }
 /**
  * 「收窄写法」的守卫：前面某条 `if (...)` **同时用 `!==` 排除两个允许相位**。
  *
- *   if (phase.kind !== 'awaiting-answer' && phase.kind !== 'awaiting-build') return null
- *   return phase.question
+ *   `if (phase.kind !== 'awaiting-answer' && phase.kind !== 'awaiting-build') return null`
+ *   `return phase.question`
  *
  * 这种写法的那个 `return` 本身是**裸奔**的，但语义上完全正确 ⇒ 判据要认它。
  * ⚠️ 豁免的判据是「**两个**都排除」：只排除一个就交出题面仍然是违规。
@@ -1745,8 +1745,8 @@ function g94Violation(code: string): string | null {
   //
   // ⚠️📎 **第七轮放宽 `===` → `===` / `!==` 皆可**（R-57 留痕）：
   //   首版只认 `phase.kind === 'awaiting-answer'`。而**收窄写法**
-  //       if (phase.kind !== 'awaiting-answer' && phase.kind !== 'awaiting-build') return null
-  //       return phase.question
+  //       `if (phase.kind !== 'awaiting-answer' && phase.kind !== 'awaiting-build') return null`
+  //       `return phase.question`
   //   是一份**完全正确**的等价实现，却因为写的是 `!==` 而被判红（假红）。
   //   ⇒ 放宽成「`phase.kind` 与该相位名有过比较（`===` 或 `!==`）」。
   //   ⚠️ **放宽不会开假绿**：`!==` 写法能交出题面的那个 `return` 是**裸 return**，
@@ -1767,11 +1767,11 @@ function g94Violation(code: string): string | null {
   // ⚠️⚠️⚠️ **这一条是第七轮重写的 —— 原版在真实实现上是假绿。**
   //   原版按 `;` 把 `shown` 的函数体切成「语句」，再问「读 `.question` 的那条语句
   //   里有没有相位判定」。而**真实实现里 `return` 之间一个分号都没有**：
-  //       {
+  //       `{
   //         const phase = state.value.phase
   //         if (phase.kind === 'awaiting-answer') return phase.question
   //         return phase.kind === 'awaiting-build' ? phase.question : null
-  //       }
+  //       }`
   //   ⇒ 切出来**只有一块** ⇒ 「那条语句里有 awaiting-build 判定」恒真
   //   ⇒ 🔴 **实测：把 `===` 改成 `!==`，判据照样绿**（26 个行为用例红了，
   //      唯独判据自己不红）—— 判据在它要防的违规上失灵。
