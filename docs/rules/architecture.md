@@ -140,7 +140,8 @@ Story 1.15 的 G96 写的是「推进确实落盘了」，那条判据在**整�
 
 **依据** 深路径 import 绕过 barrel，将来重构内部结构时无法统一收口。
 
-**守卫** ⚠️ **无守卫** —— 且 `tests/core/placeholder.test.ts` 的文件头明确写着「深路径 import 是本仓库既有测试的写法，零守卫强制」。**测试侧是明示例外**；`src/` 侧的约束目前只靠约定。
+**守卫** ✅ **（`src/` 与 `scripts/` 侧）** —— 守卫 **G332**（`tests/scaffold/core-barrel-exit.test.ts`）：`src/`（`src/core/` **之外**）与 `scripts/` 下**没有绕过 barrel 的深路径 import**；判据用 **TypeScript 的 AST**（静态 / 动态 / 重导出 / `require` 四种形态一次收齐）。
+⚠️ **测试侧是明示例外** —— `tests/core/placeholder.test.ts` 的文件头逐字写着「深路径 import 是本仓库既有测试的写法，零守卫强制」⇒ `tests/` **不判**（G332 的判据范围里没有它）。
 
 **首现** Story 1.5
 
