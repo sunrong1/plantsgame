@@ -73,7 +73,11 @@
 
 **依据** 同一条过渡散在 TS 里就失去了单一来源，CSS 变量（如 `--dur-fast`）改一处即可全局生效。
 
-**守卫** ⚠️ **部分** —— `tests/components/hand-build.test.ts` 对 1.12 新增组件有源码级判据，但**不是全局守卫**。
+**守卫** ✅ **两侧都守（2026-10-26 夜补齐）** ——
+- **`.vue` 侧**：**G38**（`tests/components/hand-build.test.ts`）走共享判据 `animationViolations(allVueSources(root))` ⇒ 扫的是 `src/` 下**全部** `.vue`（**G315** 另外钉住「扫描面不许缩回 4 个文件的老名单」）。
+- **`.ts` 侧**：**G333**（`tests/scaffold/animation-timer-boundary.test.ts`）用 **TypeScript AST** 扫 `src/` 下全部 `.ts` 的**定时器调用**（`setTimeout` / `setInterval` / `requestAnimationFrame` / `cancelAnimationFrame` / `requestIdleCallback`）、**Web Animations**（`el.animate(...)`）与**逐帧改样式**（`el.style.x = ...`）。判据认「**调用 / 赋值**」而不是「某个词」⇒ 注释与字符串里的字面量天然不算（R-52）。
+- ⚠️ **例外清单**：`.ts` 侧唯一的两处定时器在 `src/services/pronunciation.ts`（TTS **预热超时**与**分块推进**）—— 那是**音频时序，不是动效** ⇒ 逐字锚点豁免；守卫会核「每条**恰好命中一次**」（多了 = 锚点被扩大，少了 = 已过期）与「前提常量仍在」。
+- ⚠️ **剩下的口子**：`.vue` 侧的共享判据只禁**定时器**与**字面量毫秒**，**不**禁 `el.style.x =` 与 `el.animate(...)`（那两项目前只有 `.ts` 侧守）。
 
 **首现** Story 1-1（硬约束 5）
 
