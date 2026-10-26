@@ -10,7 +10,7 @@
 
 | 你要… | 去哪 |
 |---|---|
-| 写代码前确认架构边界 | [architecture.md](architecture.md) R-01..R-15 |
+| 写代码前确认架构边界 | [architecture.md](architecture.md) R-01..R-16 |
 | 碰任何数值 | [range-and-balance.md](range-and-balance.md) R-20..R-24 ⚠️ 改之前先问人 |
 | 记录 / 引用 / 作废一条约定 | [process.md](process.md) R-30..R-44 |
 | 写测试或守卫 | [testing.md](testing.md) R-50..R-61 |
@@ -41,6 +41,7 @@
 | R-13 | 标识符全英文、注释全中文 | ❌ |
 | R-14 | 渲染路径禁止打日志 | ⚠️ 只守 `core/` |
 | R-15 | 战场列轨的轨道形态必须是 `minmax(0, 1fr)` | ✅（**G133** 轨道形态 / **G14** N 与 `COLS` 同源） |
+| R-16 | `content/` 零 DOM | ✅（**G330** 类型层兜底 + ESLint 双拦） |
 
 ### 数值与平衡 → [range-and-balance.md](range-and-balance.md)
 

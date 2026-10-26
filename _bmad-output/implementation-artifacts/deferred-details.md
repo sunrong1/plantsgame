@@ -449,29 +449,6 @@
 
 > 来源：`## Deferred from: story-1-6-内容数据层与单元-1-录入 (2026-10-14)` ｜ 旧编号 `-` ｜ 详见 `archive/deferred/2026-10-14--ds-story-1-6.md` 的「分诊结论」
 
-## DF-020
-
-**状态**：待排期 · **归属**：未指派 · **恢复条件**：想更硬时，可给内容层单独一个 `tsconfig` 项目（lib 不含 DOM）并让它被 test 项目 `reference`
-
-**一句话**：`src/content/` 的 DOM 边界仍只有 ESLint 一道，无 tsconfig 兜底
-
-### 原始论证
-
-- **内容层的 DOM/Vue 边界只靠 ESLint，没有类型层兜底** ——
-  `src/content/` 落在 `tsconfig.app.json`（有 DOM lib），而 `tsconfig.core.json` 的
-  「零 DOM」硬约束**管不到它**。也就是说往内容层写一个 `window` / `localStorage`，
-  `tsc` 不会报错，只有 ESLint 的 `no-restricted-globals` 会拦。
-  若哪天有人改了 eslint 配置或漏掉某个文件，这条边界就是**静默**消失的
-  （`tests/content/content-boundary.test.ts` 求值 eslint 配置来守，但守的是「规则存在」，
-  不是「规则被改动过」）。
-  **恢复条件**：想更硬时，可给内容层单独一个 `tsconfig` 项目（lib 不含 DOM）并让它被
-  test 项目 `reference`（注意 TS6310：被引用的项目不能 `noEmit`）。
-  ——
-  `tsconfig.app.json`、`eslint.config.js`、`tests/content/content-boundary.test.ts`
-
-
-> 来源：`## Deferred from: story-1-6-内容数据层与单元-1-录入 (2026-10-14)` ｜ 旧编号 `-` ｜ 详见 `archive/deferred/2026-10-14--ds-story-1-6.md` 的「分诊结论」
-
 ## DF-021
 
 **状态**：待触发 · **归属**：未指派 · **恢复条件**：若单元文件增长到解析耗时可见，再合并为单次

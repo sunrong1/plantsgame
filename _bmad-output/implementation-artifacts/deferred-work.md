@@ -27,7 +27,6 @@
 | DF-017 | 待触发 | 未指派 | 出现能逼出「同回合抵达 ≥2 只」的局面时立刻补断言（三个候选触发点：建塔策略放宽 / 引入溅射复活 / 减速系数被调大） | `src/core/reducer.ts` 的 `applyResolve` 心数夹取仍无守卫 | [`df-017`](./deferred-details.md#df-017) |
 | DF-018 | 待触发 | Epic 2 | Epic 2 扩词池时，优先补「含池内词的句子」，并把本条改成回归守卫 | `src/content/units/unit-01.json` 仍只有 1 张 keyword 卡（37 条） | [`df-018`](./deferred-details.md#df-018) |
 | DF-019 | 待触发 | 未指派 | `[CR]` 若判「必须换实现」，改法是让该条目不再有卡面 —— 但那会破坏「每条录音都有卡面」这条更强的不变量 | `unit-01.json` 的 `u1-s-good-morning` 回应卡仍是裁决而非共识 | [`df-019`](./deferred-details.md#df-019) |
-| DF-020 | 待排期 | 未指派 | 想更硬时，可给内容层单独一个 `tsconfig` 项目（lib 不含 DOM）并让它被 test 项目 `reference` | `src/content/` 的 DOM 边界仍只有 ESLint 一道，无 tsconfig 兜底 | [`df-020`](./deferred-details.md#df-020) |
 | DF-021 | 待触发 | 未指派 | 若单元文件增长到解析耗时可见，再合并为单次 | `scripts/validate-content.ts` 每单元仍跑两次 `UnitSchema.safeParse` | [`df-021`](./deferred-details.md#df-021) |
 | DF-022 | 待触发 | 未指派 | 若将来引入「一 entry 多卡」的模型，这行必须先拆开 | `scripts/validate-content.ts` 的 `cardCount` 仍直接等于 `entryCount` | [`df-022`](./deferred-details.md#df-022) |
 | DF-023 | 待触发 | 未指派 | 接入 formatter 时一并解决 | `src/styles/tokens.css` 仍缺文件尾换行（30 张词图已补） | [`df-023`](./deferred-details.md#df-023) |

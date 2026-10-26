@@ -15,7 +15,7 @@
  * —— 散在 **63** 个文件里。
  * ⇒ 若把判据写成「全仓都必须合规」，它会**当场红 1131 条**，那不是守卫，
  *   是一张永远红的罚单 ⇒ 守卫恒红 ⇒ **没人会看它**（这正是 R-51 说的假绿/假红同形）。
- * ⇒ 做法：**名单制**。名单 = 「已经还清债的文件」（当前 **28** 个）；
+ * ⇒ 做法：**名单制**。名单 = 「已经还清债的文件」（当前 **30** 个）；
  *   名单外的欠账**逐字登记在 `deferred-work.md`**（**DF-219**），
  *   欠账还清一个就把那个文件加进名单 —— 名单因此**只增不减**，是这条规则的**进度条**。
  *
@@ -77,6 +77,7 @@ export const COMPLIANT_FILES: readonly string[] = [
   'tests/scaffold/archive-path-refs.test.ts',
   'tests/scaffold/color-token-count.test.ts',
   'tests/scaffold/color-token-values.test.ts',
+  'tests/scaffold/content-tsconfig-boundary.test.ts',
   'tests/scaffold/deferred-ledger.test.ts',
   'tests/scaffold/guard-id-uniqueness.test.ts',
   'tests/scaffold/no-unit-select.test.ts',

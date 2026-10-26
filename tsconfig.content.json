@@ -1,0 +1,44 @@
+{
+  "compilerOptions": {
+    "composite": true,
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.content.tsbuildinfo",
+    "target": "ES2023",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    // ⚠️ **lib 里没有 `DOM`** —— 这一条就是本项目存在的全部理由（DF-020）。
+    //   内容层是「录入 + 校验」的数据层，不是浏览器层：它不该看见 `window` /
+    //   `document` / `localStorage` / `HTMLElement`。少了 DOM lib，往
+    //   `src/content/` 里写一行 `window.location.href = '...'` 就会在
+    //   `npm run typecheck` 当场红（TS2304 `Cannot find name 'window'`）——
+    //   那是**类型层**的兜底，不再只靠 ESLint 一道。
+    //   与 `tsconfig.sw.json`（lib 是 `WebWorker` 而不是 `DOM`）同一个手法。
+    "lib": ["ES2023"],
+    // ⚠️ `types: []` —— 内容层是浏览器代码，不该看见 node 的全局类型
+    //   （`process` / `Buffer`）。与 `tsconfig.sw.json` 同款口径。
+    "types": [],
+    "strict": true,
+    "noEmit": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "skipLibCheck": true,
+    // ⚠️ `src/content/index.ts` 静态 import 单元 JSON（架构决策 3：
+    //   「JSON 模块直接 import，启动时 Zod 校验」）⇒ 必须开 `resolveJsonModule`。
+    //   单元 JSON 也要列进 `include` —— composite 项目要求「所有文件都被列出」。
+    "resolveJsonModule": true
+  },
+  // ⚠️ **只含 `src/content/`**，不含 `src/` 任何其它目录。
+  //
+  // ⚠️ 为什么 `src/content/` **同时**留在 `tsconfig.app.json` 与
+  //   `tsconfig.test.json` 里（**不**改成 reference）：
+  //   · 被 reference 的项目**不允许 `noEmit`**（TS6310）——本项目是 noEmit
+  //     （与 `tsconfig.app.json` / `tsconfig.test.json` 一样）⇒ 一旦改成
+  //     reference 就要开 `emitDeclarationOnly` + `outDir`，而内容层静态 import
+  //     单元 JSON，声明产物会把 JSON 的类型拖进 `.d.ts` ⇒ 一条新的坑。
+  //   · 两侧都 noEmit 时**重叠是允许的**（`tsconfig.test.json` 的注释里
+  //     `src/services` / `src/app` / `src/components` 已经是这个形状）。
+  //   ⇒ 所以这里**不追求「单一归属」**：本项目是**多一道类型层的检查**，
+  //     不是「搬走文件」。同一份源码在 app 项目（有 DOM）里照旧能过，
+  //     在本项目里过不了 —— 而 `npm run typecheck` 建的是**全部**项目
+  //     （根 `tsconfig.json` 的 `references`）⇒ 任一份不过，整体就红。
+  "include": ["src/content/**/*.ts", "src/content/**/*.json"]
+}

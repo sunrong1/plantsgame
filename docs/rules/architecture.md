@@ -227,3 +227,16 @@ Story 1.15 的 G96 写的是「推进确实落盘了」，那条判据在**整�
 ② **G14**（`tests/components/battle-field.test.ts`）断言 `repeat()` 的 N === `COLS`、`aspect-ratio` 的分母 === `ROWS`（变异 M42）。
 
 **首现** Story 1.18（AC-D4）
+
+---
+
+### R-16 `content/` 零 DOM
+
+**规则** `src/content/` 下不得出现任何浏览器 API（`window` / `document` / `localStorage` / `speechSynthesis` / `navigator`）—— 内容层是「录入 + 校验」的数据层，不是浏览器层。
+
+**依据** 由 `tsconfig.content.json` 的 `lib` 不含 `DOM` 强制 —— 写 `window` 会**编译报错**（TS2304 `Cannot find name 'window'`），不是靠自觉。配套 ESLint `no-restricted-globals` 双拦。
+⚠️ **2026-10-26 之前这一层只有 ESLint 一道**（DF-020）：内容层落在 `tsconfig.app.json`（有 DOM lib）里，R-01 那条「零 DOM」红线**管不到它** ⇒ 改了 eslint 配置或漏掉某个文件，边界就**静默**消失。现在两层都在。
+
+**守卫** `tests/scaffold/content-tsconfig-boundary.test.ts` —— 守卫 **G330**。⚠️ 它的主判据是**行为式**的：用 **TypeScript 自己的类型检查器**问「`window` 在内容层源码的位置上**看得见吗**」，看不见才算守住（纯字符串判据对「把 `lib` 整行删掉 ⇒ TS 退回含 DOM 的默认 lib」这一种退化**完全失明**）；另有一条**反向自测**证明该判据对装了 DOM 的项目会答「看得见」。
+
+**首现** 2026-10-26 夜（DF-020 结清时补入）

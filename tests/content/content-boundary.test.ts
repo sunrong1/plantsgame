@@ -5,7 +5,10 @@
  * 1. **塔型集合 === `TOWER_TYPES`** —— `src/content/schema.ts` 里那份 `z.enum` 字面量
  *    是有意的重复，重复就会漂移。这条断言是它唯一的防漂移装置（M11 的守卫）。
  * 2. **`src/content/` 的 DOM / Vue 边界** —— 内容层落在 app 项目（有 DOM）里，
- *    core 那条「零 DOM」红线对它不生效，ESLint 是唯一还拦得住的地方。
+ *    core 那条「零 DOM」红线对它不生效。⚠️ 2026-10-26 夜起**类型层也兜住了**
+ *    （`tsconfig.content.json` 的 `lib` 不含 `DOM` ⇒ 写 `window` 编译报错），
+ *    守卫在 `tests/scaffold/content-tsconfig-boundary.test.ts`；
+ *    **本文件守的仍是 ESLint 那一道**（两道各管一半，缺一不可）。
  *
  * ── 为什么这么写 ──────────────────────────────────────────────────────────
  * · **不写死 `['direct','slow','aoe']`**。写死了这条断言就变成「两处字面量相等」，
@@ -168,7 +171,7 @@ describe('AC-7 / M11 —— 塔型的单一事实源', () => {
   })
 })
 
-describe('AC-30 的副作用 —— content/ 的 DOM 边界由 ESLint 守', () => {
+describe('AC-30 的副作用 —— content/ 的 DOM 边界（ESLint 一道 + 类型层一道）', () => {
   it('src/content 配了 no-restricted-globals，且严重级别是 error', async () => {
     const rule = (await rulesForFile('src/content/schema.ts'))['no-restricted-globals']
 
