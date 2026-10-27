@@ -1,0 +1,274 @@
+{
+  "unitNumber": 7,
+  "entries": [
+    {
+      "entryId": "u7-one",
+      "wordId": "u7-one",
+      "towerType": "direct",
+      "card": {
+        "kind": "word",
+        "promptText": "one",
+        "options": [
+          { "id": "u7-one", "imageSrc": "/assets/words/unit-07/u7-one.svg", "correct": true },
+          { "id": "u7-two", "imageSrc": "/assets/words/unit-07/u7-two.svg", "correct": false },
+          { "id": "u7-three", "imageSrc": "/assets/words/unit-07/u7-three.svg", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u7-two",
+      "wordId": "u7-two",
+      "towerType": "slow",
+      "card": {
+        "kind": "word",
+        "promptText": "two",
+        "options": [
+          { "id": "u7-two", "imageSrc": "/assets/words/unit-07/u7-two.svg", "correct": true },
+          { "id": "u7-one", "imageSrc": "/assets/words/unit-07/u7-one.svg", "correct": false },
+          { "id": "u7-four", "imageSrc": "/assets/words/unit-07/u7-four.svg", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u7-three",
+      "wordId": "u7-three",
+      "towerType": "aoe",
+      "card": {
+        "kind": "word",
+        "promptText": "three",
+        "options": [
+          { "id": "u7-three", "imageSrc": "/assets/words/unit-07/u7-three.svg", "correct": true },
+          { "id": "u7-four", "imageSrc": "/assets/words/unit-07/u7-four.svg", "correct": false },
+          { "id": "u7-five", "imageSrc": "/assets/words/unit-07/u7-five.svg", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u7-four",
+      "wordId": "u7-four",
+      "towerType": "direct",
+      "card": {
+        "kind": "word",
+        "promptText": "four",
+        "options": [
+          { "id": "u7-four", "imageSrc": "/assets/words/unit-07/u7-four.svg", "correct": true },
+          { "id": "u7-three", "imageSrc": "/assets/words/unit-07/u7-three.svg", "correct": false },
+          { "id": "u7-six", "imageSrc": "/assets/words/unit-07/u7-six.svg", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u7-five",
+      "wordId": "u7-five",
+      "towerType": "slow",
+      "card": {
+        "kind": "word",
+        "promptText": "five",
+        "options": [
+          { "id": "u7-five", "imageSrc": "/assets/words/unit-07/u7-five.svg", "correct": true },
+          { "id": "u7-six", "imageSrc": "/assets/words/unit-07/u7-six.svg", "correct": false },
+          { "id": "u7-one", "imageSrc": "/assets/words/unit-07/u7-one.svg", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u7-six",
+      "wordId": "u7-six",
+      "towerType": "aoe",
+      "card": {
+        "kind": "word",
+        "promptText": "six",
+        "options": [
+          { "id": "u7-six", "imageSrc": "/assets/words/unit-07/u7-six.svg", "correct": true },
+          { "id": "u7-five", "imageSrc": "/assets/words/unit-07/u7-five.svg", "correct": false },
+          { "id": "u7-two", "imageSrc": "/assets/words/unit-07/u7-two.svg", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u7-s-five-rulers",
+      "wordId": "u7-s-five-rulers",
+      "towerType": "direct",
+      "card": {
+        "kind": "keyword",
+        "promptText": "Five rulers.",
+        "options": [
+          { "id": "u7-five", "text": "five", "correct": true },
+          { "id": "u7-one", "text": "one", "correct": false },
+          { "id": "u7-three", "text": "three", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u7-s-one-one-book",
+      "wordId": "u7-s-one-one-book",
+      "towerType": "slow",
+      "card": {
+        "kind": "keyword",
+        "promptText": "One!One book.",
+        "options": [
+          { "id": "u7-one", "text": "one", "correct": true },
+          { "id": "u7-three", "text": "three", "correct": false },
+          { "id": "u7-five", "text": "five", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u7-s-two-books",
+      "wordId": "u7-s-two-books",
+      "towerType": "aoe",
+      "card": {
+        "kind": "keyword",
+        "promptText": "Two books.",
+        "options": [
+          { "id": "u7-two", "text": "two", "correct": true },
+          { "id": "u7-four", "text": "four", "correct": false },
+          { "id": "u7-six", "text": "six", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u7-s-one-two-three",
+      "wordId": "u7-s-one-two-three",
+      "towerType": "direct",
+      "card": {
+        "kind": "response",
+        "promptText": "One,two,three!",
+        "options": [
+          { "id": "u7-s-three-pencils", "text": "Three pencils.", "correct": true },
+          { "id": "u7-s-five-rulers", "text": "Five rulers.", "correct": false },
+          { "id": "u7-s-one-one-book", "text": "One!One book.", "correct": false },
+          {
+            "id": "u7-s-one-two-three-four-five",
+            "text": "One,two,three,four,five!",
+            "correct": false
+          }
+        ]
+      }
+    },
+    {
+      "entryId": "u7-s-one-two-three-four-five",
+      "wordId": "u7-s-one-two-three-four-five",
+      "towerType": "slow",
+      "card": {
+        "kind": "response",
+        "promptText": "One,two,three,four,five!",
+        "options": [
+          { "id": "u7-s-five-rulers", "text": "Five rulers.", "correct": true },
+          { "id": "u7-s-one-two-three", "text": "One,two,three!", "correct": false },
+          { "id": "u7-s-two-books", "text": "Two books.", "correct": false },
+          { "id": "u7-s-six", "text": "Six!", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u7-s-how-many",
+      "wordId": "u7-s-how-many",
+      "towerType": "aoe",
+      "card": {
+        "kind": "response",
+        "promptText": "How many..?",
+        "options": [
+          { "id": "u7-s-how-many-books", "text": "How many books?", "correct": true },
+          { "id": "u7-s-three", "text": "Three!", "correct": false },
+          { "id": "u7-s-two", "text": "Two!", "correct": false },
+          { "id": "u7-s-six", "text": "Six!", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u7-s-how-many-books",
+      "wordId": "u7-s-how-many-books",
+      "towerType": "direct",
+      "card": {
+        "kind": "response",
+        "promptText": "How many books?",
+        "options": [
+          { "id": "u7-s-three", "text": "Three!", "correct": true },
+          { "id": "u7-s-two", "text": "Two!", "correct": false },
+          { "id": "u7-s-six", "text": "Six!", "correct": false },
+          { "id": "u7-s-two-books", "text": "Two books.", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u7-s-three",
+      "wordId": "u7-s-three",
+      "towerType": "slow",
+      "card": {
+        "kind": "response",
+        "promptText": "Three!",
+        "options": [
+          { "id": "u7-s-two", "text": "Two!", "correct": true },
+          { "id": "u7-s-six", "text": "Six!", "correct": false },
+          { "id": "u7-s-two-books", "text": "Two books.", "correct": false },
+          { "id": "u7-s-how-many-books", "text": "How many books?", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u7-s-two",
+      "wordId": "u7-s-two",
+      "towerType": "aoe",
+      "card": {
+        "kind": "response",
+        "promptText": "Two!",
+        "options": [
+          { "id": "u7-s-six", "text": "Six!", "correct": true },
+          { "id": "u7-s-two-books", "text": "Two books.", "correct": false },
+          { "id": "u7-s-three", "text": "Three!", "correct": false },
+          { "id": "u7-s-how-many", "text": "How many..?", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u7-s-six",
+      "wordId": "u7-s-six",
+      "towerType": "direct",
+      "card": {
+        "kind": "response",
+        "promptText": "Six!",
+        "options": [
+          { "id": "u7-s-two-books", "text": "Two books.", "correct": true },
+          { "id": "u7-s-how-many-books", "text": "How many books?", "correct": false },
+          { "id": "u7-s-three", "text": "Three!", "correct": false },
+          { "id": "u7-s-two", "text": "Two!", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u7-w-how-many-pencils",
+      "wordId": "u7-w-how-many-pencils",
+      "towerType": "slow",
+      "card": {
+        "kind": "response",
+        "promptText": "How many pencils?",
+        "options": [
+          { "id": "u7-s-three-pencils", "text": "Three pencils.", "correct": true },
+          { "id": "u7-s-how-many-books", "text": "How many books?", "correct": false },
+          { "id": "u7-s-two", "text": "Two!", "correct": false },
+          { "id": "u7-s-one-two-three", "text": "One,two,three!", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u7-s-three-pencils",
+      "wordId": "u7-s-three-pencils",
+      "towerType": "aoe",
+      "card": {
+        "kind": "response",
+        "promptText": "Three pencils.",
+        "options": [
+          {
+            "id": "u7-s-one-two-three-four-five",
+            "text": "One,two,three,four,five!",
+            "correct": true
+          },
+          { "id": "u7-s-two-books", "text": "Two books.", "correct": false },
+          { "id": "u7-s-one-one-book", "text": "One!One book.", "correct": false },
+          { "id": "u7-s-three", "text": "Three!", "correct": false }
+        ]
+      }
+    }
+  ]
+}

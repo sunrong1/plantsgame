@@ -32,6 +32,11 @@ import { z } from 'zod'
 import { UnitSchema, type Unit } from './schema'
 import unit01Raw from './units/unit-01.json'
 import unit02Raw from './units/unit-02.json'
+import unit03Raw from './units/unit-03.json'
+import unit04Raw from './units/unit-04.json'
+import unit05Raw from './units/unit-05.json'
+import unit06Raw from './units/unit-06.json'
+import unit07Raw from './units/unit-07.json'
 
 /**
  * 单元原始数据清单。**新增单元在这里加一行 import** ——
@@ -43,6 +48,11 @@ import unit02Raw from './units/unit-02.json'
 const RAW_UNITS: readonly { file: string; raw: unknown }[] = [
   { file: 'unit-01.json', raw: unit01Raw },
   { file: 'unit-02.json', raw: unit02Raw },
+  { file: 'unit-03.json', raw: unit03Raw },
+  { file: 'unit-04.json', raw: unit04Raw },
+  { file: 'unit-05.json', raw: unit05Raw },
+  { file: 'unit-06.json', raw: unit06Raw },
+  { file: 'unit-07.json', raw: unit07Raw },
 ]
 
 /**

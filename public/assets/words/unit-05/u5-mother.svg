@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  词图：mother（妈妈）—— 单元 5 的内容（Story 2.6）。
+
+  规格（docs/art-direction.md §1）：SVG / viewBox 0 0 512 512 / 512×512 / 透明底
+  构图档位：figure    ← 人物档（§5.1：70%–85%）；G11 按这一行取区间读，不写死
+  构图（§5 词图模板）：主体占画布约 81.1%、重心居中、正面全对称
+
+  G10：不得含 text / image / foreignObject —— 答案不许以任何形式印在图上。
+  G8：XML 注释正文里不许出现连续双短横。
+
+  ⚠️ **本图与另外四张的分工是「长发」**：长发画成**头后面一个大椭圆**
+     （先画 ⇒ 头盖住中间 ⇒ 只剩两侧与肩上的一圈），
+     这是「披下来的头发」在中式插画里的标准画法；
+     头发若只用头顶那半块（像爷爷那样），就与「短发男人」读成同一个人。
+
+  ⚠️ **头发的颜色用深棕而不是黑**：单元 5 里爸爸是纯黑头发，
+     妈妈用深棕 ⇒ 两张并排时颜色也分开。
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512"
+     role="img" aria-label="妈妈">
+  <g stroke="#2a2a4a" stroke-linecap="round" stroke-linejoin="round">
+
+    <!-- 长发：头后面的大椭圆（先画，头盖住中间）。 -->
+    <ellipse cx="256" cy="138" rx="78" ry="90" fill="#5d4037" stroke-width="12" />
+
+    <!-- 头。 -->
+    <circle cx="256" cy="118" r="58" fill="#f6d7b0" stroke-width="12" />
+
+    <!-- 刘海：盖住头的上半。 -->
+    <path d="M 198 118 A 58 58 0 0 1 314 118 Z" fill="#5d4037" stroke="none" />
+
+    <!-- 身体：粉色连衣裙（下摆比腰宽）。 -->
+    <path d="M 212 182 L 300 182 L 330 332 L 182 332 Z" fill="#ec407a" stroke-width="12" />
+
+    <!-- 两条手臂垂在身侧。 -->
+    <path d="M 214 210 L 186 300" fill="none" stroke-width="22" />
+    <path d="M 298 210 L 326 300" fill="none" stroke-width="22" />
+
+    <!-- 两条腿（裙下露出）。 -->
+    <path d="M 226 322 L 214 446" fill="none" stroke-width="22" />
+    <path d="M 288 322 L 300 446" fill="none" stroke-width="22" />
+  </g>
+
+  <!--
+    外沿实算（`npm run word-image-metrics public/assets/words/unit-05` 实测）：
+      主体占比 **81.1%**，最小留白 **42.0px**，重心偏移 **6.5px**，重心 (256, 250)
+    ⇒ §5.1 落在 figure 的 70%–85% 内；§5.2 的 42.0px ≥30.72px；§5.3 的 6.5px ≤30.72px。
+
+    §5.5b 逐元素记账（48px 下是否承担识别）：
+      长发 ✓（**主识别来源**：头两侧垂下来的一圈）
+      粉裙 ✓（**第二识别来源**：与奶奶的紫裙分开）
+      手臂 / 腿 ✗ —— 通用人形 ⇒ 只加不减
+  -->
+</svg>

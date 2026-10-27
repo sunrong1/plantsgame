@@ -505,7 +505,7 @@ function findDistractorViolations(
 ): string[] {
   const problems: string[] = []
   const vocabulary = new Set(unit.vocabulary.map((word) => normalizeEnglish(word)))
-  const sentences = new Set(unit.sentences.map((sentence) => normalizeEnglish(sentence)))
+  const sentences = new Set(unit.sentences.map((sentence) => normalizeEnglish(sentence.text)))
 
   /** 本单元每张单词卡的 id → 题面词。 */
   const wordCardText = new Map<string, string>()
@@ -589,7 +589,7 @@ function sentenceCardPrompts(entries: readonly ContentEntry[]): string[] {
 
 /** 某单元的教材句型（去重后）。 */
 function distinctTextbookSentences(unit: TextbookUnit): string[] {
-  return [...new Set(unit.sentences)]
+  return [...new Set(unit.sentences.map((sentence) => sentence.text))]
 }
 
 /**
@@ -600,7 +600,7 @@ function distinctTextbookSentences(unit: TextbookUnit): string[] {
 function forbiddenRetiredPrompts(unit: TextbookUnit): Set<string> {
   const textbook = new Set<string>()
   for (const word of unit.vocabulary) textbook.add(normalizeRetiredPrompt(word))
-  for (const sentence of unit.sentences) textbook.add(normalizeRetiredPrompt(sentence))
+  for (const sentence of unit.sentences) textbook.add(normalizeRetiredPrompt(sentence.text))
   const forbidden = new Set<string>()
   for (const text of RETIRED_PROMPT_TEXTS) {
     const normalized = normalizeRetiredPrompt(text)

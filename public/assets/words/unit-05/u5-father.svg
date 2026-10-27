@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  词图：father（爸爸）—— 单元 5 的内容（Story 2.6）。
+
+  规格（docs/art-direction.md §1）：SVG / viewBox 0 0 512 512 / 512×512 / 透明底
+  构图档位：figure    ← 人物档（§5.1：70%–85%）；G11 按这一行取区间读，不写死
+  构图（§5 词图模板）：主体占画布约 78%、重心居中、正面全对称
+
+  G10：不得含 text / image / foreignObject —— 答案不许以任何形式印在图上。
+  G8：XML 注释正文里不许出现连续双短横。
+
+  ⚠️ **本图与另外四张的分工是「小胡子」**：爸爸与爷爷都是男性成人，
+     分开他们的是「嘴上那一小块」（胡子 vs 白胡子）。
+     ⇒ 胡子画成**贴着嘴唇的一条实心块**（不是描边），
+        48px 上它只剩一条深色横杠，但「有胡子 / 没胡子」正好读得出来。
+
+  ⚠️ **为什么头发是纯黑**：单元 5 里只有两个男性成人（爸爸、爷爷），
+     爸爸是黑的、爷爷是白的 ⇒ 颜色本身就是第一道区分。
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512"
+     role="img" aria-label="爸爸">
+  <g stroke="#2a2a4a" stroke-linecap="round" stroke-linejoin="round">
+
+    <!-- 头。 -->
+    <circle cx="256" cy="118" r="58" fill="#f6d7b0" stroke-width="12" />
+
+    <!-- 黑发：盖住头的上半。 -->
+    <path d="M 198 118 A 58 58 0 0 1 314 118 Z" fill="#2b2b33" stroke="none" />
+
+    <!-- 小胡子：贴着嘴唇的一条实心块（**本图的识别来源**）。 -->
+    <rect x="234" y="140" width="44" height="16" rx="8" fill="#2b2b33" stroke="none" />
+
+    <!-- 身体：灰色上衣。 -->
+    <rect x="198" y="176" width="116" height="156" rx="44" fill="#78909c" stroke-width="12" />
+
+    <!-- 两条手臂垂在身侧。 -->
+    <path d="M 206 210 L 178 302" fill="none" stroke-width="22" />
+    <path d="M 306 210 L 334 302" fill="none" stroke-width="22" />
+
+    <!-- 两条腿站直。 -->
+    <path d="M 226 322 L 214 446" fill="none" stroke-width="22" />
+    <path d="M 288 322 L 300 446" fill="none" stroke-width="22" />
+  </g>
+
+  <!--
+    外沿实算（`npm run word-image-metrics public/assets/words/unit-05` 实测）：
+      主体占比 **78.7%**，最小留白 **54.0px**，重心偏移 **0.5px**，重心 (256, 256)
+    ⇒ §5.1 落在 figure 的 70%–85% 内；§5.2 的 54.0px ≥30.72px；§5.3 的 0.5px ≤30.72px。
+
+    §5.5b 逐元素记账（48px 下是否承担识别）：
+      小胡子 ✓（**主识别来源**：嘴上那一小块）
+      黑发 ✓（**第二识别来源**：与爷爷的白发分开）
+      手臂 / 腿 ✗ —— 通用人形 ⇒ 只加不减
+  -->
+</svg>

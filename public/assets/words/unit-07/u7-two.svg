@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  词图：two（二）—— 单元 7 的内容（Story 2.6）。
+
+  规格（docs/art-direction.md §1）：SVG / viewBox 0 0 512 512 / 512×512 / 透明底
+  构图档位：abstract    ← 抽象档（§5.1：60%–75%）；G11 按这一行取区间读，不写死
+  构图（§5 词图模板）：主体占画布约 69%、重心居中、正面全对称
+
+  G10：不得含 text / image / foreignObject —— 答案不许以任何形式印在图上。
+  G8：XML 注释正文里不许出现连续双短横。
+
+  ⚠️ **数字词不写数字，画成「N 个方块」**（理由见 `u7-one` 的头注释）。
+  ⚠️ **两块并排而不是叠起来**：并排时块与块之间有 20px 的缝，
+     48px 上那道缝还剩 2px ⇒ 两块不会糊成一块；而叠放（上下）
+     在 48px 上更容易读成「一个竖着的方块」。
+  ⚠️ **两块用同一套颜色与描边**（与 one / three / … 一样）⇒
+     六张图之间只有块数不同，孩子练的是数数。
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512"
+     role="img" aria-label="两个方块">
+  <g stroke="#2a2a4a" stroke-linejoin="round">
+    <!-- 两块方块，中间留 20px 的缝。 -->
+    <rect x="86" y="176" width="160" height="160" rx="16" fill="#42a5f5" stroke-width="12" />
+    <rect x="266" y="176" width="160" height="160" rx="16" fill="#42a5f5" stroke-width="12" />
+  </g>
+
+  <!--
+    外沿实算（`npm run word-image-metrics public/assets/words/unit-07` 实测）：
+      主体占比 **68.8%**，最小留白 **80.0px**，重心偏移 **0.0px**，重心 (256, 256)
+    ⇒ §5.1 落在 abstract 的 60%–75% 内；§5.2 的 80.0px ≥30.72px；§5.3 的 0.0px ≤30.72px。
+
+    §5.5b 逐元素记账（48px 下是否承担识别）：
+      两块方块 ✓（**唯一识别来源**：块数 = 二）
+  -->
+</svg>

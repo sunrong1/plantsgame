@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  词图：short（矮的）—— 单元 6 的内容（Story 2.6）。
+
+  规格（docs/art-direction.md §1）：SVG / viewBox 0 0 512 512 / 512×512 / 透明底
+  构图档位：figure    ← 人物档（§5.1：70%–85%）；G11 按这一行取区间读，不写死
+  构图（§5 词图模板）：主体占画布约 74%、重心居中、正面全对称
+
+  G10：不得含 text / image / foreignObject —— 答案不许以任何形式印在图上。
+  G8：XML 注释正文里不许出现连续双短横。
+
+  ⚠️ **「矮」不能靠把整个人画矮来表达**：画矮 = 主体变小 = §5.1 判红
+     （本图实测 73.6%，已经是 figure 档 70% 下限附近）。
+     ⇒ 正确做法是**在同一个画布里画一个矮的人**：大头 + 矮躯干 + 短腿。
+       本图  ＝ 头 r=76 / 腿 105px
+       `u6-tall` ＝ 头 r=46 / 腿 150px
+
+  ⚠️ **为什么躯干是方的而不是圆的**：`u6-fat` 的圆肚子已经占了「胖」，
+     矮的人的躯干画成矮胖的方块 ⇒ 两张不会互相顶替。
+
+  ⚠️ **为什么本图的腿短但脚还在画布中央**：短腿 + 大头 = 矮；
+     而「占画布多少」与「在画布里显得多高」是两件事 ⇒ 本图必须占满
+     70% 以上（§5.1），靠**比例**而不是靠留白来表达矮。
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512"
+     role="img" aria-label="矮的人">
+  <g stroke="#2a2a4a" stroke-linecap="round" stroke-linejoin="round">
+
+    <!-- 头：大头（**本图的识别来源之一**）。 -->
+    <circle cx="256" cy="140" r="76" fill="#f6d7b0" stroke-width="12" />
+
+    <!-- 头发：盖住头的上半。 -->
+    <path d="M 180 140 A 76 76 0 0 1 332 140 Z" fill="#3a2a22" stroke="none" />
+
+    <!-- 矮躯干：方的。 -->
+    <rect x="170" y="210" width="172" height="120" rx="40" fill="#ffa726" stroke-width="12" />
+
+    <!-- 两条短手臂。 -->
+    <path d="M 182 238 L 150 318" fill="none" stroke-width="22" />
+    <path d="M 330 238 L 362 318" fill="none" stroke-width="22" />
+
+    <!-- 两条短腿（**本图的识别来源之二**）。 -->
+    <path d="M 214 320 L 206 424" fill="none" stroke-width="22" />
+    <path d="M 298 320 L 306 424" fill="none" stroke-width="22" />
+  </g>
+
+  <!--
+    外沿实算（`npm run word-image-metrics public/assets/words/unit-06` 实测）：
+      主体占比 **73.6%**，最小留白 **58.0px**，重心偏移 **9.5px**，重心 (256, 247)
+    ⇒ §5.1 落在 figure 的 70%–85% 内；§5.2 的 58.0px ≥30.72px；§5.3 的 9.5px ≤30.72px。
+
+    §5.5b 逐元素记账（48px 下是否承担识别）：
+      大头 + 矮躯干 ✓（**主识别来源**：头身比 = 矮）
+      短腿 ✓（**第二识别来源**：与 `u6-tall` 的长腿对照）
+      手臂 ✗ —— 通用人形 ⇒ 只加不减
+  -->
+</svg>

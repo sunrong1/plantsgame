@@ -1,0 +1,219 @@
+{
+  "unitNumber": 3,
+  "entries": [
+    {
+      "entryId": "u3-eye",
+      "wordId": "u3-eye",
+      "towerType": "direct",
+      "card": {
+        "kind": "word",
+        "promptText": "eye",
+        "options": [
+          { "id": "u3-eye", "imageSrc": "/assets/words/unit-03/u3-eye.svg", "correct": true },
+          { "id": "u3-mouth", "imageSrc": "/assets/words/unit-03/u3-mouth.svg", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u3-mouth",
+      "wordId": "u3-mouth",
+      "towerType": "slow",
+      "card": {
+        "kind": "word",
+        "promptText": "mouth",
+        "options": [
+          { "id": "u3-mouth", "imageSrc": "/assets/words/unit-03/u3-mouth.svg", "correct": true },
+          { "id": "u3-face", "imageSrc": "/assets/words/unit-03/u3-face.svg", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u3-face",
+      "wordId": "u3-face",
+      "towerType": "aoe",
+      "card": {
+        "kind": "word",
+        "promptText": "face",
+        "options": [
+          { "id": "u3-face", "imageSrc": "/assets/words/unit-03/u3-face.svg", "correct": true },
+          { "id": "u3-nose", "imageSrc": "/assets/words/unit-03/u3-nose.svg", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u3-nose",
+      "wordId": "u3-nose",
+      "towerType": "direct",
+      "card": {
+        "kind": "word",
+        "promptText": "nose",
+        "options": [
+          { "id": "u3-nose", "imageSrc": "/assets/words/unit-03/u3-nose.svg", "correct": true },
+          { "id": "u3-mouth", "imageSrc": "/assets/words/unit-03/u3-mouth.svg", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u3-ear",
+      "wordId": "u3-ear",
+      "towerType": "slow",
+      "card": {
+        "kind": "word",
+        "promptText": "ear",
+        "options": [
+          { "id": "u3-ear", "imageSrc": "/assets/words/unit-03/u3-ear.svg", "correct": true },
+          { "id": "u3-mouth", "imageSrc": "/assets/words/unit-03/u3-mouth.svg", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u3-s-look-this-is-your-mouth",
+      "wordId": "u3-s-look-this-is-your-mouth",
+      "towerType": "aoe",
+      "card": {
+        "kind": "keyword",
+        "promptText": "Look!This is your mouth.",
+        "options": [
+          { "id": "u3-mouth", "text": "mouth", "correct": true },
+          { "id": "u3-face", "text": "face", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u3-s-look-this-is-your-eye",
+      "wordId": "u3-s-look-this-is-your-eye",
+      "towerType": "direct",
+      "card": {
+        "kind": "keyword",
+        "promptText": "Look!This is your eye.",
+        "options": [
+          { "id": "u3-eye", "text": "eye", "correct": true },
+          { "id": "u3-face", "text": "face", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u3-s-look-this-is-your-ear",
+      "wordId": "u3-s-look-this-is-your-ear",
+      "towerType": "slow",
+      "card": {
+        "kind": "keyword",
+        "promptText": "Look!This is your ear.",
+        "options": [
+          { "id": "u3-ear", "text": "ear", "correct": true },
+          { "id": "u3-mouth", "text": "mouth", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u3-s-hi-alice-its-you",
+      "wordId": "u3-s-hi-alice-its-you",
+      "towerType": "aoe",
+      "card": {
+        "kind": "response",
+        "promptText": "Hi,Alice!It's you!",
+        "options": [
+          {
+            "id": "u3-s-look-this-is-your-mouth",
+            "text": "Look!This is your mouth.",
+            "correct": true
+          },
+          { "id": "u3-s-hello-im-jack", "text": "Hello,I'm Jack.", "correct": false },
+          { "id": "u3-s-my-mouth", "text": "My mouth?", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u3-s-my-mouth",
+      "wordId": "u3-s-my-mouth",
+      "towerType": "direct",
+      "card": {
+        "kind": "response",
+        "promptText": "My mouth?",
+        "options": [
+          {
+            "id": "u3-s-look-this-is-your-mouth",
+            "text": "Look!This is your mouth.",
+            "correct": true
+          },
+          { "id": "u3-s-my-eye", "text": "My eye?", "correct": false },
+          { "id": "u3-s-hello-im-jack", "text": "Hello,I'm Jack.", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u3-s-my-eye",
+      "wordId": "u3-s-my-eye",
+      "towerType": "slow",
+      "card": {
+        "kind": "response",
+        "promptText": "My eye?",
+        "options": [
+          {
+            "id": "u3-s-look-this-is-your-eye",
+            "text": "Look!This is your eye.",
+            "correct": true
+          },
+          { "id": "u3-s-my-mouth", "text": "My mouth?", "correct": false },
+          { "id": "u3-s-hi-jack", "text": "Hi!Jack.", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u3-s-no-its-not-me",
+      "wordId": "u3-s-no-its-not-me",
+      "towerType": "aoe",
+      "card": {
+        "kind": "response",
+        "promptText": "No.It's not me.",
+        "options": [
+          { "id": "u3-s-hi-alice-its-you", "text": "Hi,Alice!It's you!", "correct": true },
+          { "id": "u3-s-hello-im-jack", "text": "Hello,I'm Jack.", "correct": false },
+          { "id": "u3-s-my-eye", "text": "My eye?", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u3-s-hello-im-jack",
+      "wordId": "u3-s-hello-im-jack",
+      "towerType": "direct",
+      "card": {
+        "kind": "response",
+        "promptText": "Hello,I'm Jack.",
+        "options": [
+          { "id": "u3-s-hi-jack", "text": "Hi!Jack.", "correct": true },
+          { "id": "u3-s-my-mouth", "text": "My mouth?", "correct": false },
+          { "id": "u3-s-no-its-not-me", "text": "No.It's not me.", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u3-s-hi-jack",
+      "wordId": "u3-s-hi-jack",
+      "towerType": "slow",
+      "card": {
+        "kind": "response",
+        "promptText": "Hi!Jack.",
+        "options": [
+          { "id": "u3-s-hello-im-jack", "text": "Hello,I'm Jack.", "correct": true },
+          { "id": "u3-s-hi-alice-its-you", "text": "Hi,Alice!It's you!", "correct": false },
+          { "id": "u3-s-my-eye", "text": "My eye?", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u3-s-this-is-my-mouth",
+      "wordId": "u3-s-this-is-my-mouth",
+      "towerType": "aoe",
+      "card": {
+        "kind": "response",
+        "promptText": "This is my mouth.",
+        "options": [
+          { "id": "u3-s-my-mouth", "text": "My mouth?", "correct": true },
+          { "id": "u3-s-my-eye", "text": "My eye?", "correct": false },
+          { "id": "u3-s-hello-im-jack", "text": "Hello,I'm Jack.", "correct": false }
+        ]
+      }
+    }
+  ]
+}

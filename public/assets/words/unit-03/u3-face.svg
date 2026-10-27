@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  词图：face（脸）—— 单元 3 的内容（Story 2.6）。
+
+  规格（docs/art-direction.md §1）：SVG / viewBox 0 0 512 512 / 512×512 / 透明底
+  构图档位：organic    ← 有机曲线档（§5.1：70%–85%）；G11 按这一行取区间读，不写死
+  构图（§5 词图模板）：主体占画布约 80%、重心居中、正面全对称
+
+  G10：不得含 text / image / foreignObject —— 答案不许以任何形式印在图上。
+  G8：XML 注释正文里不许出现连续双短横。
+
+  ⚠️ **为什么带头发**：单元 3 的另外四张（眼 / 嘴 / 鼻 / 耳）都是**光秃秃的部位**，
+     而脸若也光秃秃，就与「一个椭圆」读不出区别 ⇒ 头发是这张图与那四张的分界。
+
+  ⚠️ **为什么五官画得小**：这张图在单元 3 的单词卡里要与 `u3-nose` / `u3-mouth`
+     同屏出现 ⇒ 特征必须**整体可辨、五官不可辨**，否则孩子会去比「谁的鼻子更突出」。
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512"
+     role="img" aria-label="脸">
+  <g stroke="#2a2a4a" stroke-linecap="round" stroke-linejoin="round">
+
+    <!-- 头发：画在脸**后面**的一顶帽子（先画，被脸盖住下半部分）。 -->
+    <ellipse cx="256" cy="210" rx="172" ry="165" fill="#3a2a22" stroke-width="14" />
+
+    <!-- 脸：竖长的椭圆。 -->
+    <ellipse cx="256" cy="250" rx="168" ry="190" fill="#f6d7b0" stroke-width="14" />
+
+    <!-- 两只眼睛：白底 + 实心瞳（§5.5：眼睛与高光一律实心不描边）。 -->
+    <ellipse cx="206" cy="216" rx="26" ry="30" fill="#ffffff" stroke="none" />
+    <circle cx="206" cy="216" r="13" fill="#16202c" stroke="none" />
+    <ellipse cx="306" cy="216" rx="26" ry="30" fill="#ffffff" stroke="none" />
+    <circle cx="306" cy="216" r="13" fill="#16202c" stroke="none" />
+
+    <!-- 鼻子：一个极简的小三角。 -->
+    <path d="M 256 248 L 243 300 L 269 300 Z" fill="#e0b083" stroke="none" />
+
+    <!-- 嘴：一条微笑的弧（§5.5：嘴允许 9–11px 描边）。 -->
+    <path d="M 212 336 Q 256 374 300 336" fill="none" stroke-width="11" />
+  </g>
+
+  <!--
+    外沿实算（`npm run word-image-metrics public/assets/words/unit-03` 实测）：
+      主体占比 **79.9%**，最小留白 **38.0px**，重心偏移 **13.5px**，重心 (256, 243)
+    ⇒ §5.1 落在 organic 的 70%–85% 内；§5.2 的 38.0px ≥30.72px；§5.3 的 13.5px ≤30.72px。
+
+    §5.5b 逐元素记账（48px 下是否承担识别）：
+      脸的椭圆 + 头发 ✓（**主识别来源**：一张脸的整体轮廓）
+      两只眼睛 ✓（**第二识别来源**：两点深色）
+      鼻子 ✗ —— 48px 上只剩一个小点，与眼睛混在一起 ⇒ 只加不减
+      微笑弧 ✗ —— 48px 上几乎消失（**与 `u3-mouth` 的分界靠的是整体轮廓，不是这条弧**）
+  -->
+</svg>

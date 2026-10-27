@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  词图：sing（唱歌）—— 单元 4 的内容（Story 2.6）。
+
+  规格（docs/art-direction.md §1）：SVG / viewBox 0 0 512 512 / 512×512 / 透明底
+  构图档位：figure    ← 人物档（§5.1：70%–85%）；G11 按这一行取区间读，不写死
+  构图（§5 词图模板）：主体占画布约 80.7%、重心略偏左
+
+  G10：不得含 text / image / foreignObject —— 答案不许以任何形式印在图上。
+  G8：XML 注释正文里不许出现连续双短横。
+
+  ⚠️ **为什么必须画那个音符**：只有「一个人张开嘴」的话，这张图与 `u4-dance`
+     在 48px 下几乎是同一张（都是一个人形）⇒ **音符**是「唱歌」与「跳舞」的
+     唯一分界。它是通用符号（不教即认），不构成答案泄漏。
+
+  ⚠️ **为什么手举起来**：举手的剪影让「正在发声 / 正在表演」这件事成立，
+     而音符说明的是「唱什么」。
+
+  ⚠️ **口型**：嘴巴画成一个小椭圆（深色）—— 48px 上它只剩 2px，
+     但它与音符一起构成「唱歌」而不是「举手」的读法。
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512"
+     role="img" aria-label="唱歌的人">
+  <g stroke="#2a2a4a" stroke-linecap="round" stroke-linejoin="round">
+
+    <!-- 音符：一个椭圆符头 + 一根符杆（通用符号）。 -->
+    <ellipse cx="140" cy="112" rx="34" ry="26" fill="#2a2a4a" stroke="none" />
+    <path d="M 172 112 L 172 50" fill="none" stroke-width="12" />
+
+    <!-- 头。 -->
+    <circle cx="256" cy="118" r="58" fill="#f6d7b0" stroke-width="12" />
+
+    <!-- 头发：盖住头的上半。 -->
+    <path d="M 198 118 A 58 58 0 0 1 314 118 Z" fill="#3a2a22" stroke="none" />
+
+    <!-- 张开的嘴（实心小椭圆）。 -->
+    <ellipse cx="256" cy="146" rx="14" ry="18" fill="#7a2b3a" stroke="none" />
+
+    <!-- 身体：紫色上衣。 -->
+    <rect x="198" y="176" width="116" height="156" rx="44" fill="#8e24aa" stroke-width="12" />
+
+    <!-- 左手举起、右手自然下垂。 -->
+    <path d="M 206 208 L 132 132" fill="none" stroke-width="22" />
+    <path d="M 306 208 L 356 300" fill="none" stroke-width="22" />
+
+    <!-- 两条腿站直。 -->
+    <path d="M 226 322 L 214 446" fill="none" stroke-width="22" />
+    <path d="M 288 322 L 300 446" fill="none" stroke-width="22" />
+  </g>
+
+  <!--
+    外沿实算（`npm run word-image-metrics public/assets/words/unit-04` 实测）：
+      主体占比 **80.7%**，最小留白 **44.0px**，重心偏移 **19.5px**，重心 (237, 251)
+    ⇒ §5.1 落在 figure 的 70%–85% 内；§5.2 的 44.0px ≥30.72px；§5.3 的 19.5px ≤30.72px。
+
+    §5.5b 逐元素记账（48px 下是否承担识别）：
+      音符 ✓（**主识别来源**：符头 + 符杆的通用符号）
+      举起的手臂 ✓（**第二识别来源**：斜上的剪影）
+      张开的嘴 ✗ —— 48px 上只剩 2px，属细节 ⇒ 只加不减
+      头发 ✗ —— 纯装饰
+  -->
+</svg>

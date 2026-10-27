@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  词图：read（读）—— 单元 4 的内容（Story 2.6）。
+
+  规格（docs/art-direction.md §1）：SVG / viewBox 0 0 512 512 / 512×512 / 透明底
+  构图档位：figure    ← 人物档（§5.1：70%–85%）；G11 按这一行取区间读，不写死
+  构图（§5 词图模板）：主体占画布约 79.5%、重心居中
+
+  G10：不得含 text / image / foreignObject —— 答案不许以任何形式印在图上。
+  G8：XML 注释正文里不许出现连续双短横。
+
+  ⚠️ **为什么书要摊开**：合着的书是一个竖长方块，与「铅笔」「纸」这些
+     直立物件在剪影上分不开；摊开的书有**两个斜面**（像一个打开的蝴蝶结），
+     这是小孩认得最多的「在看书」的形状。
+
+  ⚠️ **书上的线**：横线代表字，但**不能画成真的字**（G10：答案不许以任何形式
+     印在图上）⇒ 只用三条短横线示意，而且它们在 48px 上只是「有内容」的纹理，
+     不承担识别功能（§5.5b：只加不减）。
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512"
+     role="img" aria-label="看书的人">
+  <g stroke="#2a2a4a" stroke-linecap="round" stroke-linejoin="round">
+
+    <!-- 头。 -->
+    <circle cx="256" cy="110" r="56" fill="#f6d7b0" stroke-width="12" />
+
+    <!-- 头发：盖住头的上半。 -->
+    <path d="M 200 110 A 56 56 0 0 1 312 110 Z" fill="#3a2a22" stroke="none" />
+
+    <!-- 身体：蓝色上衣。 -->
+    <rect x="200" y="166" width="112" height="150" rx="42" fill="#1e88e5" stroke-width="12" />
+
+    <!-- 两条腿站直。 -->
+    <path d="M 226 308 L 214 444" fill="none" stroke-width="22" />
+    <path d="M 288 308 L 300 444" fill="none" stroke-width="22" />
+
+    <!-- 两条手臂向前伸，抱住书。 -->
+    <path d="M 208 196 L 148 268" fill="none" stroke-width="22" />
+    <path d="M 304 196 L 364 268" fill="none" stroke-width="22" />
+
+    <!-- 摊开的书：左右两个斜面（页）+ 中间的书脊。 -->
+    <path d="M 256 300 L 146 268 L 146 372 L 256 404 Z" fill="#fdf6e6" stroke-width="12" />
+    <path d="M 256 300 L 366 268 L 366 372 L 256 404 Z" fill="#fdf6e6" stroke-width="12" />
+
+    <!-- 三条示意「字」的短横线（不是文字）。 -->
+    <path d="M 172 300 L 232 318" fill="none" stroke-width="8" stroke="#8a8a99" />
+    <path d="M 172 330 L 232 348" fill="none" stroke-width="8" stroke="#8a8a99" />
+    <path d="M 172 360 L 232 378" fill="none" stroke-width="8" stroke="#8a8a99" />
+  </g>
+
+  <!--
+    外沿实算（`npm run word-image-metrics public/assets/words/unit-04` 实测）：
+      主体占比 **79.5%**，最小留白 **48.0px**，重心偏移 **4.5px**，重心 (256, 252)
+    ⇒ §5.1 落在 figure 的 70%–85% 内；§5.2 的 48.0px ≥30.72px；§5.3 的 4.5px ≤30.72px。
+
+    §5.5b 逐元素记账（48px 下是否承担识别）：
+      摊开的书 ✓（**主识别来源**：两个斜面的蝴蝶结形）
+      抱住书的手臂 ✓（**第二识别来源**：把书与身体连成「在看书」）
+      示意字的短横线 ✗ —— 48px 上是纹理，不承担识别 ⇒ 只加不减
+      头发 ✗ —— 纯装饰
+  -->
+</svg>

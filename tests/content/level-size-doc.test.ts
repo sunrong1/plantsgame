@@ -79,7 +79,7 @@ function censusOf(unitNumber: number, books = loadTextbookBooks()): UnitCensus {
   const { unit } = textbookUnitOf(unitNumber, books)
   // ⚠️ **去重**按归一化后的句子（去标点 + 折叠空白 + 小写）——
   //   教材的转写里同一句话会在多个演练段落里重复出现。
-  const sentences = new Set(unit.sentences.map(normalizeEnglish))
+  const sentences = new Set(unit.sentences.map((sentence) => normalizeEnglish(sentence.text)))
   const total = unit.vocabulary.length + sentences.size
   const levels: number[] = []
   let left = total

@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  词图：six（六）—— 单元 7 的内容（Story 2.6）。
+
+  规格（docs/art-direction.md §1）：SVG / viewBox 0 0 512 512 / 512×512 / 透明底
+  构图档位：abstract    ← 抽象档（§5.1：60%–75%）；G11 按这一行取区间读，不写死
+  构图（§5 词图模板）：主体占画布约 70%、重心居中、正面全对称
+
+  G10：不得含 text / image / foreignObject —— 答案不许以任何形式印在图上。
+  G8：XML 注释正文里不许出现连续双短横。
+
+  ⚠️ **数字词不写数字，画成「N 个方块」**（理由见 `u7-one` 的头注释）。
+  ⚠️ **六块排成 3 列 × 2 行**：三列排一行的话每块只有 105px 宽，
+     而两行把块面保住了；两行也正好是「六」最常见的数数排法。
+  ⚠️ **两行在画布里是居中的（不是顶到上边）**：外接框的高度只有 237px，
+     若不居中，重心偏移会到 59.5px（超过 §5.3 的 30.72px 容差）⇒
+     行首 y 取 138 而不是 84。
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512"
+     role="img" aria-label="六个方块">
+  <g stroke="#2a2a4a" stroke-linejoin="round">
+    <!-- 六块方块：3 列 × 2 行，行间与列间都留 15px 的缝。 -->
+    <rect x="84" y="138" width="105" height="105" rx="16" fill="#42a5f5" stroke-width="12" />
+    <rect x="204" y="138" width="105" height="105" rx="16" fill="#42a5f5" stroke-width="12" />
+    <rect x="324" y="138" width="105" height="105" rx="16" fill="#42a5f5" stroke-width="12" />
+    <rect x="84" y="258" width="105" height="105" rx="16" fill="#42a5f5" stroke-width="12" />
+    <rect x="204" y="258" width="105" height="105" rx="16" fill="#42a5f5" stroke-width="12" />
+    <rect x="324" y="258" width="105" height="105" rx="16" fill="#42a5f5" stroke-width="12" />
+  </g>
+
+  <!--
+    外沿实算（`npm run word-image-metrics public/assets/words/unit-07` 实测）：
+      主体占比 **69.7%**，最小留白 **77.0px**，重心偏移 **5.5px**，重心 (257, 251)
+    ⇒ §5.1 落在 abstract 的 60%–75% 内；§5.2 的 77.0px ≥30.72px；§5.3 的 5.5px ≤30.72px。
+
+    §5.5b 逐元素记账（48px 下是否承担识别）：
+      六块方块 ✓（**唯一识别来源**：块数 = 六）
+  -->
+</svg>

@@ -20,12 +20,12 @@
 ### Module 1 Using my five senses · Unit 3 Taste and smell
 
 - **词表（Look and learn）**：rice 米饭 ｜ soup 汤 ｜ egg 鸡蛋 ｜ noodles 面条　_（4 词）_
-- **句型（Say and act，逐句转写）**：At the restaurant 在饭店 ｜ 1 Can I help you?你来点什么? ｜ Soup,please.汤. ｜ 2 Here you are.给你. ｜ Thank you.谢谢. ｜ 3 Taste it,please.请尝一尝. ｜ Hmm....Yummy.Yummy.嗯...美味,美味. ｜ Play a game做游戏 ｜ 1 Danny,stand up.丹尼,起立. ｜ 2 Alice,touch your nose.艾丽丝,摸摸你的鼻子. ｜ 3 Kitty,smell the flower.基帝,闻一闻花. ｜ 4
+- **句型（Say and act / Play a game，逐句转写）**：Say and act说并做 ｜ At the restaurant 在饭店 ｜ 1 Can I help you?你来点什么? ｜ Soup,please.汤. ｜ 2 Here you are.给你. ｜ Thank you.谢谢. ｜ 3 Taste it,please.请尝一尝. ｜ Hmm....Yummy.Yummy.嗯...美味,美味. ｜ Play a game做游戏 ｜ 1 Danny,stand up.丹尼,起立. ｜ 2 Alice,touch your nose.艾丽丝,摸摸你的鼻子. ｜ 3 Kitty,smell the flower.基帝,闻一闻花. ｜ 4
 
 ### Module 2 My favourite things · Unit 4 Toys I like
 
 - **词表（Look and learn）**：ball 球 ｜ doll 洋娃娃 ｜ bicycle 自行车 ｜ kite 风筝　_（4 词）_
-- **句型（Say and act，逐句转写）**：At the toy shop 在玩具店 ｜ 1 Can I help you?你要买什么? ｜ I like the bicycle.我喜欢自行车. ｜ I like the kite.我喜欢风筝. ｜ 2 Here you are.给你们. ｜ Thank you.谢谢你. ｜ 3 I like the bicycle.我喜欢我的自行车. ｜ It's super.它太棒了. ｜ I like my kite.It's nice.我喜欢我的风筝,它很不错 ｜ Do a survey 做调查 ｜ Toys 玩具 ｜ I like... It's...
+- **句型（Say and act / Do a survey，逐句转写）**：Say and act说并做 ｜ At the toy shop 在玩具店 ｜ 1 Can I help you?你要买什么? ｜ I like the bicycle.我喜欢自行车. ｜ I like the kite.我喜欢风筝. ｜ 2 Here you are.给你们. ｜ Thank you.谢谢你. ｜ 3 I like the bicycle.我喜欢我的自行车. ｜ It's super.它太棒了. ｜ I like my kite.It's nice.我喜欢我的风筝,它很不错 ｜ Do a survey 做调查 ｜ Toys 玩具 ｜ I like... It's...
 
 ### Module 2 My favourite things · Unit 5 Food I like
 

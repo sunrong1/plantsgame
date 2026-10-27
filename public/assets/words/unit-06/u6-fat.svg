@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  词图：fat（胖的）—— 单元 6 的内容（Story 2.6）。
+
+  规格（docs/art-direction.md §1）：SVG / viewBox 0 0 512 512 / 512×512 / 透明底
+  构图档位：figure    ← 人物档（§5.1：70%–85%）；G11 按这一行取区间读，不写死
+  构图（§5 词图模板）：主体占画布约 78%、重心居中、正面全对称
+
+  G10：不得含 text / image / foreignObject —— 答案不许以任何形式印在图上。
+  G8：XML 注释正文里不许出现连续双短横。
+
+  ⚠️ **单元 6 的四张靠「比例」分开，不靠道具**：
+       fat   ＝ 圆肚子（躯干是一个大椭圆）+ 正常头 + 长腿
+       thin  ＝ 窄躯干（细长矩形）+ 正常头 + 正常腿
+       tall  ＝ **小头** + 窄躯干 + **很长的腿**
+       short ＝ **大头** + 矮躯干 + **很短的腿**
+     「胖瘦」是**宽度**的差别、「高矮」是**头身比 + 腿长**的差别
+     ⇒ 两组之间不会被认混。
+
+  ⚠️ **为什么肚子画成椭圆而不是方块**：圆的肚子在中式插画里就是「胖」，
+     而方的躯干会读成「壮」；单元 6 里另三张都是方的躯干 ⇒ 圆 = 胖。
+
+  ⚠️ **头是正常大小**：头画大就是「小孩 / 矮」（见 `u6-short`），
+     胖与矮必须靠躯干形状分开。
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512"
+     role="img" aria-label="胖的人">
+  <g stroke="#2a2a4a" stroke-linecap="round" stroke-linejoin="round">
+
+    <!-- 头：正常大小。 -->
+    <circle cx="256" cy="100" r="54" fill="#f6d7b0" stroke-width="12" />
+
+    <!-- 头发：盖住头的上半。 -->
+    <path d="M 202 100 A 54 54 0 0 1 310 100 Z" fill="#3a2a22" stroke="none" />
+
+    <!-- 圆肚子：大椭圆（**本图的识别来源**）。 -->
+    <ellipse cx="256" cy="250" rx="96" ry="78" fill="#e53935" stroke-width="12" />
+
+    <!-- 两条短手臂。 -->
+    <path d="M 168 214 L 124 300" fill="none" stroke-width="22" />
+    <path d="M 344 214 L 388 300" fill="none" stroke-width="22" />
+
+    <!-- 两条腿（长度正常 ⇒ 与 `u6-short` 分开）。 -->
+    <path d="M 216 318 L 206 430" fill="none" stroke-width="22" />
+    <path d="M 296 318 L 306 430" fill="none" stroke-width="22" />
+  </g>
+
+  <!--
+    外沿实算（`npm run word-image-metrics public/assets/words/unit-06` 实测）：
+      主体占比 **78.3%**，最小留白 **40.0px**，重心偏移 **15.5px**，重心 (256, 241)
+    ⇒ §5.1 落在 figure 的 70%–85% 内；§5.2 的 40.0px ≥30.72px；§5.3 的 15.5px ≤30.72px。
+
+    §5.5b 逐元素记账（48px 下是否承担识别）：
+      圆肚子 ✓（**主识别来源**：一个横着的大圆）
+      正常大小的头 + 正常长度的腿 ✓（**第二识别来源**：与 `u6-short` 的大头短腿分开）
+      手臂 ✗ —— 通用人形 ⇒ 只加不减
+  -->
+</svg>

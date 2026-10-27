@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  词图：five（五）—— 单元 7 的内容（Story 2.6）。
+
+  规格（docs/art-direction.md §1）：SVG / viewBox 0 0 512 512 / 512×512 / 透明底
+  构图档位：abstract    ← 抽象档（§5.1：60%–75%）；G11 按这一行取区间读，不写死
+  构图（§5 词图模板）：主体占画布约 70%、重心居中、正面全对称
+
+  G10：不得含 text / image / foreignObject —— 答案不许以任何形式印在图上。
+  G8：XML 注释正文里不许出现连续双短横。
+
+  ⚠️ **数字词不写数字，画成「N 个方块」**（理由见 `u7-one` 的头注释）。
+  ⚠️ **五块用梅花形（四个角 + 中间一块）**：这是数数绘本里「5」的标准排法，
+     一眼就能看出「四角一块、中间一块」= 5；
+     而 3+2 或 2+3 的排法在 48px 上会被读成「上面几个下面几个」。
+  ⚠️ **中心那块与四角块之间留 15px 的缝**：48px 上还剩 1.4px，
+     刚好让五块不糊成一片 ⇒ 数得出是五块。
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512"
+     role="img" aria-label="五个方块">
+  <g stroke="#2a2a4a" stroke-linejoin="round">
+    <!-- 五块方块：四个角 + 中间一块。 -->
+    <rect x="84" y="84" width="105" height="105" rx="16" fill="#42a5f5" stroke-width="12" />
+    <rect x="324" y="84" width="105" height="105" rx="16" fill="#42a5f5" stroke-width="12" />
+    <rect x="204" y="204" width="105" height="105" rx="16" fill="#42a5f5" stroke-width="12" />
+    <rect x="84" y="324" width="105" height="105" rx="16" fill="#42a5f5" stroke-width="12" />
+    <rect x="324" y="324" width="105" height="105" rx="16" fill="#42a5f5" stroke-width="12" />
+  </g>
+
+  <!--
+    外沿实算（`npm run word-image-metrics public/assets/words/unit-07` 实测）：
+      主体占比 **69.7%**，最小留白 **77.0px**，重心偏移 **0.5px**，重心 (257, 257)
+    ⇒ §5.1 落在 abstract 的 60%–75% 内；§5.2 的 77.0px ≥30.72px；§5.3 的 0.5px ≤30.72px。
+
+    §5.5b 逐元素记账（48px 下是否承担识别）：
+      五块方块 ✓（**唯一识别来源**：块数 = 五）
+  -->
+</svg>

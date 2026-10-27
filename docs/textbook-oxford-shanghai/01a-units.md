@@ -11,35 +11,37 @@
 ### Module 1 Getting to know you · Unit 1 Hello
 
 - **词表（Look and learn）**：morning 早上 ｜ afternoon 下午　_（2 词）_
-- **句型（Say and act，逐句转写）**：Greetings 问候 ｜ Hello!你好! ｜ Good morning.早上好! ｜ Good afternoon!下午好! ｜ Goodbye!再见!
+- **句型（Say and act，逐句转写）**：Say and act说并做 ｜ Greetings 问候 ｜ Hello!你好! ｜ Good morning.早上好! ｜ Good afternoon!下午好! ｜ Goodbye!再见!
 
 ### Module 1 Getting to know you · Unit 2 My classmates
 
 - **词表（Look and learn）**：book 书 ｜ ruler 尺子 ｜ pencil 铅笔 ｜ rubber 橡皮　_（4 词）_
-- **句型（Say and act，逐句转写）**：On Sunday afternoon 星期天的下午 ｜ Good afternoon,Kitty.下午好,基蒂. ｜ Good afternoon,Alice.下午好,爱丽丝. ｜ Give me a rubber,please.请把橡皮给我. ｜ Here you are.给你. ｜ Thank you.谢谢. ｜ Give me a ruler,please.请把尺子给我. ｜ Here you are.给你. ｜ Thank you.谢谢. ｜ How nice!真漂亮!
+- **句型（Say and act，逐句转写）**：Say and act说并做 ｜ On Sunday afternoon 星期天的下午 ｜ Good afternoon,Kitty.下午好,基蒂. ｜ Good afternoon,Alice.下午好,爱丽丝. ｜ Give me a rubber,please.请把橡皮给我. ｜ Here you are.给你. ｜ Thank you.谢谢. ｜ Give me a ruler,please.请把尺子给我. ｜ Here you are.给你. ｜ Thank you.谢谢. ｜ How nice!真漂亮!
 
 ### Module 1 Getting to know you · Unit 3 My face
 
 - **词表（Look and learn）**：eye 眼睛 ｜ mouth 嘴巴 ｜ face 脸 ｜ nose 鼻子 ｜ ear 耳朵　_（5 词）_
-- **句型（Say and act，逐句转写）**：Hi,Alice!It's you!嗨,艾丽丝!这是你! ｜ Look!This is your mouth.看!这是你的嘴. ｜ My mouth?我的嘴? ｜ Look!This is your eye.看!这是你的眼睛. ｜ My eye?我的眼睛? ｜ Look!This is your ear.看!这是你的耳朵. ｜ No.It's not me.不.那不是我的.
+- **句型（Look and say / Say and act，逐句转写）**：Look and say看图说 ｜ Hello,I'm Jack.你好!我叫杰克. ｜ Hi!Jack.嗨,杰克. ｜ This is my mouth.这是我的嘴. ｜ Say and act说并做 ｜ Hi,Alice!It's you!嗨,艾丽丝!这是你! ｜ Look!This is your mouth.看!这是你的嘴. ｜ My mouth?我的嘴? ｜ Look!This is your eye.看!这是你的眼睛. ｜ My eye?我的眼睛? ｜ Look!This is your ear.看!这是你的耳朵. ｜ No.It's not me.不.那不是我的.
 
 ### Module 2 My family, my friends and me · Unit 4 I can sing
 
 - **词表（Look and learn）**：dance 跳舞 ｜ read 读 ｜ sing 唱 ｜ draw 画　_（4 词）_
+- **句型（Look and say / Ask and answer，逐句转写）**：Look and say看图说 ｜ I can... ｜ I can sing.我会唱歌. ｜ I can dance.我会跳舞. ｜ I can read.我会读书. ｜ I can draw.我会画画. ｜ Ask and answer问与答 ｜ What can you do?你会做什么?
 
 ### Module 2 My family, my friends and me · Unit 5 My family
 
 - **词表（Look and learn）**：grandmother 奶奶 ｜ grandfather 爷爷 ｜ father 爸爸 ｜ mother 妈妈 ｜ me 我　_（5 词）_
+- **句型（Play a game / Look and say，逐句转写）**：Play a game做游戏 ｜ This is my grandfather.这是我爷爷. ｜ This is my...这是我的... ｜ This is ...这是... ｜ This is me.这是我. ｜ Look and say看图说 ｜ He's my..他是我的... ｜ She's my..她是我的... ｜ Who is she?她是谁? ｜ She's my grandmother.她是我奶奶. ｜ Who is he?他是谁? ｜ He's my father.他是我爸爸.
 
 ### Module 2 My family, my friends and me · Unit 6 My friends
 
 - **词表（Look and learn）**：fat 胖的 ｜ thin 瘦的 ｜ tall 高的 ｜ short 矮的　_（4 词）_
-- **句型（Say and act，逐句转写）**：My classmate and friend 我的同学和朋友 ｜ This is Danny.这是丹尼. ｜ He's my classmate.他是我同学. ｜ He's fat.他胖胖的. ｜ This is Kitty.这是基蒂. ｜ She's my friend.她是我的朋友. ｜ She's thin.她瘦瘦的.
+- **句型（Look and say / Say and act，逐句转写）**：Look and say看图说 ｜ He's...他... ｜ She's...她... ｜ Look!This is Ben.看!这是本. ｜ He's tall.他个子高. ｜ Say and act说并做 ｜ My classmate and friend 我的同学和朋友 ｜ This is Danny.这是丹尼. ｜ He's my classmate.他是我同学. ｜ He's fat.他胖胖的. ｜ This is Kitty.这是基蒂. ｜ She's my friend.她是我的朋友. ｜ She's thin.她瘦瘦的.
 
 ### Module 3 Places and activities · Unit 7 Let's count
 
 - **词表（Look and learn）**：one 一 ｜ two 二 ｜ three 三 ｜ four 四 ｜ five 五 ｜ six 六　_（6 词）_
-- **句型（Say and act，逐句转写）**：Let's count ｜ One,two,three!一,二,三!Three pencils.三支铅笔. ｜ One,two,three,four,five!一,二,三,四,五! ｜ Five rulers.五把尺子. ｜ One!One book.一!一本书.
+- **句型（Say and act / Look and say，逐句转写）**：Say and act说并做 ｜ Let's count ｜ One,two,three!一,二,三! ｜ Three pencils.三支铅笔. ｜ One,two,three,four,five!一,二,三,四,五! ｜ Five rulers.五把尺子. ｜ One!One book.一!一本书. ｜ Look and say看图说 ｜ How many..? ｜ How many books?有几本书? ｜ Three!三本! ｜ Two!两本! ｜ Six!六本! ｜ Two books.两本书.
 
 ### Module 3 Places and activities · Unit 8 Apples, please
 

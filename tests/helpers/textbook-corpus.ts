@@ -27,6 +27,19 @@
  *   ⇒ 两种行都用 `｜`（全角竖线）分条目，条目的形态是「**英文 + 中文**」，
  *     所以**英文部分 = 第一个汉字之前的那一段**。
  *
+ * ── 板块标记（Story 2.6，DF-222 的闭合手段）────────────────────────────────
+ *   一句教材句子**属于哪个板块**（`Look and say` / `Say and act` / …）是**机器事实**，
+ *   而「哪些板块可以做句子卡」（儿歌 / 故事台词**不行**）是**内容规则**
+ *   ⇒ 语料里必须有**机器可读**的板块归属，否则「这句话是不是儿歌」只能靠人记。
+ *   ⇒ **行内板块标记**：在句型行里，板块切换处插一个「板块名 + 中文」的条目
+ *     （`Look and say看图说` / `Say and act说并做` / `Play a game做游戏`）——
+ *     它**没有终止标点** ⇒ 不是句子（不做卡），但解析器认得出它 ⇒
+ *     每一句都能落到一个板块上。
+ *   ⚠️ **板块名的白名单住在本文件**（{@link BLOCK_NAMES}）——
+ *     「这一条是不是板块标记」由它判定，不靠「看起来像不像板块名」。
+ *   ⚠️ **表头（`句型（A / B，逐句转写）`）只是给人看的摘要**；
+ *     机器事实是行内标记 ⇒ 摘要与事实对不上时**要报错**（`checkBookSelfConsistent` 第 7 层）。
+ *
  * ── 「场景 / 类别标签」怎么认 ───────────────────────────────────────────────
  *   教材的句型行里混着**不做卡**的条目：`Greetings 问候`（类别）、
  *   `On Sunday afternoon 星期天的下午`（场景）、`Let's count`（场景）。
@@ -129,6 +142,77 @@ export interface TextbookBook {
   markedTotal: number
 }
 
+/**
+ * 教材里出现过的**板块名** —— 判「这一条是不是板块标记」的**唯一依据**。
+ *
+ * ⚠️ 它是**教材的板块标题**的全集（`01a` / `01b` 两册的转写里出现过的那些），
+ *   不是「可以做卡」的板块清单（那是 {@link DIALOGUE_BLOCKS}）。
+ *   ⇒ 两个清单**故意不同**：前者回答「这是不是板块标题」，
+ *     后者回答「这个板块的句子能不能做成句子卡」。
+ */
+export const BLOCK_NAMES = [
+  'Look and learn',
+  'Look and say',
+  'Say and act',
+  'Ask and answer',
+  'Do a survey',
+  'Play a game',
+  'Listen and say',
+  'Listen and act',
+  'Listen and enjoy',
+] as const
+
+/** 板块名。 */
+export type BlockName = (typeof BLOCK_NAMES)[number]
+
+/**
+ * 教材转写里的**板块名拼写变体** → 规范名。
+ *
+ * ⚠️ 只收**转写里的错拼**（`Listen an enjoy`），不收任何近义改写 ——
+ *   收多了就会出现「两个写法都算板块名 ⇒ 同一个板块被算成两个」。
+ */
+const BLOCK_ALIASES: Readonly<Record<string, BlockName>> = {
+  'Listen an enjoy': 'Listen and enjoy',
+}
+
+/**
+ * **可以做句子卡的板块**（对话 / 演练板块）—— 儿歌与故事板块**不在**其中。
+ *
+ * ⚠️ 这是**内容规则**（`docs/textbook-oxford-shanghai/README.md` §五「入库边界」）：
+ *   儿歌歌词全文与故事逐句台词**不入库** ⇒ `Listen and enjoy` 段的句子
+ *   一条都不能进内容层。
+ *   ⇒ 语料的**每一句**都必须落在这些板块里（G351），
+ *   否则「从儿歌里抄了句」这件事会**静默**发生。
+ */
+export const DIALOGUE_BLOCKS: readonly BlockName[] = [
+  'Look and say',
+  'Say and act',
+  'Ask and answer',
+  'Do a survey',
+  'Play a game',
+  'Listen and say',
+  'Listen and act',
+]
+
+/**
+ * 一条教材句子（连同它属于哪个板块）。
+ *
+ * ⚠️ **板块归属是机器事实**，不是注释 ——
+ *   「这句话是不是儿歌里的」必须能被机器回答，否则只能靠人记。
+ */
+export interface TextbookSentence {
+  /** 英文句子（逐字，含标点）。 */
+  text: string
+  /**
+   * 所属板块。
+   *
+   * ⚠️ `null` = **不知道**（这一句之前还没有板块标记），
+   *   **不是**「不属于任何板块」⇒ 这两件事必须分得开，
+   *   否则「漏写标记」与「这句真的没有板块」会被混为一谈。
+   */
+  block: string | null
+}
+
 /** 一册里的单元。 */
 export interface TextbookUnit {
   /** 教材里的单元号（1–12，每册各一套）。 */
@@ -144,10 +228,25 @@ export interface TextbookUnit {
    *   而这个问题**不依赖解析器自己**，所以它不是恒真断言。
    */
   vocabularyRaw: string[]
-  /** `Say and act` 的英文句子（按教材原序，**含重复**；**不含场景 / 类别标签**）。 */
-  sentences: string[]
+  /**
+   * `Say and act` 的英文句子（按教材原序，**含重复**；**不含场景 / 类别标签**）。
+   *
+   * ⚠️ 每一句都带**板块归属**（Story 2.6）：这是「这句话能不能做成句子卡」的
+   *   唯一机器依据（儿歌 / 故事台词**不做卡**）。
+   */
+  sentences: TextbookSentence[]
   /** `Say and act` 里被判为「场景 / 类别标签」的条目（**不做卡**）。 */
   labels: string[]
+  /** 句型行里出现过的**行内板块标记**（按出现顺序）。 */
+  blocks: string[]
+  /**
+   * 句型行**表头**声明的板块清单（`句型（A / B，逐句转写）` ⇒ `[A, B]`）。
+   *
+   * ⚠️ 它只是**给人看的摘要**；机器事实是 {@link blocks}。
+   *   ⇒ 摘要与事实对不上时**要报错**（见 `checkBookSelfConsistent` 第 7 层），
+   *     否则「表头说来自 `Say and act`、实际抄了 `Listen and enjoy`」没人会发现。
+   */
+  declaredBlocks: string[]
   /** 词表行的实际条目数（按 `｜` 切出来的条数）。 */
   itemCount: number
   /** 行末「（N 词）」的人工标记数。 */
@@ -187,6 +286,38 @@ function isSentence(english: string): boolean {
 }
 
 /**
+ * 这一条是不是**板块标记**；是的话返回**规范板块名**，否则 `null`。
+ *
+ * ⚠️ **判据是白名单**（{@link BLOCK_NAMES}），不是「像不像板块名」——
+ *   「像不像」会把教材里恰好叫 `Toys 玩具` 的场景标签误判成板块
+ *   ⇒ 那一段的句子就拿到了**错的板块归属**（而归属是要做卡的判据）。
+ * ⚠️ **末尾的句点不算**（教材转写里 `Listen and enjoy.` 带句点）。
+ */
+export function blockNameOf(english: string): string | null {
+  const cleaned = english.replace(/\.+$/, '').trim()
+  const canonical = BLOCK_ALIASES[cleaned] ?? cleaned
+  return (BLOCK_NAMES as readonly string[]).includes(canonical) ? canonical : null
+}
+
+/**
+ * 从句型行的**表头**里取出「声明的板块清单」。
+ *
+ * ⚠️ 表头形如 `句型（Look and say / Say and act，逐句转写）`
+ *   ⇒ 取第一个全角逗号之前的那一段，再按 `/` 切开。
+ *   ⚠️ **表头只是摘要**：机器事实是**行内标记**（{@link TextbookUnit.blocks}）
+ *     ⇒ 表头与标记对不上时由 `checkBookSelfConsistent` 第 7 层报错。
+ */
+function declaredBlocksOf(line: string): string[] {
+  const header = line.match(/句型（([^）]*)）/)
+  if (header === null) return []
+  const beforeComma = header[1].split('，')[0]
+  return beforeComma
+    .split('/')
+    .map((part) => part.trim())
+    .filter((part) => part !== '')
+}
+
+/**
  * 剥掉句型条目前的**演练序号**（`1 ` / `2 ` / `3 ` …）。
  *
  * ⚠️ **为什么必须剥**（2026-10-27 `[CR]` 实测）：教材的句型行里，每个「活动段落」
@@ -222,6 +353,10 @@ export function normalizeEnglish(text: string): string {
  *
  * ⚠️ **词表与句型都走 `englishPartOf`** —— 词表条目可以是多词的（`ice cream`），
  *   句型条目内部也有空格 ⇒ 两者都不能按空白切。
+ * ⚠️ **句型行的匹配是「含 `句型（`」**（Story 2.6 改）——
+ *   此前是「含 `句型（Say and act`」，于是**只认 `Say and act` 一个板块**：
+ *   教材 1A Unit 4 / Unit 5 的句子在 `Look and say` / `Ask and answer` / `Play a game` 里
+ *   ⇒ 那两个单元的句型行**整行被跳过**（DF-222 记的「单元 4 / 5 一句都没有」）。
  */
 export function parseTextbookBook(file: string, text: string): TextbookBook {
   const units: TextbookUnit[] = []
@@ -235,8 +370,12 @@ export function parseTextbookBook(file: string, text: string): TextbookBook {
     let vocabularyRaw: string[] = []
     let itemCount = -1
     let markedCount = -1
-    const sentences: string[] = []
+    const sentences: TextbookSentence[] = []
     const labels: string[] = []
+    const blocks: string[] = []
+    let declaredBlocks: string[] = []
+    /** 当前生效的板块（行内标记会切换它）。 */
+    let currentBlock: string | null = null
 
     for (let j = i + 1; j < lines.length && !lines[j].startsWith('### '); j += 1) {
       const line = lines[j]
@@ -254,7 +393,9 @@ export function parseTextbookBook(file: string, text: string): TextbookBook {
         vocabulary = items.map((item) => englishPartOf(item)).filter((w) => w !== '')
         continue
       }
-      if (line.includes('句型（Say and act')) {
+      if (line.includes('句型（')) {
+        declaredBlocks = declaredBlocksOf(line)
+        currentBlock = null
         const body = line.split('：').slice(1).join('：')
         const items = body
           .split(ITEM_SEPARATOR)
@@ -266,8 +407,15 @@ export function parseTextbookBook(file: string, text: string): TextbookBook {
           const english = stripDrillNumber(raw)
           // ⚠️ 剥掉序号后只剩数字 ⇒ 被页面截断的残条 ⇒ 整条丢弃。
           if (english === '' || /^\d+$/.test(english)) continue
+          // ⚠️ **板块标记**（Story 2.6）：它切换「当前板块」，**自己不做卡**。
+          const block = blockNameOf(english)
+          if (block !== null) {
+            blocks.push(block)
+            currentBlock = block
+            continue
+          }
           if (isSentence(english)) {
-            sentences.push(english)
+            sentences.push({ text: english, block: currentBlock })
           } else {
             labels.push(english)
           }
@@ -276,7 +424,17 @@ export function parseTextbookBook(file: string, text: string): TextbookBook {
       }
     }
 
-    units.push({ unitNo, vocabulary, vocabularyRaw, sentences, labels, itemCount, markedCount })
+    units.push({
+      unitNo,
+      vocabulary,
+      vocabularyRaw,
+      sentences,
+      labels,
+      blocks,
+      declaredBlocks,
+      itemCount,
+      markedCount,
+    })
   }
 
   const total = text.match(/本册词条合计：\*\*(\d+)\*\*/)
@@ -354,13 +512,29 @@ export function checkBookSelfConsistent(book: TextbookBook): string[] {
         )
       }
     }
-    const sentenceSet = new Set(u.sentences.map(normalizeEnglish))
+    const sentenceSet = new Set(u.sentences.map((sentence) => normalizeEnglish(sentence.text)))
     for (const label of u.labels) {
       const normalized = normalizeEnglish(label)
       if (sentenceSet.has(normalized)) {
         problems.push(
           `${book.file} Unit ${u.unitNo}：「${label}」既是标签又是句子 —— ` +
             '同一段文字被算了两次（要么多一张卡，要么少一张卡）',
+        )
+      }
+    }
+    // ⚠️ **第 7 层（Story 2.6）——「表头声明的板块」与「行内标记」必须对得上**。
+    //   表头（`句型（A / B，逐句转写）`）是**给人看的摘要**，
+    //   行内标记（`Look and say看图说`）是**机器事实**（每句的板块归属）。
+    //   ⇒ 两者对不上 = 「表头说抄的是 `Say and act`、实际抄的是 `Listen and enjoy`」
+    //     —— 而**儿歌台词不做卡**（README §五）⇒ 这种漂移会直接变成一张不该有的卡。
+    //   ⇒ 判据只查「标记 ⊆ 声明」这一个方向：
+    //     声明了但没有标记的板块**不算错**（有些单元的某个板块一句也没抄）。
+    for (const block of u.blocks) {
+      if (!u.declaredBlocks.includes(block)) {
+        problems.push(
+          `${book.file} Unit ${u.unitNo}：行内板块标记「${block}」不在表头声明的板块清单里` +
+            `（表头写的是：${u.declaredBlocks.join(' / ') || '（空）'}）—— ` +
+            '表头是给人看的摘要，行内标记是机器事实，两者必须对得上',
         )
       }
     }
@@ -406,6 +580,42 @@ export function textbookUnitOf(
     throw new Error(`${book.file} 里找不到 Unit ${unitNo} —— 映射判据在这份文件上会真空成立`)
   }
   return { book, unit, bookIndex }
+}
+
+/**
+ * **G351 的判据本体** —— 每一句都要有**板块归属**，且板块 ∈ **对话板块白名单**。
+ *
+ * ⚠️ **为什么这条判据住在解析器旁边**：它问的是**语料**的问题
+ *   （「这句是不是儿歌里的」），不是内容层的问题 ⇒ 它的输入是 {@link TextbookUnit}。
+ * ⚠️ **两个方向都要报**：
+ *   · **没有归属**（`block === null`）⇒ 这一句在**哪个板块**都不知道
+ *     ⇒ 它可能来自儿歌 / 故事台词（README §五：那些**不入库**）——
+ *     而「不知道」本身就是不可接受的状态。
+ *   · **归属不在白名单里**（比如 `Listen and enjoy`）⇒ 它**就是**儿歌 / 故事板块
+ *     ⇒ 这一句不该做成句子卡。
+ * ⚠️ **白名单是 {@link DIALOGUE_BLOCKS}**（唯一出处）——
+ *   不在本文件里再抄一份「能做卡的板块」清单（R-37）。
+ *
+ * @param unit 被查的教材单元
+ */
+export function findBlockViolations(unit: TextbookUnit): string[] {
+  const problems: string[] = []
+  for (const sentence of unit.sentences) {
+    if (sentence.block === null) {
+      problems.push(
+        `教材 Unit ${unit.unitNo} 的句子「${sentence.text}」没有板块归属 —— ` +
+          '句型行里它的前面必须有一个板块标记',
+      )
+      continue
+    }
+    if (!(DIALOGUE_BLOCKS as readonly string[]).includes(sentence.block)) {
+      problems.push(
+        `教材 Unit ${unit.unitNo} 的句子「${sentence.text}」属于板块「${sentence.block}」—— ` +
+          `它不在可做卡的板块白名单里（${DIALOGUE_BLOCKS.join(' / ')}）`,
+      )
+    }
+  }
+  return problems
 }
 
 /**

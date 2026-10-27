@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  词图：four（四）—— 单元 7 的内容（Story 2.6）。
+
+  规格（docs/art-direction.md §1）：SVG / viewBox 0 0 512 512 / 512×512 / 透明底
+  构图档位：abstract    ← 抽象档（§5.1：60%–75%）；G11 按这一行取区间读，不写死
+  构图（§5 词图模板）：主体占画布约 69%、重心居中、正面全对称
+
+  G10：不得含 text / image / foreignObject —— 答案不许以任何形式印在图上。
+  G8：XML 注释正文里不许出现连续双短横。
+
+  ⚠️ **数字词不写数字，画成「N 个方块」**（理由见 `u7-one` 的头注释）。
+  ⚠️ **四块排成 2×2 而不是一长条**：一长条（4×1）在 48px 上每块只剩 7px 宽，
+     读成「一条带子」；2×2 每块 15px，两行两列数得清。
+  ⚠️ **2×2 的方块比 three 的单排大**（160 对 105）：
+     块数多时保持块面够大，比「所有图片用同一个块大小」更重要
+     （块一样大 ⇒ one 就得小到只剩 15px，读不出「一块」）。
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512"
+     role="img" aria-label="四个方块">
+  <g stroke="#2a2a4a" stroke-linejoin="round">
+    <!-- 四块方块排成 2×2，行间与列间都留 20px 的缝。 -->
+    <rect x="86" y="86" width="160" height="160" rx="16" fill="#42a5f5" stroke-width="12" />
+    <rect x="266" y="86" width="160" height="160" rx="16" fill="#42a5f5" stroke-width="12" />
+    <rect x="86" y="266" width="160" height="160" rx="16" fill="#42a5f5" stroke-width="12" />
+    <rect x="266" y="266" width="160" height="160" rx="16" fill="#42a5f5" stroke-width="12" />
+  </g>
+
+  <!--
+    外沿实算（`npm run word-image-metrics public/assets/words/unit-07` 实测）：
+      主体占比 **68.8%**，最小留白 **80.0px**，重心偏移 **0.0px**，重心 (256, 256)
+    ⇒ §5.1 落在 abstract 的 60%–75% 内；§5.2 的 80.0px ≥30.72px；§5.3 的 0.0px ≤30.72px。
+
+    §5.5b 逐元素记账（48px 下是否承担识别）：
+      四块方块 ✓（**唯一识别来源**：块数 = 四）
+  -->
+</svg>

@@ -1,0 +1,153 @@
+{
+  "unitNumber": 4,
+  "entries": [
+    {
+      "entryId": "u4-dance",
+      "wordId": "u4-dance",
+      "towerType": "direct",
+      "card": {
+        "kind": "word",
+        "promptText": "dance",
+        "options": [
+          { "id": "u4-dance", "imageSrc": "/assets/words/unit-04/u4-dance.svg", "correct": true },
+          { "id": "u4-sing", "imageSrc": "/assets/words/unit-04/u4-sing.svg", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u4-read",
+      "wordId": "u4-read",
+      "towerType": "slow",
+      "card": {
+        "kind": "word",
+        "promptText": "read",
+        "options": [
+          { "id": "u4-read", "imageSrc": "/assets/words/unit-04/u4-read.svg", "correct": true },
+          { "id": "u4-draw", "imageSrc": "/assets/words/unit-04/u4-draw.svg", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u4-sing",
+      "wordId": "u4-sing",
+      "towerType": "aoe",
+      "card": {
+        "kind": "word",
+        "promptText": "sing",
+        "options": [
+          { "id": "u4-sing", "imageSrc": "/assets/words/unit-04/u4-sing.svg", "correct": true },
+          { "id": "u4-dance", "imageSrc": "/assets/words/unit-04/u4-dance.svg", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u4-draw",
+      "wordId": "u4-draw",
+      "towerType": "direct",
+      "card": {
+        "kind": "word",
+        "promptText": "draw",
+        "options": [
+          { "id": "u4-draw", "imageSrc": "/assets/words/unit-04/u4-draw.svg", "correct": true },
+          { "id": "u4-read", "imageSrc": "/assets/words/unit-04/u4-read.svg", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u4-s-i-can-sing",
+      "wordId": "u4-s-i-can-sing",
+      "towerType": "slow",
+      "card": {
+        "kind": "keyword",
+        "promptText": "I can sing.",
+        "options": [
+          { "id": "u4-sing", "text": "sing", "correct": true },
+          { "id": "u4-dance", "text": "dance", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u4-s-i-can-read",
+      "wordId": "u4-s-i-can-read",
+      "towerType": "aoe",
+      "card": {
+        "kind": "keyword",
+        "promptText": "I can read.",
+        "options": [
+          { "id": "u4-read", "text": "read", "correct": true },
+          { "id": "u4-draw", "text": "draw", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u4-s-what-can-you-do",
+      "wordId": "u4-s-what-can-you-do",
+      "towerType": "direct",
+      "card": {
+        "kind": "response",
+        "promptText": "What can you do?",
+        "options": [
+          { "id": "u4-s-i-can-sing", "text": "I can sing.", "correct": true },
+          { "id": "u4-s-i-can-draw", "text": "I can draw.", "correct": false },
+          { "id": "u4-s-i-can-read", "text": "I can read.", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u4-s-i-can",
+      "wordId": "u4-s-i-can",
+      "towerType": "slow",
+      "card": {
+        "kind": "response",
+        "promptText": "I can...",
+        "options": [
+          { "id": "u4-s-i-can-draw", "text": "I can draw.", "correct": true },
+          { "id": "u4-s-i-can-sing", "text": "I can sing.", "correct": false },
+          { "id": "u4-s-what-can-you-do", "text": "What can you do?", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u4-s-i-can-dance",
+      "wordId": "u4-s-i-can-dance",
+      "towerType": "aoe",
+      "card": {
+        "kind": "response",
+        "promptText": "I can dance.",
+        "options": [
+          { "id": "u4-s-i-can", "text": "I can...", "correct": true },
+          { "id": "u4-s-i-can-read", "text": "I can read.", "correct": false },
+          { "id": "u4-s-what-can-you-do", "text": "What can you do?", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u4-s-i-can-draw",
+      "wordId": "u4-s-i-can-draw",
+      "towerType": "direct",
+      "card": {
+        "kind": "response",
+        "promptText": "I can draw.",
+        "options": [
+          { "id": "u4-s-i-can", "text": "I can...", "correct": true },
+          { "id": "u4-s-i-can-read", "text": "I can read.", "correct": false },
+          { "id": "u4-s-what-can-you-do", "text": "What can you do?", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u4-w-can-you-dance",
+      "wordId": "u4-w-can-you-dance",
+      "towerType": "slow",
+      "card": {
+        "kind": "response",
+        "promptText": "Can you dance?",
+        "options": [
+          { "id": "u4-s-i-can-dance", "text": "I can dance.", "correct": true },
+          { "id": "u4-s-i-can-sing", "text": "I can sing.", "correct": false },
+          { "id": "u4-s-what-can-you-do", "text": "What can you do?", "correct": false }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  词图：dance（跳舞）—— 单元 4 的内容（Story 2.6）。
+
+  规格（docs/art-direction.md §1）：SVG / viewBox 0 0 512 512 / 512×512 / 透明底
+  构图档位：figure    ← 人物档（§5.1：70%–85%）；G11 按这一行取区间读，不写死
+  构图（§5 词图模板）：主体占画布约 78.7%、重心居中、正面全对称
+
+  G10：不得含 text / image / foreignObject —— 答案不许以任何形式印在图上。
+  G8：XML 注释正文里不许出现连续双短横。
+
+  ⚠️ **为什么归 figure**：动作词画的是**人的姿势**，姿势是人的一部分
+     （§5.1 的 figure 档就写着「动作词画的是手势，手势是人形的一部分」）。
+     归 organic 会把它塞进 70%–85% 那条更紧的区间（其实正好），但类别不对：
+     这张图的识别来源是「四肢的姿势」，不是「轮廓由曲线主导」。
+
+  ⚠️ **为什么四肢用 22px 的粗描边而不是实心块**：§5.5 的界线 ——
+     四肢是**装饰性粗笔**（它们是「跳舞」这件事的载体），不是主体轮廓；
+     48px 下 22px 的线只剩 2px，而实心块会更稳，但细胳膊的实心块在转角处容易糊。
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512"
+     role="img" aria-label="跳舞的人">
+  <g stroke="#2a2a4a" stroke-linecap="round" stroke-linejoin="round">
+
+    <!-- 头（先画，后面的头发盖住上半）。 -->
+    <circle cx="256" cy="118" r="58" fill="#f6d7b0" stroke-width="12" />
+
+    <!-- 头发：盖住头的上半（一个半圆盘）。 -->
+    <path d="M 198 118 A 58 58 0 0 1 314 118 Z" fill="#3a2a22" stroke="none" />
+
+    <!-- 身体：红色上衣。 -->
+    <rect x="198" y="176" width="116" height="156" rx="44" fill="#e53935" stroke-width="12" />
+
+    <!-- 两条手臂向斜上方甩开。 -->
+    <path d="M 206 208 L 96 142" fill="none" stroke-width="22" />
+    <path d="M 306 208 L 416 142" fill="none" stroke-width="22" />
+
+    <!-- 两条腿：一条抬起、一条站直（跳舞的踢腿）。 -->
+    <path d="M 226 322 L 152 250" fill="none" stroke-width="22" />
+    <path d="M 288 322 L 316 446" fill="none" stroke-width="22" />
+  </g>
+
+  <!--
+    外沿实算（`npm run word-image-metrics public/assets/words/unit-04` 实测）：
+      主体占比 **78.7%**，最小留白 **54.0px**，重心偏移 **0.5px**，重心 (256, 256)
+    ⇒ §5.1 落在 figure 的 70%–85% 内；§5.2 的 54.0px ≥30.72px；§5.3 的 0.5px ≤30.72px。
+
+    §5.5b 逐元素记账（48px 下是否承担识别）：
+      两条甩开的手臂 ✓（**主识别来源**：横向张开的剪影）
+      一条抬起的腿 ✓（**第二识别来源**：斜伸的剪影）
+      头 + 身体 ✓（让人形成立）
+      头发 ✗ —— 48px 上只是头顶一条深色 ⇒ 只加不减
+  -->
+</svg>

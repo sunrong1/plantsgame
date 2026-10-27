@@ -1,0 +1,208 @@
+{
+  "unitNumber": 6,
+  "entries": [
+    {
+      "entryId": "u6-fat",
+      "wordId": "u6-fat",
+      "towerType": "direct",
+      "card": {
+        "kind": "word",
+        "promptText": "fat",
+        "options": [
+          { "id": "u6-fat", "imageSrc": "/assets/words/unit-06/u6-fat.svg", "correct": true },
+          { "id": "u6-thin", "imageSrc": "/assets/words/unit-06/u6-thin.svg", "correct": false },
+          { "id": "u6-tall", "imageSrc": "/assets/words/unit-06/u6-tall.svg", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u6-thin",
+      "wordId": "u6-thin",
+      "towerType": "slow",
+      "card": {
+        "kind": "word",
+        "promptText": "thin",
+        "options": [
+          { "id": "u6-thin", "imageSrc": "/assets/words/unit-06/u6-thin.svg", "correct": true },
+          { "id": "u6-fat", "imageSrc": "/assets/words/unit-06/u6-fat.svg", "correct": false },
+          { "id": "u6-short", "imageSrc": "/assets/words/unit-06/u6-short.svg", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u6-tall",
+      "wordId": "u6-tall",
+      "towerType": "aoe",
+      "card": {
+        "kind": "word",
+        "promptText": "tall",
+        "options": [
+          { "id": "u6-tall", "imageSrc": "/assets/words/unit-06/u6-tall.svg", "correct": true },
+          { "id": "u6-fat", "imageSrc": "/assets/words/unit-06/u6-fat.svg", "correct": false },
+          { "id": "u6-short", "imageSrc": "/assets/words/unit-06/u6-short.svg", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u6-short",
+      "wordId": "u6-short",
+      "towerType": "direct",
+      "card": {
+        "kind": "word",
+        "promptText": "short",
+        "options": [
+          { "id": "u6-short", "imageSrc": "/assets/words/unit-06/u6-short.svg", "correct": true },
+          { "id": "u6-thin", "imageSrc": "/assets/words/unit-06/u6-thin.svg", "correct": false },
+          { "id": "u6-tall", "imageSrc": "/assets/words/unit-06/u6-tall.svg", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u6-s-hes-fat",
+      "wordId": "u6-s-hes-fat",
+      "towerType": "slow",
+      "card": {
+        "kind": "keyword",
+        "promptText": "He's fat.",
+        "options": [
+          { "id": "u6-fat", "text": "fat", "correct": true },
+          { "id": "u6-thin", "text": "thin", "correct": false },
+          { "id": "u6-tall", "text": "tall", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u6-s-shes-thin",
+      "wordId": "u6-s-shes-thin",
+      "towerType": "aoe",
+      "card": {
+        "kind": "keyword",
+        "promptText": "She's thin.",
+        "options": [
+          { "id": "u6-thin", "text": "thin", "correct": true },
+          { "id": "u6-fat", "text": "fat", "correct": false },
+          { "id": "u6-short", "text": "short", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u6-s-hes-tall",
+      "wordId": "u6-s-hes-tall",
+      "towerType": "direct",
+      "card": {
+        "kind": "keyword",
+        "promptText": "He's tall.",
+        "options": [
+          { "id": "u6-tall", "text": "tall", "correct": true },
+          { "id": "u6-short", "text": "short", "correct": false },
+          { "id": "u6-fat", "text": "fat", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u6-s-this-is-danny",
+      "wordId": "u6-s-this-is-danny",
+      "towerType": "slow",
+      "card": {
+        "kind": "response",
+        "promptText": "This is Danny.",
+        "options": [
+          { "id": "u6-s-hes-my-classmate", "text": "He's my classmate.", "correct": true },
+          { "id": "u6-s-hes-fat", "text": "He's fat.", "correct": false },
+          { "id": "u6-s-hes-tall", "text": "He's tall.", "correct": false },
+          { "id": "u6-s-look-this-is-ben", "text": "Look!This is Ben.", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u6-s-hes-my-classmate",
+      "wordId": "u6-s-hes-my-classmate",
+      "towerType": "aoe",
+      "card": {
+        "kind": "response",
+        "promptText": "He's my classmate.",
+        "options": [
+          { "id": "u6-s-hes-fat", "text": "He's fat.", "correct": true },
+          { "id": "u6-s-this-is-danny", "text": "This is Danny.", "correct": false },
+          { "id": "u6-s-hes-tall", "text": "He's tall.", "correct": false },
+          { "id": "u6-s-hes", "text": "He's...", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u6-s-this-is-kitty",
+      "wordId": "u6-s-this-is-kitty",
+      "towerType": "direct",
+      "card": {
+        "kind": "response",
+        "promptText": "This is Kitty.",
+        "options": [
+          { "id": "u6-s-shes-my-friend", "text": "She's my friend.", "correct": true },
+          { "id": "u6-s-shes-thin", "text": "She's thin.", "correct": false },
+          { "id": "u6-s-shes", "text": "She's...", "correct": false },
+          { "id": "u6-s-look-this-is-ben", "text": "Look!This is Ben.", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u6-s-shes-my-friend",
+      "wordId": "u6-s-shes-my-friend",
+      "towerType": "slow",
+      "card": {
+        "kind": "response",
+        "promptText": "She's my friend.",
+        "options": [
+          { "id": "u6-s-shes-thin", "text": "She's thin.", "correct": true },
+          { "id": "u6-s-this-is-kitty", "text": "This is Kitty.", "correct": false },
+          { "id": "u6-s-shes", "text": "She's...", "correct": false },
+          { "id": "u6-s-look-this-is-ben", "text": "Look!This is Ben.", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u6-s-hes",
+      "wordId": "u6-s-hes",
+      "towerType": "aoe",
+      "card": {
+        "kind": "response",
+        "promptText": "He's...",
+        "options": [
+          { "id": "u6-s-hes-fat", "text": "He's fat.", "correct": true },
+          { "id": "u6-s-hes-my-classmate", "text": "He's my classmate.", "correct": false },
+          { "id": "u6-s-hes-tall", "text": "He's tall.", "correct": false },
+          { "id": "u6-s-this-is-danny", "text": "This is Danny.", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u6-s-shes",
+      "wordId": "u6-s-shes",
+      "towerType": "direct",
+      "card": {
+        "kind": "response",
+        "promptText": "She's...",
+        "options": [
+          { "id": "u6-s-shes-thin", "text": "She's thin.", "correct": true },
+          { "id": "u6-s-shes-my-friend", "text": "She's my friend.", "correct": false },
+          { "id": "u6-s-this-is-kitty", "text": "This is Kitty.", "correct": false },
+          { "id": "u6-s-look-this-is-ben", "text": "Look!This is Ben.", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u6-s-look-this-is-ben",
+      "wordId": "u6-s-look-this-is-ben",
+      "towerType": "slow",
+      "card": {
+        "kind": "response",
+        "promptText": "Look!This is Ben.",
+        "options": [
+          { "id": "u6-s-hes-tall", "text": "He's tall.", "correct": true },
+          { "id": "u6-s-hes-fat", "text": "He's fat.", "correct": false },
+          { "id": "u6-s-this-is-danny", "text": "This is Danny.", "correct": false },
+          { "id": "u6-s-hes", "text": "He's...", "correct": false }
+        ]
+      }
+    }
+  ]
+}

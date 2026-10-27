@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  词图：grandmother（奶奶 / 外婆）—— 单元 5 的内容（Story 2.6）。
+
+  规格（docs/art-direction.md §1）：SVG / viewBox 0 0 512 512 / 512×512 / 透明底
+  构图档位：figure    ← 人物档（§5.1：70%–85%）；G11 按这一行取区间读，不写死
+  构图（§5 词图模板）：主体占画布约 81.8%、重心居中、正面全对称
+
+  G10：不得含 text / image / foreignObject —— 答案不许以任何形式印在图上。
+  G8：XML 注释正文里不许出现连续双短横。
+
+  ⚠️ **本图与另外四张的分工是「发髻 + 圆眼镜」**（见 `u5-grandfather` 的对照表）：
+     发髻是**轮廓**上的差别（头顶多一个圆），眼镜是**面上**的差别。
+     两者叠在一起才够把奶奶从妈妈（长发+粉裙）里分出来。
+
+  ⚠️ **为什么发髻画成头顶一个圆**：盘起来的白发在中式插画里就是这个形状，
+     而「头顶鼓一个包」在 48px 上是可读的轮廓特征（比「头发颜色」可靠 ——
+     颜色在灰阶小图上会塌掉）。
+
+  ⚠️ **眼镜用空心圆**：镜片不填色（透明底上填色会变成两块白斑），
+     只画两个圆圈加一根鼻梁连杆。
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512"
+     role="img" aria-label="奶奶">
+  <g stroke="#2a2a4a" stroke-linecap="round" stroke-linejoin="round">
+
+    <!-- 盘起来的白发（发髻）：头顶一个圆。 -->
+    <circle cx="256" cy="72" r="28" fill="#dcdce0" stroke-width="12" />
+
+    <!-- 头。 -->
+    <circle cx="256" cy="126" r="58" fill="#f6d7b0" stroke-width="12" />
+
+    <!-- 白发：盖住头的上半。 -->
+    <path d="M 198 126 A 58 58 0 0 1 314 126 Z" fill="#dcdce0" stroke="none" />
+
+    <!-- 圆眼镜：两个空心圆 + 一根鼻梁连杆。 -->
+    <circle cx="234" cy="130" r="16" fill="none" stroke-width="10" />
+    <circle cx="278" cy="130" r="16" fill="none" stroke-width="10" />
+    <path d="M 250 130 L 262 130" fill="none" stroke-width="10" />
+
+    <!-- 身体：紫色连衣裙（下摆比腰宽）。 -->
+    <path d="M 212 182 L 300 182 L 330 332 L 182 332 Z" fill="#8e24aa" stroke-width="12" />
+
+    <!-- 两条手臂垂在身侧。 -->
+    <path d="M 214 210 L 186 300" fill="none" stroke-width="22" />
+    <path d="M 298 210 L 326 300" fill="none" stroke-width="22" />
+
+    <!-- 两条腿（裙下露出）。 -->
+    <path d="M 226 322 L 214 446" fill="none" stroke-width="22" />
+    <path d="M 288 322 L 300 446" fill="none" stroke-width="22" />
+  </g>
+
+  <!--
+    外沿实算（`npm run word-image-metrics public/assets/words/unit-05` 实测）：
+      主体占比 **81.8%**，最小留白 **38.0px**，重心偏移 **8.5px**，重心 (256, 248)
+    ⇒ §5.1 落在 figure 的 70%–85% 内；§5.2 的 38.0px ≥30.72px；§5.3 的 8.5px ≤30.72px。
+
+    §5.5b 逐元素记账（48px 下是否承担识别）：
+      发髻 ✓（**主识别来源**：头顶多一个圆，轮廓上的差别）
+      圆眼镜 ✓（**第二识别来源**：面上两个圈）
+      白发 ✓（与 `father` 的黑发分开）
+      手臂 / 腿 ✗ —— 通用人形 ⇒ 只加不减
+  -->
+</svg>

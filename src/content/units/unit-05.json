@@ -1,0 +1,270 @@
+{
+  "unitNumber": 5,
+  "entries": [
+    {
+      "entryId": "u5-grandmother",
+      "wordId": "u5-grandmother",
+      "towerType": "direct",
+      "card": {
+        "kind": "word",
+        "promptText": "grandmother",
+        "options": [
+          {
+            "id": "u5-grandmother",
+            "imageSrc": "/assets/words/unit-05/u5-grandmother.svg",
+            "correct": true
+          },
+          { "id": "u5-father", "imageSrc": "/assets/words/unit-05/u5-father.svg", "correct": false },
+          { "id": "u5-mother", "imageSrc": "/assets/words/unit-05/u5-mother.svg", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u5-grandfather",
+      "wordId": "u5-grandfather",
+      "towerType": "slow",
+      "card": {
+        "kind": "word",
+        "promptText": "grandfather",
+        "options": [
+          {
+            "id": "u5-grandfather",
+            "imageSrc": "/assets/words/unit-05/u5-grandfather.svg",
+            "correct": true
+          },
+          {
+            "id": "u5-grandmother",
+            "imageSrc": "/assets/words/unit-05/u5-grandmother.svg",
+            "correct": false
+          },
+          { "id": "u5-me", "imageSrc": "/assets/words/unit-05/u5-me.svg", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u5-father",
+      "wordId": "u5-father",
+      "towerType": "aoe",
+      "card": {
+        "kind": "word",
+        "promptText": "father",
+        "options": [
+          { "id": "u5-father", "imageSrc": "/assets/words/unit-05/u5-father.svg", "correct": true },
+          { "id": "u5-mother", "imageSrc": "/assets/words/unit-05/u5-mother.svg", "correct": false },
+          { "id": "u5-me", "imageSrc": "/assets/words/unit-05/u5-me.svg", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u5-mother",
+      "wordId": "u5-mother",
+      "towerType": "direct",
+      "card": {
+        "kind": "word",
+        "promptText": "mother",
+        "options": [
+          { "id": "u5-mother", "imageSrc": "/assets/words/unit-05/u5-mother.svg", "correct": true },
+          { "id": "u5-father", "imageSrc": "/assets/words/unit-05/u5-father.svg", "correct": false },
+          {
+            "id": "u5-grandmother",
+            "imageSrc": "/assets/words/unit-05/u5-grandmother.svg",
+            "correct": false
+          }
+        ]
+      }
+    },
+    {
+      "entryId": "u5-me",
+      "wordId": "u5-me",
+      "towerType": "slow",
+      "card": {
+        "kind": "word",
+        "promptText": "me",
+        "options": [
+          { "id": "u5-me", "imageSrc": "/assets/words/unit-05/u5-me.svg", "correct": true },
+          { "id": "u5-mother", "imageSrc": "/assets/words/unit-05/u5-mother.svg", "correct": false },
+          { "id": "u5-father", "imageSrc": "/assets/words/unit-05/u5-father.svg", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u5-s-this-is-my-grandfather",
+      "wordId": "u5-s-this-is-my-grandfather",
+      "towerType": "aoe",
+      "card": {
+        "kind": "keyword",
+        "promptText": "This is my grandfather.",
+        "options": [
+          { "id": "u5-grandfather", "text": "grandfather", "correct": true },
+          { "id": "u5-father", "text": "father", "correct": false },
+          { "id": "u5-me", "text": "me", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u5-s-shes-my-grandmother",
+      "wordId": "u5-s-shes-my-grandmother",
+      "towerType": "direct",
+      "card": {
+        "kind": "keyword",
+        "promptText": "She's my grandmother.",
+        "options": [
+          { "id": "u5-grandmother", "text": "grandmother", "correct": true },
+          { "id": "u5-mother", "text": "mother", "correct": false },
+          { "id": "u5-me", "text": "me", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u5-s-hes-my-father",
+      "wordId": "u5-s-hes-my-father",
+      "towerType": "slow",
+      "card": {
+        "kind": "keyword",
+        "promptText": "He's my father.",
+        "options": [
+          { "id": "u5-father", "text": "father", "correct": true },
+          { "id": "u5-grandfather", "text": "grandfather", "correct": false },
+          { "id": "u5-me", "text": "me", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u5-s-this-is-my",
+      "wordId": "u5-s-this-is-my",
+      "towerType": "aoe",
+      "card": {
+        "kind": "response",
+        "promptText": "This is my...",
+        "options": [
+          {
+            "id": "u5-s-this-is-my-grandfather",
+            "text": "This is my grandfather.",
+            "correct": true
+          },
+          { "id": "u5-s-hes-my", "text": "He's my..", "correct": false },
+          { "id": "u5-s-who-is-she", "text": "Who is she?", "correct": false },
+          { "id": "u5-s-hes-my-father", "text": "He's my father.", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u5-s-this-is",
+      "wordId": "u5-s-this-is",
+      "towerType": "direct",
+      "card": {
+        "kind": "response",
+        "promptText": "This is ...",
+        "options": [
+          { "id": "u5-s-this-is-me", "text": "This is me.", "correct": true },
+          {
+            "id": "u5-s-this-is-my-grandfather",
+            "text": "This is my grandfather.",
+            "correct": false
+          },
+          { "id": "u5-s-hes-my", "text": "He's my..", "correct": false },
+          { "id": "u5-s-who-is-she", "text": "Who is she?", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u5-s-this-is-me",
+      "wordId": "u5-s-this-is-me",
+      "towerType": "slow",
+      "card": {
+        "kind": "response",
+        "promptText": "This is me.",
+        "options": [
+          { "id": "u5-s-this-is", "text": "This is ...", "correct": true },
+          { "id": "u5-s-shes-my", "text": "She's my..", "correct": false },
+          { "id": "u5-s-who-is-she", "text": "Who is she?", "correct": false },
+          {
+            "id": "u5-s-shes-my-grandmother",
+            "text": "She's my grandmother.",
+            "correct": false
+          }
+        ]
+      }
+    },
+    {
+      "entryId": "u5-s-hes-my",
+      "wordId": "u5-s-hes-my",
+      "towerType": "aoe",
+      "card": {
+        "kind": "response",
+        "promptText": "He's my..",
+        "options": [
+          { "id": "u5-s-hes-my-father", "text": "He's my father.", "correct": true },
+          { "id": "u5-s-this-is-my", "text": "This is my...", "correct": false },
+          { "id": "u5-s-who-is-she", "text": "Who is she?", "correct": false },
+          {
+            "id": "u5-s-shes-my-grandmother",
+            "text": "She's my grandmother.",
+            "correct": false
+          }
+        ]
+      }
+    },
+    {
+      "entryId": "u5-s-shes-my",
+      "wordId": "u5-s-shes-my",
+      "towerType": "direct",
+      "card": {
+        "kind": "response",
+        "promptText": "She's my..",
+        "options": [
+          {
+            "id": "u5-s-shes-my-grandmother",
+            "text": "She's my grandmother.",
+            "correct": true
+          },
+          { "id": "u5-s-this-is-my", "text": "This is my...", "correct": false },
+          { "id": "u5-s-this-is", "text": "This is ...", "correct": false },
+          { "id": "u5-s-who-is-he", "text": "Who is he?", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u5-s-who-is-she",
+      "wordId": "u5-s-who-is-she",
+      "towerType": "slow",
+      "card": {
+        "kind": "response",
+        "promptText": "Who is she?",
+        "options": [
+          {
+            "id": "u5-s-shes-my-grandmother",
+            "text": "She's my grandmother.",
+            "correct": true
+          },
+          {
+            "id": "u5-s-this-is-my-grandfather",
+            "text": "This is my grandfather.",
+            "correct": false
+          },
+          { "id": "u5-s-this-is-me", "text": "This is me.", "correct": false },
+          { "id": "u5-s-shes-my", "text": "She's my..", "correct": false }
+        ]
+      }
+    },
+    {
+      "entryId": "u5-s-who-is-he",
+      "wordId": "u5-s-who-is-he",
+      "towerType": "aoe",
+      "card": {
+        "kind": "response",
+        "promptText": "Who is he?",
+        "options": [
+          { "id": "u5-s-hes-my-father", "text": "He's my father.", "correct": true },
+          {
+            "id": "u5-s-this-is-my-grandfather",
+            "text": "This is my grandfather.",
+            "correct": false
+          },
+          { "id": "u5-s-this-is", "text": "This is ...", "correct": false },
+          { "id": "u5-s-shes-my", "text": "She's my..", "correct": false }
+        ]
+      }
+    }
+  ]
+}
