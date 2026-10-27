@@ -733,7 +733,11 @@ describe('G340 —— 真实局规模的失败门槛（补丁 15）', () => {
   it('没有内容的单元给不出真实局（脚本必须说清，而不是拿合成题单冒充）', () => {
     expect(unitHasContent(1), '单元 1 有内容').toBe(true)
     expect(unitHasContent(2), '单元 2 有内容').toBe(true)
-    expect(unitHasContent(3), '单元 3 还没录内容').toBe(false)
+    // ⚠️ 2026-10-28（Story 2.6 录完单元 3–7）：单元 3 起**已经有内容**了
+    //   ⇒ 「还没有内容的单元」这个样本往后挪到**单元 8**。
+    //   ⇒ 这条断言的价值在于「脚本会对没内容的单元说清，而不是拿合成题单冒充」。
+    expect(unitHasContent(7), '单元 7 有内容（Story 2.6 录的最后一个单元）').toBe(true)
+    expect(unitHasContent(8), '单元 8 还没录内容').toBe(false)
   })
 
   it('反向自测：判据能区分「1 题的局」与「10 题的局」（不是恒真）', () => {

@@ -36,6 +36,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 import { QUESTIONS_PER_LEVEL } from '../../src/core'
+import { UNITS } from '../../src/content'
 import { targetCardDistribution } from '../../src/content/distribution'
 import { loadTextbookBooks, normalizeEnglish, textbookUnitOf } from '../helpers/textbook-corpus'
 import { plain, sectionOf, tableRows } from '../fixtures/markdown-table'
@@ -58,7 +59,11 @@ interface Drift {
 interface UnitCensus {
   /** 单词卡数 = 教材 `Look and learn` 的词数。 */
   readonly words: number
-  /** 去重后的句卡数 = 教材 `Say and act` 里的句子数（同一句只算一次）。 */
+  /** 教材句数 = 教材语料里去重后的句子数（同一句只算一次）。 */
+  readonly corpusSentences: number
+  /** 自写句数 = 内容层里 `w-` 前缀的词条数（**不进教材文档**，只进内容层）。 */
+  readonly selfWritten: number
+  /** 句卡数 = 教材句 + 自写句（= 内容层交付的句卡总数）。 */
   readonly sentences: number
   /** 词条总数 N = 单词卡 + 句卡。 */
   readonly total: number
@@ -74,13 +79,26 @@ interface UnitCensus {
  * ⚠️ **局序列按 `QUESTIONS_PER_LEVEL` 切**，不写死 10 ——
  *   切片口径是 `src/core/deck-slice.ts` 的**唯一定义处**（R-02），
  *   这里抄一个 10 就是第二份事实源。
+ *
+ * ⚠️📎 **句卡数 = 教材句 + 自写句**（Story 2.6，DF-222 §4.3 裁决 1）：
+ *   自写句**只存在于内容层**（entryId 带 `w-` 前缀），不进教材文档
+ *   ⇒ census 里有两笔账，§1.4 的表把两笔**分列** ⇒ 本函数也分列返回。
+ *   ⚠️ **没有内容的单元**（还没交付）⇒ 自写句数 = 0（内容层里根本没有它）。
  */
 function censusOf(unitNumber: number, books = loadTextbookBooks()): UnitCensus {
   const { unit } = textbookUnitOf(unitNumber, books)
   // ⚠️ **去重**按归一化后的句子（去标点 + 折叠空白 + 小写）——
   //   教材的转写里同一句话会在多个演练段落里重复出现。
-  const sentences = new Set(unit.sentences.map((sentence) => normalizeEnglish(sentence.text)))
-  const total = unit.vocabulary.length + sentences.size
+  const corpusSentences = new Set(
+    unit.sentences.map((sentence) => normalizeEnglish(sentence.text)),
+  ).size
+  const content = UNITS.find((candidate) => candidate.unitNumber === unitNumber)
+  const selfWritten =
+    content === undefined
+      ? 0
+      : content.entries.filter((entry) => entry.entryId.includes('-w-')).length
+  const sentences = corpusSentences + selfWritten
+  const total = unit.vocabulary.length + sentences
   const levels: number[] = []
   let left = total
   while (left > 0) {
@@ -90,7 +108,9 @@ function censusOf(unitNumber: number, books = loadTextbookBooks()): UnitCensus {
   }
   return {
     words: unit.vocabulary.length,
-    sentences: sentences.size,
+    corpusSentences,
+    selfWritten,
+    sentences,
     total,
     levels,
     last: levels[levels.length - 1] ?? 0,
@@ -189,7 +209,7 @@ function verdictOf(unitNumber: number, words: number, sentences: number): string
   return '窗口内'
 }
 
-/** §1.4 窗口表：24 行 × 4 列逐格比对。 */
+/** §1.4 窗口表：24 行 × 6 列逐格比对。 */
 function checkSection14(raw: string): Drift[] {
   const drift: Drift[] = []
   const section = sectionOf(raw, '### 1.4')
@@ -206,7 +226,14 @@ function checkSection14(raw: string): Drift[] {
     })
     return drift
   }
-  const columnNames = ['教材词数', '可行句卡数窗口', '当前语料的句卡数', '判定']
+  const columnNames = [
+    '教材词数',
+    '可行句卡数窗口',
+    '教材句数',
+    '自写句数',
+    '当前句卡数',
+    '判定',
+  ]
   for (const cells of dataRows) {
     const unit = Number(plain(cells[0]))
     const c = censusOf(unit)
@@ -214,6 +241,8 @@ function checkSection14(raw: string): Drift[] {
     const expected = [
       String(c.words),
       win === null ? '——' : `${win.lo}–${win.hi}`,
+      String(c.corpusSentences),
+      String(c.selfWritten),
       String(c.sentences),
       verdictOf(unit, c.words, c.sentences),
     ]
@@ -501,17 +530,35 @@ const WINDOW_NEGATIVE_CASES: readonly NegativeCase[] = [
   },
   {
     name: '§1.4 某个单元的当前句卡数改一位',
+    // ⚠️ 列序：0 空 / 1 单元 / 2 教材词数 / 3 窗口 / 4 教材句数 / 5 自写句数 /
+    //   6 当前句卡数 / 7 判定。
     breakDoc: (doc) =>
-      patchCellInSection(doc, '### 1.4', /^\|\s*2\s*\|/, 4, bumpFirstInteger),
-    expectWhere: /§1\.4 单元 2 · 当前语料的句卡数/,
+      patchCellInSection(doc, '### 1.4', /^\|\s*2\s*\|/, 6, bumpFirstInteger),
+    expectWhere: /§1\.4 单元 2 · 当前句卡数/,
+  },
+  {
+    name: '§1.4 某个单元的教材句数改一位',
+    breakDoc: (doc) =>
+      patchCellInSection(doc, '### 1.4', /^\|\s*3\s*\|/, 4, bumpFirstInteger),
+    expectWhere: /§1\.4 单元 3 · 教材句数/,
+  },
+  {
+    name: '§1.4 某个单元的自写句数改一位',
+    // ⚠️ **新增列必须有自己的负向夹具** —— 否则这一列写错了没人知道
+    //   （「加了列就以为守住了」是本仓已知的假绿形态）。
+    breakDoc: (doc) =>
+      patchCellInSection(doc, '### 1.4', /^\|\s*4\s*\|/, 5, bumpFirstInteger),
+    expectWhere: /§1\.4 单元 4 · 自写句数/,
   },
   {
     name: '§1.4 某个单元的判定改一个词',
+    // ⚠️ 单元 3 在 Story 2.6 之后已落进窗口 ⇒ 拿它做夹具会「改不动」
+    //   （替换目标字符串不存在 ⇒ 夹具空转 ⇒ 用例自己会红）⇒ 改用仍在窗口外的单元 8。
     breakDoc: (doc) =>
-      patchCellInSection(doc, '### 1.4', /^\|\s*3\s*\|/, 5, (cell) =>
+      patchCellInSection(doc, '### 1.4', /^\|\s*8\s*\|/, 7, (cell) =>
         cell.replace('低于窗口', '窗口内'),
       ),
-    expectWhere: /§1\.4 单元 3 · 判定/,
+    expectWhere: /§1\.4 单元 8 · 判定/,
   },
 ]
 

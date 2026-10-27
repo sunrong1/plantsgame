@@ -414,9 +414,11 @@ describe('按钮走 store 门面（AC-D1 / AC-D3）', () => {
  *   | 通关 ∧ 本单元学完 ∧ **没有下一个单元** | 回开始 | `backToStart()` |
  *   | 失败 | 再来一次 | `restartLevel()` |
  *
- * ⚠️ **第三行不是「理论上才有」**：单元 2 是当前录入的**最后一个**单元 ⇒
- *   孩子读完单元 2 就会撞上它（AC-5.5）。那一支若仍写「继续」，点下去又回到
+ * ⚠️ **第三行不是「理论上才有」**：单元 7 是当前录入的**最后一个**单元 ⇒
+ *   孩子读完单元 7 就会撞上它（AC-5.5）。那一支若仍写「继续」，点下去又回到
  *   同一张「读完啦」卡 ⇒ 一个**骗人的死胡同**。
+ *   📎 **2026-10-28（Story 2.6）**：这个「最后一个单元」从单元 2 挪到了单元 7 ⇒
+ *   下面那条例子的样本单元也跟着挪（否则单元 3 录了之后它就不再是「没有下一个单元」）。
  */
 describe('Task 5.2 —— 终态按钮的四种含义（AC-5.2 / AC-5.3 / AC-5.5 / AC-5.7）', () => {
   afterEach(() => {
@@ -447,10 +449,14 @@ describe('Task 5.2 —— 终态按钮的四种含义（AC-5.2 / AC-5.3 / AC-5.5
   })
 
   it('通关且本单元学完但**没有下一个单元** ⇒ 文案「回开始」（不许承诺「继续」）', () => {
-    state.value = { ...PRISTINE, unitNumber: 2, phase: { kind: 'level-complete' } }
+    // ⚠️📎 **2026-10-28（Story 2.6 录完单元 3–7）：样本单元从「单元 2」挪到「单元 7」。**
+    //   原先用单元 2 当样本，理由是「单元 3 不存在」——
+    //   ⇒ 单元 3 录进来之后那个前提**不成立**了（单元 2 学完**应该**说「下一单元」）。
+    //   ⇒ 「下一个单元没录」这个状态今天由**单元 7**代表（单元 8 还没录）。
+    state.value = { ...PRISTINE, unitNumber: 7, phase: { kind: 'level-complete' } }
     progress.value = {
-      currentUnitIndex: 1,
-      masteredWordIds: entriesOf(2).map((entry) => entry.entryId),
+      currentUnitIndex: 6,
+      masteredWordIds: entriesOf(7).map((entry) => entry.entryId),
     }
     view.value = 'level'
 

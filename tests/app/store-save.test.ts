@@ -168,16 +168,45 @@ describe('AC-D1 —— enterLevel 把存档喂回 progress 与 state', () => {
   })
 
   it('currentGame 为 null（局末清空）时只恢复进度，不动对局', () => {
+    // ⚠️📎 **2026-10-28（Story 2.6 录完单元 3–7）：这一条的断言口径变了。**
+    //   原先它断言「`state.value` 与进关前**同一个对象**」——
+    //   那成立是因为 `busyProgress.currentUnitIndex = 2` 指向的单元 3
+    //   **当时还没录** ⇒ `restoreNextUnit` 走「该单元未录入 ⇒ 保持当前战场」。
+    //   ⇒ 单元 3 录进来之后，这条路径改成「按 progress 重切**单元 3 的起点**」
+    //     —— 这是**正确**的行为（孩子回来打的是他进度指着的那一局，不是开机那份）。
+    //   ⇒ 判据改成「战场是 progress 指着的那个单元的**新开局**」，
+    //     而不是「战场一个字都没动」。
     seedSave(busyProgress, null)
-    const before = store.state.value
 
     store.enterLevel()
 
     expect(store.progress.value, '进度必须恢复 —— 这正是 R-06 要守的那一半').toEqual(busyProgress)
     expect(
+      store.state.value.unitNumber,
+      '重进要回到 progress 指着的那个单元（currentUnitIndex = 2 ⇒ 单元 3）的起点',
+    ).toBe(3)
+    expect(store.state.value.turn, '必须是**新开局**（不是被塞回来的终态）').toBe(1)
+    expect(store.state.value.hearts, '必须是新开局（3 颗心）').toBe(3)
+  })
+
+  it('📎 progress 指向的单元**没录** ⇒ 保持当前战场并记 WARN（不静默推进到别的单元）', () => {
+    // ⚠️ **这一条是上一条的「另一半」** —— 单元 3 录了之后，
+    //   「progress 指着一个没录的单元」这条分支**不再被上一条覆盖**了
+    //   ⇒ 它必须**单独**有守卫，否则那条分支就此零覆盖。
+    const pointingNowhere: Progress = { currentUnitIndex: 7, masteredWordIds: [] }
+    seedSave(pointingNowhere, null)
+    const before = store.state.value
+
+    store.enterLevel()
+
+    expect(
       store.state.value,
-      '局末清空的对局不该被塞回战场：重进要回到该单元起点，而不是一个终态',
+      'progress 指向单元 8（没录）⇒ 保持开机时那份战场，不能偷偷换个单元',
     ).toBe(before)
+    expect(
+      warn.mock.calls.filter((c: unknown[]) => String(c[0]).includes('该单元未录入')).length,
+      '必须有一条说明「存档指向未录入的单元」的 WARN —— 否则孩子看到的是「我明明在这单元，怎么变了」',
+    ).toBe(1)
   })
 
   it('读档在 view 已切换之后才发生（顺序守卫：view 必须是 level）', () => {
@@ -386,7 +415,15 @@ describe('G260 —— 读档路径上的异常一律降级，不许冒到孩子�
         '它会等到孩子**答第一题**时才从 `sunPerCorrectFor(999)` 抛出来 ⇒ ' +
         '**每一次答题都同样失败**，界面上只有 console 报错、没有孩子能懂的话',
     ).not.toThrow()
-    expect(store.state.value.unitNumber, '降级后的战场必须是已录入的单元').toBe(1)
+    // ⚠️📎 **2026-10-28（Story 2.6 录完单元 3–7）**：原先这里断言「降级后的战场是单元 1」，
+    //   那成立是因为 `busyProgress.currentUnitIndex = 2` 指向的单元 3 **当时没录**
+    //   ⇒ 降级时回落到 `FIRST_UNIT_NUMBER`。
+    //   ⇒ 单元 3 录了之后，降级按**存档的 progress** 重切单元 3（store.ts 的
+    //     `progressUnitNumber = currentUnitIndex + 1`）⇒ 这才是「孩子回来打的那一局」。
+    expect(
+      store.state.value.unitNumber,
+      '降级后的战场必须是**已录入的单元**（progress 指着的单元 3），绝不是 99',
+    ).toBe(3)
   })
 
   it('回归：合法的在途对局**照旧恢复**（不许被这两道新守卫顺手降级掉）', () => {

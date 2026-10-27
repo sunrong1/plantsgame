@@ -79,9 +79,11 @@ describe('AC-5.2 / Task 5.6 —— 本单元没学完时**不得**推进到下�
   //   「打完单元 1 的第一局时本单元**还没学完**」这个构造**今天造不出来**了。
   //   ⇒ 改用**单元 2**（11 条 ⇒ 第一局 10 条、还剩 1 条）—— 它才是今天
   //     唯一能造出「本单元没学完」的单元。
-  //   ⚠️ **但单元 2 的后面没有单元 3** ⇒ 单看 `currentUnitIndex` 是**弱判据**
-  //   （「下一个单元没录」也会挡住推进 ⇒ 那条断言恒成立）。
-  //   ⇒ 真正的判据是 `levelOutcomeKind()`：它**只**读「本单元学完没有」，
+  //   📎 **2026-10-28（Story 2.6 录完单元 3–7）**：单元 3 录了 ⇒
+  //     「单元 2 的后面没有单元 3」这个前提**不再成立** ⇒
+  //     单看 `currentUnitIndex` 的那条断言从**弱判据**升级成**强判据**
+  //     （现在只有「本单元没学完」才会挡住推进了）。
+  //   ⇒ 真正的判据仍然是 `levelOutcomeKind()`：它**只**读「本单元学完没有」，
   //     通关 ∧ 本单元**没**学完 ⇒ 必须算出 `'continue'`（留在本单元打下一局）；
   //     若实现误判成「学完了」，它会算出 `'finished'` ⇒ 这条当场红。
 
@@ -195,13 +197,24 @@ describe('AC-5.4 —— 玩家不能自己跳单元（FR59）', () => {
 })
 
 // ══════════════════════════════════════════════════════════════════════════════
-// AC-5.5 —— 单元 2 通关后不推进到单元 3
+// AC-5.5 —— 本单元学完但**下一个单元没录** ⇒ 不推进
 // ══════════════════════════════════════════════════════════════════════════════
 
-describe('AC-5.5 —— 单元 2 通关后**不**推进（单元 3 不存在）', () => {
-  it('单元 2 的 11 条学完后，currentUnitIndex 仍是 1，进关仍是单元 2', () => {
-    const unit1WordIds = entriesOf(1).map((entry) => entry.entryId)
-    startUnit(2, unit1WordIds)
+/**
+ * ⚠️📎 **2026-10-28（Story 2.6 录完单元 3–7）：这条守卫的「样本单元」往后挪了。**
+ *
+ *   原先它用**单元 2**当样本，理由写在标题里：「单元 3 不存在」。
+ *   ⇒ 单元 3 录进来之后，**那个前提本身**就不成立了 ——
+ *     单元 2 学完**应该**推进到单元 3（推进到**没录**的单元才是静默丢数据）。
+ *   ⇒ 而「下一个单元没录」这个**状态**今天仍然存在，只是样本变成了
+ *     **单元 7**（Story 2.6 录的最后一个单元；单元 8 还没录）。
+ *   ⇒ 守卫的**意图**一个字没变，守的还是「下一个单元没录 ⇒ 不推进」，
+ *     只是**样本**换了一个仍然满足前提的单元。
+ */
+describe('AC-5.5 —— 本单元学完但**下一个单元没录** ⇒ **不**推进', () => {
+  it('单元 7 的 18 条学完后，currentUnitIndex 仍是 6，进关仍是单元 7', () => {
+    const unit6WordIds = entriesOf(6).map((entry) => entry.entryId)
+    startUnit(7, unit6WordIds)
 
     const deckSizes: number[] = []
     for (let level = 1; level <= 2; level += 1) {
@@ -210,15 +223,15 @@ describe('AC-5.5 —— 单元 2 通关后**不**推进（单元 3 不存在）'
       if (level < 2) nextLevel()
     }
 
-    expect(deckSizes, '单元 2 = 11 条 ⇒ 10/1').toEqual([10, 1])
+    expect(deckSizes, '单元 7 = 18 条 ⇒ 10/8').toEqual([10, 8])
     expect(
       progress.value.currentUnitIndex,
-      '单元 3 不存在 ⇒ **不推进**（推进到一个没录的单元 = 静默丢数据）',
-    ).toBe(1)
+      '单元 8 不存在 ⇒ **不推进**（推进到一个没录的单元 = 静默丢数据）',
+    ).toBe(6)
 
-    const display = progressDisplay(progress.value, 2, entriesOf(2).length)
-    expect(display.mastered, '单元 2 的 11 条都学完了').toBe(11)
-    expect(display.total).toBe(11)
+    const display = progressDisplay(progress.value, 7, entriesOf(7).length)
+    expect(display.mastered, '单元 7 的 18 条都学完了').toBe(18)
+    expect(display.total).toBe(18)
     // ⚠️📎 **补一条按钮种类的判据**（`levelOutcomeKind` 的第四个取值 `'finished'`）：
     //   「本单元学完 ∧ 下一个单元没录」⇒ 按钮必须承诺「没有下一局」，
     //   而不是又许一个「下一单元」让孩子点进一个不存在的单元（AC-5.5 / 裁决 5）。
@@ -227,6 +240,25 @@ describe('AC-5.5 —— 单元 2 通关后**不**推进（单元 3 不存在）'
       levelOutcomeKind(),
       '本单元学完但没有下一个单元 ⇒ 按钮种类必须是 `finished`（不是 `next-unit`）',
     ).toBe('finished')
+  })
+
+  it('📎 反向：单元 2 学完后**要**推进到单元 3（单元 3 已录 ⇒ 推进才是对的）', () => {
+    // ⚠️ **这一条是「样本挪走」的对偶** —— 只把样本换成单元 7 的话，
+    //   「推进」这条行为就**没人守**了（单元 2 学完到底推不推进？）。
+    //   ⇒ 同一个文件里必须**两个方向都有**。
+    const unit1WordIds = entriesOf(1).map((entry) => entry.entryId)
+    startUnit(2, unit1WordIds)
+
+    for (let level = 1; level <= 2; level += 1) {
+      driveStoreLevel()
+      if (level < 2) nextLevel()
+    }
+
+    expect(
+      progress.value.currentUnitIndex,
+      '单元 3 已经录了 ⇒ 单元 2 学完**应该**推进（不推进 = 孩子永远打不到单元 3）',
+    ).toBe(2)
+    expect(levelOutcomeKind(), '单元 2 学完 ∧ 单元 3 录了 ⇒ 按钮种类是 `next-unit`').toBe('next-unit')
   })
 })
 

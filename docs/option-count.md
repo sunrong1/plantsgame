@@ -32,7 +32,7 @@
 | 档 | 单元 | 单词 `word` | 关键词 `keyword` | 回应 `response` |
 |---|---|---|---|---|
 | **1** | 1–4 | **2** | **2** | **3** |
-| 2 | 5–10 | 3 | 4 | 4 |
+| 2 | 5–10 | 3 | **3** | 4 |
 | 3 | 11–24 | 4 | 4 | 4 |
 
 **档 1 的三个数（2 / 2 / 3）是实测值** —— 它们等于内容改完之后
@@ -47,9 +47,29 @@
 ⚠️ **这个 2 不是被近邻阈值逼出来的**：实测这一对选项归一化后的编辑距离是 **7**
 （见 §4.1）⇒ 离阈值 2 还差得远 ⇒ **真正的原因是教材词表只有 2 个词**。
 
-⚠️ **档 2 / 档 3 的六个数（3/4/4、4/4/4）没有试玩数据背书**，
+⚠️ **档 2 / 档 3 的六个数（3/3/4、4/4/4）没有试玩数据背书**，
 是「符合 GDD 方向、且保守」的**占位值** —— 属**需要人审的产品数字**（R-20 的精神）。
 Story 2.9 的试玩验收与 Story 3.x 的调优才是它们的真值来源。
+
+⚠️📎 **档 2 的 `keyword` 由 4 改为 3（2026-10-28，Story 2.6 实测更正）**：
+这**不是难度口味**，是**教材词表供给顶住的上界**。关键词卡是「听句取词」，
+选项**必须取自本单元的教材词表**，而卡内两个选项归一化后编辑距离 ≤ 2 即违规
+（`scripts/validate-content.ts` 的 `NEAR_DUPLICATE_MAX_DISTANCE = 2`）
+⇒ **该单元词表里能凑出的「互不近似」词数**就是关键词卡选项数的上界。
+实测（校验器的归一化 / 编辑距离口径，穷举最大互不近似子集）：
+单元 5 的词表是 5 个词（`grandmother` / `grandfather` / `father` / `mother` / `me`），
+其中 `grandmother` ~ `grandfather` = **2**、`father` ~ `mother` = **2**
+⇒ 两对各自互斥 ⇒ **任何 4 个词的子集都含一对近邻** ⇒ 四选一在数学上无解。
+同档的单元 8（`pear` ~ `peach` = 2）同样是 3 ⇒ **档 2 的上界 = 3**。
+⇒ 这与档 1 的 `keyword = 2`（单元 1 只有 2 个教材词）是**同一条先例**：
+**一档的选项数不能超过该档里任一单元的教材供给** ⇒ 档位值取该档供给的最小值。
+⚠️ **代价（须如实登记）**：单元 6 / 7 的词表撑得住 4 个互不近似的词，
+改档后它们的关键词卡少一个干扰项 ⇒ **难度略降**，方向对 4–8 岁的孩子是保守的；
+Story 2.9 的试玩验收可据此回调。
+⚠️ **档 3（11–24）的 `keyword = 4` 已知撑不住**：实测单元 16（`ball` ~ `doll` = 2）、
+单元 22（`play` ~ `fly` = 2）、单元 24（词表只有 3 个词）的供给上限都是 **3**
+⇒ 那三个单元交付时必须把档 3 的 `keyword` 同样下调，或另立规则
+⇒ 已登记为延后条目 **DF-223**，归 Story 2.8（单元 14–24）裁决。
 
 ⚠️ **改这九个数字 = 改难度曲线的一个点，属产品裁决**（R-20 / R-57）：
 必须同时改 `src/content/option-count.ts` 与本文件，并让 G262–G270 重跑。
@@ -87,7 +107,7 @@ Story 2.9 的试玩验收与 Story 3.x 的调优才是它们的真值来源。
 | 性质 / 覆盖面 | 判据 | 守卫 | 变异实测（整轮 **2244 条**） |
 |---|---|---|---|
 | **规则可计算 + 覆盖** | 单元 1..24 每个单元、每个卡型都得出 ∈ [2,4] 的整数；`0` / `25` / 非整数**抛错**；**不在表里的卡型（含原型链上的名字）也抛错** | **G262** | M308（档 1 word 2→3）**7 红**、M310（档 2 区间改成 4–10，与档 1 重叠）**13 红**、M311（越界抛错改成静默回退）**3 红**、**M319**（`hasOwn` 改回 `counts[kind] === undefined` ⇒ 原型链上的 `toString` 被当成选项数）**1 红** |
-| **三条性质** | ① 逐档不降 ② 档内同值（**且档位区间连续覆盖 1..24**，不跳档）③ 档内卡型不降（且**至少有一档真的上升**） | **G263** | M309（档 2 keyword 4→2，同时打破 ① 与 ③）**3 红** |
+| **三条性质** | ① 逐档不降 ② 档内同值（**且档位区间连续覆盖 1..24**，不跳档）③ 档内卡型不降（且**至少有一档真的上升**） | **G263** | M309（档 2 keyword 4→2，同时打破 ① 与 ③）**3 红**；⚠️📎 2026-10-28（Story 2.6）档 2 的 keyword 实测改为 **3** ⇒ **复现这条变异时按 3→2**（§1.1） |
 | **规则 ↔ 真实内容** | 单元 1 每张卡的选项数 === 规则算出的档 1 目标值（逐卡核对，**零容差**） | **G264** | M308**7 红**（含 G22 的期望图片选项数 —— 它由规则算出，所以跟着红） |
 | **档位边界跨层一致** | 内容层的档位边界 === `BALANCE_TIERS` 的档位边界（**档数**与**区间**都要比） | **G265** | M315（档 1 区间 1–4 → 1–3、档 2 5–10 → 4–10）**3 红** |
 | **档位表结构** | 空表 / 区间倒置 / 区间重叠**一律抛错**；档位表与返回对象**逐层 `Object.freeze`** | **G266** | M310（区间重叠）**13 红**、M316（去掉 `Object.freeze`）**1 红** |
@@ -162,12 +182,12 @@ for (let n = 1; n <= 24; n++) {
 | 2 | 2 | 2 | 3 | | 14 | 4 | 4 | 4 |
 | 3 | 2 | 2 | 3 | | 15 | 4 | 4 | 4 |
 | 4 | 2 | 2 | 3 | | 16 | 4 | 4 | 4 |
-| 5 | 3 | 4 | 4 | | 17 | 4 | 4 | 4 |
-| 6 | 3 | 4 | 4 | | 18 | 4 | 4 | 4 |
-| 7 | 3 | 4 | 4 | | 19 | 4 | 4 | 4 |
-| 8 | 3 | 4 | 4 | | 20 | 4 | 4 | 4 |
-| 9 | 3 | 4 | 4 | | 21 | 4 | 4 | 4 |
-| 10 | 3 | 4 | 4 | | 22 | 4 | 4 | 4 |
+| 5 | 3 | 3 | 4 | | 17 | 4 | 4 | 4 |
+| 6 | 3 | 3 | 4 | | 18 | 4 | 4 | 4 |
+| 7 | 3 | 3 | 4 | | 19 | 4 | 4 | 4 |
+| 8 | 3 | 3 | 4 | | 20 | 4 | 4 | 4 |
+| 9 | 3 | 3 | 4 | | 21 | 4 | 4 | 4 |
+| 10 | 3 | 3 | 4 | | 22 | 4 | 4 | 4 |
 | 11 | 4 | 4 | 4 | | 23 | 4 | 4 | 4 |
 | 12 | 4 | 4 | 4 | | 24 | 4 | 4 | 4 |
 
@@ -175,7 +195,7 @@ for (let n = 1; n <= 24; n++) {
 
 ## 4. 两条写死的基线（改内容 / 改阈值前必读）
 
-### 4.1 卡内最小编辑距离（单元 1 = **7**、单元 2 = **5**）
+### 4.1 卡内最小编辑距离（单元 1 = **7**、单元 2 = **5**、单元 3–7 均为 **3**）
 
 **实测口径**（`scripts/validate-content.ts` 的 `normalizeOptionText` + `editDistance`，
 对每个单元的每张卡做**卡内两两**比较，取全局最小值）。
@@ -221,6 +241,242 @@ u2-s-how-nice | "here you are" ~ "give me a ruler please" = 15
 最小卡内编辑距离 = 5 <- u2-s-give-me-a-ruler-please: ruler ~ book
 ```
 
+**单元 3（`unit-03.json`，24 对）**：
+
+```
+u3-s-look-this-is-your-mouth | "mouth" ~ "face" = 5
+u3-s-look-this-is-your-eye | "eye" ~ "face" = 3
+u3-s-look-this-is-your-ear | "ear" ~ "mouth" = 5
+u3-s-hi-alice-its-you | "look this is your mouth" ~ "hello i m jack" = 19
+u3-s-hi-alice-its-you | "look this is your mouth" ~ "my mouth" = 16
+u3-s-hi-alice-its-you | "hello i m jack" ~ "my mouth" = 12
+u3-s-my-mouth | "look this is your mouth" ~ "my eye" = 21
+u3-s-my-mouth | "look this is your mouth" ~ "hello i m jack" = 19
+u3-s-my-mouth | "my eye" ~ "hello i m jack" = 13
+u3-s-my-eye | "look this is your eye" ~ "my mouth" = 18
+u3-s-my-eye | "look this is your eye" ~ "hi jack" = 18
+u3-s-my-eye | "my mouth" ~ "hi jack" = 7
+u3-s-no-its-not-me | "hi alice it s you" ~ "hello i m jack" = 12
+u3-s-no-its-not-me | "hi alice it s you" ~ "my eye" = 14
+u3-s-no-its-not-me | "hello i m jack" ~ "my eye" = 13
+u3-s-hello-im-jack | "hi jack" ~ "my mouth" = 7
+u3-s-hello-im-jack | "hi jack" ~ "no it s not me" = 12
+u3-s-hello-im-jack | "my mouth" ~ "no it s not me" = 12
+u3-s-hi-jack | "hello i m jack" ~ "hi alice it s you" = 12
+u3-s-hi-jack | "hello i m jack" ~ "my eye" = 13
+u3-s-hi-jack | "hi alice it s you" ~ "my eye" = 14
+u3-s-this-is-my-mouth | "my mouth" ~ "my eye" = 5
+u3-s-this-is-my-mouth | "my mouth" ~ "hello i m jack" = 12
+u3-s-this-is-my-mouth | "my eye" ~ "hello i m jack" = 13
+最小卡内编辑距离 = 3 <- u3-s-look-this-is-your-eye: eye ~ face
+```
+
+**单元 4（`unit-04.json`，17 对）**：
+
+```
+u4-s-i-can-sing | "sing" ~ "dance" = 4
+u4-s-i-can-read | "read" ~ "draw" = 3
+u4-s-what-can-you-do | "i can sing" ~ "i can draw" = 4
+u4-s-what-can-you-do | "i can sing" ~ "i can read" = 4
+u4-s-what-can-you-do | "i can draw" ~ "i can read" = 3
+u4-s-i-can | "i can draw" ~ "i can sing" = 4
+u4-s-i-can | "i can draw" ~ "what can you do" = 10
+u4-s-i-can | "i can sing" ~ "what can you do" = 10
+u4-s-i-can-dance | "i can" ~ "i can read" = 5
+u4-s-i-can-dance | "i can" ~ "what can you do" = 11
+u4-s-i-can-dance | "i can read" ~ "what can you do" = 9
+u4-s-i-can-draw | "i can" ~ "i can read" = 5
+u4-s-i-can-draw | "i can" ~ "what can you do" = 11
+u4-s-i-can-draw | "i can read" ~ "what can you do" = 9
+u4-w-can-you-dance | "i can dance" ~ "i can sing" = 4
+u4-w-can-you-dance | "i can dance" ~ "what can you do" = 10
+u4-w-can-you-dance | "i can sing" ~ "what can you do" = 10
+最小卡内编辑距离 = 3 <- u4-s-i-can-read: read ~ draw
+```
+
+**单元 5（`unit-05.json`，51 对）**：
+
+```
+u5-s-this-is-my-grandfather | "grandfather" ~ "father" = 5
+u5-s-this-is-my-grandfather | "grandfather" ~ "me" = 10
+u5-s-this-is-my-grandfather | "father" ~ "me" = 5
+u5-s-shes-my-grandmother | "grandmother" ~ "mother" = 5
+u5-s-shes-my-grandmother | "grandmother" ~ "me" = 9
+u5-s-shes-my-grandmother | "mother" ~ "me" = 4
+u5-s-hes-my-father | "father" ~ "grandfather" = 5
+u5-s-hes-my-father | "father" ~ "me" = 5
+u5-s-hes-my-father | "grandfather" ~ "me" = 10
+u5-s-this-is-my | "this is my grandfather" ~ "he s my" = 16
+u5-s-this-is-my | "this is my grandfather" ~ "who is she" = 15
+u5-s-this-is-my | "this is my grandfather" ~ "he s my father" = 9
+u5-s-this-is-my | "he s my" ~ "who is she" = 6
+u5-s-this-is-my | "he s my" ~ "he s my father" = 7
+u5-s-this-is-my | "who is she" ~ "he s my father" = 10
+u5-s-this-is | "this is me" ~ "this is my grandfather" = 12
+u5-s-this-is | "this is me" ~ "he s my" = 5
+u5-s-this-is | "this is me" ~ "who is she" = 5
+u5-s-this-is | "this is my grandfather" ~ "he s my" = 16
+u5-s-this-is | "this is my grandfather" ~ "who is she" = 15
+u5-s-this-is | "he s my" ~ "who is she" = 6
+u5-s-this-is-me | "this is" ~ "she s my" = 5
+u5-s-this-is-me | "this is" ~ "who is she" = 6
+u5-s-this-is-me | "this is" ~ "she s my grandmother" = 17
+u5-s-this-is-me | "she s my" ~ "who is she" = 6
+u5-s-this-is-me | "she s my" ~ "she s my grandmother" = 12
+u5-s-this-is-me | "who is she" ~ "she s my grandmother" = 15
+u5-s-hes-my | "he s my father" ~ "this is my" = 11
+u5-s-hes-my | "he s my father" ~ "who is she" = 10
+u5-s-hes-my | "he s my father" ~ "she s my grandmother" = 7
+u5-s-hes-my | "this is my" ~ "who is she" = 6
+u5-s-hes-my | "this is my" ~ "she s my grandmother" = 15
+u5-s-hes-my | "who is she" ~ "she s my grandmother" = 15
+u5-s-shes-my | "she s my grandmother" ~ "this is my" = 15
+u5-s-shes-my | "she s my grandmother" ~ "this is" = 17
+u5-s-shes-my | "she s my grandmother" ~ "who is he" = 15
+u5-s-shes-my | "this is my" ~ "this is" = 3
+u5-s-shes-my | "this is my" ~ "who is he" = 5
+u5-s-shes-my | "this is" ~ "who is he" = 5
+u5-s-who-is-she | "she s my grandmother" ~ "this is my grandfather" = 6
+u5-s-who-is-she | "she s my grandmother" ~ "this is me" = 14
+u5-s-who-is-she | "she s my grandmother" ~ "she s my" = 12
+u5-s-who-is-she | "this is my grandfather" ~ "this is me" = 12
+u5-s-who-is-she | "this is my grandfather" ~ "she s my" = 16
+u5-s-who-is-she | "this is me" ~ "she s my" = 5
+u5-s-who-is-he | "he s my father" ~ "this is my grandfather" = 9
+u5-s-who-is-he | "he s my father" ~ "this is" = 12
+u5-s-who-is-he | "he s my father" ~ "she s my" = 8
+u5-s-who-is-he | "this is my grandfather" ~ "this is" = 15
+u5-s-who-is-he | "this is my grandfather" ~ "she s my" = 16
+u5-s-who-is-he | "this is" ~ "she s my" = 5
+最小卡内编辑距离 = 3 <- u5-s-shes-my: this is my ~ this is
+```
+
+**单元 6（`unit-06.json`，51 对）**：
+
+```
+u6-s-hes-fat | "fat" ~ "thin" = 4
+u6-s-hes-fat | "fat" ~ "tall" = 3
+u6-s-hes-fat | "thin" ~ "tall" = 3
+u6-s-shes-thin | "thin" ~ "fat" = 4
+u6-s-shes-thin | "thin" ~ "short" = 4
+u6-s-shes-thin | "fat" ~ "short" = 4
+u6-s-hes-tall | "tall" ~ "short" = 5
+u6-s-hes-tall | "tall" ~ "fat" = 3
+u6-s-hes-tall | "short" ~ "fat" = 4
+u6-s-this-is-danny | "he s my classmate" ~ "he s fat" = 10
+u6-s-this-is-danny | "he s my classmate" ~ "he s tall" = 11
+u6-s-this-is-danny | "he s my classmate" ~ "look this is ben" = 15
+u6-s-this-is-danny | "he s fat" ~ "he s tall" = 3
+u6-s-this-is-danny | "he s fat" ~ "look this is ben" = 12
+u6-s-this-is-danny | "he s tall" ~ "look this is ben" = 13
+u6-s-hes-my-classmate | "he s fat" ~ "this is danny" = 8
+u6-s-hes-my-classmate | "he s fat" ~ "he s tall" = 3
+u6-s-hes-my-classmate | "he s fat" ~ "he s" = 4
+u6-s-hes-my-classmate | "this is danny" ~ "he s tall" = 8
+u6-s-hes-my-classmate | "this is danny" ~ "he s" = 10
+u6-s-hes-my-classmate | "he s tall" ~ "he s" = 5
+u6-s-this-is-kitty | "she s my friend" ~ "she s thin" = 7
+u6-s-this-is-kitty | "she s my friend" ~ "she s" = 10
+u6-s-this-is-kitty | "she s my friend" ~ "look this is ben" = 13
+u6-s-this-is-kitty | "she s thin" ~ "she s" = 5
+u6-s-this-is-kitty | "she s thin" ~ "look this is ben" = 12
+u6-s-this-is-kitty | "she s" ~ "look this is ben" = 13
+u6-s-shes-my-friend | "she s thin" ~ "this is kitty" = 9
+u6-s-shes-my-friend | "she s thin" ~ "she s" = 5
+u6-s-shes-my-friend | "she s thin" ~ "look this is ben" = 12
+u6-s-shes-my-friend | "this is kitty" ~ "she s" = 10
+u6-s-shes-my-friend | "this is kitty" ~ "look this is ben" = 10
+u6-s-shes-my-friend | "she s" ~ "look this is ben" = 13
+u6-s-hes | "he s fat" ~ "he s my classmate" = 10
+u6-s-hes | "he s fat" ~ "he s tall" = 3
+u6-s-hes | "he s fat" ~ "this is danny" = 8
+u6-s-hes | "he s my classmate" ~ "he s tall" = 11
+u6-s-hes | "he s my classmate" ~ "this is danny" = 13
+u6-s-hes | "he s tall" ~ "this is danny" = 8
+u6-s-shes | "she s thin" ~ "she s my friend" = 7
+u6-s-shes | "she s thin" ~ "this is kitty" = 9
+u6-s-shes | "she s thin" ~ "look this is ben" = 12
+u6-s-shes | "she s my friend" ~ "this is kitty" = 10
+u6-s-shes | "she s my friend" ~ "look this is ben" = 13
+u6-s-shes | "this is kitty" ~ "look this is ben" = 10
+u6-s-look-this-is-ben | "he s tall" ~ "he s fat" = 3
+u6-s-look-this-is-ben | "he s tall" ~ "this is danny" = 8
+u6-s-look-this-is-ben | "he s tall" ~ "he s" = 5
+u6-s-look-this-is-ben | "he s fat" ~ "this is danny" = 8
+u6-s-look-this-is-ben | "he s fat" ~ "he s" = 4
+u6-s-look-this-is-ben | "this is danny" ~ "he s" = 10
+最小卡内编辑距离 = 3 <- u6-s-hes-fat: fat ~ tall
+```
+
+**单元 7（`unit-07.json`，63 对）**：
+
+```
+u7-s-five-rulers | "five" ~ "one" = 3
+u7-s-five-rulers | "five" ~ "three" = 4
+u7-s-five-rulers | "one" ~ "three" = 4
+u7-s-one-one-book | "one" ~ "three" = 4
+u7-s-one-one-book | "one" ~ "five" = 3
+u7-s-one-one-book | "three" ~ "five" = 4
+u7-s-two-books | "two" ~ "four" = 4
+u7-s-two-books | "two" ~ "six" = 3
+u7-s-two-books | "four" ~ "six" = 4
+u7-s-one-two-three | "three pencils" ~ "five rulers" = 10
+u7-s-one-two-three | "three pencils" ~ "one one book" = 11
+u7-s-one-two-three | "three pencils" ~ "one two three four five" = 16
+u7-s-one-two-three | "five rulers" ~ "one one book" = 11
+u7-s-one-two-three | "five rulers" ~ "one two three four five" = 20
+u7-s-one-two-three | "one one book" ~ "one two three four five" = 15
+u7-s-one-two-three-four-five | "five rulers" ~ "one two three" = 11
+u7-s-one-two-three-four-five | "five rulers" ~ "two books" = 9
+u7-s-one-two-three-four-five | "five rulers" ~ "six" = 10
+u7-s-one-two-three-four-five | "one two three" ~ "two books" = 9
+u7-s-one-two-three-four-five | "one two three" ~ "six" = 13
+u7-s-one-two-three-four-five | "two books" ~ "six" = 9
+u7-s-how-many | "how many books" ~ "three" = 14
+u7-s-how-many | "how many books" ~ "two" = 12
+u7-s-how-many | "how many books" ~ "six" = 14
+u7-s-how-many | "three" ~ "two" = 4
+u7-s-how-many | "three" ~ "six" = 5
+u7-s-how-many | "two" ~ "six" = 3
+u7-s-how-many-books | "three" ~ "two" = 4
+u7-s-how-many-books | "three" ~ "six" = 5
+u7-s-how-many-books | "three" ~ "two books" = 8
+u7-s-how-many-books | "two" ~ "six" = 3
+u7-s-how-many-books | "two" ~ "two books" = 6
+u7-s-how-many-books | "six" ~ "two books" = 9
+u7-s-three | "two" ~ "six" = 3
+u7-s-three | "two" ~ "two books" = 6
+u7-s-three | "two" ~ "how many books" = 12
+u7-s-three | "six" ~ "two books" = 9
+u7-s-three | "six" ~ "how many books" = 14
+u7-s-three | "two books" ~ "how many books" = 7
+u7-s-two | "six" ~ "two books" = 9
+u7-s-two | "six" ~ "three" = 5
+u7-s-two | "six" ~ "how many" = 8
+u7-s-two | "two books" ~ "three" = 8
+u7-s-two | "two books" ~ "how many" = 8
+u7-s-two | "three" ~ "how many" = 8
+u7-s-six | "two books" ~ "how many books" = 7
+u7-s-six | "two books" ~ "three" = 8
+u7-s-six | "two books" ~ "two" = 6
+u7-s-six | "how many books" ~ "three" = 14
+u7-s-six | "how many books" ~ "two" = 12
+u7-s-six | "three" ~ "two" = 4
+u7-w-how-many-pencils | "three pencils" ~ "how many books" = 12
+u7-w-how-many-pencils | "three pencils" ~ "two" = 12
+u7-w-how-many-pencils | "three pencils" ~ "one two three" = 13
+u7-w-how-many-pencils | "how many books" ~ "two" = 12
+u7-w-how-many-pencils | "how many books" ~ "one two three" = 12
+u7-w-how-many-pencils | "two" ~ "one two three" = 10
+u7-s-three-pencils | "one two three four five" ~ "two books" = 18
+u7-s-three-pencils | "one two three four five" ~ "one one book" = 15
+u7-s-three-pencils | "one two three four five" ~ "three" = 18
+u7-s-three-pencils | "two books" ~ "one one book" = 7
+u7-s-three-pencils | "two books" ~ "three" = 8
+u7-s-three-pencils | "one one book" ~ "three" = 11
+最小卡内编辑距离 = 3 <- u7-s-five-rulers: five ~ one
+```
+
 ⚠️ **这个 7 是 2026-10-26 换源批次重新实测出来的**，出处换成了教材词表的那一对
 （`morning` ~ `afternoon`，关键词卡 `u1-s-good-morning`）—— 旧文档写的 3 出处是
 **旧内容**的 `ball` ~ `book`（那一对的距离确实是 3，复算方法可自验）。
@@ -229,8 +485,15 @@ u2-s-how-nice | "here you are" ~ "give me a ruler please" = 15
 单元 1 的最小卡内距离是 **7** ⇒ 阈值一旦 ≥ 7，单元 1 的关键词卡才会被报出来。
 ⚠️ **换源后真正把阈值顶住的不是单元 1**：单元 2 的最小卡内距离是 **5**
 （`u2-s-give-me-a-ruler-please`：`ruler` ~ `book`）⇒ 阈值 ≥ 5 就会报到单元 2。
+⚠️📎 **2026-10-28（Story 2.6 交付单元 3–7）实测**：单元 3 / 4 / 5 / 6 / 7 的
+最小卡内距离**都是 3**（`eye` ~ `face` / `read` ~ `draw` / `this is my` ~ `this is` /
+`fat` ~ `tall` / `five` ~ `one`）⇒ **全书的最小上界从 5 降到 3** ⇒
+阈值一旦 ≥ 3，五个单元都会被报出来。
 ⇒ **阈值仍是 2**（校验器 `NEAR_DUPLICATE_MAX_DISTANCE`），它比「不被顶到」的那个上界
 更保守，也是教材词表逐单元扩开后仍站得住的那个数 —— **不是「随便挑一个」**。
+⚠️ **这 3 也正是档 2 的 `keyword` 只能取 3 的那个算式的一部分**：
+`grandfather` ~ `grandmother` = 2、`father` ~ `mother` = 2 这两对**就在词表里**
+（不是卡内）⇒ 词表层面就已经把「互不近似的词数」顶在 3 ⇒ 见 §1.1 的档 2 说明。
 
 ⚠️ **别把它读成「只差一个字母」**（`[CR]` 2026-10-23 更正，2026-10-26 换源后复核）：
 那会把论证读反 —— 「差一个字母」对应的阈值是 1，而阈值取 1 就会放过**差两个字母**
@@ -247,7 +510,8 @@ u2-s-how-nice | "here you are" ~ "give me a ruler please" = 15
 ⚠️ **这条基线会随内容变**：将来单元 1 的选项措辞改了，最小距离可能变小 ⇒
 **改内容时必须重算它**（复算口径见上面的 `npx tsx` 同款写法，把
 `normalizeOptionText` / `editDistance` 从 `scripts/validate-content.ts` import 进来）。
-⚠️ **单元 2 的那条同理**（当前 = 5）—— 教材词表每扩一个单元就多一条基线。
+⚠️ **单元 2 的那条同理**（当前 = 5）、**单元 3–7 的那五条也同理**（当前都 = 3）——
+教材词表每扩一个单元就多一条基线。
 
 ⚠️⚠️ **阈值 2 有一条「误杀」方向，全仓只登记了一半**（`[CR]` 2026-10-23 记）：
 字符级编辑距离是**代理量**，它不知道意思 ⇒ **字面近但语义远**的短词会被判成
