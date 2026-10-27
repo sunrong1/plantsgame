@@ -12,6 +12,13 @@
  *     漏一处就有一处**静默**按老格式解析 ⇒ 「教材改了它会红」这个卖点当场失效。
  *   ⇒ 解析器抽到这里，三处**共用同一份**。
  *
+ * ── ⚠️ **本文件是全仓唯一的教材解析器**（2026-10-27 `[CR]` 修）────────────
+ *   此前 `tests/scaffold/textbook-corpus.test.ts` 另有一份 `parseBook()`，
+ *   规则**不一样**（它按 `｜` 数条目、不切英文部分）⇒ 两份解析器 = 两条复制链，
+ *   而「教材改了它会红」这个卖点只在其中一份上成立。
+ *   ⇒ 那份已改为**委托到这里**（`parseTextbookBook`），判据也搬到这里
+ *     （`checkBookSelfConsistent`）。
+ *
  * ── 教材的行格式（`01a-units.md` / `01b-units.md`）──────────────────────────
  *   词表行：
  *     `- **词表（Look and learn）**：morning 早上 ｜ afternoon 下午　_（2 词）_`
@@ -50,23 +57,69 @@ export const CORPUS_DIR = join(root, 'docs/textbook-oxford-shanghai')
 /** 两册教材的文件名（第一册 1A、第二册 1B）。 */
 export const CORPUS_FILES = ['01a-units.md', '01b-units.md'] as const
 
-/** 一册里的单元。 */
-export interface TextbookUnit {
-  /** 教材里的单元号（1–12，每册各一套）。 */
-  unitNo: number
-  /** `Look and learn` 的英文词（按教材原序）。 */
-  vocabulary: string[]
-  /** `Say and act` 的英文句子（按教材原序，**含重复**）。 */
-  sentences: string[]
-  /** `Say and act` 里被判为「场景 / 类别标签」的条目。 */
-  labels: string[]
-  /** 词表行的实际条目数（按 `｜` 切出来的条数）。 */
-  itemCount: number
-  /** 行末「（N 词）」的人工标记数。 */
-  markedCount: number
+/** 册次在文档里的标签（`docs/card-distribution.md` 的 census 表用这两个字样）。 */
+export const BOOK_LABELS = ['1A', '1B'] as const
+
+/**
+ * 一册教材的单元数（两册各 12 个 ⇒ 全书 24 关）。
+ *
+ * ⚠️ **这是全仓唯一的「12」出处** —— `textbookUnitOf()` 的册次边界、
+ *   G338 的覆盖范围、文档守卫 G321 的 1A/1B 区间映射都由它推出。
+ */
+export const UNITS_PER_BOOK = 12
+
+/**
+ * 全书的游戏单元数（= `UNITS_PER_BOOK` × 册数 = **24**）。
+ *
+ * ⚠️ 它**不是**手写的 24 —— 手写就会多出第二份事实源（R-37）。
+ */
+export const LAST_GAME_UNIT = UNITS_PER_BOOK * CORPUS_FILES.length
+
+/**
+ * 全书教材词数（= 全书的单词卡数 = 全书的词图张数）= **97**。
+ *
+ * ⚠️ **它是产品数字**（GDD 正文写的「97 词 ⇒ 97 张」），所以这里**必须写字面量**
+ *   而不是现算 —— 现算就等于「拿实算值验实算值」（恒真断言）。
+ *   ⇒ 它被**两条独立的守卫**钉住：
+ *     · **G297 / G298**（`tests/scaffold/textbook-corpus.test.ts`）——
+ *       教材词数与 GDD 正文对得上；
+ *     · **G338**（本 story 的映射守卫）—— 教材实算 === 这个数。
+ *   ⇒ 改这个数字 = 改内容口径，必须连带改 GDD。
+ */
+export const TOTAL_TEXTBOOK_WORDS = 97
+
+/**
+ * 某册教材对应的**游戏单元区间**（1A ⇒ 1..12，1B ⇒ 13..24）。
+ *
+ * ⚠️ 这是「游戏单元 ↔ 教材单元」映射的**唯一定义处**（G338 独立钉住它）——
+ *   文档守卫 G321 的 census 表曾把 `13` / `12` 抄在测试里 ⇒ **第二份事实源**，
+ *   映射一旦改动，G321 会拿旧区间去核 ⇒ 报出一个「看起来像文档漂移」的假错。
+ *
+ * @param bookIndex 册序号（0 = 1A，1 = 1B）
+ */
+export function gameUnitRangeOfBook(bookIndex: number): { from: number; to: number } {
+  if (!Number.isInteger(bookIndex) || bookIndex < 0 || bookIndex >= CORPUS_FILES.length) {
+    throw new Error(`册序号必须是 0..${CORPUS_FILES.length - 1} 的整数，收到 ${bookIndex}`)
+  }
+  const from = bookIndex * UNITS_PER_BOOK + 1
+  return { from, to: from + UNITS_PER_BOOK - 1 }
 }
 
-/** 一册的解析结果。 */
+/**
+ * 按**文档里的册次标签**（`1A` / `1B`）取游戏单元区间。
+ *
+ * ⚠️ 文档守卫 G321 的 census 表按 `1A` / `1B` 两行走 ⇒ 它必须问「这个标签对应哪段单元」，
+ *   而**不能**在测试里再抄一遍 `13` / `12`。
+ */
+export function gameUnitRangeOfBookLabel(label: string): { from: number; to: number } {
+  const index = BOOK_LABELS.indexOf(label as (typeof BOOK_LABELS)[number])
+  if (index === -1) {
+    throw new Error(`册次标签必须是 ${BOOK_LABELS.join(' / ')} 之一，收到 ${label}`)
+  }
+  return gameUnitRangeOfBook(index)
+}
+
+/** 一册教材的解析结果。 */
 export interface TextbookBook {
   /** 文件名（`01a-units.md` 之类）。 */
   file: string
@@ -74,6 +127,31 @@ export interface TextbookBook {
   units: TextbookUnit[]
   /** 行末「本册词条合计：N」的人工计数。 */
   markedTotal: number
+}
+
+/** 一册里的单元。 */
+export interface TextbookUnit {
+  /** 教材里的单元号（1–12，每册各一套）。 */
+  unitNo: number
+  /** `Look and learn` 的英文词（按教材原序；**多词词条整体保留**）。 */
+  vocabulary: string[]
+  /**
+   * 词表行的**原始条目**（「英文 + 中文」整条，未切分）。
+   *
+   * ⚠️ 它存在的唯一理由：让「英文部分被切短了」这件事**可被发现**
+   *   （见 {@link checkBookSelfConsistent} 的第 5 层判据）。
+   *   ⇒ 有了它，判据才能问「这个词后面紧跟的是中文吗」——
+   *   而这个问题**不依赖解析器自己**，所以它不是恒真断言。
+   */
+  vocabularyRaw: string[]
+  /** `Say and act` 的英文句子（按教材原序，**含重复**；**不含场景 / 类别标签**）。 */
+  sentences: string[]
+  /** `Say and act` 里被判为「场景 / 类别标签」的条目（**不做卡**）。 */
+  labels: string[]
+  /** 词表行的实际条目数（按 `｜` 切出来的条数）。 */
+  itemCount: number
+  /** 行末「（N 词）」的人工标记数。 */
+  markedCount: number
 }
 
 /** 教材的条目分隔符（全角竖线）。 */
@@ -90,6 +168,12 @@ const SENTENCE_TERMINATORS = ['.', '!', '?']
  *   （`Give me a rubber,please.`）⇒ 按空白切会把句子切碎。
  * ⚠️ 也不按「纯 ASCII 连续段」切：`…please.我要...` 这种条目开头是全角省略号
  *   ⇒ ASCII 连续段会从 `please.` 开始，丢掉前半截。
+ *
+ * ⚠️📎 **词表也走这一条**（2026-10-27 `[CR]` 修）：词表条目**可以是多词的**
+ *   （教材 1B Unit 5 的 `ice cream 冰淇淋`）⇒ 旧写法「按空白切第一个 token」
+ *   会把它截成 `ice` ⇒ 教材里明明有 `ice cream`，解析结果里却只有 `ice`，
+ *   而**没有任何报错**（G335 在 1A 上比的是 1A 的词，碰不到 1B 的 `ice cream`）。
+ *   ⇒ 词表与句型**统一**走「切在第一个汉字处」。
  */
 function englishPartOf(item: string): string {
   const cut = item.search(/[一-鿿]/)
@@ -100,6 +184,23 @@ function englishPartOf(item: string): string {
 /** 这一条是不是「真正的句子」（有终止标点）而不是「场景 / 类别标签」。 */
 function isSentence(english: string): boolean {
   return SENTENCE_TERMINATORS.some((mark) => english.endsWith(mark))
+}
+
+/**
+ * 剥掉句型条目前的**演练序号**（`1 ` / `2 ` / `3 ` …）。
+ *
+ * ⚠️ **为什么必须剥**（2026-10-27 `[CR]` 实测）：教材的句型行里，每个「活动段落」
+ *   的条目都以演练序号开头（`1 Oink...Oink...` / `2 Here you are.`）⇒
+ *   不剥的话，同一句 `Here you are.` 会被解析成**两个不同的句子**
+ *   （`2 Here you are.` 与 `Here you are.`）⇒ 归一化后不相等 ⇒
+ *   G336 的「教材句子一条不剩」永远差一条，而**没有报错说明为什么**。
+ *   ⇒ 实测全仓 28 条带序号的条目，**全部**是演练序号（没有一句真句子以数字开头）。
+ *
+ * ⚠️ 剥完之后若**只剩数字**（`4`），那是一条**被页面截断**的序号（原文如此）⇒
+ *   它既不是句子也不是场景标签（是个残缺条目）⇒ **整条丢弃**，不进 `sentences` 也不进 `labels`。
+ */
+function stripDrillNumber(english: string): string {
+  return english.replace(/^\d+\s+/, '')
 }
 
 /**
@@ -119,12 +220,8 @@ export function normalizeEnglish(text: string): string {
 /**
  * 解析一册教材。
  *
- * ⚠️ **词表条目的取法**：词表行是「`morning 早上 ｜ afternoon 下午`」，
- *   英文词是**第一个空白之前**的那一段（词条本身不含空格）⇒
- *   按空白切第一个 token 即可。
- * ⚠️ 而**句型条目不能按空白切**（`Hello!你好!` 没有空格，但
- *   `Good afternoon,Kitty.下午好,基蒂.` 的英文部分内部有空格）⇒
- *   句型走 `englishPartOf`。
+ * ⚠️ **词表与句型都走 `englishPartOf`** —— 词表条目可以是多词的（`ice cream`），
+ *   句型条目内部也有空格 ⇒ 两者都不能按空白切。
  */
 export function parseTextbookBook(file: string, text: string): TextbookBook {
   const units: TextbookUnit[] = []
@@ -135,6 +232,7 @@ export function parseTextbookBook(file: string, text: string): TextbookBook {
     const unitNo = Number(heading[1])
 
     let vocabulary: string[] = []
+    let vocabularyRaw: string[] = []
     let itemCount = -1
     let markedCount = -1
     const sentences: string[] = []
@@ -152,7 +250,8 @@ export function parseTextbookBook(file: string, text: string): TextbookBook {
           .map((s) => s.trim())
           .filter((s) => s !== '')
         itemCount = items.length
-        vocabulary = items.map((item) => item.split(/\s+/)[0] ?? '').filter((w) => w !== '')
+        vocabularyRaw = items
+        vocabulary = items.map((item) => englishPartOf(item)).filter((w) => w !== '')
         continue
       }
       if (line.includes('句型（Say and act')) {
@@ -162,8 +261,11 @@ export function parseTextbookBook(file: string, text: string): TextbookBook {
           .map((s) => s.trim())
           .filter((s) => s !== '')
         for (const item of items) {
-          const english = englishPartOf(item)
-          if (english === '') continue
+          const raw = englishPartOf(item)
+          if (raw === '') continue
+          const english = stripDrillNumber(raw)
+          // ⚠️ 剥掉序号后只剩数字 ⇒ 被页面截断的残条 ⇒ 整条丢弃。
+          if (english === '' || /^\d+$/.test(english)) continue
           if (isSentence(english)) {
             sentences.push(english)
           } else {
@@ -174,7 +276,7 @@ export function parseTextbookBook(file: string, text: string): TextbookBook {
       }
     }
 
-    units.push({ unitNo, vocabulary, sentences, labels, itemCount, markedCount })
+    units.push({ unitNo, vocabulary, vocabularyRaw, sentences, labels, itemCount, markedCount })
   }
 
   const total = text.match(/本册词条合计：\*\*(\d+)\*\*/)
@@ -187,7 +289,96 @@ export function loadTextbookBooks(): TextbookBook[] {
 }
 
 /**
- * 游戏单元号 ↔ 教材单元（**映射是本 story 的守卫之一** ⇒ 它住在可复用的地方）。
+ * **G297 的判据本体** —— 一册词表必须**自洽**。
+ *
+ * ⚠️ **判据粒度**：逐单元比「标记数 vs 实际条目数」，再比「各单元之和 vs 本册合计」
+ *   —— **三层**。只查一层的话，「每单元都对、合计错」与「合计对、某单元错」都会漏。
+ *
+ * ⚠️ **第 4 层（2026-10-27 `[CR]` 补）**：「实际条目数」必须等于**解析出的词条数**。
+ * ⚠️ **第 5 层（同上）**：「词条后面紧跟的必须是中文」——
+ *   这一层才抓得住**多词词条被截短**（`ice cream 冰淇淋` 被切成 `ice`）。
+ *   ⇒ 第 4 层**抓不到截短**（条目数与词条数都还是 4），
+ *     而第 5 层**抓得到**：切短之后，`ice` 后面紧跟的是 `cream`（英文）而不是中文。
+ *   ⇒ 第 5 层**不依赖解析器自己**（它问的是教材原文，不是「我切出来的东西」），
+ *     所以它**不是恒真断言** —— 这正是它能当守卫的原因。
+ */
+export function checkBookSelfConsistent(book: TextbookBook): string[] {
+  const problems: string[] = []
+  if (book.units.length === 0) {
+    problems.push(`${book.file}：一个单元都没解析到 —— 判据在这份文件上会真空成立`)
+    return problems
+  }
+  for (const u of book.units) {
+    if (u.markedCount < 0) {
+      problems.push(`${book.file} Unit ${u.unitNo}：找不到「（N 词）」标记`)
+      continue
+    }
+    if (u.itemCount < 0) {
+      problems.push(`${book.file} Unit ${u.unitNo}：找不到词表行`)
+      continue
+    }
+    if (u.itemCount !== u.markedCount) {
+      problems.push(
+        `${book.file} Unit ${u.unitNo}：行末标「${u.markedCount} 词」，实际条目是 ${u.itemCount} 个`,
+      )
+    }
+    if (u.vocabulary.length !== u.itemCount) {
+      problems.push(
+        `${book.file} Unit ${u.unitNo}：词表行有 ${u.itemCount} 个条目，解析出 ${u.vocabulary.length} 个词条`,
+      )
+    }
+    for (let i = 0; i < u.vocabulary.length; i += 1) {
+      const word = u.vocabulary[i]
+      const raw = u.vocabularyRaw[i]
+      if (raw === undefined) continue
+      const rest = raw.startsWith(word) ? raw.slice(word.length).trim() : ''
+      if (rest === '' || !/^[一-鿿]/.test(rest)) {
+        problems.push(
+          `${book.file} Unit ${u.unitNo}：词条「${word}」与教材原文「${raw}」对不上 —— ` +
+            '英文部分被切短了（多词词条必须整体保留）',
+        )
+      }
+    }
+    // ⚠️ **第 6 层（2026-10-27 `[CR]` 补）——「场景 / 类别标签」这一族必须站得住**。
+    //   `labels`（不做卡的条目）此前被解析出来却**从不消费** ⇒ 它是一个**死字段**，
+    //   而「句子 vs 标签」的判据（英文部分是否以 `.` / `!` / `?` 结尾）也就没人看着。
+    //   ⇒ 现在问两件**教材原文能回答**的事：
+    //   ① 标签里**不许**有终止标点（有 ⇒ 它本该是句子 ⇒ 被当标签跳过了 ⇒ 少了一张卡）；
+    //   ② 标签与句子**不许**归一化后相同（相同 ⇒ 同一段文字被算了两遍）。
+    //   ⇒ 这一层让 `labels` 从死字段变成判据的输入。
+    for (const label of u.labels) {
+      if (isSentence(label)) {
+        problems.push(
+          `${book.file} Unit ${u.unitNo}：标签「${label}」以终止标点结尾 —— ` +
+            '它本该是**句子**（要做卡），被当成标签跳过了',
+        )
+      }
+    }
+    const sentenceSet = new Set(u.sentences.map(normalizeEnglish))
+    for (const label of u.labels) {
+      const normalized = normalizeEnglish(label)
+      if (sentenceSet.has(normalized)) {
+        problems.push(
+          `${book.file} Unit ${u.unitNo}：「${label}」既是标签又是句子 —— ` +
+            '同一段文字被算了两次（要么多一张卡，要么少一张卡）',
+        )
+      }
+    }
+  }
+  const sum = book.units.reduce((a, u) => a + Math.max(u.itemCount, 0), 0)
+  if (book.markedTotal !== sum) {
+    problems.push(`${book.file}：「本册词条合计」写 ${book.markedTotal}，各单元相加是 ${sum}`)
+  }
+  const unitNos = book.units.map((u) => u.unitNo)
+  const dup = unitNos.filter((n, i) => unitNos.indexOf(n) !== i)
+  if (dup.length > 0) {
+    problems.push(`${book.file}：单元号重复 —— ${dup.join(' / ')}`)
+  }
+  return problems
+}
+
+/**
+ * 教材单元 ↔ 游戏单元的**映射**（**映射是本 story 的守卫之一** ⇒ 它住在可复用的地方）。
  *
  * ⚠️ 映射规则：**1–12 → 1A 的 U1–U12，13–24 → 1B 的 U1–U12**。
  *   错一位（13 → 1A U13）会让 G335 / G336 去查一个**不存在的**教材单元
@@ -201,15 +392,15 @@ export function textbookUnitOf(
   gameUnitNumber: number,
   books: readonly TextbookBook[] = loadTextbookBooks(),
 ): { book: TextbookBook; unit: TextbookUnit; bookIndex: number } {
-  if (!Number.isInteger(gameUnitNumber) || gameUnitNumber < 1 || gameUnitNumber > 24) {
-    throw new Error(`游戏单元号必须是 1..24 的整数，收到 ${gameUnitNumber}`)
+  if (!Number.isInteger(gameUnitNumber) || gameUnitNumber < 1 || gameUnitNumber > LAST_GAME_UNIT) {
+    throw new Error(`游戏单元号必须是 1..${LAST_GAME_UNIT} 的整数，收到 ${gameUnitNumber}`)
   }
-  const bookIndex = gameUnitNumber <= 12 ? 0 : 1
+  const bookIndex = gameUnitNumber <= UNITS_PER_BOOK ? 0 : 1
   const book = books[bookIndex]
   if (book === undefined) {
     throw new Error(`教材文件缺失：books[${bookIndex}] —— 映射判据在这份文件上会真空成立`)
   }
-  const unitNo = gameUnitNumber <= 12 ? gameUnitNumber : gameUnitNumber - 12
+  const unitNo = gameUnitNumber <= UNITS_PER_BOOK ? gameUnitNumber : gameUnitNumber - UNITS_PER_BOOK
   const unit = book.units.find((candidate) => candidate.unitNo === unitNo)
   if (unit === undefined) {
     throw new Error(`${book.file} 里找不到 Unit ${unitNo} —— 映射判据在这份文件上会真空成立`)

@@ -22,8 +22,8 @@
  * · 本模块是**唯一**出处。`scripts/validate-content.ts` 改为 import 它，
  *   不再保留第二份实现（两份实现漂移起来，两边都绿）。
  * · ⚠️ **`WORD_IMAGE_URL_PREFIX` / `expectedImageUrl()` 不在这里，也一个字都不许动**
- *   —— 那是**内容 JSON 里存的值的判据**（`unit-01.json` 里 30 张词图的
- *   `imageSrc` 全部是无 base 的 `/assets/words/unit-01/u1-dog.svg`）。
+ *   —— 那是**内容 JSON 里存的值的判据**（换源后 `unit-01.json` 里 2 张词图的
+ *   `imageSrc` 全部是无 base 的 `/assets/words/unit-01/u1-morning.svg`）。
  *   JSON 存什么就校验什么；⚠️ 与此并列的是**运行时那一半**：
  *   把 JSON 里的路径接上 base 的 `wordImageUrl()` 住在**本文件下方**（Story 1.11 / AC-B1）——
  *   两者互为逆运算（`wordImageUrl` ↔ `assetPathWithinPublic`），**改动必须成对**。

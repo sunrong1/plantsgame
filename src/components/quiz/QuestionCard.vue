@@ -119,11 +119,11 @@ const locked = computed(() => !answering.value)
  *
  * ⚠️⚠️ **绝对不要拿「刚点的 `option.id`」去 `includes`。**
  *   `option.id` 与 `entryId` 对关键词卡与回应卡**根本不是同一个东西**：
- *     entryId `u1-s-i-have-a-ball-for-my-dog`（keyword）的正确选项是 `u1-ball`
- *     entryId `u1-s-how-are-you`（response）的正确选项是 `u1-s-i-am-fine`
+ *     entryId `u1-s-good-morning`（keyword）的正确选项是 `u1-morning`
+ *     entryId `u1-s-hello`（response）的正确选项是 `u1-s-good-morning`
  *   拿 `option.id` 去查 ⇒ 这两型的正确率**永远显示 0%**。
- *   而单词卡碰巧能对上（正确项 id 恰好 === entryId）⇒ 30/37 的卡上
- *   **「看起来正常」** —— 正是最容易被真浏览器核对放过的形态。
+ *   而单词卡碰巧能对上（正确项 id 恰好 === entryId）⇒ 换源后单元 1+2 的 17 张卡里
+ *   有 6 张单词卡（6/17），它们**「看起来正常」** —— 正是最容易被真浏览器核对放过的形态。
  *
  *   这不是「在组件里实现了一条规则」，是**读 reducer 已经算好的事实**：
  *   前者的值一旦 reducer 改了就会静默错，后者永远跟着 reducer 走。
@@ -143,7 +143,7 @@ const pickedRight = computed(() => {
  *   （`core/types.ts`：`ImageOption` 只有 `id` + `imageSrc`）⇒ 词文本只能从
  *   **卡面**这一层拿。而 `content/schema.ts` 逐字写「word ⇒ 全部 ImageOption；
  *   keyword / response ⇒ 全部 TextOption」⇒ **只有单词卡会有图片选项**，
- *   而单词卡的 `promptText` 就是**那个词本身**（单元 1 的 30 张单词卡逐条核过：
+ *   而单词卡的 `promptText` 就是**那个词本身**（换源后单元 1+2 的 6 张单词卡逐条核过：
  *   `promptText` 恒等于去掉单元前缀后的 `option.id`）。
  *
  * ⚠️ **为什么 `kind !== 'word'` 时返回 `null`**：那两种卡的选项是**文字选项**，

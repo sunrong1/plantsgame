@@ -65,8 +65,16 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 import { HEARTS, TOWER_TYPES, costOf, initialSunFor, sunPerCorrectFor, tierForUnit } from '../../src/core'
-import { buildSyntheticDeck, parseUnitNumber, runLevel } from '../../scripts/balance-sim'
+import { entriesOf } from '../../src/content'
+import {
+  buildSyntheticDeck,
+  parseUnitNumber,
+  realLevelDecks,
+  runLevel,
+  unitHasContent,
+} from '../../scripts/balance-sim'
 
+import { plain, sectionOf, tableRows } from '../fixtures/markdown-table'
 import { stripComments } from '../fixtures/strip-comments'
 
 const root = fileURLToPath(new URL('../../', import.meta.url))
@@ -619,5 +627,147 @@ describe('G237 —— 模拟器不得静默丢实体（R-23）', () => {
       missingTurns([{ turn: 1 }, { turn: 2 }], 2),
       '反向自测：没缺号时不得报（判据不是恒假）',
     ).toEqual([])
+  })
+})
+
+// ══════════════════════════════════════════════════════════════════════════════
+// G340 —— 真实局规模的失败门槛（Story 2.10 `[CR]` 补丁 15）
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * ── G340 —— 换源之后的**真实局**也得有门槛守卫 ──────────────────────────
+ *
+ * ⚠️ **守什么**：本文件其余的门槛守卫（G231 / G234）跑的都是**合成题单**
+ *   （`buildSyntheticDeck(10, unitNumber)`）—— 那是 Story 2.3 定的口径。
+ *   换源之后真实局是 **6 题**（单元 1）与 **10 + 1** 两局（单元 2）⇒
+ *   合成题单标定的「连错 3 通关 / 连错 4 失败」**对真实局没有守卫**。
+ *   ⇒ 本守卫盯的是**真实内容**切出来的局（`realLevelDecks`）的门槛。
+ *
+ * ⚠️ **为什么题单必须是「真实内容 + `sliceDeckForLevel`」**：
+ *   脚本里另写一份切片 = 第二份口径（R-37）⇒ 切出来的局与游戏里的局不是同一局，
+ *   而守卫会**对着一个不存在的局**发绿。
+ *
+ * ⚠️ **判据是实测的，不是设计意图**（R-21）：
+ *   评审时写的是「『连错 3 通关 / 连错 4 失败』对 4–6 题的局**不成立**」。
+ *   实测**只对 1 题的局成立**：6 题的局门槛**与 10 题的局完全相同**，
+ *   而 1 题的末局**更宽**（连错 5 题仍通关）——
+ *   机制：一局在**全部题目答对**时就结束 ⇒ 局越短结束得越早 ⇒ 僵尸压过来的回合越少。
+ */
+
+describe('G340 —— 真实局规模的失败门槛（补丁 15）', () => {
+  /** 真实局里「连错 N 题」的结局。 */
+  function realLevelOutcome(unitNumber: number, levelIndex: number, wrongCount: number): string {
+    const deck = realLevelDecks(unitNumber)[levelIndex]
+    if (deck === undefined) {
+      throw new Error(`单元 ${unitNumber} 没有第 ${levelIndex + 1} 局 —— 判据在空集上成立`)
+    }
+    const run = runLevel(deck, (turn) => turn > wrongCount, unitNumber, { maxTurns: 16 })
+    return run.state.phase.kind
+  }
+
+  /**
+   * 某一局的门槛描述（「连错 N 通关 / 连错 M 失败」或「连错 N 题仍通关」）。
+   *
+   * ⚠️ **不许把「表里没测过的 N」说成「失败」** ——
+   *   场景表只到「连错 5 题」，短局实测连错 5 题仍通关 ⇒ 那一局的门槛比表更宽。
+   */
+  function thresholdText(unitNumber: number, levelIndex: number): string {
+    let survived = -1
+    let failed: number | null = null
+    for (let wrong = 1; wrong <= 5; wrong += 1) {
+      const outcome = realLevelOutcome(unitNumber, levelIndex, wrong)
+      if (outcome === 'level-complete') survived = wrong
+      if (outcome === 'level-failed' && failed === null) failed = wrong
+    }
+    return failed === null
+      ? `连错 ${survived} 题仍通关`
+      : `连错 ${survived} 通关 / 连错 ${failed} 失败`
+  }
+
+  it('真实局序列：单元 1 = 一局 6 题，单元 2 = 两局 10 + 1', () => {
+    expect(
+      realLevelDecks(1).map((deck) => deck.length),
+      '单元 1 的真实局序列 —— 6 条词条一局切完（`QUESTIONS_PER_LEVEL` = 10）',
+    ).toEqual([6])
+    expect(
+      realLevelDecks(2).map((deck) => deck.length),
+      '单元 2 的真实局序列 —— 11 条 ⇒ 10 + 1（末局只剩 1 条，这不是 bug）',
+    ).toEqual([10, 1])
+  })
+
+  it('真实局的题单来自真实内容，不是合成题单', () => {
+    for (const unit of [1, 2]) {
+      const fromLevels = realLevelDecks(unit)
+        .flat()
+        .map((entry) => entry.entryId)
+        .sort()
+      const fromContent = entriesOf(unit)
+        .map((entry) => entry.entryId)
+        .sort()
+      expect(
+        fromLevels,
+        `单元 ${unit}：各局题单拼起来必须正好是该单元的**全部词条** —— ` +
+          '少了就是切片漏了，多了就是切出了不属于这一单元的条目',
+      ).toEqual(fromContent)
+    }
+  })
+
+  it('6 题的局与 10 题的局门槛相同；1 题的末局更宽', () => {
+    // ⚠️ **实测结果**（R-21）：评审时那条「对 4–6 题的局不成立」只对 1 题的局成立。
+    expect(
+      realLevelOutcome(1, 0, 3),
+      '单元 1 的 6 题局：连错 3 题仍通关（与 10 题局**相同**）',
+    ).toBe('level-complete')
+    expect(realLevelOutcome(1, 0, 4), '单元 1 的 6 题局：连错 4 题失败').toBe('level-failed')
+    expect(
+      realLevelOutcome(2, 0, 3),
+      '单元 2 的 10 题局：连错 3 题仍通关',
+    ).toBe('level-complete')
+    expect(realLevelOutcome(2, 0, 4), '单元 2 的 10 题局：连错 4 题失败').toBe('level-failed')
+    expect(
+      realLevelOutcome(2, 1, 5),
+      '单元 2 的 1 题末局：**连错 5 题仍通关** —— 局越短结束得越早，僵尸压过来的回合越少',
+    ).toBe('level-complete')
+  })
+
+  it('没有内容的单元给不出真实局（脚本必须说清，而不是拿合成题单冒充）', () => {
+    expect(unitHasContent(1), '单元 1 有内容').toBe(true)
+    expect(unitHasContent(2), '单元 2 有内容').toBe(true)
+    expect(unitHasContent(3), '单元 3 还没录内容').toBe(false)
+  })
+
+  it('反向自测：判据能区分「1 题的局」与「10 题的局」（不是恒真）', () => {
+    const short = thresholdText(2, 1)
+    const full = thresholdText(2, 0)
+    expect(short, '反向自测：1 题的末局门槛').toBe('连错 5 题仍通关')
+    expect(full, '反向自测：10 题局的门槛').toBe('连错 3 通关 / 连错 4 失败')
+    expect(
+      short === full,
+      '反向自测：两个局的门槛必须不同 —— 否则判据分不出局规模',
+    ).toBe(false)
+  })
+
+  it('`docs/level-size.md` §4 的门槛表与实算一致', () => {
+    // ⚠️ 文档的 §4 是「失败门槛按真实局规模重算」那张表 ——
+    //   它写的是**实测量**，所以它必须被实测量盯着（否则又是一次「文档说 14、实测 13」）。
+    const doc = readFileSync(join(root, 'docs/level-size.md'), 'utf8')
+    const section = sectionOf(doc, '## 4.')
+    const rows = tableRows(section)
+    const expected: readonly { readonly row: string; readonly unit: number; readonly level: number }[] = [
+      { row: '单元 1 · 局 1', unit: 1, level: 0 },
+      { row: '单元 2 · 局 1', unit: 2, level: 0 },
+      { row: '单元 2 · 局 2', unit: 2, level: 1 },
+    ]
+    for (const { row, unit, level } of expected) {
+      const cells = rows.find((candidate) => plain(candidate[0]).includes(row))
+      expect(cells, `docs/level-size.md §4 缺「${row}」那一行`).toBeDefined()
+      if (cells === undefined) continue
+      const deck = realLevelDecks(unit)[level]
+      expect(plain(cells[1] ?? ''), `§4「${row}」的题数`).toBe(String(deck?.length ?? -1))
+      expect(
+        plain(cells[2] ?? ''),
+        `§4「${row}」的门槛必须等于实算 —— 文档写的是实测量，量错了就是假凭据`,
+      ).toContain(thresholdText(unit, level))
+    }
   })
 })

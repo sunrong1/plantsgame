@@ -26,8 +26,8 @@
  *
  * ── 零依赖（AC-B2）────────────────────────────────────────────────────────
  * 允许 import 的只有 `./types.js` / `./hud.js` / `./actions.js` / `./balance.js`。
- * ⚠️ **不得 import `../content/`** —— 那是静态 import JSON，会让 37 条词条
- * 进每一个 core 测试（`core/hud.ts` 文件头已记录这条坑）。
+ * ⚠️ **不得 import `../content/`** —— 那是静态 import JSON，会让全部词条
+ * （换源后单元 1+2 = 17 条）进每一个 core 测试（`core/hud.ts` 文件头已记录这条坑）。
  * ⚠️ 本层**不知道**音频文件在不在磁盘上（零 DOM）—— 它照样返回 cue，
  * 加载失败由 `app/effects-runner.ts` 静默跳过（AC-C7）。
  */

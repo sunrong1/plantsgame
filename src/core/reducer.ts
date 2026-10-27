@@ -97,7 +97,7 @@ export function createInitialState(input: CreateInitialStateInput): State {
  *
  * ⚠️ **为什么它必须存在**：`createInitialState` 对空题单**抛错**
  *   （理由逐字写在上面：空题单会让开局卡在 `awaiting-answer`）。
- *   而 Story 1.19 起（裁决 1）「一局 = 10 题」，孩子把这个单元的 37 条全部掌握之后，
+ *   而 Story 1.19 起（裁决 1）「一局 = 10 题」，孩子把这个单元的**全部词条**都掌握之后，
  *   切片结果就是**空题单** ⇒ 开局组装撞上那条抛错。
  *   ⇒ 抛错的调用点之一是**孩子点的「开始游戏」** —— NFR13 压倒性原则
  *     「孩子面前永不出现技术错误」。

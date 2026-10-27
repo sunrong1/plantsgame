@@ -14,8 +14,9 @@
  *
  * ── 依赖方向 ──────────────────────────────────────────────────────────────
  * 本文件**只** import `./balance.js`（取 `HEARTS`）与 `./types.js`（取 `State` 类型）。
- * ⚠️ **不得 import `../content/`** —— `src/content/index.ts:37` 是 `RAW_UNITS` 的
- * 静态 import JSON，拖进来会让 37 条词条进每一个 core 测试。代价是
+ * ⚠️ **不得 import `../content/`** —— `src/content/index.ts` 里的 `RAW_UNITS` 是
+ * 静态 import JSON，拖进来会让全部词条（换源后单元 1+2 = 6+11 = 17 条）进每一个
+ * core 测试。代价是
  * 「属于本单元」只能靠 `id.startsWith('u' + unitNumber + '-')` 判（偏离 #7 / 裁决 7），
  * 且 `progressDisplay` 的分母 `total` **必须是参数**而不是查表得来的。
  */
@@ -166,7 +167,7 @@ export function advanceProgress(progress: Progress, next: State): Progress {
  * 两套生命周期不可合并（R-06），所以判据留在调用方（app 层），本函数只管改 `Progress`。
  *
  * ⚠️ **`shouldAdvanceUnit` 是入参而不是本函数的判据** —— `core/` 不得 import `../content/`
- * （`effects.ts` 文件头逐字记着这条禁令及其代价：37 条词条会进每一个 core 测试）。
+ * （`effects.ts` 文件头逐字记着这条禁令及其代价：全部词条会进每一个 core 测试）。
  * 「这个单元学完了没有」「目标单元录了没有」都由 app 层查完，用一个 boolean 传进来。
  * ⇒ 副作用是**构造上可测**：`advanceUnit(p, true)` 直接喂，不需要真的录第二个单元
  * （Story 1.16 AC-F2 要求的就是这个 —— Epic 1 的 `UNITS.length === 1` 让真机路径走不到这一半）。

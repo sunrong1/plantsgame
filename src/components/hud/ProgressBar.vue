@@ -6,10 +6,10 @@
  *   文本「第 N 单元 · x/y」+ 一条**单向**填充条。
  *   `N` = `state.unitNumber`；`x` 与 `y` 全部来自 `progressDisplay(progress, …)`。
  *
- * ── ⚠️ 分母 `y` **由父级传入**（`unitTotal` prop），组件不写死 37 / 60 ──────
- *   `core/` 不得 import `content/`（`src/content/index.ts:37` 是静态 import JSON），
+ * ── ⚠️ 分母 `y` **由父级传入**（`unitTotal` prop），组件不写死任何具体数字 ───
+ *   `core/` 不得 import `content/`（`src/content/index.ts` 的 `RAW_UNITS` 是静态 import JSON），
  *   所以 core 的判据只能把分母当**参数**收下。组件若在这里写死
- *   「本单元有 37 个词」，那第二单元起就全是错的 —— 而错的方式是
+ *   「本单元有 N 个词」，那第二单元起就全是错的 —— 而错的方式是
  *   **进度条永远填不满**，看上去像「还没学完」，不像 bug。
  *
  * ── ⚠️ 为什么它**不可点**（AC-C3、FR58/FR59）─────────────────────────────

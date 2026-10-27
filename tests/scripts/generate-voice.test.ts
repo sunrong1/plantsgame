@@ -253,12 +253,12 @@ describe('合成请求体（AC-4）', () => {
     const sent = body.voice_setting.pitch
 
     if (cur.pitch === 0) {
-      // 默认态**不把该字段发出去** —— 这样请求体与产出已提交 75 条录音时**逐字节相同**，
+      // 默认态**不把该字段发出去** —— 这样请求体与产出已提交 17 条录音时**逐字节相同**，
       // 「已提交的录音仍是当前脚本能复现的产物」这句话才不依赖 TTS 的随机性
       // （2026-10-25 实测：TTS 无 seed，同一请求体发两次的响应音频也不相同）。
       expect(
         sent,
-        '默认态把 pitch 发了出去 ⇒ 请求体与产出已提交那 75 条时不再逐字节相同，那批录音的来源就说不清了',
+        '默认态把 pitch 发了出去 ⇒ 请求体与产出已提交那 17 条时不再逐字节相同，那批录音的来源就说不清了',
       ).toBeUndefined()
     } else {
       expect(
@@ -975,17 +975,25 @@ describe('溯源 manifest（[CR] P6）', () => {
     )
   })
 
-  it('真实磁盘上的 37 条录音：卡面文本与 manifest 记录逐条一致（否则新判定会要求全量重录）', () => {
+  it('真实磁盘上的 17 条录音（单元 1 + 2）：卡面文本与 manifest 记录逐条一致（否则新判定会要求全量重录）', () => {
     // 新判定会让「manifest 文本 ≠ 卡面文本」的条目要求重录。确认今天没有这种条目 ——
-    // 否则一上线就把 37 条已生成的录音全部标记为待重录，白烧配额。
+    // 否则一上线就把 17 条已生成的录音全部标记为待重录，白烧配额。
+    // ⚠️📎 **2026-10-27（Story 2.10 换源批次）**：盘上的录音从 75 条变成 **17 条**
+    //   （单元 1 的 6 条 + 单元 2 的 11 条）⇒ 本用例**同时查两个单元**，
+    //   只查单元 1 的话，单元 2 的 11 条录音就没人管了。
     const recorded = JSON.parse(
       readFileSync(new URL('public/assets/audio/voice/manifest.json', REPO_ROOT), 'utf8'),
     ) as VoiceManifest
-    const unit = JSON.parse(
-      readFileSync(new URL('src/content/units/unit-01.json', REPO_ROOT), 'utf8'),
-    ) as { entries: { entryId: string; card: { promptText: string } }[] }
+    const unitFiles = ['unit-01.json', 'unit-02.json'] as const
+    const units = unitFiles.map(
+      (file) =>
+        JSON.parse(readFileSync(new URL(`src/content/units/${file}`, REPO_ROOT), 'utf8')) as {
+          entries: { entryId: string; card: { promptText: string } }[]
+        },
+    )
 
-    const drifted = unit.entries
+    const drifted = units
+      .flatMap((unit) => unit.entries)
       .filter((e) => recorded.entries[e.entryId]?.text !== e.card.promptText)
       .map((e) => e.entryId)
 
@@ -1148,7 +1156,7 @@ describe('G312 —— 指纹归一化与比较方式（AC-6 / §3.1）', () => {
     // ⚠️ 归一化用 `{...HISTORICAL_DEFAULTS, ...stored}` 会把 `pitch` 排到**最前**，
     //   而 `currentFingerprint()` 里它排在**最后** ⇒ 两个 `JSON.stringify` **必然不等**
     //   ⇒ 现状（`VOICE_PITCH = 0`）会被**误判为不匹配**：
-    //   G310 假红 + 脚本无端拒跑 ⇒ 「75 条录音不必重生成」这条承诺的破口。
+    //   G310 假红 + 脚本无端拒跑 ⇒ 「17 条录音不必重生成」这条承诺的破口。
     const body = extractFunctionBody(scriptCode(), 'export function fingerprintMatches')
 
     expect(
@@ -1200,7 +1208,7 @@ describe('G312 —— 指纹归一化与比较方式（AC-6 / §3.1）', () => {
     ).toEqual(['pitch'])
   })
 
-  it('历史 manifest（缺 pitch 键）仍与当前常量一致 —— 75 条录音不必重生成', () => {
+  it('历史 manifest（缺 pitch 键）仍与当前常量一致 —— 17 条录音不必重生成', () => {
     const legacy = {
       model: 'speech-2.8-hd',
       voice_id: 'English_LovelyGirl',
@@ -1209,7 +1217,7 @@ describe('G312 —— 指纹归一化与比较方式（AC-6 / §3.1）', () => {
     }
     expect(
       fingerprintMatches({ fingerprint: legacy, entries: {} }),
-      '历史 manifest 被判成不匹配 ⇒ 脚本会无端拒跑、已提交的 75 条录音被白白重生成。' +
+      '历史 manifest 被判成不匹配 ⇒ 脚本会无端拒跑、已提交的 17 条录音被白白重生成。' +
         '⚠️ 注意：若你刚改了 `VOICE_SPEED` / `VOICE_PITCH`，**这条红是对的** —— ' +
         '改了生成参数就必须整批重生成（别去改 `HISTORICAL_DEFAULTS`）',
     ).toBe(true)
@@ -1330,7 +1338,7 @@ describe('G311 —— 指纹闸：参数变了 ⇒ 脚本拒绝运行（AC-7）'
 
     expect(
       code,
-      '历史 manifest 被判成不匹配 ⇒ 脚本无端拒跑、已提交的 75 条录音被白白重生成。' +
+      '历史 manifest 被判成不匹配 ⇒ 脚本无端拒跑、已提交的 17 条录音被白白重生成。' +
         '⚠️ 注意：若你刚改了 `VOICE_SPEED` / `VOICE_PITCH`，**这条红是对的** —— ' +
         '改了生成参数就必须整批重生成（别去改 `HISTORICAL_DEFAULTS`）',
     ).toBe(0)
@@ -1426,7 +1434,7 @@ describe('G311 —— 指纹闸：参数变了 ⇒ 脚本拒绝运行（AC-7）'
     ).toMatch(/\bthrow\b/)
   })
 
-  it('writeManifestFile 必须要求显式传 outputDir（不许有默认值 —— 会覆盖已提交的 75 条溯源记录）', () => {
+  it('writeManifestFile 必须要求显式传 outputDir（不许有默认值 —— 会覆盖已提交的 17 条溯源记录）', () => {
     // ⚠️ 2026-10-25 夜 `[CR]`：注释逐字写「这里**不许**回落到模块级常量」，
     //   而签名逐字是 `outputDir: string = OUTPUT_DIR` ⇒ 注释与代码互相否定。
     // ⚠️ 断言要看的是**签名**，不是函数体 ⇒ 这里单独切出「函数头到 `{` 为止」那一段
@@ -1437,7 +1445,7 @@ describe('G311 —— 指纹闸：参数变了 ⇒ 脚本拒绝运行（AC-7）'
     const signature = source.slice(start, source.indexOf('{', start))
     expect(
       signature,
-      'writeManifestFile 的 outputDir 又有了默认值 ⇒ 一次 `writeManifestFile(m)` 就会覆盖仓库里已提交的 75 条溯源记录',
+      'writeManifestFile 的 outputDir 又有了默认值 ⇒ 一次 `writeManifestFile(m)` 就会覆盖仓库里已提交的 17 条溯源记录',
     ).not.toMatch(/outputDir:\s*string\s*=/)
   })
 })

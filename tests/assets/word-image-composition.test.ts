@@ -154,9 +154,15 @@ function withMutatedWordImage<T>(
 
   const scratch = mkdtempSync(join(tmpdir(), 'word-image-mutation-'))
   try {
-    mkdirSync(join(scratch, 'unit-01'), { recursive: true })
-    cpSync(originalPath, join(scratch, 'unit-01', `${entryId}.svg`))
-    const mutatedPath = join(scratch, 'unit-01', `${entryId}.svg`)
+    // ⚠️ **暂存目录名从来源目录派生**（2026-10-27 `[CR]` 修）：此前这里写死 `unit-01`，
+    //   而 `sourceDir` 可以是 `unit-02` 或黄金值夹具目录 ⇒ 变异文件被放进一个
+    //   **与它的来源无关**的目录名里。实测不报错（判据只读文件名），
+    //   但一旦有人按目录名推断「这是单元 1 的图」就会读错；
+    //   而「暂存路径必须与来源一致」这件事本身是**可以断言的** ⇒ 现在它就是。
+    const scratchSubdir = basename(sourceDir)
+    mkdirSync(join(scratch, scratchSubdir), { recursive: true })
+    cpSync(originalPath, join(scratch, scratchSubdir, `${entryId}.svg`))
+    const mutatedPath = join(scratch, scratchSubdir, `${entryId}.svg`)
     const mutated = mutate(original)
     expect(
       mutated,

@@ -17,6 +17,18 @@
  * 测试与模拟就会同时错，而两边都绿。两份跑出的门槛数字必须一致，
  * 那正是「模拟跑的是真实实现」的证据。
  *
+ * ⚠️📎 **2026-10-27（Story 2.10 `[CR]` 补丁 15）新增 import `src/content/`**：
+ *   换源之后「一局 = 10 题」与「1 关 = 1 教材 Unit」互相冲突
+ *   （2026-10-27 用户裁决：**保持 10，但重算平衡阈值**）⇒ 上面那张
+ *   **合成题单**（每局 10 题）标定的门槛表对**真实局规模**不再成立
+ *   （单元 1 的真实局只有 **6 题**，单元 2 是 **10 + 1** 两局）。
+ *   ⇒ 本脚本另出一张**按真实局规模**的门槛表：题单用
+ *     `src/core/deck-slice.ts` 的 `sliceDeckForLevel`（切片判据的**唯一定义处**）
+ *     切**真实内容**（`src/content/` 的 `entriesOf`）。
+ *   ⇒ **策略层仍然自建**：真实内容只提供「这一局有几道题、题目是什么」，
+ *     答题 / 建塔策略一分未改 —— 否则「模拟跑的是真实实现」这条证据链
+ *     会被「策略也抄了测试侧」污染。
+ *
  * ⚠️ **不得在脚本内内联一份回合逻辑** —— 那是本脚本要消灭的东西。
  * 下面每一个数字都来自 `reduce()` 的返回值。
  *
@@ -49,9 +61,12 @@ import {
   reduce,
   resolveCombatRound,
   resolveRound,
+  sliceDeckForLevel,
   tierForUnit,
 } from '../src/core/index.js'
 import type { Action, DeckEntry, State } from '../src/core/index.js'
+
+import { UNITS, entriesOf } from '../src/content/index.js'
 
 // ════════════════════════════════════════════════════════════════════════
 // 策略层（表头必须打印 —— 门槛数字只在策略固定时才有意义）
@@ -187,6 +202,50 @@ export function buildSyntheticDeck(n: number, unitNumber: number, forceTowerType
     })
   }
   return entries
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// 真实局规模（Story 2.10 `[CR]` 补丁 15）
+// ════════════════════════════════════════════════════════════════════════
+
+/**
+ * 某个单元的**真实局序列** —— 用**真实内容** + **真实切片判据**切出来。
+ *
+ * ⚠️ **为什么要有这一份**（2026-10-27 用户裁决：保持 10，但重算平衡阈值）：
+ *   换源之后「一局 = 10 题」（`QUESTIONS_PER_LEVEL`）与「1 关 = 1 教材 Unit」
+ *   互相冲突 —— 教材 24 个单元里**只有 2 个**录了内容，而它们的规模是
+ *   单元 1 = **6 条**（一局切完）、单元 2 = **11 条**（**10 + 1** 两局）。
+ *   ⇒ 上面那张按 **10 题合成题单**标定的门槛表（「连错 3 通关 / 连错 4 失败」）
+ *     **对 4–6 题的局不成立** ⇒ 门槛必须按**真实局规模**重算并公布。
+ *
+ * ⚠️ **切片用的是 `sliceDeckForLevel`（唯一定义处）**，不是这里另写一遍
+ *   「取前 N 条未掌握的」—— 另写一份就等于两条复制链（R-37），
+ *   而切片口径一变（相邻不同型的重排规则、末局不足 N 条的处理），
+ *   这里那一份会**静默**按老口径切 ⇒ 表与游戏里的局不是同一局。
+ *
+ * ⚠️ **「已掌握」按 `entryId` 逐局累加**：`sliceDeckForLevel` 的第二个参数
+ *   收的就是「已掌握的条目 id 集合」（`src/app/store.ts` 传的是
+ *   `progress.masteredWordIds`）⇒ 一局打完就把它切掉，再切下一局。
+ *
+ * @param unitNumber 单元号。**该单元必须已有内容** —— 没有内容时
+ *        `entriesOf` 会抛错（内容层刻意不静默回退）。
+ */
+export function realLevelDecks(unitNumber: number): readonly (readonly DeckEntry[])[] {
+  const entries = entriesOf(unitNumber)
+  const levels: DeckEntry[][] = []
+  let mastered: string[] = []
+  for (;;) {
+    const deck = sliceDeckForLevel(entries, mastered)
+    if (deck.length === 0) break
+    levels.push(deck)
+    mastered = [...mastered, ...deck.map((entry) => entry.entryId)]
+  }
+  return levels
+}
+
+/** 某个单元是否**已有内容**（`UNITS` 里有没有它）。 */
+export function unitHasContent(unitNumber: number): boolean {
+  return UNITS.some((unit) => unit.unitNumber === unitNumber)
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -395,8 +454,69 @@ for (const label of ['开局连错 3 题（其余全对）', '开局连错 4 题
   )
 }
 
-// ── 单塔命中校验 ─────────────────────────────────────────────────────────
+// ── 按真实局规模的失败门槛（Story 2.10 `[CR]` 补丁 15）────────────────────
+//
+// ⚠️ **为什么这张表必须与上面那张分开印**（2026-10-27 用户裁决：保持 10，但重算平衡阈值）：
+//   上面那张按 **10 题合成题单**标定；换源之后真实局是 **6 题**（单元 1）
+//   与 **10 + 1** 两局（单元 2）⇒ 「连错 3 通关 / 连错 4 失败」对短局不成立。
+//   ⇒ 两张表**口径不同、结论不同**，混在一张表里就是 R-23 记的那类「看起来合理」。
 
+console.log('\n[balance] === 按真实局规模的失败门槛（Story 2.10 [CR] 补丁 15）===')
+console.log(
+  '[balance] ⚠️ 上面那张表按**10 题合成题单**标定；这一张按**真实内容**的局规模重算 ——',
+)
+console.log(
+  '[balance]    「连错 N 题」的门槛**取决于这一局有几道题**（局越短，僵尸压过来的回合越少）。',
+)
+if (!unitHasContent(unitNumber)) {
+  console.log(
+    `[balance] ⚠️ 单元 ${unitNumber} **还没有内容**（已录入：${UNITS.map((u) => u.unitNumber).join(' / ')}）` +
+      ' ⇒ 这一张给不出来 —— 真实局规模要等内容录进来才知道。',
+  )
+} else {
+  const realLevels = realLevelDecks(unitNumber)
+  console.log(
+    `[balance] 单元 ${unitNumber} 的真实局序列：${realLevels.map((deck) => `${deck.length} 题`).join(' + ')}`,
+  )
+  for (const [index, deck] of realLevels.entries()) {
+    console.log(`[balance]   局 ${index + 1}（${deck.length} 题）`)
+    let survivedWrong = -1
+    let failedWrong: number | null = null
+    for (const { label, correctAt, maxTurns } of thresholdRows) {
+      const run = runLevel(deck, correctAt, unitNumber, { maxTurns })
+      const lost = run.rows.reduce((sum, row) => sum + row.heartsLost, 0)
+      const result =
+        run.state.phase.kind === 'level-failed'
+          ? '失败'
+          : run.state.phase.kind === 'level-complete'
+            ? '通关'
+            : '未结束'
+      console.log(
+        `[balance]     ${label.padEnd(30)}  ${String(lost).padStart(2)}   ${String(run.turnsPlayed).padStart(4)}   ${result}`,
+      )
+      // 「开局连错 N 题（其余全对）」那一族里，**还能通关的最大 N** = 这一局的门槛。
+      const wrongMatch = /^开局连错 (\d+) 题/.exec(label)
+      if (wrongMatch !== null) {
+        const wrong = Number(wrongMatch[1])
+        if (result === '通关') survivedWrong = Math.max(survivedWrong, wrong)
+        if (result === '失败' && failedWrong === null) failedWrong = wrong
+      }
+    }
+    // ⚠️ **不许把「表里没测过的 N」说成「失败」** —— 表只到「连错 5 题」，
+    //   短局（1 题的末局）实测**连错 5 题仍然通关** ⇒ 那一局的门槛比表更宽，
+    //   而报告若写成「连错 6 题失败」就是把**没跑过的事**当成事实印出来。
+    console.log(
+      failedWrong === null
+        ? `[balance]     ⇒ 这一局的门槛：表中连错到 ${survivedWrong} 题**仍通关**（再往上表里没测，不作断言）`
+        : `[balance]     ⇒ 这一局的门槛：连错 ${survivedWrong} 题通关 / 连错 ${failedWrong} 题失败`,
+    )
+  }
+  console.log(
+    '[balance] ⚠️ 24 个教材单元的局规模 census（哪几个单元的局不足 5 题）见 `docs/level-size.md`。',
+  )
+}
+
+// ── 单塔命中校验 ─────────────────────────────────────────────────────────
 // ⚠️ 表头的「造价 50」**改为现算**（Story 2.3）：写死它的话，单元 5/11 的报告
 //   会一边说「造价 50」一边按 75/100 跑 —— 读者没有任何信号能发现两者不一致
 //   （与「减速塔表现」那段表头的同一个坑，`[CR]` 2026-10-14 已记过）。

@@ -443,11 +443,15 @@ const CARD_KINDS: readonly string[] = (() => {
  * ⚠️ 这是**产品裁决**：取 2 是因为「只差一两个字」正是 6 岁半**逐字辨认**才能分辨的
  * 量级（`pen` / `pet`、`cat` / `car`）。
  *
- * ⚠️ **阈值是被数据卡住的**：单元 1 的卡内最小编辑距离实测 = **3**
- * （关键词卡 `ball` ~ `book`，见 `docs/option-count.md` 的复算方法）⇒
- * 阈值取 3 就会把一个**语义上完全可分**的合格干扰项判坏（球 vs 书）⇒ 阈值 ≤ 2。
- * 取 1 则放过「差两个字」的 `ball` / `bail`。
- * ⇒ 改这个数字要同步改 `docs/option-count.md`，并重跑 G268 与 T6.6 的反向自测。
+ * ⚠️ **换源后阈值不再被数据卡住 —— 数据反而更宽松**（2026-10-27 实测）：
+ *   单元 1+2 的卡内最小编辑距离实测 = **5**（单元 2 的关键词卡
+ *   `u2-s-give-me-a-ruler-please`：`ruler` ~ `book`；单元 1 是 **7**，
+ *   `u1-s-good-morning`：`morning` ~ `afternoon`）⇒ 阈值取 3 **不会**误杀
+ *   「语义上完全可分的合格干扰项」（旧内容的 `ball` ~ `book` 距离确实是 3，
+ *   但那一对已随换源退役）。
+ * ⇒ 取 1 则放过「差两个字」的一族（6 岁半尚能逐字辨认的量级）⇒ **阈值是 2**。
+ * ⇒ 改这个数字要同步改 `docs/option-count.md`（其 §4.1 逐字记着上面两个实测值），
+ *   并重跑 G268 与 T6.6 的反向自测。
  */
 export const NEAR_DUPLICATE_MAX_DISTANCE = 2
 
@@ -555,7 +559,7 @@ function optionCountProblems(raw: unknown): ContentProblem[] {
         optionId: null,
         message:
           '单元号缺失或不是数字 ⇒ 本单元的选项数**无法核对**（这一维没跑）—— ' +
-          '请先把 unitNumber 写成 1..20 的整数，再让选项数规则核对它',
+          '请先把 unitNumber 写成 1..24 的整数，再让选项数规则核对它',
       })
     }
     return problems
@@ -567,7 +571,7 @@ function optionCountProblems(raw: unknown): ContentProblem[] {
       expected.set(kind, targetOptionCount(unitNumber, kind as Parameters<typeof targetOptionCount>[1]))
     } catch (err) {
       // ⚠️ **两种失败原因必须分开说**（`[CR]` 2026-10-23 修）：
-      //   ① 规则**不覆盖这个单元**（单元号在 1..20 之外）⇒ 该去扩规则的覆盖范围；
+      //   ① 规则**不覆盖这个单元**（单元号在 1..24 之外）⇒ 该去扩规则的覆盖范围；
       //   ② 规则覆盖了这个单元，但**档位表里没有这个卡型** ⇒ 该去补档位表的 `counts` 键。
       //   原来两种都写成「规则不覆盖单元 N」⇒ ② 会把作者引到错的地方（去改 LAST_UNIT）。
       const message = err instanceof Error ? err.message : String(err)

@@ -23,109 +23,32 @@
  *       与 `sprint-change-proposal-2026-10-24-2.md`。
  *
  * 不在 src/core/ 下 —— NFR16：测试全部在 tests/。
+ *
+ * ── 📎 2026-10-27（Story 2.10 `[CR]`）：本文件**不再自带解析器** ────────────
+ *   此前这里另有一份 `parseBook()`，规则与 `tests/helpers/textbook-corpus.ts`
+ *   的 `parseTextbookBook()` **不一样**（它只按 `｜` 数条目、不切英文部分）⇒
+ *   **两份解析器 = 两条复制链**（R-37），而「教材改了它会红」这个卖点
+ *   只在 Story 2.10 那份上成立。
+ *   ⇒ 现在**解析与自洽判据都住在 helpers 里**，本文件只负责
+ *     **G298（词表 ↔ GDD 对得上）** 与反向自测。
  */
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
+import {
+  checkBookSelfConsistent,
+  loadTextbookBooks,
+  type TextbookBook,
+} from '../helpers/textbook-corpus'
+
 const root = fileURLToPath(new URL('../../', import.meta.url))
 
-const CORPUS_DIR = `${root}docs/textbook-oxford-shanghai/`
-const CORPUS_FILES = ['01a-units.md', '01b-units.md']
 const GDD_PATH = `${root}_bmad-output/planning-artifacts/gdds/gdd-plants-game-2026-10-11/gdd.md`
 
-/** 一个单元的词表解析结果。 */
-export interface CorpusUnit {
-  /** 教材里的单元号（1–12，每册各一套）。 */
-  unitNo: number
-  /** 词表条目（按 `｜` 分隔的实际条目数）。 */
-  itemCount: number
-  /** 行末「（N 词）」的人工标记数。 */
-  markedCount: number
-}
-
-/** 一册的解析结果。 */
-export interface CorpusBook {
-  file: string
-  units: CorpusUnit[]
-  /** 行末「本册词条合计：N」的人工计数。 */
-  markedTotal: number
-}
-
-/**
- * 解析一册词表。
- *
- * ⚠️ **两个数都要取**（实际条目数 + 人工标记数）—— 判据要比对它们，
- *   只取一个就等于「用抄录者自己的话来验抄录者」。
- */
-export function parseBook(file: string, text: string): CorpusBook {
-  const units: CorpusUnit[] = []
-  const lines = text.split('\n')
-  for (let i = 0; i < lines.length; i++) {
-    const heading = lines[i].match(/^### .*Unit (\d+)/)
-    if (!heading) continue
-    const unitNo = Number(heading[1])
-    // 词表行：本单元第一行含「词表（Look and learn）」的行
-    let itemCount = -1
-    let markedCount = -1
-    for (let j = i + 1; j < lines.length && !lines[j].startsWith('### '); j++) {
-      const l = lines[j]
-      if (!l.includes('词表（Look and learn）')) continue
-      const marker = l.match(/（(\d+)\s*词）/)
-      markedCount = marker ? Number(marker[1]) : -1
-      const body = l.split('：').slice(1).join('：')
-      const withoutMarker = body.replace(/　*_\s*（\d+\s*词）_\s*$/, '')
-      itemCount = withoutMarker
-        .split('｜')
-        .map((s) => s.trim())
-        .filter((s) => s !== '').length
-      break
-    }
-    units.push({ unitNo, itemCount, markedCount })
-  }
-  const total = text.match(/本册词条合计：\*\*(\d+)\*\*/)
-  return { file, units, markedTotal: total ? Number(total[1]) : -1 }
-}
-
-/**
- * G297 的判据本体：一册词表必须**自洽**。
- *
- * ⚠️ **判据粒度**：逐单元比「标记数 vs 实际条目数」，再比「各单元之和 vs 本册合计」
- *   —— **三层**。只查一层的话，「每单元都对、合计错」与「合计对、某单元错」都会漏。
- */
-export function checkBookSelfConsistent(book: CorpusBook): string[] {
-  const problems: string[] = []
-  if (book.units.length === 0) {
-    problems.push(`${book.file}：一个单元都没解析到 —— 判据在这份文件上会真空成立`)
-    return problems
-  }
-  for (const u of book.units) {
-    if (u.markedCount < 0) {
-      problems.push(`${book.file} Unit ${u.unitNo}：找不到「（N 词）」标记`)
-      continue
-    }
-    if (u.itemCount < 0) {
-      problems.push(`${book.file} Unit ${u.unitNo}：找不到词表行`)
-      continue
-    }
-    if (u.itemCount !== u.markedCount) {
-      problems.push(
-        `${book.file} Unit ${u.unitNo}：行末标「${u.markedCount} 词」，实际条目是 ${u.itemCount} 个`,
-      )
-    }
-  }
-  const sum = book.units.reduce((a, u) => a + Math.max(u.itemCount, 0), 0)
-  if (book.markedTotal !== sum) {
-    problems.push(`${book.file}：「本册词条合计」写 ${book.markedTotal}，各单元相加是 ${sum}`)
-  }
-  const unitNos = book.units.map((u) => u.unitNo)
-  const dup = unitNos.filter((n, i) => unitNos.indexOf(n) !== i)
-  if (dup.length > 0) {
-    problems.push(`${book.file}：单元号重复 —— ${dup.join(' / ')}`)
-  }
-  return problems
-}
+/** 一册的解析结果 —— 来自**唯一**的解析器（`tests/helpers/textbook-corpus.ts`）。 */
+type CorpusBook = TextbookBook
 
 /** 剥掉 markdown 的 frontmatter（`---` 包围的那一段）。 */
 function bodyOf(md: string): string {
@@ -189,7 +112,7 @@ export function checkCorpusMatchesGdd(
 
 // ── 被守卫的真实文件 ───────────────────────────────────────────────────────
 
-const books = CORPUS_FILES.map((f) => parseBook(f, readFileSync(`${CORPUS_DIR}${f}`, 'utf8')))
+const books = loadTextbookBooks()
 const gddBody = bodyOf(readFileSync(GDD_PATH, 'utf8'))
 const gddLevelCount = (() => {
   const m = gddBody.match(/关卡总数[^。]*?(\d+)\s*关/)
@@ -213,6 +136,25 @@ describe('G297 教材词表必须自洽（标记数 == 实际条目数 == 本册
     expect(
       checkBookSelfConsistent(broken).some((p) => p.includes('Unit')),
       '构造失效：把行末标记数 +1 竟没被判出来 —— 判据只数了一个来源',
+    ).toBe(true)
+  })
+  it('G297.3 反向自测：给标签加一条「以终止标点结尾」的条目，必须红（labels 不是死字段）', () => {
+    // ⚠️ **第 6 层判据的反向自测**（2026-10-27 `[CR]` 补）：
+    //   `labels`（场景 / 类别标签）此前被解析出来却**从不消费** ⇒ 死字段，
+    //   而「句子 vs 标签」的判据（英文部分是否以终止标点结尾）也就没人看着。
+    //   ⇒ 这一层让 `labels` 成为判据的输入；没有反向自测就不知道它是不是恒绿。
+    const book = books[0]
+    const first = book.units[0]
+    expect(first, '构造失效：第一册里一个单元都没解析到').toBeDefined()
+    const broken: CorpusBook = {
+      ...book,
+      units: book.units.map((u, i) =>
+        i === 0 ? { ...u, labels: [...u.labels, 'Greetings!'] } : u,
+      ),
+    }
+    expect(
+      checkBookSelfConsistent(broken).some((p) => p.includes('终止标点')),
+      '构造失效：把一条标签改成「以终止标点结尾」竟没被判出来 —— labels 这一层是恒绿的',
     ).toBe(true)
   })
 })

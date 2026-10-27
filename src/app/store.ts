@@ -180,8 +180,9 @@ export const progress: Ref<Progress> = ref({ currentUnitIndex: 0, masteredWordId
  *
  * ⚠️ **📎 Story 1.19：题单从「整个单元」变成「本局至多 10 条」。**
  *   原实现逐字是 `createInitialState({ unitNumber, deck: entriesOf(unitNumber) })`
- *   —— 把单元 1 的全部 37 条当一局的题单，按 AC 自己的 20-30 秒/题算是
- *   12.3-18.5 分钟，是 AC「单局 3-5 分钟」上限的 2.5-3.7 倍（裁决 1）。
+ *   —— 把单元 1 的**全部词条**当一局的题单（**换源前**单元 1 是 37 条），
+ *   按 AC 自己的 20-30 秒/题算是 12.3-18.5 分钟，
+ *   是 AC「单局 3-5 分钟」上限的 2.5-3.7 倍（裁决 1）。
  *
  * ⚠️🔥 **切片必须读 `progress.masteredWordIds`（跨局），不是 `state.masteredEntryIds`（本局）。**
  *   读错的那一版会让**每一局都从第 1 题重开**，而 `assertDeckRelations` 全程绿灯 ——

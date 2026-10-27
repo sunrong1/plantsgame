@@ -59,7 +59,12 @@ import { describe, expect, it } from 'vitest'
 
 import { getUnit } from '../../src/content'
 import { FIRST_UNIT, LAST_UNIT, targetCardDistribution } from '../../src/content/distribution'
-import { textbookUnitOf, textbookWordCount } from '../helpers/textbook-corpus'
+import {
+  gameUnitRangeOfBookLabel,
+  textbookUnitOf,
+  textbookWordCount,
+} from '../helpers/textbook-corpus'
+import { codeBlockOf, plain, sectionOf, tableRows } from '../fixtures/markdown-table'
 
 /** 文档路径（相对仓库根）。 */
 const DOC_PATH = 'docs/card-distribution.md'
@@ -119,53 +124,14 @@ interface Drift {
 }
 
 /**
- * 取出某个小节的正文。
- *
- * ⚠️ 结束位置取「下一个 `##` / `###` 标题行」—— 不是下一个 `##`：
- *   §4 的正文下面挂着 `### 4.1`，若只认 `##` 就会把 §4.1 的表也算进 §4。
- * ⚠️ 代码块里的 `# 在仓库根目录执行` 是**单**个 `#` ⇒ 不匹配 `#{2,3}`，
- *   不会被误当成小节边界。
+ * ⚠️📎 **2026-10-27（Story 2.10 `[CR]`）**：本文件原先**自己抄了一份**
+ *   Markdown 表格解析（`sectionOf` / `tableRows` / `plain` / `codeBlockOf`），
+ *   而新写的 `tests/content/level-size-doc.test.ts`（守 `docs/level-size.md`）
+ *   **也要同一套工具** ⇒ 两份抄写 = 两条复制链（R-37）：
+ *   抄的那份与真判据分叉时，两条守卫会**用不同的尺子量同一类表**，
+ *   而其中一条报出来的「漂移」是假的。
+ *   ⇒ 四件工具已挪到 `tests/fixtures/markdown-table.ts`，两个文件共用同一把尺子。
  */
-function sectionOf(raw: string, headingPrefix: string): string {
-  const lines = raw.split('\n')
-  const start = lines.findIndex((line) => line.trim().startsWith(headingPrefix))
-  if (start < 0) return ''
-  let end = lines.length
-  for (let i = start + 1; i < lines.length; i += 1) {
-    if (/^#{2,3}\s/.test(lines[i])) {
-      end = i
-      break
-    }
-  }
-  return lines.slice(start + 1, end).join('\n')
-}
-
-/** 取出小节里所有表格行（已切成单元格、已去掉首尾的 `|`）。 */
-function tableRows(section: string): string[][] {
-  return section
-    .split('\n')
-    .filter((line) => line.trim().startsWith('|'))
-    .map((line) =>
-      line
-        .trim()
-        .replace(/^\|/, '')
-        .replace(/\|$/, '')
-        .split('|')
-        .map((cell) => cell.trim()),
-    )
-    .filter((cells) => !cells.every((cell) => /^:?-+:?$/.test(cell)))
-}
-
-/** 去掉单元格里的强调标记（`**` / `*`），让解析不必照顾排版。 */
-function plain(cell: string): string {
-  return cell.replace(/\*\*/g, '').replace(/\*/g, '')
-}
-
-/** 取出小节里的第一个围栏代码块（按语言标注匹配）。 */
-function codeBlockOf(section: string, language: string): string {
-  const match = new RegExp('```' + language + '\\n([\\s\\S]*?)```').exec(section)
-  return match?.[1] ?? ''
-}
 
 // ══════════════════════════════════════════════════════════════════════════════
 // 判据本体（纯函数：吃文档文本，吐违规清单）
@@ -299,8 +265,11 @@ function checkSection4(raw: string): Drift[] {
   for (const cells of censusRows) {
     const book = plain(cells[0])
     // 游戏单元 ↔ 教材单元的映射：1–12 → 1A，13–24 → 1B（G338 独立钉住这条映射）。
-    const from = book === '1A' ? FIRST_UNIT : 13
-    const to = book === '1A' ? 12 : LAST_UNIT
+    // ⚠️ **区间从唯一出处取**（2026-10-27 `[CR]` 修）：此前这里把 `13` / `12` 抄在本文件里
+    //   ⇒ **第二份事实源** —— 册次边界一旦改动，G321 会拿旧区间去核教材，
+    //   报出一个「看起来像文档漂移」的**假错**，而 G338 那边却是绿的。
+    //   ⇒ 现在问 `tests/helpers/textbook-corpus.ts`（映射的唯一定义处）。
+    const { from, to } = gameUnitRangeOfBookLabel(book)
 
     // 逐单元词数列：一格一个数，逐格与教材比。
     const listCell = plain(cells[2] ?? '')
@@ -427,10 +396,39 @@ function checkSection41(raw: string): Drift[] {
 
   const rows = tableRows(section)
   /** 批次行（首列是 `2.5` / `2.10` 这种 story 号 —— **必须能匹配两位小数**）。 */
-  const batchRows = rows.filter((cells) => /^2\.\d{1,2}$/.test(plain(cells[0])))
+  const batchLikeRows = rows.filter((cells) => /^2\.\d{1,2}$/.test(plain(cells[0])))
+  /**
+   * **预期的批次集合**（2026-10-27 `[CR]` 修 —— 显式钉住，不靠正则）。
+   *
+   * ⚠️ **为什么不能只靠正则**：旧正则 `/^2\.\d{1,2}$/` 会把**已作废**的 `2.5`
+   *   那一行（Story 2.5 已被 2.10 吸收）一起收进来 ⇒ 那一行的数字会被拿去
+   *   参与「各批相加 = 合计」的计算 ⇒ **合计会偏大**，而文档没写错 ⇒ 假红。
+   *   ⇒ 现在：**批次集合显式列出**，多出来的批次行**报错**（要删），
+   *     少了的批次行**也报错**（要补）—— 两个方向都有牙齿。
+   */
+  const EXPECTED_BATCHES = ['2.6', '2.7', '2.8', '2.10'] as const
+  const batchRows = batchLikeRows.filter((cells) =>
+    (EXPECTED_BATCHES as readonly string[]).includes(plain(cells[0])),
+  )
   if (batchRows.length === 0) {
     drift.push({ where: '§4.1', detail: '找不到「2.6 / 2.7 / 2.8 / 2.10」形式的批次行' })
     return drift
+  }
+  for (const cells of batchLikeRows) {
+    const story = plain(cells[0])
+    if (!(EXPECTED_BATCHES as readonly string[]).includes(story)) {
+      drift.push({
+        where: `§4.1 ${story}`,
+        detail:
+          `批次 ${story} 不在预期的批次集合（${EXPECTED_BATCHES.join(' / ')}）里 —— ` +
+          '已作废的批次行必须删掉（否则它的数字会参与合计）',
+      })
+    }
+  }
+  for (const story of EXPECTED_BATCHES) {
+    if (!batchRows.some((cells) => plain(cells[0]) === story)) {
+      drift.push({ where: `§4.1 ${story}`, detail: `批次 ${story} 不在文档里` })
+    }
   }
 
   /** 每一批的实算值（用于合计行）。 */
@@ -777,6 +775,23 @@ const NEGATIVE_CASES: readonly NegativeCase[] = [
         .filter((line) => !/^\|\s*2\.8\s*\|/.test(line))
         .join('\n'),
     expectWhere: /§4\.1 合计行/,
+  },
+  {
+    name: '§4.1 多出一行已作废的批次（2.5）⇒ 必须被报出来',
+    // ⚠️ 这一条钉的是「批次集合是**显式列出**的」这件事：
+    //   旧正则 `/^2\.\d{1,2}$/` 会把 `2.5` 一起收进来 ⇒ 它的数字会参与合计。
+    breakDoc: (doc) =>
+      doc.replace(/^\|\s*2\.10\s*\|.*$/m, '| 2.5 | 单元 1 – 2 | **6 张** |\n| 2.10 | 单元 1 – 2 | **6 张** |'),
+    expectWhere: /§4\.1 2\.5/,
+  },
+  {
+    name: '§4.1 少一行批次（2.7 不见了）⇒ 必须被报出来',
+    breakDoc: (doc) =>
+      doc
+        .split('\n')
+        .filter((line) => !/^\|\s*2\.7\s*\|/.test(line))
+        .join('\n'),
+    expectWhere: /§4\.1 2\.7/,
   },
   {
     name: '§3 的复算方法代码块被删掉',

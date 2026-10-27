@@ -19,6 +19,8 @@
  * · 每条 `expect` 带中文失败消息，写「为什么这条错了 → 会导致什么」。
  */
 
+import { readdirSync, readFileSync } from 'node:fs'
+import { basename, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
@@ -47,6 +49,21 @@ const root = fileURLToPath(new URL('../../', import.meta.url))
  *   重画了这 5 张里的任何一张，这条会当场红（那正是 AC-10 条件 b 的信号）。
  */
 const GOLDEN_DIR = `${root}tests/fixtures/word-images`
+
+/**
+ * **交付目录**（`public/assets/words/`）—— 孩子真正会看到的那批词图。
+ *
+ * ⚠️📎 **2026-10-27（Story 2.10 `[CR]` 补）**：换源批次把黄金值夹具从
+ *   `public/assets/words/unit-01` 搬到了 `tests/fixtures/word-images`
+ *   （旧的 60 张自建词图删掉了）⇒ 本文件**不再测任何交付中的图**。
+ *   ⇒ 而黄金值本身是**旧图的**数值（69.1 / 79 …），新交付的 6 张**不可能**复现它
+ *   ⇒ 「把新图也塞进黄金值表」是错的（那等于拿新数字重新定义黄金值）。
+ *   ⇒ 真正缺的是另一件事：**实算脚本必须跑得动交付中的图**
+ *   （词图换了新画法、新增了 transform 形态时，脚本可能抛错或算出 NaN ——
+ *   而本文件是**脚本**的守卫，它不测交付资产就等于脚本的「输入面」少了一半）。
+ *   ⇒ 补这一条：交付目录里的每一张都要被实算一遍，且结果必须是有限值。
+ */
+const DELIVERED_DIR = `${root}public/assets/words`
 
 /** AC-4 的黄金值。出处：`docs/art-direction.md:540-546`。容差：0.5pt / 2px。 */
 const GOLDEN = [
@@ -104,6 +121,44 @@ describe('AC-4 附注 —— 黄金口径与对照口径的差是已知的宽松
     const metrics = measureWordImageFile(GOLDEN_DIR, 'u1-three')
     expect(metrics.edgePercent).toBeCloseTo(67.2, 1)
     expect(metrics.edgePercentFull).toBeCloseTo(69.5, 1)
+  })
+})
+
+describe('交付目录的词图 —— 实算脚本必须跑得动它们（2026-10-27 `[CR]` 补）', () => {
+  /** 交付目录下的全部词图（递归）。 */
+  function deliveredWordImages(): string[] {
+    return readdirSync(DELIVERED_DIR, { recursive: true })
+      .map(String)
+      .filter((name) => name.endsWith('.svg'))
+      .sort()
+      .map((name) => join(DELIVERED_DIR, name))
+  }
+
+  it('一张都不许少 —— 交付目录下的每一张词图都被实算过，且结果是有限值', () => {
+    const files = deliveredWordImages()
+
+    expect(
+      files.length,
+      '交付目录里一张词图都没枚举到 —— 下面的循环会在空集合上空过（本条恒绿）',
+    ).toBeGreaterThan(0)
+
+    for (const path of files) {
+      const metrics = measureWordImage(basename(path, '.svg'), readFileSync(path, 'utf8'))
+
+      expect(
+        Number.isFinite(metrics.edgePercent),
+        `${path} 的主体占比不是有限值（${metrics.edgePercent}）—— 实算脚本算坏了，` +
+          '而本文件是**脚本**的守卫：不测交付资产，脚本的输入面就少了一半',
+      ).toBe(true)
+      expect(
+        Number.isFinite(metrics.minPaddingPx),
+        `${path} 的最小留白不是有限值（${metrics.minPaddingPx}）—— 实算脚本算坏了`,
+      ).toBe(true)
+      expect(
+        metrics.tier,
+        `${path} 读不到构图档位 —— 脚本在交付资产上读不出档位，而档位决定 §5.1 取哪一段区间`,
+      ).not.toBeNull()
+    }
   })
 })
 

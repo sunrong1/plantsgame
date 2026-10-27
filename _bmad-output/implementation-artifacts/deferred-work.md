@@ -183,6 +183,8 @@
 | DF-217 | 待触发 | 未指派 | 下次改布局 CSS（`responsive.css` / `LevelView.vue` 的 `.hud` / `BattleField.vue`）时，手工重跑 `scripts/verify-portrait-layout.ts`（16 视口 × 2 相位）并把 32 行逐格对进 story 文档的表；或把那套对账做成一条能跑真浏览器的守卫 | 文档里那张 32 行实测表**没有任何自动对账**（量测要真浏览器，CI 跑不了）⇒ 改布局后它会悄悄过期 | [`df-217`](./deferred-details.md#df-217) |
 | DF-218 | 待触发 | 未指派 | 要跑 `scripts/verify-portrait-layout.ts` 时，把 `scripts/` 与 `dist/` 拷到 `/tmp`（**不改仓库权限**），用**非 root** 用户执行并**保持 Chromium sandbox 开启**（不要加 `--no-sandbox`）；浏览器**用 snap 版 Chromium**（`/snap/chromium/current/usr/lib/chromium-browser/chrome`），**不要**用 Playwright 的 `headless_shell`（本机报「No usable sandbox!」） | 那条真浏览器量测在 root 机器上跑不了（Chromium 要 `--no-sandbox`，权限判定拦下） | [`df-218`](./deferred-details.md#df-218) |
 | DF-219 | 待排期 | 未指派 | 下次改 `tests/` 下某个文件时，把该文件里缺中文失败消息的 `expect` 补上（R-55），并把该文件名加进 `tests/scaffold/r55-failure-message.test.ts` 的 `COMPLIANT_FILES` 名单 | `tests/` 下另有 63 个文件的 1131 条 `expect` 仍无中文失败消息（实测 2026-10-26 夜），G327 的名单制只覆盖 28 个文件 | [`df-219`](./deferred-details.md#df-219) |
+| DF-221 | 待排期 | Story 2.10 | 下次跑全量测试（`npm run test`）时，若 `tests/scaffold/docs-rules.test.ts` 的 R-37 用例在并行跑下再次红，把它的判据与它读取的文件列表逐项复核一遍（疑似并行串扰） | `tests/scaffold/docs-rules.test.ts` 的 R-37 用例在并行全量跑下偶发红一次（2026-10-27 实测，同一变异连跑 3 次不复现） | [`df-221`](./deferred-details.md#df-221) |
+| DF-222 | 待排期 | Story 2.6 | 开工 Story 2.6（单元 3–7）之前，先把 1A Unit 4 / 5 / 10 / 11 / 12 与 1B Unit 1 / 8 / 10 / 11 / 12 的 `Say and act` 从智慧山源页面补转写进 `docs/textbook-oxford-shanghai/`，并实测 `tests/helpers/textbook-corpus.ts` 对这 10 个单元解析出的句型数 > 0、且按 Story 2.10 §0 裁决 4 的末锚点曲线逐族误差 ≤ 0.5 张 | 教材 24 个单元里 10 个没有 `Say and act` 句型行 ⇒ 只能做单词卡 ⇒ 末锚点曲线对这 10 个单元 G278 无解（实测误差 2.25–3.41 张） | [`df-222`](./deferred-details.md#df-222) |
 
 ## 新增一条
 

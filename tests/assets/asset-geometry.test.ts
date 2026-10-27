@@ -1227,25 +1227,23 @@ describe('G6 —— 词图的几何规格也合规（AC-14.2 词图侧）', () =
     //   而它守的东西（每张词图都被真的打开读过）一个字都没变
     //   ⇒ 那是一条**过期**的守卫，不是一条被违反的守卫。
     //   ⇒ 改成数据驱动，且**比原来更严**：
-    //     ① 张数与「递归枚举」`wordImageFiles()` 必须一致（两套互不相干的枚举）；
-    //     ② 张数不许为 0（空集合会让下面的循环空过）；
+    //     ① 「逐单元目录枚举」与「递归枚举」必须给出**同一个文件集合**
+    //        （⚠️ 此前只比**张数** —— 2026-10-27 `[CR]` 修：两套枚举各少读一张、
+    //        另各多读一张时，张数照样相等 ⇒ 那正是「有一张词图没人守」的形态）；
+    //     ② 集合不许为空（空集合会让下面的循环空过）；
     //     ③ 每一张都要被真的打开、读出 viewBox。
-    const dirs = readdirSync(wordsDir, { withFileTypes: true })
-      .filter((entry) => entry.isDirectory())
-      .map((entry) => join(wordsDir, entry.name))
-      .sort()
-    const files = dirs.flatMap((dir) =>
-      readdirSync(dir)
-        .filter((n) => n.endsWith('.svg'))
-        .map((n) => join(dir, n)),
-    )
+    //   ⚠️ **不再在本文件里抄第二份「逐单元目录枚举」** —— `wordImageFilesPerUnitDir()`
+    //   已经住在本文件里（见 G10 那组），抄一份就是两条复制链（R-37），
+    //   而两份枚举一旦漂移，比的仍然是**同一个**错。
+    const files = wordImageFilesPerUnitDir()
 
     expect(files.length, '一个词图都没枚举到 —— 下面的循环会在空集合上空过').toBeGreaterThan(0)
     expect(
-      files.length,
-      '「逐单元目录枚举」与「递归枚举」给出的张数不一致 —— 有一张词图没被打开读过，' +
-        '而 G6 恰好是那种「少读几张就在剩下的图上恒绿」的守卫。',
-    ).toBe(wordImageFiles().length)
+      files,
+      '「逐单元目录枚举」与「递归枚举」给出的**文件集合**不一致 —— 有一张词图没被打开读过，' +
+        '而 G6 恰好是那种「少读几张就在剩下的图上恒绿」的守卫。' +
+        '（此前只比张数：两边各少读一张、各多读一张时张数照样相等。）',
+    ).toEqual(wordImageFiles())
     for (const path of files) {
       const geo = readSvgGeometry(readFileSync(path, 'utf8'))
       expect(geo.viewBox, `${path} 的 viewBox 不是 0 0 512 512`).toBe('0 0 512 512')

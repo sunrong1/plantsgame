@@ -48,10 +48,11 @@ import type { State, TowerType } from './types.js'
  * 手牌区要渲染的一张卡（AC-B1 / AC-B2）。
  *
  * ⚠️ **`label` 是 `promptText` 全文（裁决 5），不是 `wordId` 去掉前缀**：
- *   单元 1 实测 37 词条 = `word 30 / response 6 / keyword 1`。前者的 `wordId`
- *   就是 `promptText` 的化简（最长 `beautiful`，9 字符），后两者的 `wordId` 是
- *   **句子 slug** —— `u1-s-i-have-a-ball-for-my-dog` 是 26 字符，是前者的 2.9 倍。
- *   走 slug 路线会让**最长的 label 变成 26 字符**，把 AC-C3 的整套宽度推导
+ *   单元 1 实测 6 词条 = `word 2 / keyword 1 / response 3`；单元 2 实测 11 词条
+ *   = `word 4 / keyword 2 / response 5`。前者的 `wordId` 就是 `promptText` 的
+ *   化简（单元 1 最长 `u1-afternoon`，12 字符），后两者的 `wordId` 是
+ *   **句子 slug** —— `u2-s-give-me-a-rubber-please` 是 28 字符，是前者的 2.3 倍。
+ *   走 slug 路线会让**最长的 label 变成 28 字符**，把 AC-C3 的整套宽度推导
  *   （112px 可用宽）当场推翻；更糟的是它在孩子界面上显示一个他从没见过的
  *   机器名 —— 卡面应当是「你答对了这句话」，不是它的文件名。
  *

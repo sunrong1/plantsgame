@@ -70,9 +70,30 @@ const realUnit = JSON.parse(
   readFileSync(join(root, 'src/content/units/unit-01.json'), 'utf8'),
 ) as RawUnit
 
+/**
+ * **单元 2 的真实内容**（2026-10-27 `[CR]` 补）。
+ *
+ * ⚠️ **为什么需要它**：G267 的负例要往一张单词卡里**多塞一个选项**，
+ *   而那个选项必须指向**本单元真实存在的、同类型的（单词卡）词条** ——
+ *   否则这条负例就**同时坏在两处**（选项数 + 词图指向一个不存在的文件），
+ *   将来校验器一旦补上「单词卡的选项必须指向单词卡」那条，它会**因为另一个原因**红，
+ *   而这条用例断言的却是「只坏在选项数上」⇒ 夹具的意图被稀释。
+ *   ⚠️ 单元 1 只有 **2 个**单词卡（`u1-morning` / `u1-afternoon`），
+ *   而这两张卡的选项**已经把它们俩都用上了** ⇒ 单元 1 里**没有**可借的第三个单词 id
+ *   ⇒ 备用 id 只能从单元 2 的 4 个单词卡里借（`u2-book` / `u2-ruler` / `u2-pencil` / `u2-rubber`）。
+ */
+const realUnit02 = JSON.parse(
+  readFileSync(join(root, 'src/content/units/unit-02.json'), 'utf8'),
+) as RawUnit
+
 /** 深拷贝一份底，改动互不污染。 */
 function unitCopy(): typeof realUnit {
   return JSON.parse(JSON.stringify(realUnit)) as typeof realUnit
+}
+
+/** 单元 2 的深拷贝。 */
+function unit02Copy(): typeof realUnit02 {
+  return JSON.parse(JSON.stringify(realUnit02)) as typeof realUnit02
 }
 
 /**
@@ -159,8 +180,26 @@ function greenDeps(unit = realUnit): ValidateDeps {
   )
 }
 
+/**
+ * 同上，但**单元号可指定** —— 词图目录必须跟着单元号走
+ * （校验器按 `join(wordImageRoot, 'unit-NN', '<id>.svg')` 找图）。
+ */
+function greenDepsOfUnit(unit: RawUnit): ValidateDeps {
+  return greenAssetDeps(
+    fakeImages(
+      allReferencedImages(unit).map(
+        (name) => `/fake/words/unit-${String(unit.unitNumber).padStart(2, '0')}/${name}`,
+      ),
+    ),
+  )
+}
+
 /** 跑一次校验，返回结果与 CLI 退出码（退出码经 `main`，依赖注入假数据）。 */
-function run(units: readonly unknown[], deps: ValidateDeps): {
+function run(
+  units: readonly unknown[],
+  deps: ValidateDeps,
+  files?: readonly string[],
+): {
   problems: ReturnType<typeof validateContent>['problems']
   exitCode: number
   errorLines: string[]
@@ -174,7 +213,8 @@ function run(units: readonly unknown[], deps: ValidateDeps): {
   let exitCode: number
   try {
     exitCode = main([], {
-      load: () => units.map((raw, i) => ({ file: `unit-0${i + 1}.json`, raw })),
+      load: () =>
+        units.map((raw, i) => ({ file: files?.[i] ?? `unit-0${i + 1}.json`, raw })),
       wordImageRoot: deps.wordImageRoot,
       assetRoot: deps.assetRoot,
       fileExists: deps.fileExists,
@@ -225,7 +265,7 @@ describe('AC-14 / AC-19 —— 真实内容当前通过校验', () => {
     })
   })
 
-  it('跑真实文件系统（不注入）词图也是绿的 —— 30 张占位词图确实在磁盘上且几何合规', () => {
+  it('跑真实文件系统（不注入）词图也是绿的 —— 6 张词图（单元 1 两张 + 单元 2 四张）确实在磁盘上且几何合规', () => {
     const units = loadUnitFiles(join(root, 'src/content/units'))
     const result = validateContent(units.map((u) => u.raw), {
       wordImageRoot: join(root, 'public/assets/words'),
@@ -498,7 +538,7 @@ describe('AC-11 —— 五类错误一次全报出来（不 early return）', ()
     ).toBe(false)
   })
 
-  it('错误逐条独立成行（AC-13：不得把 30 个错误压成一行）', () => {
+  it('错误逐条独立成行（AC-13：不得把多条错误压成一行）', () => {
     const unit = unitCopy()
     for (const entry of unit.entries) entry.towerType = 'laser'
     const { errorLines, problems } = run([unit], greenDeps())
@@ -778,34 +818,43 @@ describe('G267 —— 选项数不符被抓出（Story 2.4 / AC-B3、AC-C3）', 
   it('给一张单词卡多塞一个选项 ⇒ 报 option-count，且说清期望值与实际值', () => {
     // ⚠️ 注入的是**一张真实单词卡**（多一个合法 id 的合法图片选项），
     //   所以这一条红的原因只有「选项数」—— 词图、id 形态、卡型都还是合法的。
-    // ⚠️ 2026-10-26 换源批次（Story 2.10）：单元 1 只有 **2 个教材词**
-    //   （`morning` / `afternoon`），而两张单词卡**各自**都已经把这两个词用上了
-    //   ⇒ 词表里**没有第三个单词 id** 可借（旧夹具找的「备用单词 id」因此失效）。
-    //   ⇒ 备用 id 改取单元 1 里真实存在的**另一个词条**（`u1-s-good-morning`）：
-    //   它满足「选项必须指向本单元存在的词条」⇒ 这条负例仍然**只**坏在
-    //   「选项数」这一处（借一个不存在的 id 会顺带报一条 dangling-option）。
-    const unit = unitCopy()
+    // ⚠️ 2026-10-27 `[CR]` 修：备用 id 必须取**同类型（单词卡）的真实词条**。
+    //   旧夹具取的是 `unit.entries` 里第一个没被用过的 id ⇒ 那是**关键词卡**
+    //   （`u1-s-good-morning`）⇒ 注入的图片选项指向一张**根本不存在**的词图
+    //   （关键词卡没有词图）⇒ 这条负例**同时坏在两处**（选项数 + 词图指向不存在的文件），
+    //   将来校验器一旦补上「单词卡的选项必须指向单词卡」那条，它会**因为另一个原因**红，
+    //   而本用例断言的是「只坏在选项数上」⇒ 夹具的意图被稀释。
+    //   ⇒ 改用**单元 2**：它有 4 个单词卡，而目标卡（`u2-book`）的选项只用了 2 个
+    //   ⇒ 备用 id 取剩下的**单词卡**（`u2-ruler`），它的词图**真实存在**
+    //   （`public/assets/words/unit-02/u2-ruler.svg`）。
+    const unit = unit02Copy()
     const target = unit.entries.find((e) => e.card.kind === 'word')
-    if (target === undefined) throw new Error('单元 1 里没有单词卡 —— 夹具失效')
+    if (target === undefined) throw new Error('单元 2 里没有单词卡 —— 夹具失效')
     const used = new Set(target.card.options.map((o) => o.id))
-    const spare = unit.entries.map((e) => e.entryId).find((id) => !used.has(id))
-    if (spare === undefined) throw new Error('没有可用的备用词条 id —— 夹具失效')
+    const spare = unit.entries.find((e) => e.card.kind === 'word' && !used.has(e.entryId))
+    if (spare === undefined) throw new Error('单元 2 里没有可借的**单词卡** id —— 夹具失效')
     target.card.options.push({
-      id: spare,
-      imageSrc: `/assets/words/unit-01/${spare}.svg`,
+      id: spare.entryId,
+      imageSrc: expectedImageUrl(unit.unitNumber, spare.entryId),
       correct: false,
     })
 
-    const { problems, exitCode } = run([unit], greenDeps(unit))
+    const { problems, exitCode } = run([unit], greenDepsOfUnit(unit), ['unit-02.json'])
 
     const problem = problems.find((p) => p.category === 'option-count')
     expect(
       problem,
-      '选项数不符没有被报出来 ⇒ 单元 1 的选项数与规则脱钩，难度阶梯在内容这一侧失守',
+      '选项数不符没有被报出来 ⇒ 单元 2 的选项数与规则脱钩，难度阶梯在内容这一侧失守',
     ).toBeDefined()
     expect(problem?.entryId, '报错没定位到是哪张卡 ⇒ 录入者要自己逐张数').toBe(target.entryId)
     expect(problem?.message, '报错没说出期望值 ⇒ 录入者不知道该改成几个').toContain('期望')
     expect(problem?.message, '报错没说出实际值 ⇒ 录入者不知道自己写多了几个').toContain('实际')
+    // ⚠️ **只**坏在选项数上 —— 别的类别一条都不许有（这正是「备用 id 取同类型真实词条」换来的）。
+    expect(
+      problems.filter((p) => p.category !== 'option-count').map((p) => p.category),
+      '这条负例还坏在别的判据上 ⇒ 它的意图（只验选项数）被稀释了。' +
+        '备用 id 必须取**同类型的真实词条**，它的词图要真实存在',
+    ).toEqual([])
     expect(exitCode, '选项数不符却退 0 ⇒ 「跑过了 validate:content」又变成一句空话').toBe(1)
   })
 

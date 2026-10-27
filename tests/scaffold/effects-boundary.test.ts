@@ -167,7 +167,7 @@ describe('G59 —— effects.ts 零 DOM / 零 Vue / 零随机 / 零时间（AC-B
     expect(source, `core/ 是纯逻辑层，不得出现 ${_name}`).not.toMatch(pattern as RegExp)
   })
 
-  it('effects.ts 不 import `../content/`（静态 JSON 导入会把 37 条词条拖进每个 core 测试）', () => {
+  it('effects.ts 不 import `../content/`（静态 JSON 导入会把全部词条拖进每个 core 测试）', () => {
     expect(source).not.toMatch(/\.\.\/content\//)
   })
 })
