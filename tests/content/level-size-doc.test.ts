@@ -606,3 +606,89 @@ describe('G344 —— 负向夹具：每一处漂移都要被报出来（R-50 / 
     })
   }
 })
+
+// ══════════════════════════════════════════════════════════════════════════════
+// G347 —— 内容层交付的句卡数 === census 句卡数，且落在 §1.4 的窗口内
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * **G347 的判据本体** —— 两条：
+ *   ① **内容层实际交付的句卡数** === census 的句卡数（教材句 + 自写句）；
+ *   ② 该单元的判定 === 「窗口内」。
+ *
+ * ⚠️ **为什么要第 ① 条**（G341 / G344 只管**文档里写的数字**）：
+ *   census 的句卡数是从**教材语料**算出来的，而内容层的句卡数是**实际录的**。
+ *   ⇒ 两者必须相等，否则「文档上的句卡数」与「孩子实际要答的句卡数」是两回事
+ *     （少录一张 ⇒ 孩子少学一句；多录一张 ⇒ 多了一句教材里没有的）。
+ *
+ * ⚠️ **为什么要第 ② 条**：句卡数落不进窗口 ⇒ 这个单元的**卡型配比**必然做不到
+ *   §5.1.1 的逐族误差 ≤ 0.5 张 ⇒ 那一局的手感会偏（词卡太多 / 回应太多）。
+ *   ⚠️ 第 ② 条判的是**实际交付的那个数**（参数），不是 census 的数 ——
+ *   否则这一条与参数无关 ⇒ 它的反向自测只能靠「换一个单元」来触发，
+ *   而已交付的单元**全都**在窗口内 ⇒ 那条反向自测永远造不出来。
+ *
+ * @param unitNumber 被查的单元号
+ * @param contentSentenceCards 内容层实际交付的句卡数
+ */
+export function findSentenceCensusViolations(
+  unitNumber: number,
+  contentSentenceCards: number,
+): string[] {
+  const problems: string[] = []
+  const c = censusOf(unitNumber)
+
+  if (contentSentenceCards !== c.sentences) {
+    problems.push(
+      `单元 ${unitNumber}：内容层实际交付了 ${contentSentenceCards} 张句卡，` +
+        `而 census 算出来的是 ${c.sentences} 张（教材句 ${c.corpusSentences} + 自写句 ${c.selfWritten}）`,
+    )
+  }
+
+  const verdict = verdictOf(unitNumber, c.words, contentSentenceCards)
+  if (verdict !== '窗口内') {
+    problems.push(
+      `单元 ${unitNumber}：句卡数 ${contentSentenceCards} 的判定是「${verdict}」而不是「窗口内」` +
+        '（窗口 = 满足 §5.1.1 逐族误差 ≤ 0.5 的句卡数闭区间）',
+    )
+  }
+
+  return problems
+}
+
+describe('G347 —— 内容层交付的句卡数 === census 句卡数，且落在 §1.4 的窗口内', () => {
+  for (const unit of UNITS) {
+    it(`单元 ${unit.unitNumber}：句卡数对得上，且判定为「窗口内」`, () => {
+      const sentenceCards = unit.entries.filter((entry) => entry.card.kind !== 'word').length
+
+      expect(
+        findSentenceCensusViolations(unit.unitNumber, sentenceCards),
+        `单元 ${unit.unitNumber} 的句卡数与 census 对不上，或不在可行窗口内 —— ` +
+          '内容层实际交付的句卡数必须等于「教材句 + 自写句」，且落进 §1.4 的窗口',
+      ).toEqual([])
+    })
+  }
+
+  it('🚨 反向自测（M423）：把句卡数改成 8（落进窗口但与 census 不一致）⇒ 必须红', () => {
+    // ⚠️ **夹具要「落进窗口但对不上 census」** —— 那样判据就**不是**靠「不在窗口」
+    //   那一条红的 ⇒ 它证明的是第 ① 条（内容层 ≡ census）有牙齿。
+    const unitNumber = 6
+    const window = windowOf(unitNumber, censusOf(unitNumber).words)
+    expect(window, '单元 6 的窗口必须是 8–10 ⇒ 8 落在窗口内').not.toBeNull()
+    expect(window?.lo).toBe(8)
+
+    const problems = findSentenceCensusViolations(unitNumber, 8)
+    expect(
+      problems.some((problem) => problem.includes('而 census 算出来的是')),
+      `判据在「落进窗口但与 census 不一致」的违规夹具上没红 ⇒ 第 ① 条没有牙齿。实际报出：${problems.join(' / ')}`,
+    ).toBe(true)
+  })
+
+  it('🚨 反向自测：句卡数落不进窗口 ⇒ 第 ② 条必须红', () => {
+    const unitNumber = 6
+    const problems = findSentenceCensusViolations(unitNumber, 3)
+    expect(
+      problems.some((problem) => problem.includes('而不是「窗口内」')),
+      `判据在「落不进窗口」的违规夹具上没红 ⇒ 第 ② 条没有牙齿。实际报出：${problems.join(' / ')}`,
+    ).toBe(true)
+  })
+})

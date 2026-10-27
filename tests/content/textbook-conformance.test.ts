@@ -49,6 +49,7 @@ import { getUnit, UNITS } from '../../src/content'
 import { LAST_UNIT } from '../../src/content/distribution'
 import type { CardKind } from '../../src/content/schema'
 import {
+  findBlockViolations,
   LAST_GAME_UNIT,
   loadTextbookBooks,
   normalizeEnglish,
@@ -285,6 +286,8 @@ interface ContentOption {
   id: string
   /** 文字选项的文本（图片选项没有这个字段）。 */
   text?: string
+  /** 这个选项是不是正确项。 */
+  correct?: boolean
 }
 
 /** 一条内容词条。 */
@@ -347,39 +350,172 @@ function findVocabularyViolations(
 }
 
 /**
- * **G336 的判据本体** —— 句子卡题面 ⊆ 教材句子，且教材句子一条不剩，且卡面不重复。
+ * **G336 / G345 的判据本体** —— 语料句型行 ≡ 内容层的句子卡。
  *
- * ⚠️ **三个方向都必须有**（R-51 第 1 类的反面）：
- *   只守方向一时，「少做一张卡」不会红 —— 教材里那句就悄悄没人问了。
- * ⚠️ **第三个方向（卡面互不相同）**：教材 1A Unit 2 的句型里 `Here you are.`
- *   出现两次（两个活动段落各一次）⇒ **教材侧按去重后比**；
- *   但**卡面侧必须逐条比** —— 两张卡面文字相同 ⇒ 孩子看到两个一模一样的按钮，
- *   而「答对哪个」无从判断 ⇒ 那是**内容层的错**，必须报出来。
+ * ⚠️📎 **口径在 2026-10-28（Story 2.6，裁决 4）改过** —— 原来这里比的是
+ *   「句子卡题面 ⊆ 教材该单元的**全部**句子 ∧ 教材句子一条不剩」。
+ *   ⇒ 现在教材语料的句型行**只记被选中的那几句**（DF-222：句型行 = 选取），
+ *     所以旧口径的「方向二（教材句子一条不剩）」在单元 3–7 上**必然红**
+ *     （那些单元的教材句子比选中得多）。
+ *   ⇒ 新口径：**语料句型行 == 内容层 `s-` 词条的卡面题面**（双向）。
+ *
+ * ⚠️ **自写句（`w-` 前缀）不参与「取自教材」的比对** —— 它们**按定义不在语料里**
+ *   （§8.2：自写句只存在于内容层）⇒ 判据要把它们**分出来**，
+ *   否则「自写句不在教材里」会被当成「卡面取自教材失败」。
+ *
+ * ── 六个方向 ────────────────────────────────────────────────────────────────
+ *   | 方向 | 含义 | 归属 |
+ *   |---|---|---|
+ *   | `corpus-only` | 内容层 `s-` 卡面**不在**语料句型行里 | G336 + G345 |
+ *   | `content-only` | 语料句型行里有句**没人用** | G336 + G345 |
+ *   | `duplicate` | 同一个单元里有**两张卡面文字相同**的卡 | G336 + G345 |
+ *   | `prefix` | 句子卡词条的前缀**既不是 `s-` 也不是 `w-`** | G345 |
+ *   | `self-in-corpus` | `w-` 词条的题面**出现在**语料句型行里 | G345 |
+ *   | `self-option` | `w-` 词条的**正确选项不是一条 `s-` 词条** | G345 |
+ *
+ * ⚠️ **「两张卡面文字相同」原来是被误报的**（2026-10-28 实测）：
+ *   旧判据用「多重集合差集」的 `extra` 分支去报重复 ——
+ *   而**任何**不在语料里的卡面都会落进 `extra` ⇒ 自写句被报成「重复」。
+ *   ⇒ 现在「不在语料里」与「重复」是**两条独立的方向**。
+ */
+interface CorpusContentProblem {
+  /** 方向（见上表）。 */
+  readonly direction:
+    | 'corpus-only'
+    | 'content-only'
+    | 'duplicate'
+    | 'prefix'
+    | 'self-in-corpus'
+    | 'self-option'
+  /** 人可读的说明。 */
+  readonly detail: string
+}
+
+/** 内容层里「教材句」词条的前缀标记（entryId 里的 `-s-`）。 */
+const TEXTBOOK_ENTRY_MARKER = '-s-'
+
+/** 内容层里「自写句」词条的前缀标记（entryId 里的 `-w-`）。 */
+const SELF_WRITTEN_ENTRY_MARKER = '-w-'
+
+/**
+ * **G336 / G345 的判据本体** —— 见 {@link CorpusContentProblem} 的六个方向。
+ *
+ * @param entries 被查单元的全部词条（内容层）
+ * @param textbookSentences 该单元**语料句型行**里的句子（教材事实）
+ */
+export function findCorpusContentViolations(
+  entries: readonly ContentEntry[],
+  textbookSentences: readonly string[],
+): CorpusContentProblem[] {
+  const problems: CorpusContentProblem[] = []
+  const sentenceEntries = entries.filter((entry) => entry.card.kind !== 'word')
+
+  const isTextbook = (entryId: string): boolean => entryId.includes(TEXTBOOK_ENTRY_MARKER)
+  const isSelfWritten = (entryId: string): boolean => entryId.includes(SELF_WRITTEN_ENTRY_MARKER)
+
+  // ── 方向 `prefix` —— 句子卡词条的前缀只能是 `s-` 或 `w-` ──────────────────
+  const textbookEntries = sentenceEntries.filter((entry) => isTextbook(entry.entryId))
+  const selfWrittenEntries = sentenceEntries.filter((entry) => isSelfWritten(entry.entryId))
+  for (const entry of sentenceEntries) {
+    if (isTextbook(entry.entryId) || isSelfWritten(entry.entryId)) continue
+    problems.push({
+      direction: 'prefix',
+      detail:
+        `句子卡词条 ${entry.entryId} 的 entryId 里既没有 \`${TEXTBOOK_ENTRY_MARKER}\` 也没有 ` +
+        `\`${SELF_WRITTEN_ENTRY_MARKER}\` —— 它到底是教材句还是自写句？没人说得清`,
+    })
+  }
+
+  // ── 语料的句子集合（归一化）────────────────────────────────────────────────
+  const corpus = new Set(textbookSentences.map((text) => normalizeEnglish(text)))
+
+  // ── 方向 `corpus-only` —— 内容层的教材句必须在语料里 ───────────────────────
+  for (const entry of textbookEntries) {
+    if (corpus.has(normalizeEnglish(entry.card.promptText))) continue
+    problems.push({
+      direction: 'corpus-only',
+      detail: `句子卡 ${entry.entryId} 的题面「${entry.card.promptText}」不在教材该单元的句型行里`,
+    })
+  }
+
+  // ── 方向 `content-only` —— 语料里的每一句都要被用到 ───────────────────────
+  const used = new Set(textbookEntries.map((entry) => normalizeEnglish(entry.card.promptText)))
+  for (const sentence of textbookSentences) {
+    if (used.has(normalizeEnglish(sentence))) continue
+    problems.push({
+      direction: 'content-only',
+      detail: `教材该单元的句子「${sentence}」一条都没被用到`,
+    })
+  }
+
+  // ── 方向 `self-in-corpus` —— 自写句必须在教材里**没有** ───────────────────
+  for (const entry of selfWrittenEntries) {
+    if (!corpus.has(normalizeEnglish(entry.card.promptText))) continue
+    problems.push({
+      direction: 'self-in-corpus',
+      detail:
+        `自写句 ${entry.entryId} 的题面「${entry.card.promptText}」**就在**教材句型行里 —— ` +
+        '那它就不是自写句（教材里有 ⇒ 该用教材的 id）',
+    })
+  }
+
+  // ── 方向 `self-option` —— 自写句只能当卡面题面，它的答案必须是教材句 ──────
+  const byId = new Map(entries.map((entry) => [entry.entryId, entry]))
+  for (const entry of selfWrittenEntries) {
+    const correct = entry.card.options.find((option) => option.correct)
+    if (correct === undefined) {
+      problems.push({
+        direction: 'self-option',
+        detail: `自写句 ${entry.entryId} 没有正确项`,
+      })
+      continue
+    }
+    const target = byId.get(correct.id)
+    if (target !== undefined && isTextbook(target.entryId)) continue
+    problems.push({
+      direction: 'self-option',
+      detail:
+        `自写句 ${entry.entryId} 的正确选项 ${correct.id} 不是一条教材句（\`s-\`）—— ` +
+        '自写句只能当**卡面题面**，它的答案必须是教材里教过的那一句',
+    })
+  }
+
+  // ── 方向 `duplicate` —— 同一个单元里不许有两张卡面文字相同的卡 ────────────
+  const seen = new Map<string, string>()
+  for (const entry of sentenceEntries) {
+    const normalized = normalizeEnglish(entry.card.promptText)
+    const previous = seen.get(normalized)
+    if (previous !== undefined) {
+      problems.push({
+        direction: 'duplicate',
+        detail: `同一个单元里有两张卡面文字相同的卡：${previous} 与 ${entry.entryId}`,
+      })
+      continue
+    }
+    seen.set(normalized, entry.entryId)
+  }
+
+  return problems
+}
+
+/**
+ * **G336 的判据本体** —— 只看那三个「教材一致性」的方向。
+ *
+ * ⚠️ **G336 与 G345 共用同一个函数**（R-37：一份判据，两个口径）——
+ *   G336 = 教材一致性的那三条；G345 = 全部六条（含自写句那三条）。
  */
 function findSentenceViolations(
-  cardPrompts: readonly string[],
+  entries: readonly ContentEntry[],
   textbookSentences: readonly string[],
 ): string[] {
-  const problems: string[] = []
-  const cardList = cardPrompts.map((text) => normalizeEnglish(text))
-  const textbookList = [...new Set(textbookSentences.map((text) => normalizeEnglish(text)))]
-  const textbookSet = new Set(textbookList)
-
-  const offTextbook = cardPrompts.filter((text) => !textbookSet.has(normalizeEnglish(text)))
-  if (offTextbook.length > 0) {
-    problems.push(`句子卡的题面不在教材该单元的句型里：${offTextbook.join('、')}`)
-  }
-
-  const { missing } = multisetDiff(cardList, textbookList)
-  if (missing.length > 0) {
-    problems.push(`教材该单元有句子一条都没被用到：${missing.join('、')}`)
-  }
-
-  const { extra } = multisetDiff(cardList, textbookList)
-  if (extra.length > 0) {
-    problems.push(`同一个单元里有两张卡面文字相同：${extra.join('、')}`)
-  }
-  return problems
+  return findCorpusContentViolations(entries, textbookSentences)
+    .filter(
+      (problem) =>
+        problem.direction === 'corpus-only' ||
+        problem.direction === 'content-only' ||
+        problem.direction === 'duplicate',
+    )
+    .map((problem) => problem.detail)
 }
 
 /**
@@ -580,13 +716,6 @@ function wordCardPrompts(entries: readonly ContentEntry[]): string[] {
     .map((entry) => entry.card.promptText.trim().toLowerCase())
 }
 
-/** 某单元的**句子卡**题面（关键词卡 + 回应卡）。 */
-function sentenceCardPrompts(entries: readonly ContentEntry[]): string[] {
-  return entries
-    .filter((entry) => entry.card.kind !== 'word')
-    .map((entry) => entry.card.promptText.trim())
-}
-
 /** 某单元的教材句型（去重后）。 */
 function distinctTextbookSentences(unit: TextbookUnit): string[] {
   return [...new Set(unit.sentences.map((sentence) => sentence.text))]
@@ -624,6 +753,7 @@ function guardEntriesOf(unitNumber: number): ContentEntry[] {
       promptText: entry.card.promptText,
       options: entry.card.options.map((option) => ({
         id: option.id,
+        correct: option.correct,
         ...('text' in option ? { text: option.text } : {}),
       })),
     },
@@ -677,14 +807,23 @@ describe('G335 —— 单词卡题面词 === 教材该单元 `Look and learn` �
 // G336
 // ══════════════════════════════════════════════════════════════════════════════
 
-describe('G336 —— 句子卡题面取自教材 `Say and act`，且教材句子一条不剩', () => {
+/**
+ * ⚠️📎 **口径在 2026-10-28（Story 2.6，裁决 4）改过** ——
+ *   原来这里比的是「句子卡题面 ⊆ 教材该单元的**全部**句子 ∧ 教材句子一条不剩」。
+ *   ⇒ DF-222 决定教材语料的句型行**只记被选中的那几句**（句型行 = 选取），
+ *     于是旧口径的「方向二（教材句子一条不剩）」在单元 3–7 上**必然红**
+ *     （那些单元的教材句子比选中得多）。
+ *   ⇒ 新口径：**语料句型行 ≡ 内容层 `s-` 词条的卡面题面**（双向）。
+ *   ⚠️ **自写句（`w-` 前缀）不参与比对** —— 它们按定义不在语料里。
+ */
+describe('G336 —— 语料句型行 ≡ 内容层的教材句卡（取自教材 + 一条不剩 + 卡面不重复）', () => {
   for (const unitNumber of COVERED_UNITS) {
-    it(`单元 ${unitNumber}：方向一（题面取自教材）+ 方向二（教材句子一条不剩）+ 卡面不重复`, () => {
+    it(`单元 ${unitNumber}：方向一（题面取自教材）+ 方向二（语料句子一条不剩）+ 卡面不重复`, () => {
       const entries = guardEntriesOf(unitNumber)
       const textbook = distinctTextbookSentences(textbookUnitOf(unitNumber, books).unit)
 
       expect(
-        findSentenceViolations(sentenceCardPrompts(entries), textbook),
+        findSentenceViolations(entries, textbook),
         `单元 ${unitNumber} 的句子卡与教材的句型对不上 —— ` +
           '「取自教材」与「一条不剩」两个方向都必须成立，且同一个单元里不许有两张卡面相同的卡',
       ).toEqual([])
@@ -694,13 +833,17 @@ describe('G336 —— 句子卡题面取自教材 `Say and act`，且教材句�
   it('🚨 反向自测（M411）：把一条句子卡的题面改掉 ⇒ 方向一必须红', () => {
     const entries = guardEntriesOf(1)
     const textbook = distinctTextbookSentences(textbookUnitOf(1, books).unit)
-    const mutated = sentenceCardPrompts(entries).map((text, index) =>
-      index === 0 ? 'How are you?' : text,
+    // ⚠️ **夹具必须落在「句子卡」上** —— 单词卡的题面改了也不影响本判据
+    //   （它比的是句子卡）⇒ 拿单词卡当夹具的话，这条反向自测**空转**。
+    const mutated = entries.map((entry) =>
+      entry.card.kind === 'word'
+        ? entry
+        : { ...entry, card: { ...entry.card, promptText: 'How are you?' } },
     )
 
     const problems = findSentenceViolations(mutated, textbook)
     expect(
-      problems.some((problem) => problem.includes('不在教材该单元的句型里')),
+      problems.some((problem) => problem.includes('不在教材该单元的句型行里')),
       `判据在「题面不在教材里」的违规夹具上没红 ⇒ 方向一失效。实际报出：${problems.join(' / ')}`,
     ).toBe(true)
   })
@@ -708,7 +851,9 @@ describe('G336 —— 句子卡题面取自教材 `Say and act`，且教材句�
   it('🚨 反向自测（M412）：少用一句教材句子（删掉一张卡）⇒ 方向二必须红', () => {
     const entries = guardEntriesOf(2)
     const textbook = distinctTextbookSentences(textbookUnitOf(2, books).unit)
-    const mutated = sentenceCardPrompts(entries).filter((text) => text !== 'How nice!')
+    const mutated = entries.filter(
+      (entry) => !(entry.entryId === 'u2-s-how-nice' && entry.card.kind !== 'word'),
+    )
 
     const problems = findSentenceViolations(mutated, textbook)
     expect(
@@ -720,9 +865,21 @@ describe('G336 —— 句子卡题面取自教材 `Say and act`，且教材句�
   it('🚨 反向自测：两张卡面文字相同 ⇒ 必须红（按集合比的话这一条会被抹掉）', () => {
     const entries = guardEntriesOf(1)
     const textbook = distinctTextbookSentences(textbookUnitOf(1, books).unit)
-    const mutated = sentenceCardPrompts(entries).map((text, index) =>
-      index === 0 ? 'Goodbye!' : text,
-    )
+    // ⚠️ **夹具把第一张句子卡的题面改成第二张的** —— 这样「重复」与「不在语料里」
+    //   **同时**成立 ⇒ 断言必须点名 `duplicate` 那个方向，
+    //   否则这条用例可能被「不在语料里」那条**撑起来**（R-51 的假通过形态）。
+    const sentencePrompts = entries
+      .filter((entry) => entry.card.kind !== 'word')
+      .map((entry) => entry.card.promptText)
+    const first = sentencePrompts[0]!
+    const second = sentencePrompts[1]!
+    let done = false
+    const mutated = entries.map((entry) => {
+      if (entry.card.kind === 'word' || done) return entry
+      done = true
+      return { ...entry, card: { ...entry.card, promptText: second } }
+    })
+    expect(first, '夹具要能拿到第二张句子卡的题面').not.toBe(second)
 
     const problems = findSentenceViolations(mutated, textbook)
     expect(
@@ -731,6 +888,294 @@ describe('G336 —— 句子卡题面取自教材 `Say and act`，且教材句�
     ).toBe(true)
   })
 })
+
+// ══════════════════════════════════════════════════════════════════════════════
+// G345 —— 语料 ≡ 内容（**六个方向**，含自写句那三条）
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * **G345 的判据本体**是 {@link findCorpusContentViolations} ——
+ *   与 G336 **共用同一个函数**（R-37：一份判据，两个口径），
+ *   G345 看的是它的**全部六个方向**。
+ *
+ * ⚠️ **为什么要比 G336 更严**：G336 守的是「教材一致性」，
+ *   而 Story 2.6 引入了**自写句**这个第三类内容 ⇒ 「一句卡面到底是教材句还是自写句」
+ *   这件事必须**机器可判**，否则「教材文档与内容层各说各话」会静悄悄发生。
+ */
+describe('G345 —— 语料 ≡ 内容（教材句双向齐平 + 自写句不入语料 + 自写句的答案必须是教材句）', () => {
+  for (const unitNumber of COVERED_UNITS) {
+    it(`单元 ${unitNumber}：六个方向全过`, () => {
+      const entries = guardEntriesOf(unitNumber)
+      const textbook = distinctTextbookSentences(textbookUnitOf(unitNumber, books).unit)
+
+      expect(
+        findCorpusContentViolations(entries, textbook),
+        `单元 ${unitNumber} 的语料与内容层对不上 —— ` +
+          '「教材句双向齐平」+「自写句不入语料」+「自写句的答案必须是教材句」+「卡面互不相同」',
+      ).toEqual([])
+    })
+  }
+
+  it('🚨 反向自测（M421）：把一条 `s-` 卡面改成一个教材里没有的句 ⇒ 必须红', () => {
+    const entries = guardEntriesOf(3)
+    const textbook = distinctTextbookSentences(textbookUnitOf(3, books).unit)
+    const mutated = entries.map((entry) =>
+      entry.card.kind === 'word'
+        ? entry
+        : { ...entry, card: { ...entry.card, promptText: 'Look at my hat!' } },
+    )
+
+    const problems = findCorpusContentViolations(mutated, textbook)
+    expect(
+      problems.some((problem) => problem.direction === 'corpus-only'),
+      `判据在「题面不在语料里」的违规夹具上没红 ⇒ 方向一失效。实际报出：${problems.map((p) => p.detail).join(' / ')}`,
+    ).toBe(true)
+  })
+
+  it('🚨 反向自测（M430）：内容层少了一张教材句卡 ⇒ 语料里那一句没人用，必须红', () => {
+    // ⚠️📎 **M430 的实现口径与 story 文档写的相反，如实记在这里**：
+    //   story 文档写的是「把**语料句型行**的一句删掉（内容层还留着）」——
+    //   那是**旧口径**（语料句型行记的是教材的**全部**句子）下的写法。
+    //   ⇒ 新口径下（裁决 4：句型行 = **选取**）语料句型行**就是**内容层的选取结果，
+    //     「删语料」与「内容多一句」是**同一件事**（= M421 那条方向）。
+    //   ⇒ 要触到「语料里有句没人用」这个**独立**方向，必须**删内容层的卡**
+    //     （语料那一行留着 ⇒ 那一句没人问了）。
+    const entries = guardEntriesOf(3)
+    const textbook = distinctTextbookSentences(textbookUnitOf(3, books).unit)
+    const mutated = entries.filter((entry) => entry.card.kind === 'word')
+
+    const problems = findCorpusContentViolations(mutated, textbook)
+    expect(
+      problems.some((problem) => problem.direction === 'content-only'),
+      `判据在「语料里有句没人用」的违规夹具上没红 ⇒ 方向二失效。实际报出：${problems.map((p) => p.detail).join(' / ')}`,
+    ).toBe(true)
+  })
+
+  it('🚨 反向自测：把语料句型行的一句删掉（内容层还留着）⇒ 方向一必须红', () => {
+    const entries = guardEntriesOf(3)
+    const textbook = distinctTextbookSentences(textbookUnitOf(3, books).unit)
+    const mutated = textbook.slice(1)
+
+    const problems = findCorpusContentViolations(entries, mutated)
+    expect(
+      problems.some((problem) => problem.direction === 'corpus-only'),
+      `判据在「语料少一句、内容还留着」的违规夹具上没红 ⇒ 方向一失效。实际报出：${problems.map((p) => p.detail).join(' / ')}`,
+    ).toBe(true)
+  })
+
+  it('🚨 反向自测：自写句的题面**出现在**语料里 ⇒ 必须红', () => {
+    const entries = guardEntriesOf(4)
+    const textbook = distinctTextbookSentences(textbookUnitOf(4, books).unit)
+    // ⚠️ 把语料里加进自写句的题面 ⇒ 它就「既在语料里、又被标成自写句」⇒ 必须报出来。
+    const mutated = [...textbook, 'Can you dance?']
+
+    const problems = findCorpusContentViolations(entries, mutated)
+    expect(
+      problems.some((problem) => problem.direction === 'self-in-corpus'),
+      `判据在「自写句出现在语料里」的违规夹具上没红 ⇒ 方向四失效。实际报出：${problems.map((p) => p.detail).join(' / ')}`,
+    ).toBe(true)
+  })
+
+  it('🚨 反向自测：自写句的**正确选项也是自写句** ⇒ 必须红', () => {
+    const entries = guardEntriesOf(7)
+    const textbook = distinctTextbookSentences(textbookUnitOf(7, books).unit)
+    // ⚠️ 夹具要**指向另一条 `w-` 词条** —— 只把正确项改成「不存在」会被别的原因抓住。
+    const mutated = entries.map((entry) =>
+      entry.entryId === 'u7-w-how-many-pencils'
+        ? {
+            ...entry,
+            card: {
+              ...entry.card,
+              options: entry.card.options.map((option, index) =>
+                index === 0 ? { ...option, id: 'u7-w-another-self-written' } : option,
+              ),
+            },
+          }
+        : entry,
+    )
+
+    const problems = findCorpusContentViolations(mutated, textbook)
+    expect(
+      problems.some((problem) => problem.direction === 'self-option'),
+      `判据在「自写句的答案是自写句」的违规夹具上没红 ⇒ 方向五失效。实际报出：${problems.map((p) => p.detail).join(' / ')}`,
+    ).toBe(true)
+  })
+
+  it('🚨 反向自测：句子卡词条的前缀**既不是 `s-` 也不是 `w-`** ⇒ 必须红', () => {
+    const entries = guardEntriesOf(3)
+    const textbook = distinctTextbookSentences(textbookUnitOf(3, books).unit)
+    const mutated = entries.map((entry) =>
+      entry.entryId === 'u3-s-my-mouth' ? { ...entry, entryId: 'u3-mystery-card' } : entry,
+    )
+
+    const problems = findCorpusContentViolations(mutated, textbook)
+    expect(
+      problems.some((problem) => problem.direction === 'prefix'),
+      `判据在「前缀既不是 s- 也不是 w-」的违规夹具上没红 ⇒ 方向三失效。实际报出：${problems.map((p) => p.detail).join(' / ')}`,
+    ).toBe(true)
+  })
+})
+
+// ══════════════════════════════════════════════════════════════════════════════
+// G346 —— 自写句的用词必须取自本单元词表 ∪ 本单元教材句里出现过的词
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * **G346 的判据本体** —— 自写句的每个词都必须有出处。
+ *
+ * ⚠️ **为什么这条要有**：自写句是**我们自己造的句子** ⇒ 它是全仓唯一一处
+ *   「句子不是教材原话」的地方 ⇒ 造词的机会就在这里。
+ *   ⇒ AC 正文逐字：「按 Story 2.5 §2.4 改写为自足句时，**用词仍须取自该单元词表**」。
+ *
+ * ⚠️ **词的切分口径**：按**空白 + 标点**切（`?` / `.` / `,` 都是分隔符），
+ *   归一化后小写。教材转写里逗号后没有空格（`Good afternoon,Kitty.`）⇒
+ *   不切标点会把 `afternoon,kitty` 当成一个词。
+ *
+ * @param selfWrittenSentences 自写句的题面
+ * @param vocabulary 该单元的教材词表
+ * @param textbookSentences 该单元语料句型行里的句子
+ */
+export function findSelfWrittenWordViolations(
+  selfWrittenSentences: readonly string[],
+  vocabulary: readonly string[],
+  textbookSentences: readonly string[],
+): string[] {
+  const problems: string[] = []
+  const known = new Set<string>()
+  for (const word of vocabulary) known.add(normalizeEnglish(word))
+  for (const sentence of textbookSentences) {
+    for (const word of splitWords(sentence)) known.add(word)
+  }
+
+  for (const sentence of selfWrittenSentences) {
+    for (const word of splitWords(sentence)) {
+      if (known.has(word)) continue
+      problems.push(
+        `自写句「${sentence}」里的词「${word}」既不在本单元的词表里，` +
+          '也不在本单元教材句里出现过的词里 —— 自写句只许**重新组合**本单元教过的词，不许造词',
+      )
+    }
+  }
+  return problems
+}
+
+/** 把一句英文切成词（空白 + 标点都是分隔符）。 */
+function splitWords(text: string): string[] {
+  return normalizeEnglish(text)
+    .split(/[^a-z0-9']+/)
+    .filter((word) => word !== '')
+}
+
+/** 内容层里某单元的**自写句题面**。 */
+function selfWrittenPrompts(entries: readonly ContentEntry[]): string[] {
+  return entries
+    .filter((entry) => entry.card.kind !== 'word')
+    .filter((entry) => entry.entryId.includes(SELF_WRITTEN_ENTRY_MARKER))
+    .map((entry) => entry.card.promptText.trim())
+}
+
+describe('G346 —— 自写句的用词必须取自本单元词表 ∪ 本单元教材句里出现过的词', () => {
+  for (const unitNumber of COVERED_UNITS) {
+    it(`单元 ${unitNumber}：自写句里的每个词都有出处`, () => {
+      const entries = guardEntriesOf(unitNumber)
+      const textbookUnit = textbookUnitOf(unitNumber, books).unit
+      const sentences = distinctTextbookSentences(textbookUnit)
+
+      expect(
+        findSelfWrittenWordViolations(
+          selfWrittenPrompts(entries),
+          textbookUnit.vocabulary,
+          sentences,
+        ),
+        `单元 ${unitNumber} 的自写句里有**没有出处**的词 —— ` +
+          'AC 正文逐字要求「用词仍须取自该单元词表」；造出来的词孩子没学过、也没有录音',
+      ).toEqual([])
+    })
+  }
+
+  it('🚨 反向自测（M422）：给一句自写句塞一个单元词表与教材句里都没有的词 ⇒ 必须红', () => {
+    const problems = findSelfWrittenWordViolations(
+      ['Can you dance?', 'Do you like elephants?'],
+      ['dance', 'read', 'sing', 'draw'],
+      ['I can sing.', 'I can dance.', 'What can you do?'],
+    )
+
+    expect(
+      problems.some((problem) => problem.includes('elephants')),
+      `判据在「塞了没出处的词」的违规夹具上没红 ⇒ 判据本身失效。实际报出：${problems.join(' / ')}`,
+    ).toBe(true)
+  })
+
+  it('🚨 反向自测：教材句里出现过的词**也算**有出处 ⇒ 不许误报', () => {
+    const problems = findSelfWrittenWordViolations(
+      ['What can you do?'],
+      ['dance', 'read', 'sing', 'draw'],
+      ['I can sing.', 'What can you do?'],
+    )
+
+    expect(
+      problems,
+      '「What」「can」「you」「do」都出现在教材句里 ⇒ 不该被报成「没出处」',
+    ).toEqual([])
+  })
+})
+
+// ══════════════════════════════════════════════════════════════════════════════
+// G351 —— 每句都有板块归属，且板块 ∈ 对话板块白名单
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * **G351 的判据本体**住在 `tests/helpers/textbook-corpus.ts`
+ * （{@link findBlockViolations}）—— 它问的是**语料**的问题
+ * （「这句是不是儿歌里的」），所以住在解析器旁边。
+ */
+describe('G351 —— 每句教材句子都有板块归属，且板块 ∈ 对话板块白名单', () => {
+  for (const unitNumber of COVERED_UNITS) {
+    it(`单元 ${unitNumber}：没有「不知道属于哪个板块」的句子，也没有儿歌 / 故事板块的句子`, () => {
+      const unit = textbookUnitOf(unitNumber, books).unit
+
+      expect(
+        findBlockViolations(unit),
+        `单元 ${unitNumber} 的教材句子有板块归属问题 —— ` +
+          '「不知道属于哪个板块」本身就是不可接受的状态（它可能来自儿歌 / 故事台词，' +
+          '而那些**不入库**）；`Listen and enjoy` 段的句子一条都不能做成句子卡',
+      ).toEqual([])
+    })
+  }
+
+  it('🚨 反向自测（M427）：把一句的板块归属去掉 ⇒ 判据本体必须红', () => {
+    const unit = textbookUnitOf(3, books).unit
+    const broken = {
+      ...unit,
+      sentences: unit.sentences.map((sentence, index) =>
+        index === 0 ? { ...sentence, block: null } : sentence,
+      ),
+    }
+
+    const problems = findBlockViolations(broken)
+    expect(
+      problems.some((problem) => problem.includes('没有板块归属')),
+      `判据在「板块归属去掉」的违规夹具上没红 ⇒ 判据本身失效。实际报出：${problems.join(' / ')}`,
+    ).toBe(true)
+  })
+
+  it('🚨 反向自测：把一句归到 `Listen and enjoy`（儿歌板块）⇒ 判据本体必须红', () => {
+    const unit = textbookUnitOf(3, books).unit
+    const broken = {
+      ...unit,
+      sentences: unit.sentences.map((sentence, index) =>
+        index === 0 ? { ...sentence, block: 'Listen and enjoy' } : sentence,
+      ),
+    }
+
+    const problems = findBlockViolations(broken)
+    expect(
+      problems.some((problem) => problem.includes('不在可做卡的板块白名单里')),
+      `判据在「归到儿歌板块」的违规夹具上没红 ⇒ 白名单那一条没有牙齿。实际报出：${problems.join(' / ')}`,
+    ).toBe(true)
+  })
+})
+
 
 // ══════════════════════════════════════════════════════════════════════════════
 // G337

@@ -41,62 +41,33 @@ import { describe, expect, it } from 'vitest'
 
 import { createInitialState } from '../../src/core/reducer'
 import { getUnit } from '../../src/content'
-import { targetCardDistribution } from '../../src/content/distribution'
 import { UnitSchema } from '../../src/content/schema'
-import type { CardKind, DeckEntry } from '../../src/content/schema'
 import { assertOptionCountsMatchRule } from '../helpers/option-counts'
+import {
+  assertDistributionMatchesShare,
+  assertIdsAreWellFormed,
+  assertOptionPointersResolve,
+  assertTowersAndAnswersAreWellFormed,
+  countsByKind,
+} from '../helpers/unit-content'
 import { assertVoiceAssetsMatchEntries, readVoiceAssets } from '../helpers/voice-assets'
 
 const unit = getUnit(2)
 const entries = unit.entries
-
-/** 三族卡的条数（实测值，不是写死的）。 */
-function countsByKind(list: readonly DeckEntry[]): Record<CardKind, number> {
-  const counts: Record<CardKind, number> = { word: 0, keyword: 0, response: 0 }
-  for (const entry of list) counts[entry.card.kind] += 1
-  return counts
-}
 
 // ══════════════════════════════════════════════════════════════════════════════
 // G278 —— 卡型配比（§5.1.1 的两条判据）
 // ══════════════════════════════════════════════════════════════════════════════
 
 /**
- * **G278 的判据本体** —— 抽成函数，正向用例与反向自测**都调它**。
+ * **G278 的判据本体**住在 `tests/helpers/unit-content.ts`
+ * （{@link assertDistributionMatchesShare}）—— 单元 1 / 2 / 3–7 **共用同一份**（R-37）。
  *
- * ⚠️ 判据必须是函数而不是某条 `it` 的循环体：反向自测要能「把违规形态真写进去，
- *   断言这条守卫会红」—— 若判据只存在于循环体里，反向自测够不着它
- *   （只能另写一份手写比较，于是判据被改坏时反向自测照样绿 —— 本仓已知的假绿形态）。
- *
- * ⚠️ 两条判据**逐字取自 `docs/card-distribution.md` §5.1.1**：
- *   ① 总量守恒：`Σ_k c_k === N`；
- *   ② 逐族误差：`|c_k − s_k × N| ≤ 0.5`（0.5 张是「四舍五入到最近整数」的定义，
- *      **不是宽容度**）。
+ * 📎 **2026-10-28（Story 2.6）**：它原先是**本文件的模块私有函数** ——
+ *   Story 2.6 要给单元 3–7 各写一份同款守卫 ⇒ 复制五份就是**五条复制链**（R-37），
+ *   改了规则只改一份 ⇒ 其余四份恒绿。⇒ 已抽到共用 helper，两边各调一次。
+ * ⚠️ **G278 的编号与判据口径一个字没变** —— 只是搬了家（R-36）。
  */
-function assertDistributionMatchesShare(
-  counts: Record<CardKind, number>,
-  unitNumber: number,
-  total: number,
-): void {
-  const dist = targetCardDistribution(unitNumber)
-  const sum = counts.word + counts.keyword + counts.response
-
-  expect(
-    sum,
-    `总量不守恒：word ${counts.word} + keyword ${counts.keyword} + response ${counts.response} ` +
-      `= ${sum}，而本单元有 ${total} 条 —— 少一条就有一条词条没被编排进去`,
-  ).toBe(total)
-
-  for (const kind of ['word', 'keyword', 'response'] as const) {
-    const target = dist[kind] * total
-    expect(
-      Math.abs(counts[kind] - target),
-      `${kind} 族录了 ${counts[kind]} 条，而规则算出来的是 ${target.toFixed(3)} 条 ` +
-        `（份额 ${(dist[kind] * 100).toFixed(3)}% × ${total}）—— 逐族误差超过 0.5 张，` +
-        '请按 §5.1.1 的最大余数法重新取整',
-    ).toBeLessThanOrEqual(0.5)
-  }
-}
 
 describe('G278 —— 卡型配比符合 §5.1.1 的两条判据（单元 2 = 11 条：4 / 2 / 5）', () => {
   it('单元 2 恰有 11 条词条，构成 4 词 + 2 关键词 + 5 回应', () => {
@@ -144,16 +115,10 @@ describe('G278 —— 卡型配比符合 §5.1.1 的两条判据（单元 2 = 11
 // G279 —— id 前缀与 entryId === wordId
 // ══════════════════════════════════════════════════════════════════════════════
 
-/** **G279 的判据本体** —— 正向用例与反向自测都调它。 */
-function assertIdsAreWellFormed(list: readonly DeckEntry[], unitNumber: number): void {
-  const prefix = `u${unitNumber}-`
-  for (const entry of list) {
-    expect(entry.entryId.startsWith(prefix), `${entry.entryId} 缺单元前缀`).toBe(true)
-    expect(entry.wordId, `${entry.entryId} 的 wordId 与 entryId 不一致`).toBe(entry.entryId)
-  }
-  const ids = list.map((entry) => entry.entryId)
-  expect(new Set(ids).size, 'entryId 有重复').toBe(ids.length)
-}
+/**
+ * **G279 的判据本体**住在 `tests/helpers/unit-content.ts`
+ * （{@link assertIdsAreWellFormed}）—— 与单元 1 / 3–7 共用（📎 Story 2.6 抽出）。
+ */
 
 describe('G279 —— id 前缀与 entryId === wordId', () => {
   it('所有 entryId 都带 u2- 前缀，且 wordId === entryId，且 id 互不重复', () => {
@@ -176,30 +141,11 @@ describe('G279 —— id 前缀与 entryId === wordId', () => {
 // G280 —— 塔型合法 + 每张卡恰有一个正确项
 // ══════════════════════════════════════════════════════════════════════════════
 
-/** **G280 的判据本体** —— 正向用例与反向自测都调它。 */
-function assertTowersAndAnswersAreWellFormed(list: readonly DeckEntry[]): void {
-  const towerTypes = new Set(list.map((entry) => entry.towerType))
-  expect([...towerTypes].sort(), '塔型集合不对 —— 只有 aoe / direct / slow 三种').toEqual([
-    'aoe',
-    'direct',
-    'slow',
-  ])
-
-  for (const entry of list) {
-    expect(
-      entry.card.options.filter((option) => option.correct).length,
-      `${entry.entryId} 的正确项数量不是 1`,
-    ).toBe(1)
-  }
-
-  for (const entry of list.filter((item) => item.card.kind === 'response')) {
-    const correct = entry.card.options.find((option) => option.correct)
-    expect(
-      correct?.id !== entry.entryId,
-      `${entry.entryId} 的正确选项就是它自己的卡面 ⇒ 孩子点「重复听到的那句」即可，无需理解`,
-    ).toBe(true)
-  }
-}
+/**
+ * **G280 的判据本体**住在 `tests/helpers/unit-content.ts`
+ * （{@link assertTowersAndAnswersAreWellFormed}）—— 与单元 1 / 3–7 共用
+ * （📎 Story 2.6 抽出）。
+ */
 
 describe('G280 —— 塔型合法，且每张卡恰有一个正确项', () => {
   it('三种塔型都出现，且每张卡恰好一个正确项', () => {
@@ -261,22 +207,10 @@ describe('G280 —— 塔型合法，且每张卡恰有一个正确项', () => {
 // G281 —— 选项指针必须指向本单元真实存在的词条
 // ══════════════════════════════════════════════════════════════════════════════
 
-/** **G281 的判据本体** —— 正向用例与反向自测都调它。 */
-function assertOptionPointersResolve(list: readonly DeckEntry[], unitNumber: number): void {
-  const ids = new Set(list.map((entry) => entry.entryId))
-  const wordDir = `/assets/words/unit-${String(unitNumber).padStart(2, '0')}/`
-
-  for (const entry of list) {
-    for (const option of entry.card.options) {
-      expect(ids.has(option.id), `${entry.entryId} 的选项 ${option.id} 指向不存在的词条`).toBe(true)
-      if (!('imageSrc' in option)) continue
-      expect(
-        option.imageSrc.startsWith(wordDir),
-        `${entry.entryId} 的选项 ${option.id} 的图片路径 ${option.imageSrc} 不在本单元的词图目录里`,
-      ).toBe(true)
-    }
-  }
-}
+/**
+ * **G281 的判据本体**住在 `tests/helpers/unit-content.ts`
+ * （{@link assertOptionPointersResolve}）—— 与单元 1 / 3–7 共用（📎 Story 2.6 抽出）。
+ */
 
 describe('G281 —— 每个选项都指向本单元真实存在的词条', () => {
   it('选项指针全部命中，且图片选项指向本单元自己的词图目录', () => {
