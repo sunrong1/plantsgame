@@ -76,7 +76,7 @@ export function readVoiceAssets(prefix: string): {
 }
 
 /**
- * **G289 的判据本体** —— 六条轴，正向用例与反向自测都调它。
+ * **G289 的判据本体** —— 八条轴，正向用例与反向自测都调它。
  *
  * ⚠️ 消息里都带**稳定片段**，反向自测用 `toThrow('片段')` 逼它必须在
  *   对应那一条上炸，而不是被别的断言先炸掉。
@@ -143,5 +143,37 @@ export function assertVoiceAssetsMatchEntries(
       entry.card.promptText,
       `${entry.entryId} 的卡面文字与录音内容不一致 ⇒ 孩子看到的字与听到的声音对不上`,
     ).toBe(recorded?.text)
+  }
+
+  // ⑦ manifest 里**没有孤儿条目**（清单有、磁盘上没有 ⇒ 清单与产物脱节）
+  //
+  // ⚠️ **为什么这条是新的**（2026-10-28 `[CR]` 第二轮补）：第 ① ② 两条比较的是
+  //   「**磁盘上的文件** ↔ **内容层的词条**」，**从未**比较
+  //   「**manifest 的 key** ↔ **磁盘上的文件**」
+  //   ⇒ 一条 manifest 条目如果**既没有对应的 mp3、也不在内容层**（典型的形态：
+  //   录音被删了、manifest 忘了同步），**前六条轴一条都抓不到**
+  //   （条目数不变、id 集合不变、哈希那条因为没有文件可循环而根本不执行）。
+  const manifestIds = Object.keys(manifest.entries)
+    .filter((id) => id.startsWith(prefix))
+    .sort()
+  expect(
+    manifestIds,
+    `manifest 里 ${prefix} 前缀的条目集合与磁盘上的录音文件集合不相等 —— ` +
+      '清单里有、磁盘上没有 = 孤儿溯源记录（录音被删了但清单没跟着删）；' +
+      '磁盘上有、清单里没有 = 第 ④ 轴会报出来',
+  ).toEqual(files.map((file) => file.id))
+
+  // ⑧ manifest 记录的字节数 === 磁盘上的实际字节数
+  //
+  // ⚠️ **为什么这条不是第 ④ 轴的重复**：`bytes` 是 manifest 里**记了但从来没被比过**
+  //   的字段（换源后 17 条 mp3 的 `bytes` 全部无人核对）⇒ 清单可以被手工改成
+  //   一个与文件不符的数而**不报任何错**。它也是「文件是否被换过」的一道
+  //   **廉价**旁证（比整份哈希便宜）。
+  for (const file of files) {
+    const recorded = manifest.entries[file.id]
+    expect(
+      recorded?.bytes,
+      `${file.id}.mp3 的 manifest 字节数（${recorded?.bytes}）与磁盘上的实际字节数（${file.bytes}）不符`,
+    ).toBe(file.bytes)
   }
 }

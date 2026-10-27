@@ -34,27 +34,30 @@ npm run build
 3. `postbuild` → `verify:deploy`：产物自检 **64 项**（⚠️ **这个数会随单元数增长** ——
    每个单元一项词图检查，见下）。
 
-### 实测产物形态（2026-10-25，Story 3.5 `[CR]` 重测；2026-10-23 Story 2.5 首测）
+### 实测产物形态（2026-10-28，Story 2.10 `[CR]` 第二轮重测；2026-10-25 Story 3.5 `[CR]` 重测；2026-10-23 Story 2.5 首测）
 
 ```
-dist/  3.3 MB  165 个文件
-dist/index.html                        3.44 kB │ gzip:   2.08 kB
-dist/assets/index-BeOGBe7j.js        242.48 kB │ gzip:  77.39 kB
-dist/assets/index-CrQA-fqh.css        15.44 kB │ gzip:   3.71 kB
-dist/manifest.webmanifest               0.76 kB
-dist/sw.js                              1.84 kB │ gzip:   0.91 kB
+dist/  1.5 MB  53 个文件
+dist/index.html                        3.36 kB │ gzip:   2.03 kB
+dist/assets/index-Y1aA7XZj.js        223.09 kB │ gzip:  73.88 kB
+dist/assets/index-BzGOuu5Z.css        15.07 kB │ gzip:   3.62 kB
+dist/manifest.webmanifest               0.74 kB
+dist/sw.js                              1.79 kB │ gzip:   0.89 kB
 ```
 
-⚠️📎 **`[CR]` 2026-10-23（Story 2.5）整块重测** —— 原文写的
-`sw.js 1.60 kB │ gzip 0.79 kB` 与**实测**不符：当天 `npm run build` 的产物是
-`sw.js` **1912 B（1.91 kB）│ gzip 952 B（0.95 kB）**。
-⚠️ 其余几行一并更新（JS 的内容哈希变了：旧 `index-B6zhMCMw.js` → 新 `index-DFmTZkY5.js`；
-CSS 与 manifest 的字节数也差了一两个字节）。
+⚠️📎 **`[CR]` 2026-10-28（Story 2.10 第二轮）整块重测** —— 上一版的
+`3.3 MB / 165 个文件` 是**换源前**的数：Story 2.10 把**录音 75 → 17 条**、
+**词图 60 → 6 张** ⇒ `dist/` 少了 **112 个文件**（58 + 54），
+实测现在是 **53 个文件 / 1.5 MB**（`find dist -type f | wc -l` / `du -sh dist`）。
+⚠️ **本文件不在 Story 2.10 的 §9 文档更正清单里** —— 那是清单漏了它，
+不是它不用改（清单漏项已补进 story 文档的 Review Findings）。
+⚠️ 其余几行一并更新（JS / CSS 的内容哈希变了：
+旧 `index-BeOGBe7j.js` → 新 `index-Y1aA7XZj.js`，旧 `index-CrQA-fqh.css` → 新 `index-BzGOuu5Z.css`）。
 ⚠️ **gzip 口径**：本表的 gzip 列是 **`node -e` 的 `zlib.gzipSync`（默认 level 6）**，
 不是 `gzip -c`（后者对同样的文件会小几十字节）⇒ 两套数不可混用。
 ⚠️ 「165 个文件」在 2026-10-23 那次是**不含** `public/_voices-probe.html` 的数
 （那个本地调试探针被 Vite **原样复制**进了 `dist/`）⇒ **2026-10-25 探针页移出 `public/` 之后，
-这个数才第一次名副其实**（`dist/` 里真的就是 165 个文件）。
+这个数才第一次名副其实**（当时的 `dist/` 里真的就是 165 个文件；⚠️ **那个数自 2026-10-28 起已作废**）。
 ⚠️📎 **`[CR]` 2026-10-25（Story 3.5）查出的根因** —— 那个本地调试页**不只是**多了一个文件：
 `vite-plugin-pwa` 的 `globPatterns: ['**/*.{html,js,css}']` 会把 `dist/` 里**任何 `.html`**
 扫进 precache 清单 ⇒ **一个本地调试页跟着上线**（`sw.js` 因此 **+75 B**：

@@ -7,7 +7,9 @@
 > **守卫**：`tests/content/option-count.test.ts`（G262 / G263 / G265 / G266）+
 > `tests/content/unit-01.test.ts` 的 **G264**（规则与单元 1 真实内容一致）+
 > `tests/scripts/validate-content.test.ts` 的 **G267 – G269 / G271 – G276**（校验脚本抓各类错）+
-> `tests/components/option-grid-layout.test.ts` 的 **G270**（版式不再写死四列）。
+> `tests/components/option-grid-layout.test.ts` 的 **G270**（版式不再写死四列）+
+> 📎 `tests/content/option-count-doc.test.ts` 的 **G342**（**本文件**的数字 ↔ 实算值：
+> §1.1 档位表、§3 逐单元表、§4.1 的卡内编辑距离明细 —— 2026-10-28 `[CR]` 第二轮补上）。
 >
 > 🔥 **两者不一致时以 `src/content/option-count.ts` 为准，并必须回改本文件。**
 > 理由与 `docs/card-distribution.md` 同款：守卫守的是代码，**正文没有守卫** ——
@@ -99,9 +101,12 @@ Story 2.9 的试玩验收与 Story 3.x 的调优才是它们的真值来源。
 | **归一化必须做 NFKC** | 全角 `Ｃａｔ` 与半角 `Cat` 是同一个词 ⇒ 必被报 | **G274** | **M323**（去掉 `.normalize('NFKC')`）**1 红** |
 | **编辑距离按码点算** | 一个 emoji 算**一个**字符，不是两个（UTF-16 码元口径会让距离翻倍） | **G275** | **M324**（`Array.from` 改回 `split('')`）**1 红** |
 | **失败原因要分开说** | 单元号 `1.5` ⇒ 报「不是整数」，不是「规则不覆盖这个单元」 | **G276** | **M325**（三种失败原因合并成一种文案）**1 红** |
+| 📎 **本文件 ↔ 实算值** | **§1.1 档位表**逐格 === `OPTION_COUNT_TIERS`；**§3 逐单元表**逐格 === `targetOptionCount`；**§3 的复算方法代码块**指向真实实现；**§4.1 的卡内编辑距离明细**逐对 === 真实内容算出来的值，且**一对不漏** | 📎 **G342**（`tests/content/option-count-doc.test.ts`，2026-10-28 `[CR]` 第二轮补上） | 📎 **M419**（把 §1.1 档 1 的 word 选项数改成 3）**1 红 / 该文件 11 条** |
 
 **红数合计：18 条变异 / 52 红 / 整轮 2244 条。**
 （编号起于 **M308**；⚠️ `M308` 这个号在 `grep` 里会命中本 story 的文档自身，不是占用。）
+📎 **这条合计是 Story 2.4 那一轮的留档** —— 2026-10-28（Story 2.10 `[CR]` 第二轮）
+补的 **G342 / M419** 不计入它（M419 的红数单列在上面的表里：1 红 / 该文件 11 条）。
 
 ⚠️ **G271–G276 是 `[CR]` 2026-10-23 这一轮补的** —— 那一轮的三层对抗评审
 在**校验器**里挖出六个判据缺陷（原型链漏判 / 空串被放过 / 一个违规报两条 /
@@ -170,10 +175,14 @@ for (let n = 1; n <= 24; n++) {
 
 ## 4. 两条写死的基线（改内容 / 改阈值前必读）
 
-### 4.1 单元 1 的卡内最小编辑距离 = **7**
+### 4.1 卡内最小编辑距离（单元 1 = **7**、单元 2 = **5**）
 
 **实测口径**（`scripts/validate-content.ts` 的 `normalizeOptionText` + `editDistance`，
-对 `unit-01.json` 的每张卡做卡内两两比较，取最小值）：
+对每个单元的每张卡做**卡内两两**比较，取全局最小值）。
+⚠️ 下面列的文本是**归一化后**的（`normalizeOptionText` 的输出），不是卡面原文；
+⚠️ **每一对都列出来了**（全量，不是抽样）—— 少列一对，下一个读的人就没法自验。
+
+**单元 1（`unit-01.json`，10 对）**：
 
 ```
 u1-s-good-morning | "morning" ~ "afternoon" = 7
@@ -187,6 +196,29 @@ u1-s-goodbye | "hello" ~ "good morning" = 11
 u1-s-goodbye | "hello" ~ "good afternoon" = 12
 u1-s-goodbye | "good morning" ~ "good afternoon" = 7
 最小卡内编辑距离 = 7 <- u1-s-good-morning: morning ~ afternoon
+```
+
+**单元 2（`unit-02.json`，17 对）**：
+
+```
+u2-s-give-me-a-rubber-please | "rubber" ~ "pencil" = 6
+u2-s-give-me-a-ruler-please | "ruler" ~ "book" = 5
+u2-s-good-afternoon-kitty | "good afternoon alice" ~ "here you are" = 15
+u2-s-good-afternoon-kitty | "good afternoon alice" ~ "thank you" = 17
+u2-s-good-afternoon-kitty | "here you are" ~ "thank you" = 8
+u2-s-good-afternoon-alice | "good afternoon kitty" ~ "here you are" = 17
+u2-s-good-afternoon-alice | "good afternoon kitty" ~ "thank you" = 17
+u2-s-good-afternoon-alice | "here you are" ~ "thank you" = 8
+u2-s-here-you-are | "thank you" ~ "how nice" = 8
+u2-s-here-you-are | "thank you" ~ "give me a rubber please" = 21
+u2-s-here-you-are | "how nice" ~ "give me a rubber please" = 21
+u2-s-thank-you | "here you are" ~ "how nice" = 9
+u2-s-thank-you | "here you are" ~ "give me a ruler please" = 15
+u2-s-thank-you | "how nice" ~ "give me a ruler please" = 20
+u2-s-how-nice | "thank you" ~ "here you are" = 8
+u2-s-how-nice | "thank you" ~ "give me a ruler please" = 20
+u2-s-how-nice | "here you are" ~ "give me a ruler please" = 15
+最小卡内编辑距离 = 5 <- u2-s-give-me-a-ruler-please: ruler ~ book
 ```
 
 ⚠️ **这个 7 是 2026-10-26 换源批次重新实测出来的**，出处换成了教材词表的那一对
@@ -204,10 +236,13 @@ u1-s-goodbye | "good morning" ~ "good afternoon" = 7
 那会把论证读反 —— 「差一个字母」对应的阈值是 1，而阈值取 1 就会放过**差两个字母**
 的近似词（旧内容里的 `ball` / `bail` 就是这一族）⇒ 阈值是 2，不是 1。
 
-⚠️ **口径差异登记**：`src/content/option-count.ts` 的档 1 注释把这个距离写成了 **3**
-⇒ 那是**旧数值**（旧内容 `ball` ~ `book` 的量级），实测是 **7**（R-21 实测值优先）。
-**档位表本身两边一致**（档 1 = 2 / 2 / 3，档 3 = 11–24）—— 本节只登记注释里的
-那个数字与实测不符。
+⚠️ **口径差异登记（已闭环）**：`src/content/option-count.ts` 的档 1 注释原先把这个距离
+写成了 **3** ⇒ 那是**旧数值**（旧内容 `ball` ~ `book` 的量级），实测是 **7**
+（R-21 实测值优先）。
+📎 **2026-10-26（Story 2.10 收尾）已把该注释改成实测值 7**
+（注释里现在明写「那个 3 是错的…`ball` ~ `book` 才是 3」）⇒ **两边现已一致**，
+本条不再是一处待修的差异，只是留档说明它曾经不一致过。
+**档位表本身两边一致**（档 1 = 2 / 2 / 3，档 3 = 11–24）。
 
 ⚠️ **这条基线会随内容变**：将来单元 1 的选项措辞改了，最小距离可能变小 ⇒
 **改内容时必须重算它**（复算口径见上面的 `npx tsx` 同款写法，把

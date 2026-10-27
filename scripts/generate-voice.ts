@@ -63,8 +63,9 @@ const VOICE_FORMAT = 'mp3'
  * ⚠️ 改了要全量重生成（与上面三个常量同一条纪律）。
  *
  * ── 为什么默认态**不把这个字段发出去**（Story 3.4 / Task 1.1 实测）─────────
- * 已提交的 75 条录音是**引入 `pitch` 之前**的脚本产物。若从今天起每个请求都带上
- * `pitch: 0`，请求体就与产出那 75 条时的请求体**不再逐字节相同** ⇒
+ * 已提交的 **17** 条录音（`manifest.json` 里那 17 条，Story 2.10 换源后），
+ * 是**引入 `pitch` 之前**的脚本产物。若从今天起每个请求都带上
+ * `pitch: 0`，请求体就与产出那 17 条时的请求体**不再逐字节相同** ⇒
  * 「已提交的录音仍是当前脚本能复现的产物」这句话就失去了依据。
  * 而 Task 1.1 原本打算用「两次请求的音频逐字节相同」来证明等价 ——
  * **实测证明这条判据本身不成立**（TTS 无 `seed`，**同一请求体发两次，响应音频也不相同**），
@@ -111,7 +112,7 @@ export function manifestFileIn(outputDir: string): string {
   return join(outputDir, 'manifest.json')
 }
 
-/** 文件内容的 sha256。逐条核对用，全部 75 条不到 2 MB，成本可忽略。 */
+/** 文件内容的 sha256。逐条核对用，全部 17 条不到 0.5 MB（实测 439 KB），成本可忽略。 */
 export function hashFileSync(path: string): string {
   return createHash('sha256').update(readFileSync(path)).digest('hex')
 }
@@ -146,7 +147,7 @@ export function listVoiceMp3s(outputDir: string): string[] {
  *
  * ⚠️ 目录与文件名都由参数 `outputDir` 推导（Story 3.4 / Task 3.1）——
  *   这里**不许**回落到模块级常量，否则一次测试运行就会覆盖仓库里
- *   已提交的 75 条溯源记录。
+ *   已提交的全部溯源记录。
  *   ⇒ 2026-10-25 夜 `[CR]` 把那个**默认参数删掉了**：注释说「不许回落」而
  *     签名却写着 `outputDir: string = OUTPUT_DIR` —— 注释与代码互相否定，
  *     下一个人照注释以为安全、直接 `writeManifestFile(m)` 就会覆盖提交物。
@@ -270,8 +271,8 @@ export function estimateCost(chars: number): number {
  * 决定录音长什么样的那几个常量。
  *
  * ⚠️ 为什么非得有它：跳过判据是「文件存在」。只靠存在性，磁盘上的 mp3 到底是用
- * 哪组参数生成的**无从判断** —— 改完 `VOICE_SPEED` 重跑，脚本会报「跳过全部 75 条」，
- * 于是「75 条按新语速生成的」假设出货，实际全是旧语速的录音，而且没有任何报错。
+ * 哪组参数生成的**无从判断** —— 改完 `VOICE_SPEED` 重跑，脚本会报「跳过全部 17 条」，
+ * 于是「17 条按新语速生成的」假设出货，实际全是旧语速的录音，而且没有任何报错。
  * 「孩子在任何设备上听到的发音都是产品的确定常量」这句话，靠存在性守不住。
  */
 export interface VoiceFingerprint {
@@ -301,7 +302,7 @@ export type StoredFingerprint = Partial<Record<keyof VoiceFingerprint, Fingerpri
  *
  * ⚠️⚠️ **方向不能搞反**（Story 3.4 / AC-6 / §3.1）：
  *   - ✅ 缺键 ⇒ 取**历史默认值**（`pitch` ⇒ 0）：现状（`VOICE_PITCH = 0`）仍然有效，
- *     75 条录音不必重生成；而一旦有人把 `VOICE_PITCH` 改成 2，就**不匹配** ⇒ 拒跑 + 报红。
+ *     已提交的录音不必重生成；而一旦有人把 `VOICE_PITCH` 改成 2，就**不匹配** ⇒ 拒跑 + 报红。
  *   - ❌ 缺键 ⇒ 取**当前常量值**（`{...cur, ...manifest}`）：那等于把「改了参数却没重生成」
  *     这件事**归一成正常** ⇒ AC-6 整个失效。
  *
@@ -350,7 +351,7 @@ export function normalizeFingerprint(stored: StoredFingerprint): StoredFingerpri
  *     —— **键序敏感**。而归一化用 `{...HISTORICAL_DEFAULTS, ...stored}` 会把 `pitch`
  *     排到**最前**，`currentFingerprint()` 里它排在**最后**
  *     ⇒ 两个序列化结果**必然不等** ⇒ 现状（`VOICE_PITCH = 0`）会被**误判为不匹配**
- *     （G310 假红 + 脚本无端拒跑）—— 那正是「75 条录音不必重生成」这条承诺的破口。
+ *     （G310 假红 + 脚本无端拒跑）—— 那正是「已提交的录音不必重生成」这条承诺的破口。
  *   - 只比「当前常量有的那几个键」也不行：manifest 里**多出来的键**会被放过。
  * ⇒ 三件事一起做：① 键数相等 ② 当前常量的每个键都在归一化结果里 ③ 值逐个 `===`。
  */
@@ -485,7 +486,7 @@ export function buildRequestBody(text: string): {
       //   ⇒ 「发两次比字节」这条等价性判据**本身不成立**，不能用来证明
       //   「加了 `pitch: 0` 之后产出的音频与之前一样」。
       //   ⇒ 唯一站得住的论证是**请求体逐字节相同**：默认态下 `pitch` 不进请求体，
-      //   于是已提交的 75 条录音**仍然是当前脚本能复现的产物**（这条承诺不依赖 TTS 的随机性）。
+      //   于是已提交的 17 条录音**仍然是当前脚本能复现的产物**（这条承诺不依赖 TTS 的随机性）。
       //   ⇒ 一旦有人把 `VOICE_PITCH` 改成非 0，字段就会发出去，
       //      而那时**必须整批重生成**（指纹闸会先拒跑，逼人走「删整个目录重跑全量」）。
       ...(VOICE_PITCH !== 0 ? { pitch: VOICE_PITCH } : {}),
@@ -978,7 +979,7 @@ function parseCli(argv: string[]): Cli {
  *
  * `opts.outputDir` 可注入（Story 3.4 / Task 3.1）：守卫要在临时目录里驱动
  * 「指纹不匹配 ⇒ 拒跑」这条路径；而产物目录写死的话，测试会把新的 manifest
- * 写到**仓库里真的**那个已提交文件上，覆盖 75 条溯源记录。
+ * 写到**仓库里真的**那个已提交文件上，覆盖全部溯源记录。
  * ⚠️ `outputDir` 的默认值不变 ⇒ 产物仍落在同一个目录；
  *   但**行为**有变（新增了两道拒跑闸）—— 见 `main()` 里那两处的注释。
  *   ⇒ 「默认值不变 ⇒ 行为逐字不变」这句话在 2026-10-25 夜 `[CR]` 之后**不再成立**。

@@ -360,7 +360,7 @@ describe('G282 —— 逐卡选项数 === 档位规则（G264 的单元 2 版）
 describe('G289 —— 本单元的词条与本单元的录音一一对应', () => {
   const { files, manifest } = readVoiceAssets('u2-')
 
-  it('正向：单元 2 的词条与 u2- 前缀的录音六轴全过', () => {
+  it('正向：单元 2 的词条与 u2- 前缀的录音八轴全过', () => {
     assertVoiceAssetsMatchEntries('u2-', entries, files, manifest)
   })
 
@@ -430,6 +430,43 @@ describe('G289 —— 本单元的词条与本单元的录音一一对应', () =
       () => assertVoiceAssetsMatchEntries('u2-', swapped, files, manifest),
       '判据在「卡面文字与录音不一致」的违规夹具上没红 ⇒ 判据本身失效',
     ).toThrow('卡面文字与录音内容不一致')
+  })
+
+  it('🚨 反向自测：manifest 里有孤儿条目（清单有、磁盘上没有）⇒ 第 ⑦ 轴必须红', () => {
+    // ⚠️ **这个形态是前六条轴全都抓不到的**（2026-10-28 `[CR]` 第二轮补轴的理由）：
+    //   ① 条数：磁盘 11 条 vs 词条 11 条 ⇒ 相等；
+    //   ② id 集合：磁盘的 11 个 vs 词条的 11 个 ⇒ 相等；
+    //   ③④ 哈希那两条是**按 files 循环**的 ⇒ 多出来的那条 manifest 条目**根本不进循环**；
+    //   ⑤⑥ 也是按 files / entries 循环 ⇒ 同样进不去。
+    //   ⇒ 只有一条「manifest 的 key ↔ 磁盘的文件」的直接比较才看得见它。
+    const orphanId = 'u2-orphan-not-on-disk'
+    const orphanManifest = {
+      entries: {
+        ...manifest.entries,
+        [orphanId]: { text: 'orphan', sha256: '0'.repeat(64), bytes: 1234 },
+      },
+    }
+
+    expect(
+      () => assertVoiceAssetsMatchEntries('u2-', entries, files, orphanManifest),
+      '判据在「manifest 孤儿条目」的违规夹具上没红 ⇒ 判据本身失效',
+    ).toThrow('孤儿溯源记录')
+  })
+
+  it('🚨 反向自测：manifest 记录的字节数与磁盘不符 ⇒ 第 ⑧ 轴必须红', () => {
+    const first = files[0]!
+    const original = manifest.entries[first.id]!
+    const tamperedManifest = {
+      entries: {
+        ...manifest.entries,
+        [first.id]: { ...original, bytes: original.bytes + 1 },
+      },
+    }
+
+    expect(
+      () => assertVoiceAssetsMatchEntries('u2-', entries, files, tamperedManifest),
+      '判据在「manifest 字节数与磁盘不符」的违规夹具上没红 ⇒ 判据本身失效',
+    ).toThrow('manifest 字节数')
   })
 })
 
